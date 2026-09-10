@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Trip Vault">
+  <rect width="512" height="512" fill="#142f31"/>
+  <path d="M111 180c0-33 27-60 60-60h170c33 0 60 27 60 60v173c0 22-18 39-39 39H150c-22 0-39-18-39-39V180Z" fill="#f5f1e8"/>
+  <path d="M206 120v-8c0-22 18-40 40-40h20c22 0 40 18 40 40v8" fill="none" stroke="#f5f1e8" stroke-width="24" stroke-linecap="round"/>
+  <path d="M149 242h214" stroke="#e8785b" stroke-width="26" stroke-linecap="round"/>
+  <circle cx="256" cy="306" r="38" fill="#142f31"/>
+  <path d="m256 282 12 22 25 4-18 18 4 25-23-12-23 12 4-25-18-18 25-4 12-22Z" fill="#f5f1e8"/>
+</svg>

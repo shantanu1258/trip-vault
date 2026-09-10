@@ -1,0 +1,148 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+[data-theme="light"] {
+  --color-canvas: 245 241 232;
+  --color-surface: 255 253 248;
+  --color-elevated: 255 255 255;
+  --color-ink: 24 39 40;
+  --color-muted: 93 107 106;
+  --color-line: 216 211 199;
+  --color-brand: 20 47 49;
+  --color-brand-soft: 221 233 229;
+  --color-coral: 232 120 91;
+  --color-success: 47 122 96;
+  --color-warning: 176 111 40;
+  --color-danger: 176 68 65;
+  --shadow-color: 31 51 51;
+}
+
+[data-theme="dark"] {
+  --color-canvas: 16 24 25;
+  --color-surface: 24 34 35;
+  --color-elevated: 31 43 44;
+  --color-ink: 238 240 233;
+  --color-muted: 171 184 179;
+  --color-line: 58 73 73;
+  --color-brand: 180 220 208;
+  --color-brand-soft: 38 65 62;
+  --color-coral: 244 145 116;
+  --color-success: 111 199 163;
+  --color-warning: 232 174 92;
+  --color-danger: 241 131 126;
+  --shadow-color: 0 0 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: rgb(var(--color-canvas));
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: rgb(var(--color-canvas));
+  color: rgb(var(--color-ink));
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid rgb(var(--color-coral));
+  outline-offset: 3px;
+}
+
+textarea:focus-visible {
+  outline: 3px solid rgb(var(--color-coral));
+  outline-offset: 3px;
+}
+
+::selection {
+  background: rgb(var(--color-coral) / 0.25);
+}
+
+@layer components {
+  .surface-card {
+    @apply rounded-[1.65rem] border border-line bg-surface shadow-soft;
+  }
+
+  .eyebrow {
+    @apply text-[0.68rem] font-bold uppercase tracking-[0.18em] text-muted;
+  }
+
+  .tap-target {
+    @apply min-h-11 min-w-11 transition-transform duration-100 ease-settle active:scale-[0.985] motion-reduce:transition-none motion-reduce:active:scale-100;
+  }
+
+  .form-label {
+    @apply block text-sm font-extrabold text-ink;
+  }
+
+  .form-input {
+    @apply mt-2 min-h-11 w-full rounded-xl border border-line bg-elevated px-3.5 py-2.5 text-sm font-medium text-ink placeholder:text-muted/70 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .primary-button {
+    @apply tap-target inline-flex items-center justify-center gap-2 rounded-2xl bg-brand px-5 py-3 text-sm font-extrabold text-surface disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .secondary-button {
+    @apply tap-target inline-flex items-center gap-2 rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm font-extrabold text-ink hover:border-brand/40 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .hero-action {
+    @apply tap-target inline-flex items-center gap-2 rounded-xl border border-surface/20 bg-surface/10 px-4 py-2.5 text-sm font-extrabold text-surface transition-colors hover:bg-surface/20;
+  }
+}
+
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes sheet-enter {
+  from { opacity: 0; transform: translateY(18px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.page-enter {
+  animation: page-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.sheet-enter {
+  animation: sheet-enter 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

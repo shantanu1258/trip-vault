@@ -1,0 +1,13 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { AppShell } from "../components/AppShell";
+import { normalizeJoinCode, redeemInvitation } from "../features/workspace/api";
+
+export function JoinPage() {
+  const navigate = useNavigate(); const queryClient = useQueryClient(); const [code, setCode] = useState("");
+  const mutation = useMutation({ mutationFn: redeemInvitation, onSuccess: async (tripId) => { await queryClient.invalidateQueries({ queryKey: ["trips"] }); navigate(`/trips/${tripId}`, { replace: true }); } });
+  const submit = (event: FormEvent) => { event.preventDefault(); const normalized = normalizeJoinCode(code); if (normalized.length === 16) mutation.mutate(normalized); };
+  return <AppShell><div className="mx-auto max-w-xl"><Link className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted" to="/add"><ArrowLeft className="size-4" /> Back</Link><section className="surface-card page-enter mt-5 overflow-hidden"><div className="bg-brand p-7 text-surface"><span className="grid size-12 place-items-center rounded-2xl bg-surface/10"><KeyRound className="size-5" /></span><p className="mt-6 text-xs font-bold uppercase tracking-[.16em] text-surface/60">Private sharing</p><h1 className="mt-2 font-display text-3xl font-black">Join a trip</h1><p className="mt-2 text-sm leading-6 text-surface/70">Enter the unique code the organizer created for you. Nothing about the trip is disclosed until the code succeeds.</p></div><form onSubmit={submit} className="p-7"><label className="form-label">16-character code<input autoFocus className="form-input mt-2 text-center font-mono text-xl font-black uppercase tracking-[.16em]" value={code} onChange={(event) => setCode(event.target.value)} placeholder="ABCD-EFGH-JKMN-PQRS" autoCapitalize="characters" autoComplete="one-time-code" /></label><p className="mt-3 flex items-start gap-2 text-xs leading-5 text-muted"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" /> You must be online. A code can be used once and normally expires after 14 days.</p>{mutation.error && <p role="alert" className="mt-4 rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{mutation.error.message}</p>}<button className="primary-button mt-5 w-full" disabled={mutation.isPending || normalizeJoinCode(code).length !== 16}>{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />} Join trip</button></form></section></div></AppShell>;
+}
