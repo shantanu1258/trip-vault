@@ -5,6 +5,7 @@ import { validateActionUrl, validateThemeTokens } from "../admin/validation";
 import type { AirlineEntry, AirportEntry, ThemeTokens } from "../admin/api";
 import starterAirlines from "./starter-airlines.json";
 import starterAirports from "./starter-airports.json";
+import starterVendors from "./starter-vendors.json";
 import { cachePublishedPalette, readCachedPalette } from "../../lib/theme/publishedPalette";
 
 const PUBLIC_PROFILE = "published-configuration";
@@ -38,19 +39,22 @@ export type AvailableAirport = {
   sourceVersion: number;
 };
 
+export type AvailableVendor = { stableKey: string; name: string; websiteUrl: string | null; brandColor: string | null; logoAssetPath: string | null; sourceVersion: number };
+
 export async function refreshPublishedConfiguration() {
   if (!supabase || !navigator.onLine) return false;
   const { data: release, error: releaseError } = await supabase.from("config_releases").select("id,version_number").eq("status", "published").maybeSingle();
   if (releaseError || !release?.id || !release.version_number) return false;
   const cachedVersion = Number((await database.settings.get(VERSION_KEY))?.value ?? 0);
   if (cachedVersion === Number(release.version_number) && readCachedPalette().version === Number(release.version_number)) return false;
-  const [airlinesResult, airportsResult, defaultsResult, paletteResult] = await Promise.all([
+  const [airlinesResult, airportsResult, vendorsResult, defaultsResult, paletteResult] = await Promise.all([
     supabase.from("airline_catalog_entries").select("*").eq("config_release_id", release.id).eq("is_enabled", true).order("sort_order"),
     supabase.from("airport_catalog_entries").select("*").eq("config_release_id", release.id).eq("is_enabled", true).order("sort_order"),
+    supabase.from("booking_vendor_catalog_entries").select("*").eq("config_release_id", release.id).eq("is_enabled", true).order("sort_order"),
     supabase.from("metadata_defaults").select("*").eq("config_release_id", release.id),
     supabase.from("theme_palettes").select("light_tokens,dark_tokens").eq("config_release_id", release.id).maybeSingle()
   ]);
-  const failure = [airlinesResult, airportsResult, defaultsResult, paletteResult].find((result) => result.error)?.error; if (failure) throw failure;
+  const failure = [airlinesResult, airportsResult, vendorsResult, defaultsResult, paletteResult].find((result) => result.error)?.error; if (failure) throw failure;
   const airlines = (airlinesResult.data ?? []) as AirlineEntry[]; const airports = (airportsResult.data ?? []) as AirportEntry[]; const palette = paletteResult.data as { light_tokens: ThemeTokens; dark_tokens: ThemeTokens } | null;
   if (!palette || validateThemeTokens(palette.light_tokens) || validateThemeTokens(palette.dark_tokens)) return false;
   if (airlines.some((airline) => [airline.check_in_url_template, airline.manage_booking_url_template, airline.status_url_template, airline.tracker_url_template].some((url) => url && !validateActionUrl(url)))) return false;
@@ -61,6 +65,7 @@ export async function refreshPublishedConfiguration() {
     await database.entities.bulkPut([
       ...airlines.map((data) => ({ profileId: PUBLIC_PROFILE, entityType: "airline-catalog", id: data.id, data, updatedAt: now })),
       ...airports.map((data) => ({ profileId: PUBLIC_PROFILE, entityType: "airport-catalog", id: data.id, data, updatedAt: now })),
+      ...(vendorsResult.data ?? []).map((data) => ({ profileId: PUBLIC_PROFILE, entityType: "vendor-catalog", id: data.id, data, updatedAt: now })),
       ...(defaultsResult.data ?? []).map((data) => ({ profileId: PUBLIC_PROFILE, entityType: "metadata-defaults", id: `${data.namespace}:${data.key}`, data, updatedAt: now })),
       { profileId: PUBLIC_PROFILE, entityType: "theme-palette", id: String(release.version_number), data: palette, updatedAt: now }
     ]);
@@ -84,4 +89,12 @@ export async function listAvailableAirports(): Promise<AvailableAirport[]> {
   const mapped = published.map((airport) => ({ stableKey: airport.stable_key, iataCode: airport.iata_code, icaoCode: airport.icao_code, name: airport.name, city: airport.city, countryCode: airport.country_code, timezone: airport.timezone, latitude: airport.latitude, longitude: airport.longitude, sourceVersion: version }));
   const keys = new Set(mapped.flatMap((airport) => [airport.stableKey, airport.iataCode ?? ""]).filter(Boolean).map((value) => value.toLocaleLowerCase()));
   return [...mapped, ...starterAirports.filter((airport) => !keys.has(airport.stableKey.toLocaleLowerCase()) && !keys.has(airport.iataCode.toLocaleLowerCase())).map((airport) => ({ ...airport, icaoCode: null, latitude: null, longitude: null, sourceVersion: 0 }))];
+}
+
+export async function listAvailableVendors(): Promise<AvailableVendor[]> {
+  const version = Number((await database.settings.get(VERSION_KEY))?.value ?? 0);
+  const published = (await database.entities.where("[profileId+entityType]").equals([PUBLIC_PROFILE, "vendor-catalog"]).toArray()).map((row) => row.data as { stable_key: string; name: string; website_url: string | null; brand_color: string | null; logo_asset_path: string | null });
+  const mapped = published.map((vendor) => ({ stableKey: vendor.stable_key, name: vendor.name, websiteUrl: vendor.website_url, brandColor: vendor.brand_color, logoAssetPath: vendor.logo_asset_path, sourceVersion: version }));
+  const names = new Set(mapped.map((vendor) => vendor.name.toLocaleLowerCase()));
+  return [...mapped, ...starterVendors.filter((vendor) => !names.has(vendor.name.toLocaleLowerCase())).map((vendor) => ({ ...vendor, logoAssetPath: null, sourceVersion: 0 }))];
 }

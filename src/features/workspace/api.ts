@@ -3,13 +3,16 @@ import { supabase } from "../../lib/supabase/client";
 import { database } from "../../lib/local-db/database";
 import { storeOfflineFile } from "../../lib/storage/offlineFiles";
 import { cacheEntity, cacheEntityList, localProfileId, networkWithCache, queueCreate, queueDelete, queueDocumentUpload, queueUpdate, readEntityById, readEntityList, syncOutbox } from "../sync/localSync";
-import type { ItineraryItem } from "../trips/types";
+import type { ItineraryItem, TimelineEventType } from "../trips/types";
+import { addItineraryItem, addTripCost } from "../trips/api";
 import { listAvailableAirlines } from "../metadata/publishedConfig";
 import type {
   Booking,
   CreateBookingInput,
   CreateFlightInput,
+  CreateJourneyInput,
   DocumentCategory,
+  DocumentAssignmentMode,
   DocumentVersion,
   DocumentPurpose,
   DocumentVisibility,
@@ -17,6 +20,7 @@ import type {
   FlightLeg,
   FlightTraveler,
   FlightStatus,
+  JourneyLeg,
   MemberRole,
   ParticipationType,
   Requirement,
@@ -34,6 +38,7 @@ import type {
   UpdateRequirementInput,
   VaultDocument
 } from "./types";
+import { findDuplicateDocument } from "./documentModel";
 
 export const MAX_DOCUMENT_BYTES = 5_000_000;
 export const ALLOWED_DOCUMENT_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
@@ -179,7 +184,27 @@ export async function redeemInvitation(code: string) {
   return String(data);
 }
 
-const bookingSelect = "id,trip_id,type,title,provider,reference_code,start_at,end_at,source_timezone,location,details,version,created_at,updated_at";
+const bookingSelect = "id,trip_id,type,title,provider,reference_code,start_at,end_at,source_timezone,location,details,journey_scope,booked_via_name,booked_via_url,booking_vendor_catalog_key,contact_name,contact_phone,version,created_at,updated_at";
+
+function bookingFields(input: CreateBookingInput) {
+  return {
+    type: input.type,
+    title: input.title,
+    provider: input.provider || null,
+    reference_code: input.referenceCode || null,
+    start_at: input.startsAt || null,
+    end_at: input.endsAt || null,
+    source_timezone: input.timezone || null,
+    location: input.location ? { label: input.location, address: input.location } : null,
+    details: input.notes ? { notes: input.notes } : {},
+    journey_scope: input.journeyScope || null,
+    booked_via_name: input.bookedViaName || null,
+    booked_via_url: input.bookedViaUrl || null,
+    booking_vendor_catalog_key: input.bookingVendorCatalogKey || null,
+    contact_name: input.contactName || null,
+    contact_phone: input.contactPhone || null
+  };
+}
 
 export async function listBookings(tripId: string): Promise<Booking[]> {
   return networkWithCache(`bookings:${tripId}`, async () => { const { data, error } = await client().from("bookings").select(bookingSelect).eq("trip_id", tripId).is("deleted_at", null).order("start_at", { ascending: true, nullsFirst: false });
@@ -198,18 +223,13 @@ export async function getBooking(bookingId: string): Promise<Booking> {
 
 export async function addBooking(input: CreateBookingInput): Promise<Booking> {
   const actor = await userId();
-  const id = crypto.randomUUID(); const created_at = new Date().toISOString(); const booking: Booking = { id, trip_id: input.tripId, type: input.type, title: input.title, provider: input.provider || null, reference_code: input.referenceCode || null, start_at: input.startsAt || null, end_at: input.endsAt || null, source_timezone: input.timezone || null, location: input.location ? { label: input.location, address: input.location } : null, details: input.notes ? { notes: input.notes } : {}, created_at, updated_at: created_at }; const row = { ...booking, created_by: actor };
+  const id = crypto.randomUUID(); const created_at = new Date().toISOString(); const booking: Booking = { id, trip_id: input.tripId, ...bookingFields(input), created_at, updated_at: created_at }; const row = { ...booking, created_by: actor };
   if (!navigator.onLine) {
     const parentOperation = await queueCreate({ entityType: `bookings:${input.tripId}`, table: "bookings", row });
     for (const travelerId of input.travelerIds ?? []) await queueCreate({ entityType: `booking-travelers:${id}`, table: "booking_travelers", row: { id: `${id}:${travelerId}`, booking_id: id, traveler_id: travelerId }, serverRow: { booking_id: id, traveler_id: travelerId }, dependsOn: [parentOperation] });
     return booking;
   }
-  const { data, error } = await client().from("bookings").insert({
-    id, trip_id: input.tripId, type: input.type, title: input.title, provider: input.provider || null,
-    reference_code: input.referenceCode || null, start_at: input.startsAt || null, end_at: input.endsAt || null,
-    source_timezone: input.timezone || null, location: input.location ? { label: input.location, address: input.location } : null,
-    details: input.notes ? { notes: input.notes } : {}, created_by: actor
-  }).select(bookingSelect).single();
+  const { data, error } = await client().from("bookings").insert({ id, trip_id: input.tripId, ...bookingFields(input), created_by: actor }).select(bookingSelect).single();
   if (error) throw error;
   if (input.travelerIds?.length) { const { error: travelersError } = await client().from("booking_travelers").insert(input.travelerIds.map((travelerId) => ({ booking_id: id, traveler_id: travelerId }))); if (travelersError) throw travelersError; }
   await cacheEntity(`bookings:${input.tripId}`, data as Booking);
@@ -238,9 +258,23 @@ export async function listItineraryParticipantIds(itineraryItemId: string, tripI
   return rows.map((row) => String(row.traveler_id));
 }
 
+export type ItineraryParticipant = { id: string; itinerary_item_id: string; traveler_id: string };
+
+export async function listTripItineraryParticipants(tripId: string, itineraryItemIds: string[]): Promise<ItineraryParticipant[]> {
+  const key = `itinerary-participants:${tripId}`;
+  if (!navigator.onLine) return readEntityList<ItineraryParticipant>(key);
+  if (!itineraryItemIds.length) { await cacheEntityList(key, []); return []; }
+  const { data, error } = await client().from("itinerary_participants").select("itinerary_item_id,traveler_id,updated_at").in("itinerary_item_id", itineraryItemIds);
+  if (error) throw error;
+  const rows = (data ?? []).map((row) => ({ ...row, id: `${row.itinerary_item_id}:${row.traveler_id}` })) as ItineraryParticipant[];
+  await cacheEntityList(key, rows);
+  return rows;
+}
+
 export async function updateBooking(input: UpdateBookingInput): Promise<Booking> {
   const existing = await getBooking(input.id);
-  const patch = { type: input.type, title: input.title, provider: input.provider || null, reference_code: input.referenceCode || null, start_at: input.startsAt || null, end_at: input.endsAt || null, source_timezone: input.timezone || null, location: input.location ? { label: input.location, address: input.location } : null, details: input.notes ? { ...existing.details, notes: input.notes } : Object.fromEntries(Object.entries(existing.details).filter(([key]) => key !== "notes")) };
+  const fields = bookingFields(input);
+  const patch = { ...fields, details: input.notes ? { ...existing.details, notes: input.notes } : Object.fromEntries(Object.entries(existing.details).filter(([key]) => key !== "notes")) };
   const currentTravelerIds = await listBookingTravelerIds(input.id, input.tripId);
   if (!navigator.onLine) {
     const updated = { ...existing, ...patch, version: (existing.version ?? 1) + 1, updated_at: new Date().toISOString() };
@@ -265,40 +299,59 @@ export async function archiveBooking(booking: Booking) {
   const { error } = await client().from("bookings").update({ deleted_at: new Date().toISOString() }).eq("id", booking.id); if (error) throw error;
 }
 
-export async function addFlightBooking(input: CreateFlightInput): Promise<{ booking: Booking; flight: FlightLeg }> {
+async function ensureTripAirline(tripId: string, airlineName: string, actor: string) {
+  const existing = (await listTripAirlines(tripId)).find((airline) => airline.name.toLocaleLowerCase() === airlineName.toLocaleLowerCase());
+  if (existing) return { id: existing.id, operationId: undefined as string | undefined };
+  const selected = (await listAvailableAirlines()).find((airline) => airline.name.toLocaleLowerCase() === airlineName.toLocaleLowerCase());
+  const id = crypto.randomUUID();
+  const row = { id, trip_id: tripId, name: airlineName, iata_code: selected?.iataCode ?? null, icao_code: selected?.icaoCode ?? null, tracker_url_template: selected?.trackerUrlTemplate ?? null, status_url_template: selected?.statusUrlTemplate ?? null, check_in_url_template: selected?.checkInUrlTemplate ?? null, manage_booking_url_template: selected?.manageBookingUrlTemplate ?? null, brand_color: selected?.brandColor ?? null, logo_asset_key: selected?.logoAssetPath ?? null, banner_asset_key: selected?.bannerAssetPath ?? null, metadata_source: selected ? selected.sourceVersion ? "published_catalog" : "bundled_fallback" : "manual", source_catalog_key: selected?.stableKey ?? null, source_config_version: selected?.sourceVersion || null, created_by: actor };
+  if (!navigator.onLine) return { id, operationId: await queueCreate({ entityType: `trip-airlines:${tripId}`, table: "trip_airlines", row }) };
+  const { error } = await client().from("trip_airlines").insert(row); if (error) throw error;
+  return { id, operationId: undefined as string | undefined };
+}
+
+export async function addFlightBooking(input: CreateFlightInput): Promise<{ booking: Booking; flights: FlightLeg[]; itinerary: ItineraryItem }> {
+  if (!input.referenceCode.trim()) throw new Error("Enter the PNR / booking reference.");
+  if (!input.legs.length) throw new Error("Add at least one flight leg.");
   const actor = await userId();
-  const booking = await addBooking({ tripId: input.tripId, type: "flight", title: input.title, provider: input.airlineName, referenceCode: input.referenceCode, startsAt: input.departureAt, endsAt: input.arrivalAt, timezone: input.departureTimezone, travelerIds: input.travelerIds });
+  const first = input.legs[0]; const last = input.legs[input.legs.length - 1];
+  const booking = await addBooking({ tripId: input.tripId, type: "flight", title: input.title, provider: [...new Set(input.legs.map((leg) => leg.airlineName))].join(" / "), referenceCode: input.referenceCode, startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.departureTimezone, journeyScope: input.journeyScope, bookedViaName: input.bookedViaName, bookedViaUrl: input.bookedViaUrl, contactName: input.contactName, contactPhone: input.contactPhone, travelerIds: input.travelerIds });
   const bookingOperation = !navigator.onLine ? await database.outbox.where("entityId").equals(booking.id).filter((operation) => operation.operation === "create").first() : undefined;
-  let airlineId: string = crypto.randomUUID();
-  const selectedAirline = (await listAvailableAirlines()).find((airline) => airline.name.toLocaleLowerCase() === input.airlineName.toLocaleLowerCase());
-  let airlineRow = { id: airlineId, trip_id: input.tripId, name: input.airlineName, iata_code: selectedAirline?.iataCode ?? null, icao_code: selectedAirline?.icaoCode ?? null, tracker_url_template: selectedAirline?.trackerUrlTemplate ?? null, status_url_template: selectedAirline?.statusUrlTemplate ?? null, check_in_url_template: selectedAirline?.checkInUrlTemplate ?? null, manage_booking_url_template: selectedAirline?.manageBookingUrlTemplate ?? null, brand_color: selectedAirline?.brandColor ?? null, logo_asset_key: selectedAirline?.logoAssetPath ?? null, banner_asset_key: selectedAirline?.bannerAssetPath ?? null, metadata_source: selectedAirline ? selectedAirline.sourceVersion ? "published_catalog" : "bundled_fallback" : "manual", source_catalog_key: selectedAirline?.stableKey ?? null, source_config_version: selectedAirline?.sourceVersion || null, created_by: actor };
-  let airlineOperation: string | undefined;
-  if (!navigator.onLine) airlineOperation = await queueCreate({ entityType: `trip-airlines:${input.tripId}`, table: "trip_airlines", row: airlineRow });
-  else {
-    const { data: existingAirline, error: lookupError } = await client().from("trip_airlines").select("id").eq("trip_id", input.tripId).ilike("name", input.airlineName).limit(1).maybeSingle();
-    if (lookupError) throw lookupError;
-    if (existingAirline?.id) { airlineId = String(existingAirline.id); airlineRow = { ...airlineRow, id: airlineId }; }
-    else { const { error: airlineError } = await client().from("trip_airlines").insert(airlineRow); if (airlineError) throw airlineError; }
-  }
-  const id = crypto.randomUUID(); const now = new Date().toISOString();
-  const flight: FlightLeg = { id, booking_id: booking.id, segment_order: 0, airline_name: input.airlineName, marketing_airline_id: airlineId, operating_airline_id: null, flight_number: input.flightNumber, departure_airport_code: input.departureCode || null, departure_airport_name: input.departureName, arrival_airport_code: input.arrivalCode || null, arrival_airport_name: input.arrivalName, scheduled_departure_at: input.departureAt, scheduled_arrival_at: input.arrivalAt, estimated_departure_at: null, estimated_arrival_at: null, actual_departure_at: null, actual_arrival_at: null, departure_timezone: input.departureTimezone, arrival_timezone: input.arrivalTimezone, boarding_at: null, departure_terminal: null, departure_gate: null, arrival_terminal: null, arrival_gate: null, baggage_claim: null, status: "scheduled", status_note: null, status_updated_by: actor, status_updated_at: now };
+  const airlineRefs = new Map<string, Awaited<ReturnType<typeof ensureTripAirline>>>();
+  for (const leg of input.legs) if (!airlineRefs.has(leg.airlineName.toLocaleLowerCase())) airlineRefs.set(leg.airlineName.toLocaleLowerCase(), await ensureTripAirline(input.tripId, leg.airlineName, actor));
+  const now = new Date().toISOString();
+  const flights: FlightLeg[] = input.legs.map((leg, segmentOrder) => ({ id: crypto.randomUUID(), booking_id: booking.id, segment_order: segmentOrder, airline_name: leg.airlineName, marketing_airline_id: airlineRefs.get(leg.airlineName.toLocaleLowerCase())?.id ?? null, operating_airline_id: null, flight_number: leg.flightNumber, departure_airport_code: leg.departureCode || null, departure_airport_name: leg.departureName, departure_country_code: leg.departureCountryCode || null, arrival_airport_code: leg.arrivalCode || null, arrival_airport_name: leg.arrivalName, arrival_country_code: leg.arrivalCountryCode || null, scheduled_departure_at: leg.departureAt, scheduled_arrival_at: leg.arrivalAt, estimated_departure_at: null, estimated_arrival_at: null, actual_departure_at: null, actual_arrival_at: null, departure_timezone: leg.departureTimezone, arrival_timezone: leg.arrivalTimezone, boarding_at: leg.boardingAt || null, boarding_lead_minutes: leg.boardingLeadMinutes ?? null, journey_scope: input.journeyScope, departure_terminal: null, departure_gate: null, arrival_terminal: null, arrival_gate: null, baggage_claim: null, status: "scheduled", status_note: null, status_updated_by: actor, status_updated_at: now }));
+  const flightOperationIds: string[] = [];
   if (!navigator.onLine) {
-    const flightOperation = await queueCreate({ entityType: `flights:${input.tripId}`, table: "flight_legs", row: flight, dependsOn: [bookingOperation?.operationId, airlineOperation].filter((operationId): operationId is string => Boolean(operationId)) });
-    for (const travelerId of input.travelerIds ?? []) await queueCreate({ entityType: `flight-travelers:${id}`, table: "flight_leg_travelers", row: { id: `${id}:${travelerId}`, flight_leg_id: id, traveler_id: travelerId, seat: null, boarding_group: null, ticket_number: null }, serverRow: { flight_leg_id: id, traveler_id: travelerId }, dependsOn: [flightOperation] });
-    return { booking, flight };
+    for (const flight of flights) {
+      const airlineOperation = airlineRefs.get(flight.airline_name.toLocaleLowerCase())?.operationId;
+      const flightOperation = await queueCreate({ entityType: `flights:${input.tripId}`, table: "flight_legs", row: flight, dependsOn: [bookingOperation?.operationId, airlineOperation].filter((id): id is string => Boolean(id)) });
+      flightOperationIds.push(flightOperation);
+      for (const travelerId of input.travelerIds ?? []) await queueCreate({ entityType: `flight-travelers:${flight.id}`, table: "flight_leg_travelers", row: { id: `${flight.id}:${travelerId}`, flight_leg_id: flight.id, traveler_id: travelerId, seat: null, boarding_group: null, ticket_number: null }, serverRow: { flight_leg_id: flight.id, traveler_id: travelerId }, dependsOn: [flightOperation] });
+    }
+  } else {
+    const { data, error } = await client().from("flight_legs").insert(flights).select("*"); if (error) throw error;
+    flights.splice(0, flights.length, ...((data ?? []) as FlightLeg[]));
+    if (input.travelerIds?.length) { const rows = flights.flatMap((flight) => input.travelerIds!.map((travelerId) => ({ flight_leg_id: flight.id, traveler_id: travelerId }))); const { error: travelerError } = await client().from("flight_leg_travelers").insert(rows); if (travelerError) throw travelerError; }
+    await cacheEntityList(`flights:${input.tripId}`, flights);
   }
-  const { data, error } = await client().from("flight_legs").insert({
-    id, booking_id: booking.id, segment_order: 0, airline_name: input.airlineName, marketing_airline_id: airlineId, flight_number: input.flightNumber,
-    departure_airport_code: input.departureCode || null, departure_airport_name: input.departureName,
-    arrival_airport_code: input.arrivalCode || null, arrival_airport_name: input.arrivalName,
-    scheduled_departure_at: input.departureAt, scheduled_arrival_at: input.arrivalAt,
-    departure_timezone: input.departureTimezone, arrival_timezone: input.arrivalTimezone,
-    status: "scheduled", status_updated_by: actor
-  }).select("*").single();
-  if (error) throw error;
-  if (input.travelerIds?.length) { const { error: travelersError } = await client().from("flight_leg_travelers").insert(input.travelerIds.map((travelerId) => ({ flight_leg_id: id, traveler_id: travelerId }))); if (travelersError) throw travelersError; }
-  await cacheEntity(`flights:${input.tripId}`, data as FlightLeg);
-  return { booking, flight: data as FlightLeg };
+  const itinerary = await addItineraryItem({ tripId: input.tripId, bookingId: booking.id, eventType: "flight", title: input.title, startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.departureTimezone, travelerIds: input.travelerIds, dependsOn: [bookingOperation?.operationId, ...flightOperationIds].filter((id): id is string => Boolean(id)) });
+  if (input.cost) await addTripCost({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary.id, title: input.cost.title, category: "flight", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
+  return { booking, flights, itinerary };
+}
+
+export async function addJourneyBooking(input: CreateJourneyInput): Promise<{ booking: Booking; legs: JourneyLeg[]; itinerary: ItineraryItem }> {
+  if (!input.legs.length) throw new Error("Add at least one journey leg.");
+  const first = input.legs[0]; const last = input.legs[input.legs.length - 1];
+  const booking = await addBooking({ tripId: input.tripId, type: input.mode, title: input.title, provider: [...new Set(input.legs.map((leg) => leg.operatorName))].join(" / "), referenceCode: input.referenceCode, startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.originTimezone, journeyScope: input.journeyScope, bookedViaName: input.bookedViaName, bookedViaUrl: input.bookedViaUrl, contactName: input.contactName, contactPhone: input.contactPhone, travelerIds: input.travelerIds });
+  const bookingOperation = !navigator.onLine ? await database.outbox.where("entityId").equals(booking.id).filter((operation) => operation.operation === "create").first() : undefined;
+  const legs: JourneyLeg[] = input.legs.map((leg, segmentOrder) => ({ id: crypto.randomUUID(), booking_id: booking.id, segment_order: segmentOrder, mode: input.mode, operator_name: leg.operatorName, service_number: leg.serviceNumber || null, origin_code: leg.originCode || null, origin_name: leg.originName, origin_country_code: leg.originCountryCode || null, origin_timezone: leg.originTimezone, destination_code: leg.destinationCode || null, destination_name: leg.destinationName, destination_country_code: leg.destinationCountryCode || null, destination_timezone: leg.destinationTimezone, scheduled_departure_at: leg.departureAt, scheduled_arrival_at: leg.arrivalAt, boarding_at: leg.boardingAt || null, boarding_lead_minutes: leg.boardingLeadMinutes ?? null, departure_platform: leg.departurePlatform || null, arrival_platform: leg.arrivalPlatform || null, coach_or_cabin: leg.coachOrCabin || null, seat: leg.seat || null, status_note: null }));
+  const operationIds: string[] = [];
+  if (!navigator.onLine) for (const leg of legs) operationIds.push(await queueCreate({ entityType: `journey-legs:${input.tripId}`, table: "journey_legs", row: leg, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) }));
+  else { const { data, error } = await client().from("journey_legs").insert(legs).select("*"); if (error) throw error; legs.splice(0, legs.length, ...((data ?? []) as JourneyLeg[])); await cacheEntityList(`journey-legs:${input.tripId}`, legs); }
+  const itinerary = await addItineraryItem({ tripId: input.tripId, bookingId: booking.id, eventType: input.mode, title: input.title, startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.originTimezone, travelerIds: input.travelerIds, dependsOn: [bookingOperation?.operationId, ...operationIds].filter((id): id is string => Boolean(id)) });
+  if (input.cost) await addTripCost({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary.id, title: input.cost.title, category: "transport", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
+  return { booking, legs, itinerary };
 }
 
 export async function listFlightTravelers(flightLegId: string): Promise<FlightTraveler[]> {
@@ -331,12 +384,64 @@ export async function listFlightLegsForTrip(tripId: string): Promise<FlightLeg[]
   });
 }
 
+export async function listFlightLegsForBooking(bookingId: string, tripId: string): Promise<FlightLeg[]> {
+  if (!navigator.onLine) return (await readEntityList<FlightLeg>(`flights:${tripId}`)).filter((leg) => leg.booking_id === bookingId).sort((a, b) => a.segment_order - b.segment_order);
+  const { data, error } = await client().from("flight_legs").select("*").eq("booking_id", bookingId).is("deleted_at", null).order("segment_order");
+  if (error) throw error;
+  const rows = (data ?? []) as FlightLeg[];
+  const cached = await readEntityList<FlightLeg>(`flights:${tripId}`);
+  await cacheEntityList(`flights:${tripId}`, [...cached.filter((leg) => leg.booking_id !== bookingId), ...rows]);
+  return rows;
+}
+
+export async function listJourneyLegsForTrip(tripId: string): Promise<JourneyLeg[]> {
+  return networkWithCache(`journey-legs:${tripId}`, async () => {
+    const bookings = await listBookings(tripId);
+    const ids = bookings.filter((booking) => ["train", "bus", "ferry", "cab"].includes(booking.type)).map((booking) => booking.id);
+    if (!ids.length) return [];
+    const { data, error } = await client().from("journey_legs").select("*").in("booking_id", ids).is("deleted_at", null).order("scheduled_departure_at");
+    if (error) throw error;
+    return (data ?? []) as JourneyLeg[];
+  });
+}
+
+export async function listJourneyLegsForBooking(bookingId: string, tripId: string): Promise<JourneyLeg[]> {
+  if (!navigator.onLine) return (await readEntityList<JourneyLeg>(`journey-legs:${tripId}`)).filter((leg) => leg.booking_id === bookingId).sort((a, b) => a.segment_order - b.segment_order);
+  const { data, error } = await client().from("journey_legs").select("*").eq("booking_id", bookingId).is("deleted_at", null).order("segment_order");
+  if (error) throw error;
+  const rows = (data ?? []) as JourneyLeg[];
+  const cached = await readEntityList<JourneyLeg>(`journey-legs:${tripId}`);
+  await cacheEntityList(`journey-legs:${tripId}`, [...cached.filter((leg) => leg.booking_id !== bookingId), ...rows]);
+  return rows;
+}
+
+export async function addBookedTimelineEvent(input: CreateBookingInput & { eventType: TimelineEventType; mapUrl?: string; cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid" } }) {
+  const booking = await addBooking(input);
+  const bookingOperation = !navigator.onLine ? await database.outbox.where("entityId").equals(booking.id).filter((operation) => operation.operation === "create").first() : undefined;
+  const createMilestone = (eventType: TimelineEventType, title: string, startsAt: string, endsAt?: string) => addItineraryItem({ tripId: input.tripId, bookingId: booking.id, eventType, title, startsAt, endsAt, timezone: input.timezone!, location: input.location, mapUrl: input.mapUrl, notes: input.notes, travelerIds: input.travelerIds, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
+  const itinerary = input.type === "hotel"
+    ? [await createMilestone("hotel_check_in", `${input.title} · Check in`, input.startsAt!), await createMilestone("hotel_check_out", `${input.title} · Check out`, input.endsAt!)]
+    : [await createMilestone(input.eventType, input.title, input.startsAt!, input.endsAt)];
+  if (input.cost) await addTripCost({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary[0].id, title: input.cost.title, category: input.type === "restaurant" ? "food" : input.type === "hotel" ? "hotel" : input.type === "activity" ? "activity" : "transport", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
+  return { booking, itinerary };
+}
+
 export async function listTripAirlines(tripId: string): Promise<TripAirline[]> {
   return networkWithCache(`trip-airlines:${tripId}`, async () => {
     const { data, error } = await client().from("trip_airlines").select("id,trip_id,name,iata_code,icao_code,check_in_url_template,manage_booking_url_template,status_url_template,tracker_url_template,brand_color,metadata_source,source_catalog_key,source_config_version,version").eq("trip_id", tripId).order("name");
     if (error) throw error;
     return (data ?? []) as TripAirline[];
   });
+}
+
+export async function suggestCatalogValue(input: { type: "airline" | "airport" | "booking_vendor" | "service_provider"; displayValue: string; proposedData?: Record<string, string | null | undefined> }) {
+  const displayValue = input.displayValue.trim();
+  if (!navigator.onLine || !displayValue) return;
+  const actor = await userId();
+  const normalizedValue = displayValue.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase().replace(/\s+/g, " ").trim();
+  const proposedData = Object.fromEntries(Object.entries(input.proposedData ?? {}).filter(([, value]) => value));
+  const { error } = await client().from("catalog_suggestions").insert({ suggestion_type: input.type, display_value: displayValue, normalized_value: normalizedValue, proposed_data: proposedData, submitted_by: actor });
+  if (error && error.code !== "23505") throw error;
 }
 
 export async function updateTripAirline(input: TripAirline) {
@@ -357,9 +462,13 @@ export async function getFlightLeg(flightLegId: string): Promise<FlightLeg> {
 
 export async function updateFlightLeg(input: Partial<FlightLeg> & { id: string; tripId?: string; status: FlightStatus }): Promise<FlightLeg> {
   const actor = await userId();
+  const scheduleChanged = Boolean(input.scheduled_departure_at && input.scheduled_arrival_at);
   const allowed = {
-    status: input.status, estimated_departure_at: input.estimated_departure_at || null, estimated_arrival_at: input.estimated_arrival_at || null,
+    status: input.status,
+    ...(scheduleChanged ? { scheduled_departure_at: input.scheduled_departure_at!, scheduled_arrival_at: input.scheduled_arrival_at! } : {}),
+    estimated_departure_at: input.estimated_departure_at || null, estimated_arrival_at: input.estimated_arrival_at || null,
     actual_departure_at: input.actual_departure_at || null, actual_arrival_at: input.actual_arrival_at || null, boarding_at: input.boarding_at || null,
+    boarding_lead_minutes: input.boarding_lead_minutes ?? null,
     departure_terminal: input.departure_terminal || null, departure_gate: input.departure_gate || null,
     arrival_terminal: input.arrival_terminal || null, arrival_gate: input.arrival_gate || null, baggage_claim: input.baggage_claim || null,
     status_note: input.status_note || null, status_updated_by: actor, status_updated_at: new Date().toISOString()
@@ -367,14 +476,41 @@ export async function updateFlightLeg(input: Partial<FlightLeg> & { id: string; 
   if (!navigator.onLine && input.tripId) {
     const existing = await readEntityById<FlightLeg>("flights:", input.id); if (!existing) throw new Error("This flight was not cached for offline editing.");
     const updated = { ...existing, ...allowed, version: (existing.version ?? 1) + 1 };
-    await queueUpdate({ entityType: `flights:${input.tripId}`, table: "flight_legs", row: updated, patch: allowed, baseVersion: existing.version }); return updated;
+    await queueUpdate({ entityType: `flights:${input.tripId}`, table: "flight_legs", row: updated, patch: allowed, baseVersion: existing.version });
+    if (scheduleChanged) {
+      const legs = (await readEntityList<FlightLeg>(`flights:${input.tripId}`)).map((leg) => leg.id === updated.id ? updated : leg).filter((leg) => leg.booking_id === updated.booking_id).sort((left, right) => left.segment_order - right.segment_order);
+      const first = legs[0]; const last = legs.at(-1);
+      const booking = await readEntityById<Booking>("bookings:", updated.booking_id);
+      if (first && last && booking) {
+        const bookingPatch = { start_at: first.scheduled_departure_at, end_at: last.scheduled_arrival_at, source_timezone: first.departure_timezone };
+        await queueUpdate({ entityType: `bookings:${input.tripId}`, table: "bookings", row: { ...booking, ...bookingPatch, version: (booking.version ?? 1) + 1 }, patch: bookingPatch, baseVersion: booking.version });
+        const itinerary = (await readEntityList<ItineraryItem>(`itinerary:${input.tripId}`)).find((item) => item.booking_id === booking.id && item.event_type === "flight");
+        if (itinerary) {
+          const itineraryPatch = { starts_at: first.scheduled_departure_at, ends_at: last.scheduled_arrival_at, timezone: first.departure_timezone, sort_key: `${first.scheduled_departure_at}:${itinerary.id}` };
+          await queueUpdate({ entityType: `itinerary:${input.tripId}`, table: "itinerary_items", row: { ...itinerary, ...itineraryPatch, version: (itinerary.version ?? 1) + 1 }, patch: itineraryPatch, baseVersion: itinerary.version });
+        }
+      }
+    }
+    return updated;
   }
   let request = client().from("flight_legs").update(allowed).eq("id", input.id);
   if (input.version !== undefined) request = request.eq("version", input.version);
   const { data, error } = await request.select("*").maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("This flight changed on another device. Refresh and choose which update to keep.");
-  if (input.tripId) await cacheEntity(`flights:${input.tripId}`, data as FlightLeg);
+  if (input.tripId) {
+    await cacheEntity(`flights:${input.tripId}`, data as FlightLeg);
+    if (scheduleChanged) {
+      const { data: legs, error: legsError } = await client().from("flight_legs").select("segment_order,scheduled_departure_at,scheduled_arrival_at,departure_timezone").eq("booking_id", data.booking_id).is("deleted_at", null).order("segment_order");
+      if (legsError) throw legsError;
+      const first = legs?.[0]; const last = legs?.at(-1);
+      if (first && last) {
+        const bookingPatch = { start_at: first.scheduled_departure_at, end_at: last.scheduled_arrival_at, source_timezone: first.departure_timezone };
+        const { error: bookingError } = await client().from("bookings").update(bookingPatch).eq("id", data.booking_id); if (bookingError) throw bookingError;
+        const { error: itineraryError } = await client().from("itinerary_items").update({ starts_at: first.scheduled_departure_at, ends_at: last.scheduled_arrival_at, timezone: first.departure_timezone }).eq("booking_id", data.booking_id).eq("event_type", "flight").is("deleted_at", null); if (itineraryError) throw itineraryError;
+      }
+    }
+  }
   return data as FlightLeg;
 }
 
@@ -483,16 +619,58 @@ export async function updateRequirementStatus(id: string, status: RequirementSta
   if (tripId) await cacheEntity(`requirements:${tripId}`, data as Requirement); return data as Requirement;
 }
 
-const documentSelect = "id,trip_id,booking_id,flight_leg_id,traveler_id,title,category,purpose,short_label,visibility,uploaded_by,current_version_id,version,updated_at,deleted_at,current_version:document_versions!documents_current_version_id_fkey(id,storage_path,original_filename,mime_type,byte_size,sha256,version_number,created_at)";
+const documentSelect = "id,trip_id,booking_id,flight_leg_id,journey_leg_id,traveler_id,assignment_mode,title,category,purpose,short_label,visibility,uploaded_by,current_version_id,version,updated_at,deleted_at,document_travelers(traveler_id),current_version:document_versions!documents_current_version_id_fkey(id,storage_path,original_filename,mime_type,byte_size,sha256,version_number,created_at)";
+
+type DocumentResponse = VaultDocument & { document_travelers?: { traveler_id: string }[] };
+
+function normalizeVaultDocument(raw: DocumentResponse): VaultDocument {
+  const { document_travelers: assignments, ...document } = raw;
+  const travelerIds = assignments?.map((assignment) => assignment.traveler_id)
+    ?? document.traveler_ids
+    ?? (document.traveler_id ? [document.traveler_id] : []);
+  return {
+    ...document,
+    assignment_mode: document.assignment_mode ?? (document.traveler_id ? "selected" : "shared"),
+    traveler_ids: travelerIds
+  };
+}
+
+export function mergeCloudAndPendingDocuments(cloud: VaultDocument[], local: VaultDocument[], pendingIds: Iterable<string>) {
+  const pending = new Set(pendingIds);
+  const merged = new Map<string, VaultDocument>(cloud.map((document) => [document.id, { ...document, sync_state: "synced" }]));
+  for (const document of local) {
+    if (pending.has(document.id)) merged.set(document.id, { ...document, sync_state: "queued" as const });
+  }
+  return [...merged.values()].sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
+}
+
+async function pendingDocumentUploads(documentIds?: string[]) {
+  const profileId = await localProfileId();
+  if (!profileId) return [];
+  return database.outbox.where("profileId").equals(profileId).filter((operation) =>
+    operation.operation === "upload_document" && (!documentIds || documentIds.includes(operation.entityId))
+  ).toArray();
+}
 
 export async function listVaultDocuments(tripId?: string): Promise<VaultDocument[]> {
   const key = tripId ? `documents:${tripId}` : "documents";
-  const documents = await networkWithCache(key, async () => {
-  let query = client().from("documents").select(documentSelect).is("deleted_at", null).order("updated_at", { ascending: false });
-  if (tripId) query = query.eq("trip_id", tripId);
-  const { data, error } = await query;
-  if (error) throw error;
-  return (data ?? []) as unknown as VaultDocument[]; });
+  const localDocuments = await readEntityList<VaultDocument>(key);
+  let documents = localDocuments;
+  if (navigator.onLine) {
+    try {
+      let query = client().from("documents").select(documentSelect).is("deleted_at", null).order("updated_at", { ascending: false });
+      if (tripId) query = query.eq("trip_id", tripId);
+      const { data, error } = await query;
+      if (error) throw error;
+      const uploads = await pendingDocumentUploads();
+      const cloud = ((data ?? []) as unknown as DocumentResponse[]).map(normalizeVaultDocument);
+      documents = mergeCloudAndPendingDocuments(cloud, localDocuments, uploads.map((operation) => operation.entityId))
+        .map((document) => ({ ...document, sync_error: uploads.find((operation) => operation.entityId === document.id)?.lastErrorCode }));
+      await cacheEntityList(key, documents);
+    } catch (error) {
+      if (!localDocuments.length) throw error;
+    }
+  }
   if (tripId) {
     const crossTripDocuments = await readEntityList<VaultDocument>("documents");
     await cacheEntityList("documents", [...crossTripDocuments.filter((document) => document.trip_id !== tripId), ...documents]);
@@ -508,23 +686,32 @@ export async function listVaultDocuments(tripId?: string): Promise<VaultDocument
 }
 
 export async function getVaultDocument(documentId: string): Promise<VaultDocument> {
-  if (!navigator.onLine) { const match = await readEntityById<VaultDocument>("documents", documentId); if (match) return match; }
+  const local = await readEntityById<VaultDocument>("documents", documentId);
+  const uploads = await pendingDocumentUploads([documentId]);
+  if (!navigator.onLine) {
+    if (local) return { ...local, sync_state: uploads.length ? "queued" : (local.sync_state ?? "synced"), sync_error: uploads[0]?.lastErrorCode };
+    throw new Error("This document is not available on this device.");
+  }
+  if (uploads.length && local) return { ...local, sync_state: "queued", sync_error: uploads[0]?.lastErrorCode };
   const { data, error } = await client().from("documents").select(documentSelect).eq("id", documentId).is("deleted_at", null).single();
-  if (error) throw error;
-  return data as unknown as VaultDocument;
+  if (error) {
+    if (local) return { ...local, sync_state: "queued", sync_error: uploads[0]?.lastErrorCode };
+    throw error;
+  }
+  return { ...normalizeVaultDocument(data as unknown as DocumentResponse), sync_state: "synced" };
 }
 
 export async function listArchivedVaultDocuments(): Promise<VaultDocument[]> {
   if (!navigator.onLine) return [];
   const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString();
   const { data, error } = await client().from("documents").select(documentSelect).not("deleted_at", "is", null).gte("deleted_at", cutoff).order("deleted_at", { ascending: false });
-  if (error) throw error; return (data ?? []) as unknown as VaultDocument[];
+  if (error) throw error; return ((data ?? []) as unknown as DocumentResponse[]).map(normalizeVaultDocument);
 }
 
 export async function restoreDocument(document: VaultDocument) {
   if (!navigator.onLine) throw new Error("Restoring a document requires a connection.");
   const { data, error } = await client().from("documents").update({ deleted_at: null }).eq("id", document.id).select(documentSelect).maybeSingle();
-  if (error) throw error; if (!data) throw new Error("This document can no longer be restored."); return data as unknown as VaultDocument;
+  if (error) throw error; if (!data) throw new Error("This document can no longer be restored."); return normalizeVaultDocument(data as unknown as DocumentResponse);
 }
 
 export async function listDocumentVersions(documentId: string): Promise<DocumentVersion[]> {
@@ -537,7 +724,7 @@ export async function documentStorageUsage() {
   const profileId = await localProfileId();
   const localRows = profileId ? await database.localDocuments.where("profileId").equals(profileId).toArray() : [];
   const documents = await listVaultDocuments();
-  return { localBytes: localRows.reduce((sum, row) => sum + row.byteSize, 0), cloudBytes: documents.reduce((sum, document) => sum + (document.current_version?.byte_size ?? 0), 0), localFiles: localRows.length, cloudFiles: documents.filter((document) => document.current_version).length };
+  return { localBytes: localRows.reduce((sum, row) => sum + row.byteSize, 0), cloudBytes: documents.reduce((sum, document) => sum + (document.sync_state !== "queued" ? document.current_version?.byte_size ?? 0 : 0), 0), localFiles: localRows.length, cloudFiles: documents.filter((document) => document.sync_state !== "queued" && document.current_version).length };
 }
 
 export function validateDocumentFile(file: File) {
@@ -555,26 +742,42 @@ export function sanitizeFilename(filename: string) {
   return cleaned || "document";
 }
 
-export async function uploadDocument(input: { tripId: string; title: string; category: DocumentCategory; purpose: DocumentPurpose; visibility: DocumentVisibility; file: File; travelerId?: string; bookingId?: string; flightLegId?: string; shortLabel?: string; selectedUserIds?: string[] }): Promise<VaultDocument> {
+export class DuplicateDocumentError extends Error {
+  constructor(public readonly existingDocumentId: string, public readonly existingTitle: string) {
+    super(`This exact file is already in the Vault as “${existingTitle}”. Use the existing document instead.`);
+    this.name = "DuplicateDocumentError";
+  }
+}
+
+export async function uploadDocument(input: { tripId: string; title: string; category: DocumentCategory; purpose: DocumentPurpose; assignmentMode: DocumentAssignmentMode; visibility: DocumentVisibility; file: File; travelerIds?: string[]; bookingId?: string; flightLegId?: string; journeyLegId?: string; shortLabel?: string; selectedUserIds?: string[] }): Promise<VaultDocument> {
   validateDocumentFile(input.file);
   const actor = await userId();
+  const checksum = await sha256(input.file);
+  let existingDocuments: VaultDocument[];
+  try { existingDocuments = await listVaultDocuments(input.tripId); }
+  catch { existingDocuments = await readEntityList<VaultDocument>(`documents:${input.tripId}`); }
+  const duplicate = findDuplicateDocument(existingDocuments, checksum);
+  if (duplicate) throw new DuplicateDocumentError(duplicate.id, duplicate.title);
   const documentId = crypto.randomUUID();
   const versionId = crypto.randomUUID();
   const storagePath = `trips/${input.tripId}/documents/${documentId}/versions/${versionId}/${sanitizeFilename(input.file.name)}`;
-  const checksum = await sha256(input.file);
   const createdAt = new Date().toISOString();
-  const documentRow = { id: documentId, trip_id: input.tripId, booking_id: input.bookingId || null, flight_leg_id: input.flightLegId || null, traveler_id: input.travelerId || null, title: input.title, category: input.category, purpose: input.purpose, short_label: input.shortLabel || null, visibility: input.visibility, uploaded_by: actor };
+  const travelerIds = input.assignmentMode === "selected" ? [...new Set(input.travelerIds ?? [])] : [];
+  const documentRow = { id: documentId, trip_id: input.tripId, booking_id: input.bookingId || null, flight_leg_id: input.flightLegId || null, journey_leg_id: input.journeyLegId || null, traveler_id: travelerIds.length === 1 ? travelerIds[0] : null, assignment_mode: input.assignmentMode, title: input.title, category: input.category, purpose: input.purpose, short_label: input.shortLabel || null, visibility: input.visibility, uploaded_by: actor };
   const versionRow = { id: versionId, document_id: documentId, version_number: 1, storage_path: storagePath, original_filename: input.file.name, mime_type: input.file.type, byte_size: input.file.size, sha256: checksum, created_by: actor };
-  const document: VaultDocument = { ...documentRow, current_version_id: versionId, updated_at: createdAt, current_version: { ...versionRow, created_at: createdAt } };
+  const document: VaultDocument = { ...documentRow, traveler_ids: travelerIds, current_version_id: versionId, updated_at: createdAt, current_version: { ...versionRow, created_at: createdAt }, sync_state: "queued" };
   await storeOfflineFile({ profileId: actor, versionId, blob: input.file, sha256: checksum, pinReason: "created" });
   await Promise.all([cacheEntity(`documents:${input.tripId}`, document), cacheEntity("documents", document)]);
   const uploadOperation = await queueDocumentUpload({ document: documentRow, version: versionRow, storagePath });
+  for (const travelerId of travelerIds) await queueCreate({ entityType: `document-travelers:${documentId}`, table: "document_travelers", row: { id: `${documentId}:${travelerId}`, document_id: documentId, traveler_id: travelerId }, serverRow: { document_id: documentId, traveler_id: travelerId, assigned_by: actor }, dependsOn: [uploadOperation] });
   for (const selectedUserId of input.selectedUserIds ?? []) await queueCreate({ entityType: `document-access:${documentId}`, table: "document_access", row: { id: `${documentId}:${selectedUserId}`, document_id: documentId, user_id: selectedUserId }, serverRow: { document_id: documentId, user_id: selectedUserId, granted_by: actor }, dependsOn: [uploadOperation] });
   if (navigator.onLine) {
     await syncOutbox();
-    try { return await getVaultDocument(documentId); } catch { /* local queued copy remains authoritative until retry */ }
+    const pending = await database.outbox.get(uploadOperation);
+    if (!pending) return { ...(await getVaultDocument(documentId)), sync_state: "synced" };
+    return { ...document, sync_state: "queued", sync_error: pending.lastErrorCode };
   }
-  return document;
+  return { ...document, sync_state: "queued" };
 }
 
 export async function downloadDocumentVersion(document: VaultDocument) {
@@ -590,8 +793,8 @@ export async function replaceDocumentVersion(document: VaultDocument, file: File
   validateDocumentFile(file); const actor = await userId(); const versionId = crypto.randomUUID(); const checksum = await sha256(file); const now = new Date().toISOString();
   const storagePath = `trips/${document.trip_id}/documents/${document.id}/versions/${versionId}/${sanitizeFilename(file.name)}`;
   const versionRow = { id: versionId, document_id: document.id, version_number: (document.current_version?.version_number ?? 0) + 1, storage_path: storagePath, original_filename: file.name, mime_type: file.type, byte_size: file.size, sha256: checksum, created_by: actor };
-  const documentRow = { id: document.id, trip_id: document.trip_id, booking_id: document.booking_id, flight_leg_id: document.flight_leg_id, traveler_id: document.traveler_id, title: document.title, category: document.category, purpose: document.purpose, short_label: document.short_label, visibility: document.visibility, uploaded_by: actor };
-  const updated: VaultDocument = { ...document, current_version_id: versionId, current_version: { ...versionRow, created_at: now }, updated_at: now };
+  const documentRow = { id: document.id, trip_id: document.trip_id, booking_id: document.booking_id, flight_leg_id: document.flight_leg_id, journey_leg_id: document.journey_leg_id ?? null, traveler_id: document.traveler_id, assignment_mode: document.assignment_mode ?? (document.traveler_id ? "selected" : "shared"), title: document.title, category: document.category, purpose: document.purpose, short_label: document.short_label, visibility: document.visibility, uploaded_by: actor };
+  const updated: VaultDocument = { ...document, current_version_id: versionId, current_version: { ...versionRow, created_at: now }, updated_at: now, sync_state: "queued" };
   await storeOfflineFile({ profileId: actor, versionId, blob: file, sha256: checksum, pinReason: "created" });
   await Promise.all([cacheEntity(`documents:${document.trip_id}`, updated), cacheEntity("documents", updated)]);
   await queueDocumentUpload({ document: documentRow, version: versionRow, storagePath });
@@ -614,12 +817,24 @@ export async function archiveDocument(document: VaultDocument) {
 }
 
 export async function listEventDocumentLinks(itineraryItemId: string): Promise<EventDocumentLink[]> {
-  return networkWithCache(`event-documents:${itineraryItemId}`, async () => {
+  const key = `event-documents:${itineraryItemId}`;
+  const local = await readEntityList<EventDocumentLink & { id: string }>(key);
+  if (!navigator.onLine) return local;
+  try {
     const { data, error } = await client().from("itinerary_item_documents").select(`itinerary_item_id,document_id,label,sort_order,document:documents!inner(${documentSelect.replaceAll("current_version:", "current_version:")})`).eq("itinerary_item_id", itineraryItemId).is("deleted_at", null).order("sort_order");
     if (error) throw error;
-    const rows = (data ?? []) as unknown as EventDocumentLink[];
-    return rows.map((row) => ({ ...row, id: `${row.itinerary_item_id}:${row.document_id}` }));
-  });
+    const cloud = ((data ?? []) as unknown as (EventDocumentLink & { document: DocumentResponse })[]).map((row) => ({ ...row, document: normalizeVaultDocument(row.document), id: `${row.itinerary_item_id}:${row.document_id}` }));
+    const profileId = await localProfileId();
+    const pendingLinkIds = profileId ? new Set((await database.outbox.where("profileId").equals(profileId).filter((operation) => operation.operation === "create" && operation.entityType === key).toArray()).map((operation) => operation.entityId)) : new Set<string>();
+    const merged = new Map(cloud.map((link) => [link.id, link]));
+    for (const link of local) if (pendingLinkIds.has(link.id)) merged.set(link.id, link);
+    const rows = [...merged.values()].sort((a, b) => a.sort_order - b.sort_order);
+    await cacheEntityList(key, rows);
+    return rows;
+  } catch (error) {
+    if (local.length) return local;
+    throw error;
+  }
 }
 
 export async function attachDocumentsToEvent(itineraryItem: ItineraryItem, documentIds: string[]) {
@@ -627,12 +842,12 @@ export async function attachDocumentsToEvent(itineraryItem: ItineraryItem, docum
   const existing = await listEventDocumentLinks(itineraryItem.id);
   const newIds = documentIds.filter((id) => !existing.some((link) => link.document_id === id));
   if (!newIds.length) return existing;
-  if (!navigator.onLine) {
+  const pendingUploads = await pendingDocumentUploads(newIds);
+  if (!navigator.onLine || pendingUploads.length > 0) {
     const documents = await readEntityList<VaultDocument>(`documents:${itineraryItem.trip_id}`);
-    const profileId = await localProfileId();
-    const pendingUploads = profileId ? await database.outbox.where("profileId").equals(profileId).filter((operation) => operation.operation === "upload_document" && newIds.includes(operation.entityId)).toArray() : [];
     const created = newIds.map((documentId, index) => ({ id: `${itineraryItem.id}:${documentId}`, itinerary_item_id: itineraryItem.id, document_id: documentId, label: null, sort_order: existing.length + index, document: documents.find((document) => document.id === documentId)! })).filter((link) => link.document);
     for (const link of created) await queueCreate({ entityType: `event-documents:${itineraryItem.id}`, table: "itinerary_item_documents", row: link, serverRow: { itinerary_item_id: link.itinerary_item_id, document_id: link.document_id, sort_order: link.sort_order, created_by: actor }, dependsOn: pendingUploads.filter((operation) => operation.entityId === link.document_id).map((operation) => operation.operationId) });
+    if (navigator.onLine) await syncOutbox();
     return [...existing, ...created];
   }
   const { error } = await client().from("itinerary_item_documents").insert(newIds.map((documentId, index) => ({ itinerary_item_id: itineraryItem.id, document_id: documentId, sort_order: existing.length + index, created_by: actor })));

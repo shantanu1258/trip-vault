@@ -56,8 +56,10 @@ export type TravelerManager = {
   can_edit_profile: boolean;
 };
 
-export const bookingTypes = ["flight", "hotel", "transport", "activity", "restaurant", "other"] as const;
+export const bookingTypes = ["flight", "hotel", "train", "bus", "ferry", "cab", "transport", "activity", "restaurant", "other"] as const;
 export type BookingType = (typeof bookingTypes)[number];
+export type JourneyScope = "domestic" | "international";
+export type JourneyMode = "train" | "bus" | "ferry" | "cab";
 
 export type Booking = {
   id: string;
@@ -71,6 +73,12 @@ export type Booking = {
   source_timezone: string | null;
   location: { label?: string; address?: string; latitude?: number | null; longitude?: number | null } | null;
   details: Record<string, unknown>;
+  journey_scope?: JourneyScope | null;
+  booked_via_name?: string | null;
+  booked_via_url?: string | null;
+  booking_vendor_catalog_key?: string | null;
+  contact_name?: string | null;
+  contact_phone?: string | null;
   version?: number;
   created_at: string;
   updated_at?: string;
@@ -100,6 +108,10 @@ export type FlightLeg = {
   departure_timezone: string;
   arrival_timezone: string;
   boarding_at: string | null;
+  boarding_lead_minutes?: number | null;
+  journey_scope?: JourneyScope | null;
+  departure_country_code?: string | null;
+  arrival_country_code?: string | null;
   departure_terminal: string | null;
   departure_gate: string | null;
   arrival_terminal: string | null;
@@ -110,6 +122,35 @@ export type FlightLeg = {
   status_updated_by: string;
   status_updated_at: string;
   version?: number;
+};
+
+export type JourneyLeg = {
+  id: string;
+  booking_id: string;
+  segment_order: number;
+  mode: JourneyMode;
+  operator_name: string;
+  service_number: string | null;
+  origin_code: string | null;
+  origin_name: string;
+  origin_country_code: string | null;
+  origin_timezone: string;
+  destination_code: string | null;
+  destination_name: string;
+  destination_country_code: string | null;
+  destination_timezone: string;
+  scheduled_departure_at: string;
+  scheduled_arrival_at: string;
+  boarding_at: string | null;
+  boarding_lead_minutes: number | null;
+  departure_platform: string | null;
+  arrival_platform: string | null;
+  coach_or_cabin: string | null;
+  seat: string | null;
+  status_note: string | null;
+  version?: number;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type FlightTraveler = {
@@ -181,12 +222,13 @@ export type RequirementInput = {
 
 export type UpdateRequirementInput = RequirementInput & { id: string; version?: number };
 
-export const documentCategories = ["flight", "hotel", "visa", "passport", "insurance", "ticket", "transport", "receipt", "other"] as const;
-export const documentPurposes = ["confirmation", "ticket", "boarding_pass", "baggage_tag", "visa", "passport", "insurance", "other"] as const;
+export const documentCategories = ["flight", "hotel", "activity", "visa", "passport", "insurance", "ticket", "transport", "receipt", "other"] as const;
+export const documentPurposes = ["confirmation", "ticket", "boarding_pass", "baggage_tag", "visa", "passport", "insurance", "hotel_confirmation", "activity_ticket", "meal_voucher", "receipt", "other"] as const;
 export const documentVisibilities = ["private", "traveler_and_managers", "trip", "selected_members"] as const;
 export type DocumentCategory = (typeof documentCategories)[number];
 export type DocumentPurpose = (typeof documentPurposes)[number];
 export type DocumentVisibility = (typeof documentVisibilities)[number];
+export type DocumentAssignmentMode = "shared" | "selected" | "unassigned";
 
 export type DocumentVersion = {
   id: string;
@@ -204,7 +246,10 @@ export type VaultDocument = {
   trip_id: string;
   booking_id: string | null;
   flight_leg_id: string | null;
+  journey_leg_id?: string | null;
   traveler_id: string | null;
+  assignment_mode?: DocumentAssignmentMode;
+  traveler_ids?: string[];
   title: string;
   category: DocumentCategory;
   purpose: DocumentPurpose;
@@ -215,6 +260,8 @@ export type VaultDocument = {
   updated_at: string;
   deleted_at?: string | null;
   current_version?: DocumentVersion | null;
+  sync_state?: "synced" | "queued";
+  sync_error?: string;
 };
 
 export type EventDocumentLink = {
@@ -236,6 +283,12 @@ export type CreateBookingInput = {
   timezone?: string;
   location?: string;
   notes?: string;
+  journeyScope?: JourneyScope;
+  bookedViaName?: string;
+  bookedViaUrl?: string;
+  bookingVendorCatalogKey?: string;
+  contactName?: string;
+  contactPhone?: string;
   travelerIds?: string[];
 };
 
@@ -244,16 +297,62 @@ export type UpdateBookingInput = CreateBookingInput & { id: string; version?: nu
 export type CreateFlightInput = {
   tripId: string;
   title: string;
-  airlineName: string;
-  flightNumber: string;
-  referenceCode?: string;
-  departureCode?: string;
-  departureName: string;
-  arrivalCode?: string;
-  arrivalName: string;
-  departureAt: string;
-  arrivalAt: string;
-  departureTimezone: string;
-  arrivalTimezone: string;
+  referenceCode: string;
+  journeyScope: JourneyScope;
+  bookedViaName?: string;
+  bookedViaUrl?: string;
+  contactName?: string;
+  contactPhone?: string;
+  legs: Array<{
+    airlineName: string;
+    flightNumber: string;
+    departureCode?: string;
+    departureName: string;
+    departureCountryCode?: string;
+    arrivalCode?: string;
+    arrivalName: string;
+    arrivalCountryCode?: string;
+    departureAt: string;
+    arrivalAt: string;
+    departureTimezone: string;
+    arrivalTimezone: string;
+    boardingAt?: string;
+    boardingLeadMinutes?: number;
+  }>;
   travelerIds?: string[];
+  cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid" };
+};
+
+export type CreateJourneyInput = {
+  tripId: string;
+  title: string;
+  mode: JourneyMode;
+  referenceCode?: string;
+  journeyScope: JourneyScope;
+  bookedViaName?: string;
+  bookedViaUrl?: string;
+  contactName?: string;
+  contactPhone?: string;
+  travelerIds?: string[];
+  legs: Array<{
+    operatorName: string;
+    serviceNumber?: string;
+    originCode?: string;
+    originName: string;
+    originCountryCode?: string;
+    originTimezone: string;
+    destinationCode?: string;
+    destinationName: string;
+    destinationCountryCode?: string;
+    destinationTimezone: string;
+    departureAt: string;
+    arrivalAt: string;
+    boardingAt?: string;
+    boardingLeadMinutes?: number;
+    departurePlatform?: string;
+    arrivalPlatform?: string;
+    coachOrCabin?: string;
+    seat?: string;
+  }>;
+  cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid" };
 };

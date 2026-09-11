@@ -1,5 +1,17 @@
 export type TripStatus = "draft" | "upcoming" | "active" | "completed" | "archived";
 
+export const timelineEventTypes = [
+  "flight", "train", "bus", "ferry", "cab", "hotel_check_in", "hotel_check_out",
+  "transport", "meal", "activity", "preparation", "custom"
+] as const;
+export type TimelineEventType = (typeof timelineEventTypes)[number];
+
+export const journeyTimelineEventTypes = ["flight", "train", "bus", "ferry", "cab"] as const;
+
+export function isJourneyEventType(type: TimelineEventType | undefined): type is (typeof journeyTimelineEventTypes)[number] {
+  return Boolean(type && journeyTimelineEventTypes.includes(type as (typeof journeyTimelineEventTypes)[number]));
+}
+
 export type Trip = {
   id: string;
   title: string;
@@ -20,13 +32,15 @@ export type ItineraryItem = {
   trip_id: string;
   booking_id?: string | null;
   title: string;
+  event_type?: TimelineEventType;
   starts_at: string;
   ends_at: string | null;
   timezone: string;
-  location: { label?: string } | null;
+  location: { label?: string; address?: string; map_url?: string } | null;
   notes: string | null;
   applies_to_all_travelers: boolean;
   is_all_day?: boolean;
+  completed_at?: string | null;
   sort_key?: string;
   version?: number;
   created_at: string;
@@ -40,6 +54,7 @@ export type PaymentStatus = "planned" | "paid" | "refunded";
 export type TripCost = {
   id: string;
   trip_id: string;
+  booking_id?: string | null;
   itinerary_item_id: string | null;
   title: string;
   category: CostCategory;
@@ -94,26 +109,33 @@ export type UpdateTripInput = CreateTripInput & { id: string; status: TripStatus
 export type CreateItineraryInput = {
   tripId: string;
   bookingId?: string;
+  eventType?: TimelineEventType;
   title: string;
   startsAt: string;
   endsAt?: string;
   timezone: string;
   location?: string;
+  mapUrl?: string;
   notes?: string;
   travelerIds?: string[];
   isAllDay?: boolean;
+  completedAt?: string | null;
+  dependsOn?: string[];
 };
 
 export type UpdateItineraryInput = CreateItineraryInput & { id: string; version?: number };
 
 export type CreateCostInput = {
   tripId: string;
+  bookingId?: string;
+  itineraryItemId?: string;
   title: string;
   category: CostCategory;
   amountMinor: number;
   currencyCode: string;
   paymentStatus: PaymentStatus;
   notes?: string;
+  dependsOn?: string[];
 };
 
 export type UpdateCostInput = CreateCostInput & { id: string; version?: number };

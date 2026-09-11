@@ -10,7 +10,7 @@ export function QuickAddPage() {
   const query = useQuery({ queryKey: ["trips"], queryFn: () => listTrips() });
   const trip = sortTripsByRelevance(query.data ?? [])[0];
   const actions = [
-    { title: "Create a trip", text: "Dates, destination, time zone, and currency", icon: MapPinned, to: "/trips/new", enabled: true },
+    { title: "Create a trip", text: "Dates, destination, and currency", icon: MapPinned, to: "/trips/new", enabled: true },
     { title: "Itinerary event", text: trip ? `Add to ${trip.title}` : "Create a trip first", icon: CalendarPlus, to: trip ? `/trips/${trip.id}?add=itinerary` : "/trips/new", enabled: true },
     { title: "Trip cost", text: trip ? `Track the total for ${trip.title}` : "Create a trip first", icon: ReceiptIndianRupee, to: trip ? `/trips/${trip.id}?add=cost` : "/trips/new", enabled: true },
     { title: "Booking or flight", text: trip ? "Add structured reservation details" : "Create a trip first", icon: TicketCheck, to: trip ? `/trips/${trip.id}?add=booking` : "/trips/new", enabled: true },

@@ -12,7 +12,7 @@ import { loadAlertInputs } from "../features/alerts/load";
 import { deriveAlerts } from "../features/alerts/engine";
 
 const firstTripSteps = [
-  { icon: MapPinned, number: "01", title: "Create the trip", text: "Add the destination, dates, time zone, and currency." },
+  { icon: MapPinned, number: "01", title: "Create the trip", text: "Add the destination, dates, and currency. Journey time zones come from each ticket." },
   { icon: UsersRound, number: "02", title: "Add your people", text: "Create traveler profiles for friends, parents, and children." },
   { icon: TicketCheck, number: "03", title: "Build the travel plan", text: "Add bookings, itinerary events, costs, and the documents they need." },
   { icon: CloudDownload, number: "04", title: "Prepare it offline", text: "Download and verify the trip before you leave reliable internet." }

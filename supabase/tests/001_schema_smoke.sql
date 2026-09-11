@@ -9,9 +9,10 @@ declare
     'profiles', 'app_admins', 'trips', 'trip_members', 'travelers', 'traveler_accounts',
     'traveler_managers', 'trip_invitations', 'bookings', 'booking_travelers', 'trip_airlines',
     'flight_legs', 'flight_leg_travelers', 'itinerary_items', 'itinerary_participants',
-    'itinerary_item_documents', 'documents', 'document_versions', 'document_access', 'notes',
+    'itinerary_item_documents', 'documents', 'document_versions', 'document_access', 'document_travelers', 'notes',
     'trip_requirements', 'requirement_assignees', 'trip_costs', 'reminders', 'alert_states',
     'activity_events', 'config_releases', 'airline_catalog_entries', 'airport_catalog_entries',
+    'booking_vendor_catalog_entries', 'catalog_suggestions', 'journey_legs',
     'metadata_defaults', 'theme_palettes', 'config_audit_events'
   ];
   table_name text;
@@ -79,6 +80,33 @@ begin
   end if;
   if not exists (select 1 from pg_trigger where tgname = 'managed_traveler_update_scope' and not tgisinternal) then
     raise exception 'Delegated traveler update scope trigger is missing';
+  end if;
+  if not exists (select 1 from pg_trigger where tgname = 'journeys_valid_timezones' and not tgisinternal) then
+    raise exception 'Strict journey timezone validation trigger is missing';
+  end if;
+  if not exists (select 1 from pg_trigger where tgname = 'document_journey_reference' and not tgisinternal) then
+    raise exception 'Journey document same-trip validation trigger is missing';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'itinerary_items' and column_name = 'event_type'
+  ) then
+    raise exception 'Timeline event typing is missing';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'documents' and column_name = 'journey_leg_id'
+  ) then
+    raise exception 'Journey document association is missing';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'documents' and column_name = 'assignment_mode'
+  ) then
+    raise exception 'Document traveler assignment mode is missing';
+  end if;
+  if not exists (select 1 from pg_trigger where tgname = 'document_traveler_same_trip' and not tgisinternal) then
+    raise exception 'Document traveler same-trip validation trigger is missing';
   end if;
 end;
 $$;

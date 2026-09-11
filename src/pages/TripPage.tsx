@@ -1,151 +1,299 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowLeft, ArrowUp, CalendarPlus, Download, FileText, MapPin, NotebookPen, Pencil, Plane, Plus, ReceiptIndianRupee, Settings, ShieldCheck, TicketCheck, Trash2, UserPlus, UsersRound } from "lucide-react";
-import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import {
+  ArrowDown, ArrowLeft, ArrowUp, BedDouble, Bus, CalendarClock, CalendarPlus,
+  CarTaxiFront, Check, ChevronRight, CookingPot, Download, Ship, FileText, LocateFixed,
+  MapPin, NotebookPen, Pencil, Plane, Plus, ReceiptIndianRupee, Search,
+  Settings, ShieldCheck, TicketCheck, TrainFront, Trash2, UserPlus, UsersRound, X,
+  ExternalLink, Phone
+} from "lucide-react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { FocusSurface } from "../components/FocusSurface";
-import { AddButton, CostTotals, ErrorCard, LoadingCard } from "../components/TripUi";
-import { archiveItineraryItem, archiveTripCost, listCosts, listItinerary, getTrip, reorderItineraryItems } from "../features/trips/api";
-import { currentItineraryItem, formatDateRange, formatEventTime, formatItineraryDate, itineraryDateKey, formatMoney } from "../features/trips/presentation";
-import { AddCostForm, AddItineraryForm, TripSettingsForm } from "../features/trips/TripForms";
-import { downloadTripCalendar } from "../features/trips/calendar";
-import { EventDocuments } from "../features/workspace/EventDocuments";
-import { archiveNote, listBookings, listFlightLegsForTrip, listMembers, listNotes, listRequirements, listTravelers, listVaultDocuments, removeMember, removeTraveler, updateMemberRole } from "../features/workspace/api";
-import { AddBookingForm, AddNoteForm, AddRequirementForm, AddTravelerForm, EditTravelerForm, ShareTripForm, UploadDocumentForm } from "../features/workspace/WorkspaceForms";
-import type { ItineraryItem, TripCost } from "../features/trips/types";
-import type { MemberRole, Traveler, TripNote } from "../features/workspace/types";
-import { localProfileId } from "../features/sync/localSync";
+import { ModalSheet } from "../components/ModalSheet";
+import { CostTotals, ErrorCard, LoadingCard } from "../components/TripUi";
 import { OfflinePackControl } from "../features/readiness/OfflinePackControl";
+import { AddEventForm } from "../features/timeline/AddEventForm";
+import { costsForEvent, journeyDuration, journeyEndDetails, mapsUrl, phoneActionUrls, readinessSummary, resolveCurrentTimelineItem, searchTrip, timelinePhase, type TimelinePhase } from "../features/timeline/model";
+import { preferredScrollBehavior, scrollTimelineEventIntoView } from "../features/timeline/scroll";
+import { archiveItineraryItem, archiveTripCost, getTrip, listCosts, listItinerary, reorderItineraryItems, setItineraryItemCompleted } from "../features/trips/api";
+import { downloadTripCalendar } from "../features/trips/calendar";
+import { formatDateRange, formatEventTime, formatItineraryDate, formatMoney, itineraryDateKey } from "../features/trips/presentation";
+import { AddCostForm, AddItineraryForm, TripSettingsForm } from "../features/trips/TripForms";
+import type { ItineraryItem, TimelineEventType, Trip, TripCost } from "../features/trips/types";
+import { localProfileId } from "../features/sync/localSync";
+import { EventDocuments } from "../features/workspace/EventDocuments";
+import { documentMatchesTraveler } from "../features/workspace/documentModel";
 import { TripAirlinesPanel } from "../features/workspace/TripAirlinesPanel";
-import { TravelerSwitcher } from "../features/workspace/TravelerSwitcher";
+import {
+  archiveNote, attachDocumentsToEvent, listBookings, listFlightLegsForTrip, listJourneyLegsForTrip, listMembers,
+  listNotes, listRequirements, listTravelers, listVaultDocuments, removeMember,
+  removeTraveler, updateMemberRole, listTripItineraryParticipants
+} from "../features/workspace/api";
+import {
+  AddNoteForm, AddRequirementForm, AddTravelerForm, EditTravelerForm,
+  ShareTripForm, UploadDocumentForm
+} from "../features/workspace/WorkspaceForms";
+import type { Booking, FlightLeg, JourneyLeg, MemberRole, Traveler, TripMember, TripNote, VaultDocument } from "../features/workspace/types";
 
-type OpenForm = "itinerary" | "cost" | "booking" | "document" | "traveler" | "share" | "requirement" | "note" | "settings" | null;
+type OpenForm = "event" | "cost" | "document" | "people" | "traveler" | "share" | "requirement" | "note" | "settings" | null;
+
+const iconFor: Record<TimelineEventType, typeof Plane> = {
+  flight: Plane, train: TrainFront, bus: Bus, ferry: Ship, cab: CarTaxiFront,
+  hotel_check_in: BedDouble, hotel_check_out: BedDouble, transport: CarTaxiFront,
+  meal: CookingPot, activity: MapPin, preparation: ShieldCheck, custom: CalendarClock
+};
 
 function storedTravelerFocus(tripId: string) {
-  try { return localStorage.getItem(`trip-vault:traveler-focus:${tripId}`); }
-  catch { return null; }
+  try { return localStorage.getItem(`trip-vault:traveler-focus:${tripId}`); } catch { return null; }
+}
+
+function saveScroll(tripId: string, view: "timeline" | "details") {
+  try { sessionStorage.setItem(`trip-vault:scroll:${tripId}:${view}`, String(window.scrollY)); } catch { /* Scroll memory is optional. */ }
+}
+
+function readScroll(tripId: string, view: "timeline" | "details") {
+  try { const value = sessionStorage.getItem(`trip-vault:scroll:${tripId}:${view}`); return value === null ? null : Number(value); } catch { return null; }
+}
+
+function EventCost({ item, costs, editable, onAdd, onEdit }: { item: ItineraryItem; costs: TripCost[]; editable: boolean; onAdd: () => void; onEdit: (cost: TripCost) => void }) {
+  const linked = costsForEvent(item, costs);
+  if (!linked.length) return editable ? <button type="button" onClick={onAdd} className="mt-4 rounded-full bg-warning/10 px-3 py-1.5 text-xs font-extrabold text-warning">Cost missing · add to this event</button> : <span className="mt-4 inline-flex rounded-full bg-warning/10 px-3 py-1.5 text-xs font-bold text-warning">Cost missing</span>;
+  const byCurrency = new Map<string, number>();
+  for (const cost of linked) byCurrency.set(cost.currency_code, (byCurrency.get(cost.currency_code) ?? 0) + cost.amount_minor);
+  const summary = [...byCurrency].map(([currency, amount]) => amount === 0 ? "Free" : formatMoney(amount, currency)).join(" + ");
+  return <div className="mt-4 rounded-xl border border-success/20 bg-success/5 p-3"><div className="flex items-center justify-between gap-3"><p className="text-xs font-black uppercase tracking-[.1em] text-success">Cost · {summary}</p>{editable && <button type="button" onClick={onAdd} className="text-xs font-extrabold text-brand">+ Add</button>}</div><div className="mt-2 space-y-1.5">{linked.map((cost) => <button key={cost.id} type="button" disabled={!editable} onClick={() => onEdit(cost)} className="flex w-full items-center gap-3 rounded-lg bg-surface/70 px-3 py-2 text-left text-xs disabled:cursor-default"><span className="min-w-0 flex-1 truncate font-bold">{cost.title}</span><span className="capitalize text-muted">{cost.payment_status}</span><strong>{cost.amount_minor === 0 ? "Free" : formatMoney(cost.amount_minor, cost.currency_code)}</strong>{editable && <Pencil className="size-3 text-muted" />}</button>)}</div></div>;
+}
+
+function BookingEventDetails({ tripId, booking, flights, journeys }: { tripId: string; booking: Booking; flights: FlightLeg[]; journeys: JourneyLeg[] }) {
+  const flightLegs = flights.filter((leg) => leg.booking_id === booking.id).sort((a, b) => a.segment_order - b.segment_order);
+  const travelLegs = journeys.filter((leg) => leg.booking_id === booking.id).sort((a, b) => a.segment_order - b.segment_order);
+  const phone = booking.contact_phone ? phoneActionUrls(booking.contact_phone) : null;
+  const firstFlight = flightLegs[0];
+  const detailsHref = firstFlight ? `/trips/${tripId}/flights/${firstFlight.id}` : `/trips/${tripId}/bookings/${booking.id}`;
+
+  const heading = <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[.65rem] font-black uppercase tracking-[.12em] text-muted">{booking.type} booking{booking.journey_scope ? ` · ${booking.journey_scope}` : ""}</p><p className="mt-1 font-bold">{booking.provider || booking.title}</p>{booking.reference_code && <p className="mt-1 text-xs text-muted"><strong className="text-ink">{booking.type === "flight" ? "PNR" : "Reference"}:</strong> {booking.reference_code}</p>}</div><Link to={detailsHref} className="secondary-button min-h-9 px-3 py-2 text-xs">Full details <ExternalLink className="size-3.5" /></Link></div>;
+
+  if (flightLegs.length) {
+    return <div className="mt-4 rounded-2xl border border-line bg-surface/70 p-3 sm:p-4">{heading}<div className="mt-3 space-y-2">{flightLegs.map((leg, index) => <Link to={`/trips/${tripId}/flights/${leg.id}`} key={leg.id} className="block rounded-xl bg-elevated p-3 text-xs"><div className="flex items-start justify-between gap-2"><strong>{leg.departure_airport_code || leg.departure_airport_name} → {leg.arrival_airport_code || leg.arrival_airport_name}</strong><span className={`rounded-full px-2 py-1 text-[.6rem] font-black uppercase ${leg.status === "cancelled" ? "bg-danger/10 text-danger" : leg.status === "delayed" ? "bg-warning/10 text-warning" : "bg-brand-soft text-brand"}`}>{flightLegs.length > 1 ? `Leg ${index + 1} · ` : ""}{leg.status.replaceAll("_", " ")}</span></div><p className="mt-1 text-muted">{leg.airline_name} {leg.flight_number} · {journeyDuration(leg.scheduled_departure_at, leg.scheduled_arrival_at)}</p><p className="mt-1 text-muted">Depart {formatEventTime(leg.scheduled_departure_at, leg.departure_timezone)}</p><p className="text-muted">Arrive {formatEventTime(leg.scheduled_arrival_at, leg.arrival_timezone)}</p>{(leg.boarding_at || leg.departure_terminal || leg.departure_gate || leg.arrival_terminal || leg.baggage_claim) && <p className="mt-2 font-bold text-ink">{leg.boarding_at ? `Board ${formatEventTime(leg.boarding_at, leg.departure_timezone)} · ` : ""}T{leg.departure_terminal || "—"} · Gate {leg.departure_gate || "—"}{leg.arrival_terminal ? ` · Arrive T${leg.arrival_terminal}` : ""}{leg.baggage_claim ? ` · Bag ${leg.baggage_claim}` : ""}</p>}</Link>)}</div><BookingContact booking={booking} phone={phone} /></div>;
+  }
+  if (travelLegs.length) {
+    return <div className="mt-4 rounded-2xl border border-line bg-surface/70 p-3 sm:p-4">{heading}<div className="mt-3 space-y-2">{travelLegs.map((leg, index) => <Link to={detailsHref} key={leg.id} className="block rounded-xl bg-elevated p-3 text-xs"><div className="flex items-start justify-between gap-2"><strong>{leg.origin_code || leg.origin_name} → {leg.destination_code || leg.destination_name}</strong>{travelLegs.length > 1 && <span className="rounded-full bg-brand-soft px-2 py-1 text-[.6rem] font-black uppercase text-brand">Leg {index + 1}</span>}</div><p className="mt-1 text-muted">{leg.operator_name}{leg.service_number ? ` ${leg.service_number}` : ""} · {journeyDuration(leg.scheduled_departure_at, leg.scheduled_arrival_at)}</p><p className="mt-1 text-muted">Depart {formatEventTime(leg.scheduled_departure_at, leg.origin_timezone)}</p><p className="text-muted">Arrive {formatEventTime(leg.scheduled_arrival_at, leg.destination_timezone)}</p>{(leg.boarding_at || leg.departure_platform || leg.arrival_platform || leg.coach_or_cabin || leg.seat) && <p className="mt-2 font-bold text-ink">{leg.boarding_at ? `Board ${formatEventTime(leg.boarding_at, leg.origin_timezone)} · ` : ""}Platform {leg.departure_platform || "—"}{leg.arrival_platform ? ` → ${leg.arrival_platform}` : ""}{leg.coach_or_cabin ? ` · ${leg.coach_or_cabin}` : ""}{leg.seat ? ` · Seat ${leg.seat}` : ""}</p>}</Link>)}</div><BookingContact booking={booking} phone={phone} /></div>;
+  }
+  return <div className="mt-4 rounded-2xl border border-line bg-surface/70 p-3 sm:p-4">{heading}{(booking.start_at || booking.end_at || booking.location?.label) && <div className="mt-3 rounded-xl bg-elevated p-3 text-xs text-muted">{booking.start_at && <p>Starts {formatEventTime(booking.start_at, booking.source_timezone || "UTC")}</p>}{booking.end_at && <p>Ends {formatEventTime(booking.end_at, booking.source_timezone || "UTC")}</p>}{booking.location?.label && <p className="mt-1">{booking.location.label}</p>}</div>}<BookingContact booking={booking} phone={phone} /></div>;
+}
+
+function BookingContact({ booking, phone }: { booking: Booking; phone: ReturnType<typeof phoneActionUrls> }) {
+  if (!booking.booked_via_name && !booking.booked_via_url && !booking.contact_phone) return null;
+  return <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3 text-xs"><span className="text-muted">{booking.booked_via_name ? `Booked via ${booking.booked_via_name}` : "Booking contact"}</span>{booking.booked_via_url && <a className="font-extrabold text-brand" href={booking.booked_via_url} target="_blank" rel="noreferrer">Open website</a>}{phone && <><a className="inline-flex items-center gap-1 font-extrabold text-brand" href={phone.call}><Phone className="size-3" /> Call{booking.contact_name ? ` ${booking.contact_name}` : ""}</a><a className="font-extrabold text-success" href={phone.whatsapp} target="_blank" rel="noreferrer">WhatsApp</a></>}</div>;
+}
+
+function EventTravelers({ item, travelerIds, travelers }: { item: ItineraryItem; travelerIds: string[]; travelers: Traveler[] }) {
+  const names = travelerIds.map((id) => travelers.find((traveler) => traveler.id === id)?.display_name).filter((name): name is string => Boolean(name));
+  return <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted"><UsersRound className="size-4" /><span className="font-bold text-ink">For:</span>{item.applies_to_all_travelers ? <span>Everyone</span> : names.length ? names.map((name) => <span key={name} className="rounded-full bg-brand-soft px-2 py-1 font-bold text-brand">{name}</span>) : <span>Selected travelers</span>}</div>;
+}
+
+function BookingEventSummary({ booking, flights, journeys }: { booking: Booking; flights: FlightLeg[]; journeys: JourneyLeg[] }) {
+  const flightLegs = flights.filter((leg) => leg.booking_id === booking.id).sort((a, b) => a.segment_order - b.segment_order);
+  const travelLegs = journeys.filter((leg) => leg.booking_id === booking.id).sort((a, b) => a.segment_order - b.segment_order);
+  const legs = flightLegs.length ? flightLegs : travelLegs;
+  const first = legs[0]; const last = legs.at(-1);
+  const from = first && ("departure_airport_code" in first ? first.departure_airport_code || first.departure_airport_name : first.origin_code || first.origin_name);
+  const to = last && ("arrival_airport_code" in last ? last.arrival_airport_code || last.arrival_airport_name : last.destination_code || last.destination_name);
+  return <div className="mt-3 rounded-xl border border-line/80 bg-surface/60 px-3 py-2.5 text-xs"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><strong>{booking.provider || booking.title}</strong>{booking.reference_code && <span className="text-muted">{booking.type === "flight" ? "PNR" : "Ref"} {booking.reference_code}</span>}</div>{from && to && <p className="mt-1 font-bold text-brand">{from} → {to}{legs.length > 1 ? ` · ${legs.length - 1} connection${legs.length > 2 ? "s" : ""}` : ""}</p>}</div>;
+}
+
+function EventDetailsSheet({ item, tripId, booking, flights, journeys, travelerIds, travelers, costs, editable, canMoveUp, canMoveDown, onClose, onEdit, onArchive, onAddCost, onEditCost, onUploadDocument, onComplete, onMoveUp, onMoveDown }: { item: ItineraryItem; tripId: string; booking?: Booking; flights: FlightLeg[]; journeys: JourneyLeg[]; travelerIds: string[]; travelers: Traveler[]; costs: TripCost[]; editable: boolean; canMoveUp: boolean; canMoveDown: boolean; onClose: () => void; onEdit: () => void; onArchive: () => void; onAddCost: () => void; onEditCost: (cost: TripCost) => void; onUploadDocument: () => void; onComplete: (completed: boolean) => void; onMoveUp: () => void; onMoveDown: () => void }) {
+  const Icon = iconFor[item.event_type ?? "custom"];
+  const map = mapsUrl(item.location); const end = journeyEndDetails(item);
+  return <ModalSheet eyebrow={(item.event_type ?? "event").replaceAll("_", " ")} title={item.title} onClose={onClose}>
+    <div className="mt-5 flex items-start gap-4 rounded-2xl bg-elevated p-4"><span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand"><Icon className="size-5" /></span><div className="min-w-0"><p className="text-sm font-black">{item.is_all_day ? "All day" : formatEventTime(item.starts_at, item.timezone)}</p><p className="mt-1 text-xs text-muted">{item.timezone}</p>{end && <p className="mt-2 text-xs text-muted">Arrives / ends {formatEventTime(end.endsAt, item.timezone)} · {end.duration}</p>}</div></div>
+    <EventTravelers item={item} travelerIds={travelerIds} travelers={travelers} />
+    {item.location?.label && <p className="mt-4 flex items-start gap-2 text-sm text-muted"><MapPin className="mt-0.5 size-4 shrink-0" />{item.location.label}</p>}
+    {map && <a href={map} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm font-extrabold text-brand"><LocateFixed className="size-4" /> Navigate</a>}
+    {item.notes && <p className="mt-4 whitespace-pre-wrap rounded-xl bg-elevated p-3 text-sm leading-6 text-muted">{item.notes}</p>}
+    {booking && <BookingEventDetails tripId={tripId} booking={booking} flights={flights} journeys={journeys} />}
+    {item.event_type === "preparation" && <label className="mt-4 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={Boolean(item.completed_at)} disabled={!editable} onChange={(event) => onComplete(event.target.checked)} /> Done</label>}
+    <EventCost item={item} costs={costs} editable={editable} onAdd={onAddCost} onEdit={onEditCost} />
+    <EventDocuments item={item} canEdit={editable} onUpload={onUploadDocument} />
+    {editable && (canMoveUp || canMoveDown) && <div className="mt-5 flex gap-2"><span className="self-center text-xs font-bold text-muted">Same-time order:</span><button type="button" disabled={!canMoveUp} onClick={onMoveUp} className="secondary-button min-h-9 px-3 py-2 text-xs disabled:opacity-30"><ArrowUp className="size-3.5" /> Earlier</button><button type="button" disabled={!canMoveDown} onClick={onMoveDown} className="secondary-button min-h-9 px-3 py-2 text-xs disabled:opacity-30"><ArrowDown className="size-3.5" /> Later</button></div>}
+    {editable && <div className="mt-6 grid grid-cols-2 gap-3 border-t border-line pt-5"><button type="button" className="secondary-button" onClick={onEdit}><Pencil className="size-4" /> Edit event</button><button type="button" className="secondary-button text-danger" onClick={onArchive}><Trash2 className="size-4" /> Archive</button></div>}
+  </ModalSheet>;
+}
+
+const phaseLabels: Record<TimelinePhase, string> = { past: "Past", current: "Happening now", future: "Upcoming" };
+
+function phaseForActive(item: ItineraryItem, active: boolean) {
+  const phase = timelinePhase(item);
+  if (!active) return phaseLabels[phase];
+  if (phase === "current") return "Happening now";
+  if (phase === "future") return "Next event";
+  return "Most recent event";
+}
+
+function Section({ id, title, eyebrow, action, children }: { id: string; title: string; eyebrow: string; action?: ReactNode; children: ReactNode }) {
+  return <section id={id} className="surface-card scroll-mt-28 p-5 sm:p-6"><div className="flex items-center justify-between gap-4"><div><p className="eyebrow">{eyebrow}</p><h2 className="mt-1 font-display text-2xl font-black">{title}</h2></div>{action}</div><div className="mt-5">{children}</div></section>;
+}
+
+function PeopleSheet({ trip, travelers, members, selectedId, editable, isOwner, onSelect, onAdd, onShare, onClose, onRefresh }: { trip: Trip; travelers: Traveler[]; members: TripMember[]; selectedId: string | null; editable: boolean; isOwner: boolean; onSelect: (id: string | null) => void; onAdd: () => void; onShare: () => void; onClose: () => void; onRefresh: () => void }) {
+  return <ModalSheet eyebrow={trip.title} title="People & sharing" onClose={onClose}>
+    <p className="mt-3 text-sm leading-6 text-muted">Choose whose plan and documents you are working with. Switching never asks for extra permission; access still requires signing in.</p>
+    <div className="mt-5 grid grid-cols-2 gap-3"><button type="button" onClick={() => onSelect(null)} className={`rounded-2xl border p-4 text-left ${selectedId === null ? "border-brand bg-brand-soft" : "border-line"}`}><UsersRound className="size-5 text-brand" /><strong className="mt-3 block">Everyone</strong></button>{travelers.map((traveler) => <button type="button" key={traveler.id} onClick={() => onSelect(traveler.id)} className={`rounded-2xl border p-4 text-left ${selectedId === traveler.id ? "border-brand bg-brand-soft" : "border-line"}`}><span className="grid size-7 place-items-center rounded-full bg-brand text-[.65rem] font-black text-surface">{traveler.display_name.slice(0, 2).toUpperCase()}</span><strong className="mt-3 block truncate">{traveler.display_name}</strong><span className="text-xs text-muted">{traveler.is_minor ? "Managed child" : "Traveler"}</span></button>)}</div>
+    {editable && <button type="button" onClick={onAdd} className="secondary-button mt-4 w-full"><UserPlus className="size-4" /> Add traveler</button>}
+    <div className="mt-6 border-t border-line pt-5"><p className="eyebrow">Signed-in members</p><div className="mt-3 space-y-3">{members.map((member) => <div className="flex items-center gap-2 rounded-xl bg-elevated p-3 text-sm" key={member.user_id}><span className="min-w-0 flex-1 truncate font-bold">{member.display_name}{member.participation_type === "collaborator" ? " · helper" : ""}</span>{isOwner && member.role !== "owner" ? <><select aria-label={`Role for ${member.display_name}`} className="rounded-lg border border-line bg-surface p-2 capitalize" defaultValue={member.role} onChange={async (event) => { await updateMemberRole(trip.id, member.user_id, event.target.value as "editor" | "viewer"); onRefresh(); }}><option value="editor">editor</option><option value="viewer">viewer</option></select><button type="button" className="text-xs font-bold text-danger" onClick={async () => { if (!window.confirm(`Remove ${member.display_name}? Downloaded copies cannot be erased remotely.`)) return; await removeMember(trip.id, member.user_id); onRefresh(); }}>Remove</button></> : <span className="text-xs capitalize text-muted">{member.role}</span>}</div>)}</div>{isOwner && <button type="button" className="primary-button mt-4 w-full" onClick={onShare}><UsersRound className="size-4" /> Share trip</button>}</div>
+  </ModalSheet>;
 }
 
 export function TripPage() {
-  const { tripId = "" } = useParams();
-  const queryClient = useQueryClient();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const initialForm = searchParams.get("add") as OpenForm;
-  const [openForm, setOpenForm] = useState<OpenForm>(initialForm);
-  const [userId, setUserId] = useState("");
-  const [editingItinerary, setEditingItinerary] = useState<ItineraryItem | null>(null);
-  const [editingCost, setEditingCost] = useState<TripCost | null>(null);
-  const [editingTraveler, setEditingTraveler] = useState<Traveler | null>(null);
-  const [editingNote, setEditingNote] = useState<TripNote | null>(null);
+  const { tripId = "" } = useParams(); const navigate = useNavigate(); const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams(); const view: "timeline" | "details" = searchParams.get("view") === "details" ? "details" : "timeline";
+  const [openForm, setOpenForm] = useState<OpenForm>(searchParams.get("add") ? "event" : null);
+  const [userId, setUserId] = useState(""); const [query, setQuery] = useState("");
+  const [editingItinerary, setEditingItinerary] = useState<ItineraryItem | null>(null); const [editingCost, setEditingCost] = useState<TripCost | null>(null); const [editingTraveler, setEditingTraveler] = useState<Traveler | null>(null); const [editingNote, setEditingNote] = useState<TripNote | null>(null);
+  const [viewingItineraryId, setViewingItineraryId] = useState<string | null>(null);
+  const [costTargetItem, setCostTargetItem] = useState<ItineraryItem | null>(null);
+  const [documentTargetItem, setDocumentTargetItem] = useState<ItineraryItem | null>(null);
   const [focusedTravelerId, setFocusedTravelerId] = useState<string | null>(() => storedTravelerFocus(tripId));
-  useEffect(() => { void localProfileId().then((profileId) => setUserId(profileId ?? "")); }, []);
-  useEffect(() => { setFocusedTravelerId(storedTravelerFocus(tripId)); }, [tripId]);
-  const closeForm = () => { setOpenForm(null); if (searchParams.has("add")) { searchParams.delete("add"); setSearchParams(searchParams, { replace: true }); } };
+  const positioned = useRef(false); const restoreTimelineScroll = useRef(false); const requestedTimelineItem = useRef<string | null>(null);
+  useEffect(() => { void localProfileId().then((id) => setUserId(id ?? "")); }, []);
+  useEffect(() => { setFocusedTravelerId(storedTravelerFocus(tripId)); positioned.current = false; }, [tripId]);
 
   const tripQuery = useQuery({ queryKey: ["trip", tripId], queryFn: () => getTrip(tripId), enabled: Boolean(tripId) });
   const itineraryQuery = useQuery({ queryKey: ["itinerary", tripId], queryFn: () => listItinerary(tripId), enabled: Boolean(tripId) });
   const costsQuery = useQuery({ queryKey: ["costs", tripId], queryFn: () => listCosts(tripId), enabled: Boolean(tripId) });
   const bookingsQuery = useQuery({ queryKey: ["bookings", tripId], queryFn: () => listBookings(tripId), enabled: Boolean(tripId) });
   const flightsQuery = useQuery({ queryKey: ["flights", tripId], queryFn: () => listFlightLegsForTrip(tripId), enabled: Boolean(tripId) });
+  const journeysQuery = useQuery({ queryKey: ["journey-legs", tripId], queryFn: () => listJourneyLegsForTrip(tripId), enabled: Boolean(tripId) });
   const travelersQuery = useQuery({ queryKey: ["travelers", tripId], queryFn: () => listTravelers(tripId), enabled: Boolean(tripId) });
   const membersQuery = useQuery({ queryKey: ["members", tripId], queryFn: () => listMembers(tripId), enabled: Boolean(tripId) });
   const documentsQuery = useQuery({ queryKey: ["documents", tripId], queryFn: () => listVaultDocuments(tripId), enabled: Boolean(tripId) });
   const requirementsQuery = useQuery({ queryKey: ["requirements", tripId], queryFn: () => listRequirements(tripId), enabled: Boolean(tripId) });
   const notesQuery = useQuery({ queryKey: ["notes", tripId], queryFn: () => listNotes(tripId), enabled: Boolean(tripId) });
-  const trip = tripQuery.data;
-  const role = membersQuery.data?.find((member) => member.user_id === userId)?.role as MemberRole | undefined;
-  const editable = role === "owner" || role === "editor";
-  const isOwner = role === "owner";
-  const travelers = travelersQuery.data ?? [];
+  const itineraryIds = (itineraryQuery.data ?? []).map((item) => item.id);
+  const participantsQuery = useQuery({ queryKey: ["itinerary-participants", tripId, itineraryIds], queryFn: () => listTripItineraryParticipants(tripId, itineraryIds), enabled: Boolean(tripId) && itineraryQuery.isSuccess });
+  const trip = tripQuery.data; const travelers = travelersQuery.data ?? []; const members = membersQuery.data ?? [];
+  const role = members.find((member) => member.user_id === userId)?.role as MemberRole | undefined; const editable = role === "owner" || role === "editor"; const isOwner = role === "owner";
+  const itinerary = itineraryQuery.data ?? []; const costs = costsQuery.data ?? []; const bookings = bookingsQuery.data ?? []; const flights = flightsQuery.data ?? []; const journeys = journeysQuery.data ?? []; const documents = documentsQuery.data ?? []; const requirements = requirementsQuery.data ?? [];
+  const participantRows = participantsQuery.data ?? [];
+  // Member focus changes which personal documents are emphasized, never which
+  // trip events exist. The timeline must always remain the complete trip.
+  const visibleItinerary = itinerary;
+  const viewingItinerary = viewingItineraryId ? itinerary.find((item) => item.id === viewingItineraryId) : undefined;
+  const viewingItineraryIndex = viewingItinerary ? itinerary.findIndex((item) => item.id === viewingItinerary.id) : -1;
+  const activeItem = useMemo(() => resolveCurrentTimelineItem(visibleItinerary), [visibleItinerary]); const readiness = useMemo(() => readinessSummary(requirements), [requirements]);
+  const flightByBooking = useMemo(() => new Map(flights.slice().sort((a, b) => a.segment_order - b.segment_order).map((flight) => [flight.booking_id, flight])), [flights]);
+  const focusedDocuments = focusedTravelerId ? documents.filter((document) => documentMatchesTraveler(document, focusedTravelerId)) : documents;
+  const focusedTraveler = focusedTravelerId ? travelers.find((traveler) => traveler.id === focusedTravelerId) : undefined;
+  const results = useMemo(() => searchTrip({ query, tripId, itinerary, bookings, flights, journeys, documents, travelers, requirements }), [query, tripId, itinerary, bookings, flights, journeys, documents, travelers, requirements]);
+  const phaseJumps = useMemo(() => {
+    const firstByPhase = new Map<TimelinePhase, ItineraryItem>();
+    for (const item of visibleItinerary) { const phase = timelinePhase(item); if (!firstByPhase.has(phase)) firstByPhase.set(phase, item); }
+    return (["past", "current", "future"] as const).flatMap((phase) => firstByPhase.has(phase) ? [{ phase, item: firstByPhase.get(phase)! }] : []);
+  }, [visibleItinerary]);
+
   useEffect(() => {
-    if (focusedTravelerId && travelersQuery.data && !travelersQuery.data.some((traveler) => traveler.id === focusedTravelerId)) setFocusedTravelerId(null);
-  }, [focusedTravelerId, travelersQuery.data]);
-  const chooseTraveler = (travelerId: string | null) => {
-    setFocusedTravelerId(travelerId);
-    try {
-      const key = `trip-vault:traveler-focus:${tripId}`;
-      if (travelerId) localStorage.setItem(key, travelerId); else localStorage.removeItem(key);
-    } catch { /* The switch still works for this page view. */ }
-  };
-  const focusedDocuments = focusedTravelerId ? (documentsQuery.data ?? []).filter((document) => document.traveler_id === focusedTravelerId) : documentsQuery.data ?? [];
-  const flightByBooking = useMemo(() => new Map((flightsQuery.data ?? []).map((flight) => [flight.booking_id, flight])), [flightsQuery.data]);
-  const anyError = tripQuery.error;
-  const activeItinerary = currentItineraryItem(itineraryQuery.data ?? []);
+    if (view !== "timeline" || positioned.current || !itineraryQuery.isSuccess || participantsQuery.isLoading) return;
+    const firstFrame = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const requestedId = requestedTimelineItem.current;
+        if (requestedId && scrollTimelineEventIntoView(requestedId, preferredScrollBehavior())) {
+          requestedTimelineItem.current = null; restoreTimelineScroll.current = false; positioned.current = true; return;
+        }
+        const saved = restoreTimelineScroll.current ? readScroll(tripId, "timeline") : null;
+        if (saved !== null) window.scrollTo({ top: saved, behavior: "auto" });
+        else if (activeItem) scrollTimelineEventIntoView(activeItem.id, preferredScrollBehavior());
+        restoreTimelineScroll.current = false; positioned.current = true;
+      });
+    });
+    return () => window.cancelAnimationFrame(firstFrame);
+  }, [activeItem, itineraryQuery.isSuccess, participantsQuery.isLoading, tripId, view]);
+  useEffect(() => { if (focusedTravelerId && travelersQuery.data && !travelers.some((traveler) => traveler.id === focusedTravelerId)) setFocusedTravelerId(null); }, [focusedTravelerId, travelersQuery.data, travelers]);
+
+  const chooseTraveler = (id: string | null) => { setFocusedTravelerId(id); try { const key = `trip-vault:traveler-focus:${tripId}`; if (id) localStorage.setItem(key, id); else localStorage.removeItem(key); } catch { /* Selection remains active for this page. */ } };
+  const changeView = (next: "timeline" | "details") => { if (next === view) return; saveScroll(tripId, view); if (next === "timeline") { restoreTimelineScroll.current = !requestedTimelineItem.current; positioned.current = false; } const nextParams = new URLSearchParams(searchParams); if (next === "details") nextParams.set("view", "details"); else nextParams.delete("view"); setSearchParams(nextParams); if (next === "details") window.setTimeout(() => window.scrollTo({ top: readScroll(tripId, next) ?? 0, behavior: "auto" }), 0); };
+  const closeForm = () => { setOpenForm(null); setCostTargetItem(null); setDocumentTargetItem(null); const next = new URLSearchParams(searchParams); next.delete("add"); setSearchParams(next, { replace: true }); };
+  const scrollToItem = (id: string) => { setQuery(""); requestedTimelineItem.current = id; positioned.current = false; if (view === "timeline") { window.requestAnimationFrame(() => { if (scrollTimelineEventIntoView(id, preferredScrollBehavior())) { requestedTimelineItem.current = null; positioned.current = true; } }); } else changeView("timeline"); };
+
   const archiveItinerary = useMutation({ mutationFn: archiveItineraryItem, onSuccess: () => queryClient.invalidateQueries({ queryKey: ["itinerary", tripId] }) });
-  const reorderItinerary = useMutation({ mutationFn: ({ itemId, direction }: { itemId: string; direction: "up" | "down" }) => reorderItineraryItems(itineraryQuery.data ?? [], itemId, direction), onSuccess: (items) => queryClient.setQueryData(["itinerary", tripId], items) });
+  const reorderItinerary = useMutation({ mutationFn: ({ itemId, direction }: { itemId: string; direction: "up" | "down" }) => reorderItineraryItems(itinerary, itemId, direction), onSuccess: (items) => queryClient.setQueryData(["itinerary", tripId], items) });
+  const completePreparation = useMutation({ mutationFn: ({ item, completed }: { item: ItineraryItem; completed: boolean }) => setItineraryItemCompleted(item, completed), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["itinerary", tripId] }) });
   const archiveCost = useMutation({ mutationFn: archiveTripCost, onSuccess: () => queryClient.invalidateQueries({ queryKey: ["costs", tripId] }) });
   const removeTravelerMutation = useMutation({ mutationFn: removeTraveler, onSuccess: () => queryClient.invalidateQueries({ queryKey: ["travelers", tripId] }) });
   const archiveNoteMutation = useMutation({ mutationFn: archiveNote, onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes", tripId] }) });
 
-  return (
-    <AppShell>
-      <div className="mx-auto max-w-6xl">
-        <Link to="/trips" className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted hover:text-ink"><ArrowLeft className="size-4" /> All trips</Link>
-        {tripQuery.isLoading && <LoadingCard />}{anyError && <ErrorCard error={anyError} title="This trip could not be opened" />}
-        {trip && <>
-          <section className="page-enter mt-5 overflow-hidden rounded-[2rem] bg-brand p-6 text-surface shadow-focus sm:p-8">
-            <div className="flex flex-wrap items-start justify-between gap-5"><div><p className="text-xs font-bold uppercase tracking-[0.17em] text-surface/60">{formatDateRange(trip.start_date, trip.end_date)}</p><h1 className="mt-3 font-display text-4xl font-black tracking-[-0.05em] sm:text-5xl">{trip.title}</h1><p className="mt-3 flex items-center gap-2 text-surface/70"><MapPin className="size-4" />{trip.destination_summary}</p></div><div className="flex items-center gap-2"><span className="rounded-full bg-surface/10 px-3 py-2 text-xs font-bold capitalize">{role ?? "member"}</span>{isOwner && <button type="button" onClick={() => setOpenForm("settings")} className="tap-target grid size-10 place-items-center rounded-xl bg-surface/10" aria-label="Trip settings"><Settings className="size-4" /></button>}</div></div>
-            <div className="mt-7 flex flex-wrap gap-2">{editable && <><button onClick={() => setOpenForm("itinerary")} className="hero-action"><CalendarPlus className="size-4" /> Itinerary</button><button onClick={() => setOpenForm("booking")} className="hero-action"><TicketCheck className="size-4" /> Booking</button></>}<button onClick={() => setOpenForm("document")} className="hero-action"><FileText className="size-4" /> {editable ? "Document" : "My document"}</button>{editable && <button onClick={() => setOpenForm("cost")} className="hero-action"><ReceiptIndianRupee className="size-4" /> Cost</button>}{isOwner && <button onClick={() => setOpenForm("share")} className="hero-action"><UsersRound className="size-4" /> Share</button>}</div>
-          </section>
+  return <AppShell><div className="mx-auto max-w-6xl pb-24">
+    <Link to="/trips" className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted hover:text-ink"><ArrowLeft className="size-4" /> All trips</Link>
+    {tripQuery.isLoading && <LoadingCard />}{tripQuery.error && <ErrorCard error={tripQuery.error} title="This trip could not be opened" />}
+    {trip && <>
+      <header className="page-enter mt-4 rounded-[2rem] bg-brand p-5 text-surface shadow-focus sm:p-7"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-surface/60">{formatDateRange(trip.start_date, trip.end_date)}</p><h1 className="mt-2 font-display text-3xl font-black tracking-[-.05em] sm:text-4xl">{trip.title}</h1><p className="mt-2 flex items-center gap-2 text-sm text-surface/70"><MapPin className="size-4" />{trip.destination_summary}</p></div><span className="rounded-full bg-surface/10 px-3 py-2 text-xs font-bold capitalize">{role ?? "member"}</span></div>
+        <div className="mt-5 grid grid-cols-2 rounded-2xl bg-surface/10 p-1"><button type="button" onClick={() => changeView("timeline")} className={`tap-target rounded-xl text-sm font-black ${view === "timeline" ? "bg-surface text-brand shadow-soft" : "text-surface/70"}`}>Timeline</button><button type="button" onClick={() => changeView("details")} className={`tap-target rounded-xl text-sm font-black ${view === "details" ? "bg-surface text-brand shadow-soft" : "text-surface/70"}`}>Trip details</button></div>
+      </header>
+      <div className="relative mt-4"><Search className="pointer-events-none absolute left-4 top-3.5 size-5 text-muted" /><input value={query} onChange={(event) => setQuery(event.target.value)} className="form-input mt-0 pl-12 pr-11" placeholder="Search timeline, PNR, airport, document, traveler…" aria-label="Search this trip" />{query && <button type="button" onClick={() => setQuery("")} className="absolute right-2 top-1.5 grid size-9 place-items-center text-muted" aria-label="Clear search"><X className="size-4" /></button>}{query.length >= 2 && <div className="absolute z-40 mt-2 max-h-96 w-full overflow-auto rounded-2xl border border-line bg-surface p-2 shadow-focus">{results.map((result) => result.href ? <Link key={result.id} to={result.href} onClick={() => setQuery("")} className="block rounded-xl px-3 py-3 hover:bg-elevated"><strong className="block text-sm">{result.title}</strong><span className="text-xs text-muted">{result.group} · {result.detail}</span></Link> : <button key={result.id} type="button" onClick={() => { if (result.timelineItemId) scrollToItem(result.timelineItemId); else if (result.group === "Travelers") { chooseTraveler(result.id.replace("traveler:", "")); setQuery(""); } }} className="block w-full rounded-xl px-3 py-3 text-left hover:bg-elevated"><strong className="block text-sm">{result.title}</strong><span className="text-xs text-muted">{result.group} · {result.detail}</span></button>)}{results.length === 0 && <p className="p-4 text-sm text-muted">Nothing in this trip matches.</p>}</div>}</div>
 
-          <TravelerSwitcher travelers={travelers} value={focusedTravelerId} onChange={chooseTraveler} />
-
-          <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(18rem,.75fr)]">
-            <div className="space-y-5">
-              <section className="surface-card p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-4"><div><p className="eyebrow">Itinerary</p><h2 className="mt-1 font-display text-2xl font-black">Your timeline</h2></div><div className="flex gap-2">{(itineraryQuery.data?.length ?? 0) > 0 && <button type="button" className="secondary-button" onClick={() => downloadTripCalendar(trip, itineraryQuery.data ?? [])}><Download className="size-4" /> Calendar</button>}{editable && <AddButton onClick={() => setOpenForm("itinerary")}>Add event</AddButton>}</div></div>
-                <div className="mt-5 space-y-3">{itineraryQuery.data?.map((item, index, items) => <Fragment key={item.id}>{(index === 0 || itineraryDateKey(items[index - 1].starts_at, items[index - 1].timezone) !== itineraryDateKey(item.starts_at, item.timezone)) && <h3 className={`${index ? "pt-5" : ""} text-sm font-black text-ink`}>{formatItineraryDate(item.starts_at, item.timezone)}</h3>}<FocusSurface active={activeItinerary?.id === item.id} className="bg-elevated p-4"><div className="flex items-start gap-4"><div className="min-w-[4.5rem] text-xs font-black text-coral">{item.is_all_day ? "All day" : formatEventTime(item.starts_at, item.timezone).split(",").at(-1)}</div><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-3"><div>{activeItinerary?.id === item.id && <span className="mb-2 inline-flex rounded-full bg-coral/15 px-2 py-1 text-[.6rem] font-black uppercase tracking-[.12em] text-coral">{new Date(item.starts_at) <= new Date() ? "Now" : "Next"}</span>}<h3 className="font-display text-lg font-black">{item.title}</h3></div>{editable && <div className="flex">{items[index - 1]?.starts_at === item.starts_at && <button type="button" disabled={reorderItinerary.isPending} onClick={() => reorderItinerary.mutate({ itemId: item.id, direction: "up" })} className="tap-target grid size-9 place-items-center text-muted hover:text-brand" aria-label={`Move ${item.title} earlier among events at the same time`}><ArrowUp className="size-3.5" /></button>}{items[index + 1]?.starts_at === item.starts_at && <button type="button" disabled={reorderItinerary.isPending} onClick={() => reorderItinerary.mutate({ itemId: item.id, direction: "down" })} className="tap-target grid size-9 place-items-center text-muted hover:text-brand" aria-label={`Move ${item.title} later among events at the same time`}><ArrowDown className="size-3.5" /></button>}<button type="button" onClick={() => setEditingItinerary(item)} className="tap-target grid size-9 place-items-center text-muted hover:text-brand" aria-label={`Edit ${item.title}`}><Pencil className="size-3.5" /></button><button type="button" onClick={() => window.confirm(`Archive ${item.title}? Its linked Vault documents remain.`) && archiveItinerary.mutate(item)} className="tap-target grid size-9 place-items-center text-muted hover:text-danger" aria-label={`Archive ${item.title}`}><Trash2 className="size-3.5" /></button></div>}</div><p className="mt-1 text-xs text-muted">{formatEventTime(item.starts_at, item.timezone)} · {item.timezone}</p>{item.location?.label && <p className="mt-2 flex items-center gap-1.5 text-sm text-muted"><MapPin className="size-3.5" />{item.location.label}</p>}{item.notes && <p className="mt-2 text-sm leading-6 text-muted">{item.notes}</p>}<EventDocuments item={item} canEdit={editable} /></div></div></FocusSurface></Fragment>)}{itineraryQuery.data?.length === 0 && (editable ? <button onClick={() => setOpenForm("itinerary")} className="w-full rounded-2xl border border-dashed border-line p-7 text-sm text-muted">No events yet. Add the first thing on your itinerary.</button> : <p className="w-full rounded-2xl border border-dashed border-line p-7 text-sm text-muted">No itinerary events have been added yet.</p>)}</div>
-              </section>
-
-              <section className="surface-card p-5 sm:p-6"><div className="flex items-center justify-between gap-4"><div><p className="eyebrow">Bookings</p><h2 className="mt-1 font-display text-2xl font-black">Reservations</h2></div>{editable && <AddButton onClick={() => setOpenForm("booking")}>Add booking</AddButton>}</div><div className="mt-5 grid gap-3 sm:grid-cols-2">{bookingsQuery.data?.map((booking) => { const flight = flightByBooking.get(booking.id); return <Link key={booking.id} to={flight ? `/trips/${trip.id}/flights/${flight.id}` : `/trips/${trip.id}/bookings/${booking.id}`} className="group rounded-2xl border border-line bg-elevated p-4 hover:border-brand/40"><span className="grid size-9 place-items-center rounded-xl bg-brand-soft text-brand">{booking.type === "flight" ? <Plane className="size-4" /> : <TicketCheck className="size-4" />}</span><p className="mt-4 text-xs font-bold uppercase tracking-[.12em] text-muted">{booking.type}</p><h3 className="mt-1 font-display text-lg font-black">{booking.title}</h3><p className="mt-1 text-xs text-muted">{booking.provider}{booking.reference_code ? ` · ${booking.reference_code}` : ""}</p></Link>; })}{bookingsQuery.data?.length === 0 && <p className="col-span-full rounded-2xl border border-dashed border-line p-6 text-sm text-muted">No bookings yet.</p>}</div></section>
-            </div>
-
-            <aside className="space-y-5">
-              <OfflinePackControl tripId={trip.id} />
-              <TripAirlinesPanel tripId={trip.id} canEdit={editable} />
-              <section className="surface-card p-5"><CostTotals costs={costsQuery.data ?? []} /><div className="mt-3 space-y-2">{costsQuery.data?.map((cost) => <div key={cost.id} className="flex items-center gap-2 rounded-xl py-1 text-sm"><span className="min-w-0 flex-1 truncate text-muted">{cost.title}</span><strong>{formatMoney(cost.amount_minor, cost.currency_code)}</strong>{editable && <><button type="button" className="tap-target grid size-8 place-items-center text-muted hover:text-brand" onClick={() => setEditingCost(cost)} aria-label={`Edit ${cost.title}`}><Pencil className="size-3.5" /></button><button type="button" className="tap-target grid size-8 place-items-center text-muted hover:text-danger" onClick={() => window.confirm(`Archive cost ${cost.title}?`) && archiveCost.mutate(cost)} aria-label={`Archive ${cost.title}`}><Trash2 className="size-3.5" /></button></>}</div>)}</div>{editable && <button onClick={() => setOpenForm("cost")} className="mt-4 inline-flex items-center gap-2 text-sm font-extrabold text-brand"><Plus className="size-4" /> Add cost</button>}</section>
-              <section className="surface-card p-5">
-                <div className="flex items-center justify-between">
-                  <div><p className="eyebrow">People</p><h2 className="mt-1 font-display text-xl font-black">Travelers</h2></div>
-                  {editable && <button onClick={() => setOpenForm("traveler")} className="tap-target grid size-10 place-items-center rounded-xl bg-brand-soft text-brand" aria-label="Add traveler"><UserPlus className="size-4" /></button>}
+      {view === "timeline" ? <main className="mt-5">
+        <section className="surface-card overflow-hidden p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="eyebrow">Before you go</p><h2 className="mt-1 font-display text-xl font-black">Trip readiness</h2></div><ShieldCheck className={`size-6 ${readiness.remaining ? "text-warning" : "text-success"}`} /></div>{readiness.total ? <><p className="mt-3 text-sm text-muted">{readiness.resolved} of {readiness.total} checks resolved{readiness.dueDate ? ` · next due ${new Date(`${readiness.dueDate}T12:00:00`).toLocaleDateString()}` : ""}</p><div className="mt-3 h-2 overflow-hidden rounded-full bg-elevated"><span className="block h-full rounded-full bg-success transition-all" style={{ width: `${Math.round(readiness.resolved / readiness.total * 100)}%` }} /></div></> : <p className="mt-3 text-sm text-muted">Add visas, passports, insurance, packing, or custom checks. Dated preparation tasks still belong in the timeline below.</p>}<div className="mt-4 flex gap-4"><Link className="text-sm font-extrabold text-brand" to={`/trips/${trip.id}/readiness`}>Open checklist</Link>{editable && <button type="button" className="text-sm font-extrabold text-brand" onClick={() => setOpenForm("requirement")}>+ Add check</button>}</div></section>
+        <section className="surface-card mt-5 p-5 sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="eyebrow">Everything in order</p><h2 className="mt-1 font-display text-2xl font-black">Complete timeline</h2><p className="mt-2 text-sm text-muted">Past events are above you. Upcoming events continue below.</p></div>{itinerary.length > 0 && <button type="button" className="secondary-button" onClick={() => downloadTripCalendar(trip, itinerary)}><Download className="size-4" /> Calendar</button>}</div>
+          {phaseJumps.length > 0 && <nav aria-label="Timeline sections" className="sticky top-2 z-30 mt-4 flex gap-2 overflow-auto rounded-2xl border border-line bg-surface/95 p-2 shadow-soft backdrop-blur">{phaseJumps.map(({ phase, item }) => <button key={phase} type="button" onClick={() => scrollToItem(item.id)} className={`shrink-0 rounded-xl px-3 py-2 text-xs font-black ${phase === "current" ? "bg-coral text-white" : "bg-elevated text-brand"}`}>{phaseLabels[phase]}</button>)}</nav>}
+          <div className="relative mt-6 before:absolute before:bottom-5 before:left-1 before:top-5 before:w-px before:bg-line sm:before:left-[8.25rem]">
+            {visibleItinerary.map((item, index, items) => {
+              const current = activeItem?.id === item.id;
+              const phase = timelinePhase(item);
+              const previousPhase = index ? timelinePhase(items[index - 1]) : null;
+              const Icon = iconFor[item.event_type ?? "custom"];
+              const booking = item.booking_id ? bookings.find((row) => row.id === item.booking_id) : undefined;
+              const end = journeyEndDetails(item);
+              const travelerIds = participantRows.filter((row) => row.itinerary_item_id === item.id).map((row) => row.traveler_id);
+              return <Fragment key={item.id}>
+                {phase !== previousPhase && <div id={`timeline-phase-${phase}`} className={`${index ? "pt-7" : ""} relative z-10 pb-3 pl-6 sm:pl-[10.5rem]`}><span className={`inline-flex rounded-full px-3 py-1.5 text-[.65rem] font-black uppercase tracking-[.14em] ${phase === "current" ? "bg-coral text-white" : "border border-line bg-surface text-muted"}`}>{phaseLabels[phase]}</span></div>}
+                {(index === 0 || itineraryDateKey(items[index - 1].starts_at, items[index - 1].timezone) !== itineraryDateKey(item.starts_at, item.timezone)) && <h3 className={`${index ? "pt-3" : ""} pb-3 pl-6 text-sm font-black sm:pl-[10.5rem]`}>{formatItineraryDate(item.starts_at, item.timezone)}</h3>}
+                <div id={`timeline-${item.id}`} className="relative mb-4 grid scroll-mt-28 grid-cols-1 pl-5 sm:grid-cols-[6rem_2.5rem_minmax(0,1fr)] sm:gap-4 sm:pl-0">
+                  <span aria-hidden="true" className={`absolute left-[-0.05rem] top-6 z-10 size-2.5 rounded-full ring-4 ring-surface sm:hidden ${current ? "bg-coral" : phase === "past" ? "bg-line" : "bg-brand"}`} />
+                  <time className={`hidden pt-4 text-right text-xs font-black sm:block ${current ? "text-coral" : "text-muted"}`}>{item.is_all_day ? "All day" : formatEventTime(item.starts_at, item.timezone).split(",").at(-1)}</time>
+                  <span className={`z-10 mt-3 hidden size-10 place-items-center rounded-full border-4 border-surface sm:grid ${current ? "bg-coral text-white shadow-focus" : phase === "past" ? "bg-line text-muted" : "bg-brand-soft text-brand"}`}><Icon className="size-4" /></span>
+                  <FocusSurface active={current} role="button" tabIndex={0} onClick={() => setViewingItineraryId(item.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setViewingItineraryId(item.id); } }} className={`group cursor-pointer p-4 pr-16 outline-none hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft focus-visible:ring-2 focus-visible:ring-brand sm:p-5 ${current ? "bg-coral/10" : "bg-elevated"}`} aria-label={`Open details for ${item.title}`}>
+                    <span className={`absolute right-4 top-4 grid size-10 place-items-center rounded-xl sm:hidden ${current ? "bg-coral text-white" : phase === "past" ? "bg-line/70 text-muted" : "bg-brand-soft text-brand"}`}><Icon className="size-4" /></span>
+                    <time className={`text-xs font-black sm:hidden ${current ? "text-coral" : "text-muted"}`}>{item.is_all_day ? "All day" : formatEventTime(item.starts_at, item.timezone).split(",").at(-1)}</time>
+                    <div className="min-w-0"><span className={`mb-2 inline-flex rounded-full px-2 py-1 text-[.6rem] font-black uppercase tracking-[.12em] ${current ? "bg-coral text-white" : "bg-surface text-muted"}`}>{phaseForActive(item, current)}</span><h3 className="font-display text-lg font-black">{item.title}</h3><p className="mt-1 text-xs capitalize text-muted">{(item.event_type ?? "custom").replaceAll("_", " ")} · {item.timezone}</p>{end && <p className="mt-1 text-xs text-muted">Arrives / ends {formatEventTime(end.endsAt, item.timezone)} · {end.duration}</p>}</div>
+                    <EventTravelers item={item} travelerIds={travelerIds} travelers={travelers} />
+                    {item.location?.label && <p className="mt-3 flex items-start gap-2 text-sm text-muted"><MapPin className="mt-0.5 size-4 shrink-0" />{item.location.label}</p>}
+                    {booking && <BookingEventSummary booking={booking} flights={flights} journeys={journeys} />}
+                    <span className="mt-4 flex items-center justify-end gap-1 text-xs font-extrabold text-brand">View details <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" /></span>
+                  </FocusSurface>
                 </div>
-                <div className="mt-4 space-y-2">
-                  {travelers.map((traveler) => <div key={traveler.id} className={`flex items-center gap-3 rounded-xl border p-3 transition ${focusedTravelerId === traveler.id ? "border-brand/40 bg-brand-soft" : "border-transparent bg-elevated"}`}>
-                    <button type="button" aria-pressed={focusedTravelerId === traveler.id} onClick={() => chooseTraveler(traveler.id)} className="tap-target grid size-9 shrink-0 place-items-center rounded-full bg-brand text-xs font-black text-surface" aria-label={`Plan for ${traveler.display_name}`}>{traveler.display_name.slice(0, 2).toUpperCase()}</button>
-                    <div className="min-w-0 flex-1"><p className="text-sm font-bold">{traveler.display_name}</p><p className="text-xs text-muted">{traveler.is_minor ? "Managed child" : focusedTravelerId === traveler.id ? "Selected for new items" : "Traveler"}</p></div>
-                    {editable && <button type="button" onClick={() => setEditingTraveler(traveler)} className="tap-target grid size-8 place-items-center text-muted hover:text-brand" aria-label={`Edit ${traveler.display_name}`}><Pencil className="size-3.5" /></button>}
-                    {isOwner && <button type="button" onClick={() => window.confirm(`Remove ${traveler.display_name} from future trip assignments? Existing records remain.`) && removeTravelerMutation.mutate(traveler)} className="tap-target grid size-8 place-items-center text-muted hover:text-danger" aria-label={`Remove ${traveler.display_name}`}><Trash2 className="size-3.5" /></button>}
-                  </div>)}
-                  {travelers.length === 0 && <p className="text-sm text-muted">No traveler profiles yet.</p>}
-                </div>
-                {membersQuery.data && membersQuery.data.length > 0 && <div className="mt-4 border-t border-line pt-4"><p className="eyebrow">Signed-in members</p><div className="mt-2 space-y-2">{membersQuery.data.map((member) => <div className="flex items-center gap-2 text-xs" key={member.user_id}><span className="min-w-0 flex-1 truncate font-bold">{member.display_name}{member.participation_type === "collaborator" ? " · helper" : ""}</span>{isOwner && member.role !== "owner" ? <><select aria-label={`Role for ${member.display_name}`} className="rounded-lg border border-line bg-elevated p-1 capitalize" defaultValue={member.role} onChange={async (event) => { await updateMemberRole(trip.id, member.user_id, event.target.value as "editor" | "viewer"); membersQuery.refetch(); }}><option value="editor">editor</option><option value="viewer">viewer</option></select><button className="text-danger" onClick={async () => { if (!window.confirm(`Remove ${member.display_name}? Previously downloaded copies cannot be remotely erased.`)) return; await removeMember(trip.id, member.user_id); membersQuery.refetch(); }}>Remove</button></> : <span className="capitalize text-muted">{member.role}</span>}</div>)}</div></div>}
-                {isOwner && <button onClick={() => setOpenForm("share")} className="mt-3 inline-flex items-center gap-2 text-sm font-extrabold text-brand"><UsersRound className="size-4" /> Share trip</button>}
-              </section>
-              <section className="surface-card p-5"><div className="flex items-center justify-between"><div><p className="eyebrow">Readiness</p><h2 className="mt-1 font-display text-xl font-black">Before you go</h2></div><ShieldCheck className="size-5 text-success" /></div><p className="mt-3 text-sm text-muted">{requirementsQuery.data?.filter((item) => item.status === "complete" || item.status === "not_required").length ?? 0} of {requirementsQuery.data?.length ?? 0} resolved</p><Link className="mt-4 inline-flex items-center gap-2 text-sm font-extrabold text-brand" to={`/trips/${trip.id}/readiness`}>Open readiness</Link>{editable && <button onClick={() => setOpenForm("requirement")} className="ml-4 mt-4 text-sm font-extrabold text-brand">+ Add</button>}</section>
-              <section className="surface-card p-5">
-                <div className="flex items-center justify-between"><div><p className="eyebrow">Vault</p><h2 className="mt-1 font-display text-xl font-black">Documents</h2></div><FileText className="size-5 text-brand" /></div>
-                <p className="mt-3 text-sm text-muted">{focusedDocuments.length} document{focusedDocuments.length === 1 ? "" : "s"} {focusedTravelerId ? "for the selected traveler" : "in this trip"}</p>
-                <div className="mt-3 space-y-2">{focusedDocuments.slice(0, 3).map((document) => <Link key={document.id} to={`/trips/${trip.id}/documents/${document.id}`} className="block truncate text-sm font-bold text-brand">{document.title}</Link>)}</div>
-                {focusedTravelerId && focusedDocuments.length === 0 && <p className="mt-3 text-xs text-muted">No documents are assigned to this traveler yet.</p>}
-                <button onClick={() => setOpenForm("document")} className="mt-4 inline-flex items-center gap-2 text-sm font-extrabold text-brand"><Plus className="size-4" /> {editable ? "Upload" : "Upload privately"}</button>
-              </section>
-              <section className="surface-card p-5"><div className="flex items-center justify-between"><div><p className="eyebrow">Notes</p><h2 className="mt-1 font-display text-xl font-black">Useful details</h2></div><NotebookPen className="size-5 text-brand" /></div><div className="mt-3 space-y-3">{notesQuery.data?.map((note) => <div className="rounded-xl bg-elevated p-3" key={note.id}><div className="flex items-start justify-between gap-2"><div className="min-w-0 flex-1"><p className="text-sm font-bold">{note.title || "Note"}</p><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-muted">{note.body}</p></div>{editable && <div className="flex"><button type="button" onClick={() => setEditingNote(note)} className="tap-target grid size-8 place-items-center text-muted hover:text-brand" aria-label="Edit note"><Pencil className="size-3.5" /></button><button type="button" onClick={() => window.confirm("Archive this note?") && archiveNoteMutation.mutate(note)} className="tap-target grid size-8 place-items-center text-muted hover:text-danger" aria-label="Archive note"><Trash2 className="size-3.5" /></button></div>}</div></div>)}{notesQuery.data?.length === 0 && <p className="text-sm text-muted">No notes yet.</p>}</div>{editable && <button onClick={() => setOpenForm("note")} className="mt-4 inline-flex items-center gap-2 text-sm font-extrabold text-brand"><Plus className="size-4" /> Add note</button>}</section>
-            </aside>
+              </Fragment>;
+            })}
+            {visibleItinerary.length === 0 && <button type="button" disabled={!editable} onClick={() => setOpenForm("event")} className="w-full rounded-2xl border border-dashed border-line p-8 text-sm text-muted">{editable ? "Your timeline is empty. Add the first event." : "No timeline events have been added yet."}</button>}
           </div>
-        </>}
-      </div>
-      {trip && editable && openForm === "itinerary" && <AddItineraryForm trip={trip} travelers={travelers} bookings={bookingsQuery.data ?? []} preferredTravelerId={focusedTravelerId ?? undefined} onClose={closeForm} />}
-      {trip && editable && openForm === "cost" && <AddCostForm trip={trip} onClose={closeForm} />}
-      {trip && editable && openForm === "booking" && <AddBookingForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} onClose={closeForm} />}
-      {trip && editable && openForm === "traveler" && <AddTravelerForm trip={trip} onClose={closeForm} />}
-      {trip && isOwner && openForm === "share" && <ShareTripForm trip={trip} travelers={travelersQuery.data ?? []} onClose={closeForm} />}
-      {trip && editable && openForm === "requirement" && <AddRequirementForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} onClose={closeForm} />}
-      {trip && openForm === "document" && <UploadDocumentForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} members={membersQuery.data ?? []} privateOnly={!editable} onClose={closeForm} />}
-      {trip && editable && openForm === "note" && <AddNoteForm trip={trip} onClose={closeForm} />}
-      {trip && isOwner && openForm === "settings" && <TripSettingsForm trip={trip} onClose={closeForm} onArchived={() => window.location.assign("/trips")} />}
-      {trip && editable && editingItinerary && <AddItineraryForm trip={trip} item={editingItinerary} travelers={travelersQuery.data ?? []} bookings={bookingsQuery.data ?? []} onClose={() => setEditingItinerary(null)} />}
-      {trip && editable && editingCost && <AddCostForm trip={trip} cost={editingCost} onClose={() => setEditingCost(null)} />}
-      {trip && editingTraveler && editable && <EditTravelerForm trip={trip} traveler={editingTraveler} onClose={() => setEditingTraveler(null)} />}
-      {trip && editable && editingNote && <AddNoteForm trip={trip} note={editingNote} onClose={() => setEditingNote(null)} />}
-    </AppShell>
-  );
+        </section>
+      </main> : <main className="mt-5 space-y-5">
+        <nav className="flex gap-2 overflow-auto pb-1">{[["overview","Overview"],["reservations","Reservations"],["costs","Costs"],["people","People"],["readiness","Readiness"],["documents","Documents"],["offline","Offline"],["metadata","Travel data"],["notes","Notes"]].map(([id, label]) => <a className="shrink-0 rounded-full border border-line bg-surface px-3 py-2 text-xs font-bold" key={id} href={`#${id}`}>{label}</a>)}</nav>
+        <Section id="overview" eyebrow="Overview" title="Trip information" action={isOwner && <button type="button" onClick={() => setOpenForm("settings")} className="secondary-button"><Settings className="size-4" /> Edit</button>}><dl className="grid gap-4 text-sm sm:grid-cols-2"><div><dt className="text-muted">Destination</dt><dd className="mt-1 font-bold">{trip.destination_summary}</dd></div><div><dt className="text-muted">Dates</dt><dd className="mt-1 font-bold">{formatDateRange(trip.start_date, trip.end_date)}</dd></div><div><dt className="text-muted">Default currency</dt><dd className="mt-1 font-bold">{trip.base_currency}</dd></div><div><dt className="text-muted">Fallback time zone</dt><dd className="mt-1 font-bold">{trip.primary_timezone}</dd></div></dl></Section>
+        <Section id="reservations" eyebrow="Bookings" title="Reservations" action={editable && <button type="button" className="secondary-button" onClick={() => setOpenForm("event")}><Plus className="size-4" /> Add</button>}><div className="grid gap-3 sm:grid-cols-2">{bookings.map((booking) => { const flight = flightByBooking.get(booking.id); const href = flight ? `/trips/${trip.id}/flights/${flight.id}` : `/trips/${trip.id}/bookings/${booking.id}`; const phone = booking.contact_phone ? phoneActionUrls(booking.contact_phone) : null; return <article className="rounded-2xl border border-line bg-elevated p-4" key={booking.id}><p className="text-xs font-bold uppercase tracking-[.12em] text-muted">{booking.type}{booking.journey_scope ? ` · ${booking.journey_scope}` : ""}</p><Link to={href} className="mt-2 block font-display text-lg font-black text-brand">{booking.title}</Link><p className="mt-1 text-xs text-muted">{booking.provider}{booking.reference_code ? ` · ${booking.reference_code}` : ""}{booking.booked_via_name ? ` · via ${booking.booked_via_name}` : ""}</p>{phone && <div className="mt-3 flex gap-3"><a className="text-xs font-extrabold text-brand" href={phone.call}>Call</a><a className="text-xs font-extrabold text-success" href={phone.whatsapp} target="_blank" rel="noreferrer">WhatsApp</a></div>}</article>; })}{bookings.length === 0 && <p className="col-span-full text-sm text-muted">No reservations yet.</p>}</div></Section>
+        <Section id="costs" eyebrow="Money" title="Trip costs" action={editable && <button type="button" className="secondary-button" onClick={() => { setCostTargetItem(null); setOpenForm("cost"); }}><Plus className="size-4" /> Add</button>}><CostTotals costs={costs} /><div className="mt-4 space-y-2">{costs.map((cost) => <div className="flex items-center gap-2 rounded-xl bg-elevated p-3 text-sm" key={cost.id}><span className="min-w-0 flex-1 truncate">{cost.title}</span><strong>{cost.amount_minor === 0 ? "Free" : formatMoney(cost.amount_minor, cost.currency_code)}</strong>{editable && <><button type="button" onClick={() => setEditingCost(cost)} aria-label={`Edit ${cost.title}`}><Pencil className="size-4" /></button><button type="button" className="text-danger" onClick={() => window.confirm(`Archive ${cost.title}?`) && archiveCost.mutate(cost)} aria-label={`Archive ${cost.title}`}><Trash2 className="size-4" /></button></>}</div>)}</div></Section>
+        <Section id="people" eyebrow="People & sharing" title={focusedTravelerId ? travelers.find((row) => row.id === focusedTravelerId)?.display_name ?? "Selected traveler" : "Everyone"} action={<button type="button" className="secondary-button" onClick={() => setOpenForm("people")}><UsersRound className="size-4" /> Open</button>}><p className="text-sm text-muted">Switch quickly between everyone and one traveler, add a traveler, or create a private sharing code.</p></Section>
+        <Section id="readiness" eyebrow="Before departure" title="Readiness"><p className="text-sm text-muted">{readiness.resolved} of {readiness.total} checks resolved.</p><Link className="mt-4 inline-flex text-sm font-extrabold text-brand" to={`/trips/${trip.id}/readiness`}>Open readiness checklist →</Link></Section>
+        <Section id="documents" eyebrow="Vault" title="Documents" action={<button type="button" className="secondary-button" onClick={() => setOpenForm("document")}><Plus className="size-4" /> Upload</button>}><p className="text-sm text-muted">{focusedDocuments.length} document{focusedDocuments.length === 1 ? "" : "s"} {focusedTravelerId ? "for the selected traveler" : "in this trip"}</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{focusedDocuments.map((document) => <Link key={document.id} to={`/trips/${trip.id}/documents/${document.id}`} className="rounded-xl bg-elevated p-3 text-sm font-bold text-brand">{document.title}</Link>)}</div></Section>
+        <Section id="offline" eyebrow="On this device" title="Offline pack"><OfflinePackControl tripId={trip.id} /></Section>
+        <Section id="metadata" eyebrow="Travel metadata" title="Airlines"><TripAirlinesPanel tripId={trip.id} canEdit={editable} /></Section>
+        <Section id="notes" eyebrow="Useful details" title="Notes" action={editable && <button type="button" className="secondary-button" onClick={() => setOpenForm("note")}><Plus className="size-4" /> Add</button>}><div className="space-y-3">{notesQuery.data?.map((note) => <article className="rounded-xl bg-elevated p-4" key={note.id}><div className="flex justify-between gap-3"><div><p className="font-bold">{note.title || "Note"}</p><p className="mt-2 whitespace-pre-wrap text-sm text-muted">{note.body}</p></div>{editable && <div className="flex"><button type="button" className="grid size-9 place-items-center" onClick={() => setEditingNote(note)} aria-label="Edit note"><Pencil className="size-4" /></button><button type="button" className="grid size-9 place-items-center text-danger" onClick={() => window.confirm("Archive this note?") && archiveNoteMutation.mutate(note)} aria-label="Archive note"><Trash2 className="size-4" /></button></div>}</div></article>)}{notesQuery.data?.length === 0 && <p className="text-sm text-muted">No notes yet.</p>}</div></Section>
+      </main>}
+
+      <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-line bg-surface/95 p-2 shadow-focus backdrop-blur sm:bottom-6">{editable && <button type="button" onClick={() => setOpenForm("event")} className="primary-button size-11 px-0 sm:size-auto sm:px-4" aria-label="Add event"><CalendarPlus className="size-4" /><span className="hidden sm:inline">Add event</span></button>}<button type="button" onClick={() => setOpenForm("people")} className="secondary-button size-11 justify-center px-0 sm:size-auto sm:px-4" aria-label={`People and sharing · ${focusedTraveler?.display_name ?? "Everyone"}`}>{focusedTraveler ? <span className="grid size-6 place-items-center rounded-full bg-brand text-[.55rem] font-black text-surface">{focusedTraveler.display_name.slice(0, 2).toUpperCase()}</span> : <UsersRound className="size-4" />}<span className="hidden max-w-32 truncate sm:inline">{focusedTraveler?.display_name ?? "Everyone"}</span></button>{view === "timeline" && activeItem && <button type="button" onClick={() => scrollToItem(activeItem.id)} className="tap-target grid size-11 place-items-center rounded-xl border border-line text-brand" aria-label="Jump to now or next"><LocateFixed className="size-5" /></button>}</div>
+    </>}
+  </div>
+  {trip && openForm === "event" && editable && <AddEventForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} onClose={closeForm} />}
+  {trip && openForm === "people" && <PeopleSheet trip={trip} travelers={travelers} members={members} selectedId={focusedTravelerId} editable={editable} isOwner={isOwner} onSelect={chooseTraveler} onAdd={() => setOpenForm("traveler")} onShare={() => setOpenForm("share")} onClose={closeForm} onRefresh={() => void membersQuery.refetch()} />}
+  {trip && openForm === "cost" && editable && <AddCostForm trip={trip} bookingId={costTargetItem?.booking_id ?? undefined} itineraryItemId={costTargetItem?.id} onClose={closeForm} />}
+  {trip && openForm === "document" && <UploadDocumentForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} members={members} privateOnly={!editable} bookingId={documentTargetItem?.booking_id ?? undefined} onUploaded={documentTargetItem ? async (documentId) => { await attachDocumentsToEvent(documentTargetItem, [documentId]); await queryClient.invalidateQueries({ queryKey: ["event-documents", documentTargetItem.id] }); } : undefined} onClose={closeForm} />}
+  {trip && openForm === "traveler" && editable && <AddTravelerForm trip={trip} onClose={closeForm} />}
+  {trip && openForm === "share" && isOwner && <ShareTripForm trip={trip} travelers={travelers} onClose={closeForm} />}
+  {trip && openForm === "requirement" && editable && <AddRequirementForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} onClose={closeForm} />}
+  {trip && openForm === "note" && editable && <AddNoteForm trip={trip} onClose={closeForm} />}
+  {trip && openForm === "settings" && isOwner && <TripSettingsForm trip={trip} onClose={closeForm} onArchived={() => navigate("/trips")} />}
+  {trip && viewingItinerary && <EventDetailsSheet item={viewingItinerary} tripId={trip.id} booking={viewingItinerary.booking_id ? bookings.find((booking) => booking.id === viewingItinerary.booking_id) : undefined} flights={flights} journeys={journeys} travelerIds={participantRows.filter((row) => row.itinerary_item_id === viewingItinerary.id).map((row) => row.traveler_id)} travelers={travelers} costs={costs} editable={editable} canMoveUp={viewingItineraryIndex > 0 && itinerary[viewingItineraryIndex - 1]?.starts_at === viewingItinerary.starts_at} canMoveDown={viewingItineraryIndex >= 0 && itinerary[viewingItineraryIndex + 1]?.starts_at === viewingItinerary.starts_at} onClose={() => setViewingItineraryId(null)} onEdit={() => { setViewingItineraryId(null); setEditingItinerary(viewingItinerary); }} onArchive={() => { if (window.confirm(`Archive ${viewingItinerary.title}? Linked documents remain in the Vault.`)) { setViewingItineraryId(null); archiveItinerary.mutate(viewingItinerary); } }} onAddCost={() => { setViewingItineraryId(null); setCostTargetItem(viewingItinerary); setOpenForm("cost"); }} onEditCost={(cost) => { setViewingItineraryId(null); setEditingCost(cost); }} onUploadDocument={() => { setViewingItineraryId(null); setDocumentTargetItem(viewingItinerary); setOpenForm("document"); }} onComplete={(completed) => completePreparation.mutate({ item: viewingItinerary, completed })} onMoveUp={() => reorderItinerary.mutate({ itemId: viewingItinerary.id, direction: "up" })} onMoveDown={() => reorderItinerary.mutate({ itemId: viewingItinerary.id, direction: "down" })} />}
+  {trip && editingItinerary && editable && <AddItineraryForm trip={trip} item={editingItinerary} travelers={travelers} bookings={bookings} onClose={() => setEditingItinerary(null)} />}
+  {trip && editingCost && editable && <AddCostForm trip={trip} cost={editingCost} onClose={() => setEditingCost(null)} />}
+  {trip && editingTraveler && editable && <EditTravelerForm trip={trip} traveler={editingTraveler} onClose={() => setEditingTraveler(null)} />}
+  </AppShell>;
 }

@@ -4,7 +4,7 @@ description: "Implemented system architecture, responsibilities, major flows, ri
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [architecture, pwa, offline, collaboration, supabase, cloudflare]
-last_verified: 2026-09-10
+last_verified: 2026-09-11
 ---
 
 # Trip Vault High-Level Design
@@ -13,7 +13,7 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 
 **Document status:** Implemented personal MVP 1.0
 
-**Implementation status:** Local application complete; configured Supabase project requires the latest migration and remote acceptance testing
+**Implementation status:** Timeline-first local application complete; configured Supabase project requires `202609110001_timeline_redesign.sql` and remote acceptance testing
 
 **Default decision state:** Accepted unless explicitly marked as deferred
 
@@ -28,6 +28,8 @@ A traveler should be able to open Trip Vault and immediately answer:
 - Which travelers can see or edit it?
 
 The product should feel like a focused travel utility, not a general cloud drive.
+
+The primary trip experience is a chronological projection over itinerary rows. Detailed booking, journey-leg, cost, readiness, and document records remain authoritative in their own tables and link into that projection. Readiness is derived into one pre-trip summary card; optional dated work such as packing or SIM setup is stored as a normal Preparation event.
 
 ## 2. Goals and Non-Goals
 
@@ -124,6 +126,12 @@ The owner creates a unique, expiring, one-time code for an intended traveler or 
 
 New documents are private to their uploader until the user deliberately chooses trip-wide or selected-member visibility. Removing a member prevents future cloud access but cannot revoke copies already downloaded.
 
+### 6.7 Document meaning is separate from access
+
+A document has four independent concerns: immutable file versions, a specific travel purpose, links to bookings/events/journey legs, and traveler usage. Usage is **Shared**, **Selected travelers**, or **Assign later** and never grants access. Visibility remains **Only me**, **Signed-in trip members**, or **Selected signed-in members**. This permits one accommodation confirmation to support a group, a personal visa or boarding pass to follow one traveler, and unnamed admission tickets to remain in a pool until assigned.
+
+The document route is a viewer first: an authorized PDF or image opens automatically from the verified device copy, or downloads once and is then cached locally. Native full-screen viewing remains available for zooming. File facts, access, local-copy controls, replacement, archiving, and version history live behind an information action instead of displacing the travel document.
+
 ## 7. Primary Data Domains
 
 ```mermaid
@@ -140,6 +148,8 @@ flowchart TD
     TRIP --> DOCUMENT[Document Metadata]
     DOCUMENT --> VERSION[Immutable File Version]
     DOCUMENT --> ACCESS[Document Access]
+    DOCUMENT --> ASSIGNMENT[Traveler Usage]
+    ASSIGNMENT --> TRAVELER
     ITEM --> ITEM_DOCUMENT[Event Document Links]
     ITEM_DOCUMENT --> DOCUMENT
     PROFILE --> ACCESS
@@ -172,11 +182,12 @@ flowchart TD
 ### 8.2 Add a booking or document
 
 1. The user selects the trip and content type.
-2. The app validates and saves a local draft immediately.
-3. If online, structured data is written to Supabase and files upload separately.
-4. If offline, the mutation remains in the device outbox.
-5. The UI shows `Saved locally`, `Syncing`, `Synced`, or `Action required`.
-6. Other connected members receive authorized metadata changes after synchronization.
+2. For a document, the user chooses a concrete purpose and whether it is shared, assigned to selected travelers, or awaiting assignment; access is chosen separately.
+3. The app validates the file, calculates its checksum, and points to an existing Vault item when the same bytes already exist in that trip.
+4. A new file and metadata record are saved locally immediately.
+5. If online, structured data is written to Supabase and files upload separately; if offline, the mutation remains in the device outbox.
+6. The UI shows `Saved locally`, `Syncing`, `Synced`, or a safe `Action required` reason.
+7. Other connected members receive only metadata and files allowed by document visibility.
 
 ### 8.3 Prepare a trip for offline use
 
@@ -330,6 +341,9 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 | HLD-032 | Document compression | Do not automatically rewrite files in MVP; consider explicit user-reviewed image optimization later and leave PDFs unchanged | Accepted |
 | HLD-033 | Local document opening | A current local sign-in and a verified file in that profile's device namespace are sufficient to open it; only cloud retrieval rechecks trip and document authorization | Accepted |
 | HLD-034 | Itinerary event attachments | Model event-to-document links independently so an event can contain many documents and unlinking an event never deletes the Vault document | Accepted |
+| HLD-035 | Document traveler usage | Keep usage separate from access and support Shared, Selected travelers, and Assign later with a many-to-many traveler relationship | Accepted |
+| HLD-036 | Document interaction | Open PDFs/images directly in a local-first viewer; put metadata and management behind an Info action and retain native full-screen zoom | Accepted |
+| HLD-037 | Duplicate files | Compare SHA-256 within the trip before storing another copy and direct the user to the existing Vault document | Accepted |
 
 ## 14. Risks Requiring Explicit Discussion
 
@@ -366,7 +380,7 @@ The implementation is organized by application shell, product feature, local per
 | High-level design | `docs/HIGH_LEVEL_DESIGN.md` | System boundaries, major flows, and decision register |
 | Low-level design | `docs/LOW_LEVEL_DESIGN.md` | Implemented application and data contract |
 | Feature catalog | `docs/FEATURES.md` | Product scope and acceptance conditions |
-| Manual acceptance guide | `docs/MANUAL_FUNCTIONAL_TEST.md` | Remote setup and end-to-end verification |
+| Redesign checklist | `docs/REDESIGN_CHECKLIST.md` | Active timeline-first decisions, schema impact, and preview slices |
 | Database migrations | `supabase/migrations/` | Authoritative schema, functions, grants, Storage configuration, and RLS |
 | Application source | `src/` | React PWA, feature workflows, offline storage, and tests |
 | Documentation conventions | `docs/doc-conventions.md` | Status and writing rules |

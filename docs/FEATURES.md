@@ -4,16 +4,32 @@ description: "Prioritized inventory of Trip Vault capabilities, MVP boundaries, 
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [features, product-scope, mvp, acceptance-criteria, roadmap]
-last_verified: 2026-09-10
+last_verified: 2026-09-11
 ---
 
 # Trip Vault Feature Catalog
 
 This catalog is the product-scope source of truth for the personal Trip Vault application. Prototype and MVP items define the implemented release contract unless an item explicitly says it is deferred; Later and Not planned items remain outside this implementation.
 
+**Redesign status:** the accepted timeline-first decisions in `docs/REDESIGN_CHECKLIST.md` are implemented locally and included in this catalog.
+
 **Catalog status:** Personal MVP 1.0
 
 **Implementation status:** Implemented locally; the configured Supabase project still requires the completion migration and remote acceptance run
+
+### Timeline-first release additions
+
+- Open a trip directly into one chronological timeline and position it at the single current/next event.
+- Keep one derived readiness card above the timeline; represent other dated pre-trip work as `preparation` events.
+- Create Flight, Train, Bus, Ferry/Boat, Cab, Hotel, Meal, Activity, Transport, Preparation, and Custom events from one Add Event flow.
+- Store connected journeys as one booking with ordered legs, using explicit origin/destination IANA time zones and provider-local ticket display.
+- Require flight PNR, support domestic/international classification, boarding lead or exact time, and manual operational updates.
+- Store booked-via vendor/website and optional phone; expose phone handlers through Call and WhatsApp actions.
+- Search authorized cached trip metadata locally and jump to the matching event or detail.
+- Generate a QR invitation from the existing one-time code without storing a QR image or sending the code to a QR-generation service.
+- Keep Reservations, Costs, People, Readiness, Documents, Offline, Travel metadata, Notes, and Settings in a sectioned Trip details workspace.
+- Classify uploaded files in travel language, assign them to everyone, selected travelers, or later, and keep that assignment separate from signed-in access.
+- Open a document directly in a local-first viewer, retain native full-screen zoom, and move metadata/management behind an Info action.
 
 ## 1. Priority and Release Definitions
 
@@ -44,7 +60,7 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 | Airline metadata | 1 | 5 | 0 |
 | Administration and metadata | 2 | 8 | 0 |
 | Travel readiness | 3 | 9 | 1 |
-| Documents | 4 | 14 | 5 |
+| Documents | 4 | 16 | 5 |
 | Offline and sync | 3 | 14 | 4 |
 | Collaboration | 4 | 14 | 3 |
 | Search and organization | 2 | 3 | 6 |
@@ -92,7 +108,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 |---|---|---:|---|---|
 | TRP-001 | Trip card | P0 | Prototype | Shows title, date range, progress, document count, traveler avatars, and offline state |
 | TRP-002 | Trip detail mockup | P0 | Prototype | Demonstrates overview, itinerary, bookings, documents, notes, and members |
-| TRP-003 | Trip creation | P0 | MVP | User can create a trip with title, destination, dates, and primary timezone |
+| TRP-003 | Trip creation | P0 | MVP | User can create a trip with title, destination, dates, and currency; the hidden compatibility timezone is taken from the device while each journey records its own endpoint timezones |
 | TRP-004 | Trip editing | P0 | MVP | Authorized users can update trip details with version-conflict protection |
 | TRP-005 | Trip lifecycle | P0 | MVP | Trips are grouped as draft, upcoming, active, completed, or archived using agreed rules |
 | TRP-006 | Trip progress | P1 | MVP | Progress is based on an explicit checklist definition rather than an unexplained percentage |
@@ -130,7 +146,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DSH-021 | One-tap essential document | P0 | MVP | A contextual shortcut opens the correct authorized local copy when offline and the current cloud version when online |
 | DSH-022 | Immediate travel actions | P1 | MVP | Flight, hotel, and transport cards can expose relevant check-in, tracking, navigation, call, or copy-reference actions |
 | DSH-023 | Single current-trip focus | P0 | MVP | Home presents at most one current trip per user while retaining other upcoming and historical trips elsewhere |
-| DSH-024 | D-1 current-mode transition | P0 | MVP | Current mode begins at local midnight one calendar day before the trip start in the trip timezone and ends after the trip end |
+| DSH-024 | D-1 current-mode transition | P0 | MVP | Current mode begins one calendar day before the trip using the hidden compatibility timezone captured from the creator's device; journey display always uses each endpoint's source timezone |
 | DSH-025 | Overlap resolution | P1 | MVP | If trip windows overlap, the user can choose the focused trip and can switch without changing either trip's dates |
 | DSH-026 | Contextual-focus motion mockup | P0 | Prototype | Demonstrates a restrained zoom/elevation treatment for the current trip and current timeline item, scroll-settled carousel focus, route continuity, and a reduced-motion variant |
 | DSH-027 | Contextual-focus motion system | P0 | MVP | Current content receives a label, accent, and small transform without relying on motion or color alone; animations use approved properties/timings and become static when reduced motion is requested |
@@ -161,29 +177,31 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 |---|---|---:|---|---|
 | DOC-001 | Document list mockup | P0 | Prototype | Demonstrates categories, visibility, file size, version, and offline status |
 | DOC-002 | Upload mockup | P0 | Prototype | Demonstrates progress, metadata entry, visibility selection, and error states |
-| DOC-003 | Document preview mockup | P0 | Prototype | Demonstrates safe PDF/image viewing and unsupported-file download behavior |
+| DOC-003 | Document preview mockup | P0 | Prototype | Makes the PDF/image the primary page, with an Info sheet and native full-screen zoom action |
 | DOC-004 | Category filters | P0 | Prototype | User can switch between all documents and major travel categories |
 | DOC-005 | Private upload | P0 | MVP | New document is private to uploader unless a broader scope is deliberately selected |
 | DOC-006 | Shared upload | P0 | MVP | Authorized user can share with the whole trip or selected active members |
 | DOC-007 | Retryable small-file upload | P0 | MVP | An interrupted file remains in the outbox and retries safely from its verified local copy; the under-5-MB MVP does not promise chunk-level resume |
 | DOC-008 | Immutable versions | P0 | MVP | Replacing a document creates a new version and preserves version history |
-| DOC-009 | Safe preview | P0 | MVP | PDFs and approved images preview without executing active uploaded content |
+| DOC-009 | Safe preview | P0 | MVP | PDFs and approved images open automatically from a verified local copy, or download once from private storage and then remain cached |
 | DOC-010 | Download original | P0 | MVP | Authorized user receives the original with correct filename and MIME type |
-| DOC-011 | Document metadata | P0 | MVP | Title, category, trip, related booking or itinerary events, uploader, size, and visibility are searchable |
+| DOC-011 | Document metadata | P0 | MVP | Title, purpose, category, trip, related booking or itinerary events, traveler usage, uploader, size, and visibility are searchable |
 | DOC-012 | Integrity check | P0 | MVP | Server manifest and pinned local file can be compared using size and SHA-256 |
 | DOC-013 | Recoverable document deletion | P1 | MVP | Authorized deletion hides the document while retaining a defined restoration window |
 | DOC-014 | Storage usage | P1 | MVP | Profile shows approximate cloud and local usage with understandable units |
-| DOC-015 | Multi-file upload | P1 | MVP | User can queue several documents and see independent progress and errors |
+| DOC-015 | Multi-file upload | P1 | Later | Batch selection must still collect purpose, traveler usage, and access for every file rather than silently creating generic documents |
 | DOC-016 | Version restoration | P1 | Later | Authorized user can make an earlier immutable version current without data loss |
 | DOC-017 | Full-text OCR search | Explore | Not planned | Documents are stored and categorized without OCR or content extraction |
-| DOC-018 | Duplicate file suggestion | P2 | Later | Matching checksum produces a suggestion without blocking legitimate reuse |
+| DOC-018 | Exact duplicate file recovery | P0 | MVP | Matching same-trip SHA-256 stops a second byte copy and offers to open or attach the existing Vault document |
 | DOC-019 | Share outside trip | Explore | Not planned | Real documents require a signed-in active trip member; public or recipient-only file links are excluded |
 | DOC-020 | Trip archive export | P1 | Later | User can create a portable package with manifest and selected originals |
 | DOC-021 | Camera scan | P2 | Later | Mobile capture creates a corrected image or PDF with clear quality feedback |
-| DOC-022 | Traveler-linked visibility | P0 | MVP | A sensitive document can remain private to its uploader or linked traveler account without becoming trip-wide; explicit document-manager grants are deferred |
+| DOC-022 | Traveler usage assignment | P0 | MVP | Usage is Shared, Selected travelers, or Assign later; selected usage supports multiple travelers and never grants document access |
 | DOC-023 | Five-megabyte upload boundary | P0 | MVP | Every file must be smaller than 5,000,000 bytes; the picker, offline queue, upload finalization, and private Storage bucket enforce the same limit and show the measured size when rejected |
 | DOC-024 | User-reviewed image optimization | P2 | Later | An oversized JPEG, PNG, or WebP may be converted to a smaller copy only after before/after size and legibility preview; the app never claims the result is lossless |
 | DOC-025 | Multiple documents per itinerary event | P0 | MVP | An itinerary event can link, order, open, and unlink multiple existing or newly uploaded documents; unlinking or deleting the event does not delete the underlying Vault documents |
+| DOC-026 | Travel-specific document types | P0 | MVP | Upload offers flight ticket, boarding pass, baggage tag, visa, passport, stay confirmation, journey ticket, activity confirmation/admission, meal voucher, receipt, insurance, and Other with sensible assignment defaults |
+| DOC-027 | Assignment/access separation | P0 | MVP | The upload form explains that who uses a document is independent from Only me, signed-in trip, or selected-member access |
 
 ## 9. Offline and Synchronization
 
@@ -472,6 +490,9 @@ The MVP is ready for private travel use only when:
 30. A file of 4,999,999 bytes is accepted and a file of 5,000,000 bytes is rejected consistently before local queuing and by authoritative cloud storage validation.
 31. A verified local document opens for the profile that stored it with no cached document-authorization branch, while the same browser signed into another profile cannot discover or open that copy.
 32. One itinerary event can display and open several authorized documents online and offline; unlinking one attachment or deleting the event leaves every underlying Vault document intact.
+33. A stay confirmation can be shared, a boarding pass or visa can target one or more travelers, and an unnamed admission ticket can remain unassigned without changing who may open it.
+34. Opening a document immediately shows the verified local PDF/image, or retrieves and caches it once; metadata and destructive actions remain behind Info.
+35. Uploading the same bytes twice in one trip offers the existing Vault document instead of storing a duplicate.
 
 ## 21. Product Decisions and Open Reviews
 
@@ -504,6 +525,9 @@ The MVP is ready for private travel use only when:
 | 25 | Automatic compression | Accepted | Do not alter files automatically in MVP; consider an explicit image-only smaller-copy tool later, while PDFs remain unchanged |
 | 26 | Local document opening | Accepted | Current local sign-in plus a verified file in that profile's namespace is sufficient; only a missing cloud file requires current server authorization |
 | 27 | Itinerary event documents | Accepted | Use event-to-document links so one event can contain several documents and one document can be reused without duplicating its stored file |
+| 28 | Document usage versus access | Accepted | Shared, selected-traveler, and unassigned usage is independent from private, trip, or selected-member authorization |
+| 29 | Document-page hierarchy | Accepted | The document is visible first and cached locally; Info contains facts and management, while full-screen uses the device viewer |
+| 30 | Exact duplicate handling | Accepted | Same-trip SHA-256 matches reuse the existing Vault record and bytes |
 
 ## 22. Research Sources
 
@@ -537,7 +561,7 @@ The MVP is ready for private travel use only when:
 
 ## Source File Index
 
-Feature behavior is implemented under `src/features/` and exposed through `src/pages/`. Automated tests are co-located; cross-feature acceptance lives in the manual run guide.
+Feature behavior is implemented under `src/features/` and exposed through `src/pages/`. Automated tests are co-located; redesign decisions are tracked separately until accepted.
 
 | Resource | Path | Responsibility |
 |---|---|---|
@@ -546,5 +570,5 @@ Feature behavior is implemented under `src/features/` and exposed through `src/p
 | Low-level design | `docs/LOW_LEVEL_DESIGN.md` | Detailed behavior and implemented contract |
 | Application source | `src/` | Routes, feature logic, local-first persistence, and co-located tests |
 | Supabase schema | `supabase/migrations/` | Database, authorization, object Storage, and server functions |
-| Functional run guide | `docs/MANUAL_FUNCTIONAL_TEST.md` | Setup and end-to-end acceptance procedure |
+| Redesign checklist | `docs/REDESIGN_CHECKLIST.md` | Proposed decisions, schema impact, and small preview slices |
 | Documentation conventions | `docs/doc-conventions.md` | Decision and maintenance rules |

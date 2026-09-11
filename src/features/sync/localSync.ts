@@ -80,13 +80,25 @@ export function orderOutbox(operations: OutboxOperation[]) {
 }
 
 export function classifySyncError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
+  const candidate = error && typeof error === "object" ? error as { code?: unknown; message?: unknown; details?: unknown; hint?: unknown } : null;
+  const message = error instanceof Error
+    ? error.message
+    : candidate
+      ? [candidate.code, candidate.message, candidate.details, candidate.hint].filter(Boolean).join(" ")
+      : String(error);
   if (/version_conflict|changed on another device/i.test(message)) return "conflict" as const;
   if (/quota|space/i.test(message)) return "quota" as const;
   if (/auth|sign in|session/i.test(message)) return "authentication" as const;
   if (/permission|row.level.security|forbidden|not authorized|42501/i.test(message)) return "permission" as const;
+  if (/schema cache|column .* does not exist|relation .* does not exist|42703|42P01/i.test(message)) return "schema" as const;
   if (/network|fetch|timeout|temporar|unavailable/i.test(message)) return "retryable" as const;
   return "failed" as const;
+}
+
+export function isDuplicateKeyError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return candidate.code === "23505" || /duplicate key|already exists/i.test(String(candidate.message ?? ""));
 }
 
 export type SyncIssue = OutboxOperation & { localValue: unknown; serverValue?: unknown };
@@ -139,10 +151,20 @@ async function pushDocument(operation: OutboxOperation) {
   if (!supabase) throw new Error("Supabase is not connected.");
   const payload = operation.payload as { document: Record<string, unknown> & { id: string }; version: Record<string, unknown> & { id: string }; storagePath: string };
   const blob = await readOfflineFile(operation.profileId, payload.version.id); if (!blob) throw new Error("Local document bytes are missing.");
-  const { error: docError } = await supabase.from("documents").upsert({ ...payload.document, current_version_id: null }); if (docError) throw docError;
+  // Uploads are resumable: a previous attempt may have created either row before
+  // the storage upload or final pointer update failed. `ignoreDuplicates` maps to
+  // ON CONFLICT DO NOTHING, so retries do not emit a 23505 response or require
+  // the UPDATE policy merely to rediscover an existing row.
+  const { error: docError } = await supabase
+    .from("documents")
+    .upsert({ ...payload.document, current_version_id: null }, { onConflict: "id", ignoreDuplicates: true });
+  if (docError) throw docError;
   const { error: uploadError } = await supabase.storage.from("trip-documents").upload(payload.storagePath, blob, { contentType: String(payload.version.mime_type), upsert: false });
   if (uploadError && !/exist|duplicate/i.test(uploadError.message)) throw uploadError;
-  const { error: versionError } = await supabase.from("document_versions").upsert(payload.version); if (versionError) throw versionError;
+  const { error: versionError } = await supabase
+    .from("document_versions")
+    .upsert(payload.version, { onConflict: "id", ignoreDuplicates: true });
+  if (versionError) throw versionError;
   const { error: finalError } = await supabase.from("documents").update({ current_version_id: payload.version.id }).eq("id", payload.document.id); if (finalError) throw finalError;
 }
 
@@ -155,7 +177,7 @@ export async function syncOutbox() {
       if (operation.operation === "upload_document") await pushDocument(operation);
       else {
         const payload = operation.payload as { table: string; row?: Record<string, unknown>; patch?: Record<string, unknown>; match?: Record<string, string>; hard?: boolean };
-        if (operation.operation === "create" && payload.row) { const { error } = await supabase.from(payload.table).upsert(payload.row); if (error) throw error; }
+        if (operation.operation === "create" && payload.row) { const { error } = await supabase.from(payload.table).upsert(payload.row, { ignoreDuplicates: true }); if (error) throw error; }
         if (operation.operation === "update" && payload.patch) {
           let request = supabase.from(payload.table).update(payload.patch).eq("id", operation.entityId);
           if (operation.baseVersion !== undefined) request = request.eq("version", operation.baseVersion);

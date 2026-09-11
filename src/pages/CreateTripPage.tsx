@@ -54,7 +54,9 @@ export function CreateTripPage() {
             <label className="form-label">Trip name<input className="form-input" name="title" placeholder="Japan spring holiday" autoFocus /></label>
             <label className="form-label">Destination<input className="form-input" name="destination" placeholder="Tokyo, Kyoto & Osaka" /></label>
             <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Start date<input className="form-input" name="startDate" type="date" defaultValue={dateInput(30)} /></label><label className="form-label">End date<input className="form-input" name="endDate" type="date" defaultValue={dateInput(37)} /></label></div>
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_8rem]"><label className="form-label">Trip time zone<input className="form-input" name="timezone" defaultValue={Intl.DateTimeFormat().resolvedOptions().timeZone} placeholder="Asia/Kolkata" /></label><label className="form-label">Currency<input className="form-input uppercase" name="baseCurrency" defaultValue="INR" maxLength={3} /></label></div>
+            <input type="hidden" name="timezone" value={Intl.DateTimeFormat().resolvedOptions().timeZone} />
+            <label className="form-label sm:max-w-36">Currency<input className="form-input uppercase" name="baseCurrency" defaultValue="INR" maxLength={3} /></label>
+            <p className="-mt-2 text-xs leading-5 text-muted">Departure and arrival time zones are recorded on each journey, just as they appear on the ticket.</p>
             {(message || mutation.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{message || getErrorMessage(mutation.error)}</p>}
             <button className="primary-button w-full" disabled={mutation.isPending} type="submit">{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <MapPinned className="size-4" />} Create trip</button>
           </form>

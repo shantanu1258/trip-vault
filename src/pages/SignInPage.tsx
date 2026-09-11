@@ -1,6 +1,6 @@
 import { ArrowLeft, Eye, EyeOff, KeyRound, Loader2, LockKeyhole, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Brand } from "../components/Brand";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { rememberDeviceProfile } from "../lib/auth/deviceSession";
@@ -18,6 +18,8 @@ export function SignInPage({ admin = false }: { admin?: boolean }) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const requestedPath = typeof location.state === "object" && location.state && "from" in location.state ? String(location.state.from) : "/home";
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -45,7 +47,7 @@ export function SignInPage({ admin = false }: { admin?: boolean }) {
         if (!data.session) setMessage("Account created. Your Supabase project currently requires an email confirmation before sign-in.");
         else {
           rememberDeviceProfile(data.session.user.id);
-          navigate("/home");
+          navigate(requestedPath, { replace: true });
         }
       } else {
         const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
@@ -65,7 +67,7 @@ export function SignInPage({ admin = false }: { admin?: boolean }) {
           navigate("/admin");
         } else {
           rememberDeviceProfile(data.user.id);
-          navigate("/home");
+          navigate(requestedPath, { replace: true });
         }
       }
     } catch (cause) {

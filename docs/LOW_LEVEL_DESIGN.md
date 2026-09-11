@@ -4,7 +4,7 @@ description: "Implemented routes, modules, data model, authorization, file stora
 scope: [service-wide]
 agents: [coder, reviewer, planner, debugger]
 tags: [implementation, data-model, sync, storage, authorization, testing]
-last_verified: 2026-09-10
+last_verified: 2026-09-11
 ---
 
 # Trip Vault Low-Level Design
@@ -13,7 +13,7 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 
 **Document status:** Implemented personal MVP 1.0
 
-**Implementation status:** Local implementation complete; see `MANUAL_FUNCTIONAL_TEST.md` for remote setup and acceptance testing
+**Implementation status:** Timeline-first implementation complete locally; run `202609110001_timeline_redesign.sql` before remote functional testing
 
 ## 1. Technology Set
 
@@ -38,7 +38,7 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 | Motion | Property-specific Tailwind transitions plus CSS scroll snap and Intersection Observer | Implemented | Restrained focus changes and reduced-motion fallback |
 | Map hand-off | Google Maps URLs | Accepted | Search and directions links need no API key; no embedded maps, geocoding, or downloads in MVP |
 | Flight status | Manual records plus external links | Accepted | No live-data provider, scraping, or background polling |
-| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | The executable local baseline is 17 suites and 71 tests; production service-worker cold start is browser-verified |
+| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | The executable local baseline is 20 files and 84 tests; production PWA build precaches successfully |
 
 ## 2. Implemented Repository Layout
 
@@ -48,7 +48,7 @@ trip-vault/
 │   ├── HIGH_LEVEL_DESIGN.md
 │   ├── LOW_LEVEL_DESIGN.md
 │   ├── FEATURES.md
-│   ├── MANUAL_FUNCTIONAL_TEST.md
+│   ├── REDESIGN_CHECKLIST.md
 │   └── doc-conventions.md
 ├── public/
 │   ├── demo-documents/
@@ -105,6 +105,8 @@ Feature folders should own their views, hooks, validation, and tests. Shared pri
 | `/admin` | Application administrator | Configuration overview, validation failures, and published version | Cached view optional; all changes require connection |
 | `/admin/airlines` | Application administrator | Global airline catalog and action templates | Read-only cached view; publishing unavailable |
 | `/admin/airports` | Application administrator | Airport names, codes, timezones, aliases, and optional location | Read-only cached view; publishing unavailable |
+| `/admin/vendors` | Application administrator | Booking vendor names, links, branding, ordering, and enablement | Read-only cached view; publishing unavailable |
+| `/admin/suggestions` | Application administrator | Privacy-safe airline, airport, vendor, and provider suggestions | Not available offline |
 | `/admin/defaults` | Application administrator | Booking, document, readiness, reminder, and link defaults | Read-only cached view; publishing unavailable |
 | `/admin/appearance` | Application administrator | Light/dark token editor and preview | Bundled preview works; saving and publishing require connection |
 | `/admin/releases` | Application administrator | Draft, publish history, audit, and rollback | Connection required |
@@ -116,7 +118,7 @@ Feature folders should own their views, hooks, validation, and tests. Shared pri
 | `/trips/:tripId/bookings/:bookingId` | Trip member | Booking details and attachments | Available when metadata is cached |
 | `/trips/:tripId/flights/:flightLegId` | Trip member | Flight details, manual update, ticket, boarding pass, and baggage tags | All cached fields and pinned files remain available |
 | `/trips/:tripId/readiness` | Trip member | Visa, passport, insurance, check-in, and custom requirements | Reads and edits cached requirements |
-| `/trips/:tripId/documents/:documentId` | Authorized member | Document details and preview | Preview only when file is pinned |
+| `/trips/:tripId/documents/:documentId` | Authorized member | Local-first document viewer with secondary information/actions sheet | Verified local version opens immediately; a permitted cloud version downloads once and is cached |
 | `/vault` | Authenticated | Searchable cross-trip document index | Searches local metadata; remote refresh when online |
 | `/add` | Authenticated | Quick-add chooser | Drafts can be stored locally |
 | `/profile` | Authenticated | Account, devices, storage, and security | Local settings available |
@@ -138,9 +140,10 @@ The wide-screen layout may render several routes as side panels, but URL identit
 | `app_admin_status` | `active`, `disabled` |
 | `config_release_status` | `draft`, `published`, `retired` |
 | `theme_preference` | `system`, `light`, `dark` |
-| `booking_type` | `flight`, `hotel`, `transport`, `activity`, `restaurant`, `other` |
-| `document_category` | `flight`, `hotel`, `visa`, `passport`, `insurance`, `ticket`, `transport`, `receipt`, `other` |
-| `document_purpose` | `confirmation`, `ticket`, `boarding_pass`, `baggage_tag`, `visa`, `passport`, `insurance`, `other` |
+| `booking_type` | `flight`, `hotel`, `train`, `bus`, `ferry`, `cab`, `transport`, `activity`, `restaurant`, `other` |
+| `document_category` | `flight`, `hotel`, `activity`, `visa`, `passport`, `insurance`, `ticket`, `transport`, `receipt`, `other` |
+| `document_purpose` | `confirmation`, `ticket`, `boarding_pass`, `baggage_tag`, `visa`, `passport`, `insurance`, `hotel_confirmation`, `activity_ticket`, `meal_voucher`, `receipt`, `other` |
+| `document_assignment_mode` | `shared`, `selected`, `unassigned` |
 | `document_visibility` | `private`, `traveler_and_managers`, `trip`, `selected_members` |
 | `flight_status` | `scheduled`, `check_in_open`, `boarding`, `delayed`, `departed`, `landed`, `cancelled` |
 | `requirement_type` | `visa`, `passport`, `insurance`, `check_in`, `payment`, `packing`, `custom` |
@@ -413,10 +416,16 @@ Primary key: `(booking_id, traveler_id)`.
 | `type` | `booking_type` | Display and form behavior |
 | `title` | Text | Human-readable label |
 | `provider` | Text, nullable | Airline, property, or operator |
-| `reference_code` | Text, nullable | Confirmation or reservation code |
+| `reference_code` | Text, nullable | Confirmation or reservation code; mandatory for flights |
 | `start_at` | Timestamp, nullable | Chronological placement |
 | `end_at` | Timestamp, nullable | Duration or checkout |
 | `source_timezone` | Text, nullable | Time zone as issued by provider |
+| `journey_scope` | `domestic` / `international`, nullable | User-classified travel scope |
+| `booked_via_name` | Text, nullable | Booking website, agency, or direct channel snapshot |
+| `booked_via_url` | HTTPS URL, nullable | Booking-management hand-off |
+| `booking_vendor_catalog_key` | Text, nullable | Optional published vendor source |
+| `contact_name` | Text, nullable | Driver, property, operator, or agent contact |
+| `contact_phone` | Text, nullable | Number exposed through platform Call and WhatsApp handlers |
 | `location` | JSON, nullable | Structured name and address |
 | `details` | JSON | Type-specific fields validated by schema |
 | `created_by` | UUID | Audit actor |
@@ -480,6 +489,10 @@ One flight booking may contain several ordered legs. Each leg keeps scheduled va
 | `departure_timezone` | Text | IANA timezone for source display |
 | `arrival_timezone` | Text | IANA timezone for destination display |
 | `boarding_at` | Timestamp, nullable | User-entered boarding time |
+| `boarding_lead_minutes` | Integer, nullable | Derives boarding from departure when no exact time exists |
+| `journey_scope` | `domestic` / `international`, nullable | Booking scope copied to the leg |
+| `departure_country_code` | Two-letter code, nullable | Origin country snapshot |
+| `arrival_country_code` | Two-letter code, nullable | Destination country snapshot |
 | `departure_terminal` | Text, nullable | Current terminal |
 | `departure_gate` | Text, nullable | Current gate |
 | `arrival_terminal` | Text, nullable | Current arrival terminal |
@@ -508,6 +521,12 @@ Unique constraint: `(booking_id, segment_order)`.
 
 Primary key: `(flight_leg_id, traveler_id)`.
 
+#### `journey_legs`
+
+Train, Bus, Ferry/Boat, and Cab bookings share one ordered-leg model. Each leg stores mode, operator/service, origin and destination names/codes/countries, separate strict IANA time zones, scheduled instants, optional boarding lead/exact time, platforms or bays, coach/cabin, seat, status note, and optimistic version fields. The booking type must match the leg mode, arrival must be after departure, and `(booking_id, segment_order)` is unique.
+
+The UI enters departure in origin local time and arrival in destination local time, converts both to instants, rejects DST gaps/ambiguous times unless the user chooses an occurrence, and computes elapsed duration from the instants.
+
 #### `itinerary_items`
 
 | Field | Type | Purpose |
@@ -516,6 +535,8 @@ Primary key: `(flight_leg_id, traveler_id)`.
 | `trip_id` | UUID | Parent trip |
 | `booking_id` | UUID, nullable | Optional booking source |
 | `title` | Text | Timeline label |
+| `event_type` | `timeline_event_type` | Flight, Train, Bus, Ferry, Cab, hotel milestone, transport, meal, activity, preparation, or custom |
+| `completed_at` | Timestamp, nullable | Completion state for preparation events |
 | `starts_at` | Timestamp | Ordering time |
 | `ends_at` | Timestamp, nullable | Optional duration |
 | `timezone` | Text | Display time zone |
@@ -565,7 +586,8 @@ Primary key: `(itinerary_item_id, document_id)`. Unlinking a row or deleting an 
 | `trip_id` | UUID | Parent trip |
 | `booking_id` | UUID, nullable | Optional related booking |
 | `flight_leg_id` | UUID, nullable | Optional related flight leg |
-| `traveler_id` | UUID, nullable | Traveler represented by a boarding pass, ticket, visa, or baggage tag |
+| `traveler_id` | UUID, nullable | Legacy single-traveler compatibility value; new usage assignment is authoritative in `document_travelers` |
+| `assignment_mode` | `document_assignment_mode` | Shared booking/event, selected traveler set, or ticket awaiting assignment |
 | `title` | Text | User-facing name |
 | `category` | `document_category` | Search and filtering |
 | `purpose` | `document_purpose` | Contextual presentation such as ticket, boarding pass, or baggage tag |
@@ -577,6 +599,21 @@ Primary key: `(itinerary_item_id, document_id)`. Unlinking a row or deleting an 
 | `created_at` | Timestamp | Audit timestamp |
 | `updated_at` | Timestamp | Synchronization cursor component |
 | `deleted_at` | Timestamp, nullable | Recoverable soft deletion |
+
+Traveler usage and authorization are deliberately independent. A shared document is not public: its `visibility` still determines which signed-in members may open it. A selected assignment may contain one or several travelers. An unassigned activity ticket or meal voucher remains visible in the all-travelers trip view until someone decides who will use it.
+
+#### `document_travelers`
+
+Used only when `documents.assignment_mode = selected`.
+
+| Field | Type | Purpose |
+|---|---|---|
+| `document_id` | UUID | Parent Vault document |
+| `traveler_id` | UUID | Traveler who will use or carry it |
+| `assigned_by` | UUID | Audit actor |
+| `created_at` | Timestamp | Assignment time |
+
+Primary key: `(document_id, traveler_id)`. A same-trip trigger rejects cross-trip assignments. The client retains `documents.traveler_id` only as backward-compatible support for older one-traveler records.
 
 #### `document_versions`
 
@@ -717,7 +754,8 @@ Primary key: `(user_id, alert_key)`.
 - `flight_legs.booking_id` must reference a flight booking. Referenced trip airlines, documents, and travelers must belong to the same trip.
 - Scheduled arrival must be after scheduled departure as an instant; different local calendar dates are valid.
 - Latitude and longitude are either both null or both valid ranges.
-- A document's optional booking, leg, traveler, and linked trip must be mutually consistent.
+- A document's optional booking, leg, legacy traveler, and linked trip must be mutually consistent. Every `document_travelers` row must reference a traveler from that same trip.
+- `assignment_mode` describes usage only and never participates in `can_read_document`; visibility remains the sole document-access input after active trip membership.
 - Every itinerary-document link references an event and document from the same trip; deleting or unlinking the event relationship never deletes the document.
 - Every `document_versions.byte_size` is smaller than `5_000_000`; the same bound is checked before local queuing and enforced by the private bucket.
 - `traveler_and_managers` visibility requires `documents.traveler_id`; trip-level documents use `trip` or `selected_members` visibility.
@@ -764,7 +802,8 @@ erDiagram
     DOCUMENTS ||--o{ ITINERARY_ITEM_DOCUMENTS : appears_on
     BOOKINGS o|--o{ ITINERARY_ITEMS : informs
     TRIPS ||--o{ DOCUMENTS : contains
-    TRAVELERS o|--o{ DOCUMENTS : represented_by
+    DOCUMENTS ||--o{ DOCUMENT_TRAVELERS : assigned_to
+    TRAVELERS ||--o{ DOCUMENT_TRAVELERS : uses
     BOOKINGS o|--o{ DOCUMENTS : attaches
     FLIGHT_LEGS o|--o{ DOCUMENTS : uses
     DOCUMENTS ||--o{ DOCUMENT_VERSIONS : versions
@@ -918,7 +957,13 @@ sequenceDiagram
     participant L as Local DB
     participant DB as Supabase Postgres
     participant S as Supabase Storage
-    UI->>L: Save local document draft
+    UI->>UI: Select purpose, traveler usage, and access
+    UI->>UI: Validate and calculate SHA-256
+    UI->>L: Check existing trip documents
+    alt Exact bytes already exist
+      L-->>UI: Offer existing Vault document
+    else New file
+    UI->>L: Save local document and traveler assignments
     UI->>DB: Create authorized document metadata
     DB-->>UI: Return document and version IDs
     UI->>S: Retryable upload to immutable path
@@ -927,9 +972,10 @@ sequenceDiagram
     UI->>DB: Finalize version metadata
     DB-->>UI: Mark current version
     UI->>L: Mark synchronized
+    end
 ```
 
-Because every accepted file is smaller than 5 MB, MVP retries the individual immutable file from its verified local copy rather than implementing chunk-level resume. A failed upload must not produce a document that appears downloadable; its outbox operation remains visible as pending or failed until a foreground retry finalizes it.
+Because every accepted file is smaller than 5 MB, MVP retries the individual immutable file from its verified local copy rather than implementing chunk-level resume. A failed cloud upload remains immediately viewable from its local copy and its outbox operation exposes a safe failure class such as permission or authentication until a foreground retry finalizes it. Raw server details and document content are not logged.
 
 ### 7.4 Validation
 
@@ -937,6 +983,7 @@ Because every accepted file is smaller than 5 MB, MVP retries the individual imm
 - Reject files of `5_000_000` bytes or larger before local queuing or upload.
 - Sanitize display filenames and generate storage paths independently.
 - Compute a SHA-256 digest for integrity and duplicate hints.
+- Reject an exact same-trip checksum before copying another file; offer to link the existing Vault document to the event instead.
 - Treat uploaded content as untrusted; do not render active HTML or SVG inline.
 - Use attachment downloads for unsupported or risky file types.
 
@@ -947,17 +994,19 @@ flowchart TD
     A[User selects document] --> P{Current signed-in or offline-enrolled profile?}
     P -- No --> SIGNIN[Request sign-in]
     P -- Yes --> B{Verified local version exists for this profile?}
-    B -- Yes --> L[Open OPFS version immediately]
+    B -- Yes --> L[Open local version immediately in page viewer]
     B -- No --> N{Online?}
     N -- No --> MISS[Explain that this file was not prepared offline]
     N -- Yes --> R[Recheck active membership and document predicate]
     R --> P{Allowed?}
     P -- No --> DENY
-    P -- Yes --> U[Issue short-lived signed Storage URL]
-    U --> V[Preview safe PDF/image or download original]
+    P -- Yes --> U[Download private Storage object]
+    U --> C[Verify checksum and cache for this profile]
+    C --> V[Open in page viewer]
+    V --> F[Optional native full-screen zoom]
 ```
 
-The app never stores a permanent public file address. A verified local file needs no per-open cached authorization evaluation: possession in the current profile's local namespace plus the current local sign-in context is sufficient. Server-side membership and visibility rules still decide whether a missing file may be downloaded. A trip-wide cloud document can be downloaded by every active member; a traveler-linked cloud document can be opened by its linked account or uploader. The schema retains delegated-manager support for a later release, but the personal MVP does not expose those grants. A readiness status may be shared without granting access to a missing cloud file.
+The app never stores a permanent public file address. A verified local file needs no per-open cached authorization evaluation: possession in the current profile's local namespace plus the current local sign-in context is sufficient. Server-side membership and visibility rules still decide whether a missing file may be downloaded. The route automatically renders the safe PDF or image; Download is secondary and optional. An Info sheet contains metadata, assignment, access, local-copy removal, replacement, archive, and version history. Traveler usage never changes this access decision. A readiness status may be shared without granting access to a missing cloud file.
 
 ### 7.6 File-size and optimization boundary
 
@@ -1204,9 +1253,12 @@ Readiness becomes `stale` when an authorized booking changes, a pinned document 
 | `TravelerContextPicker` | Lets a manager select whose booking, requirement, or document they are editing without changing signed-in identity |
 | `ParticipantSelector` | Applies a booking or itinerary item to everyone or selected traveler profiles |
 | `Timeline` | Chronological itinerary grouped by local date |
-| `DocumentRow` | File metadata, visibility, version, offline status, actions |
+| `DocumentViewer` | Automatically opens the verified local PDF/image, otherwise retrieves and verifies it once, with native full-screen zoom |
+| `DocumentInfoSheet` | Secondary file facts, traveler usage, access, device-copy, version, replacement, and archive actions |
+| `DocumentRow` | Purpose, traveler-usage label, offline/sync status, and viewer link |
+| `DocumentTypePicker` | Presents travel-specific choices and assignment defaults instead of raw category/purpose enums |
 | `EventDocumentSection` | Lists, opens, orders, attaches, and unlinks multiple documents for one itinerary event |
-| `MultiDocumentPicker` | Selects several existing Vault documents or new files and reports each independent result |
+| `MultiDocumentPicker` | Selects several existing Vault documents; new uploads use the full type, traveler, and access form before attachment |
 | `OfflineBadge` | Verified state only; never infer readiness from intent |
 | `SyncStatus` | Pending, syncing, last synced, conflict, and failure states |
 | `MemberStack` | Compact member presence and role summary |
@@ -1481,7 +1533,7 @@ Rules:
 - There is no one-document limit and no single `document_id` field on `itinerary_items`.
 - A document may be linked to multiple events without copying its file or version records.
 - If a document is already associated with the event's booking or flight leg, the picker identifies it and prevents a duplicate event link.
-- Each newly selected file is validated against the same size, MIME, visibility, and traveler rules; one failed file does not cancel the other valid attachments.
+- Every new file uses the full upload sheet so purpose, Shared/Selected/Assign later usage, and access cannot be silently defaulted to generic `document` metadata.
 - Event-link visibility follows the linked document. The server returns a link only when the member may read its document; locally cached links remain scoped to the signed-in profile.
 - Reordering or unlinking is an itinerary edit and is limited to owners and editors for MVP.
 - Unlinking, archiving, or deleting an event never deletes a Vault document. Deleting the document itself removes it from every event presentation according to the recoverable-deletion policy.
@@ -1503,6 +1555,8 @@ Rules:
 - Normalize join codes by removing spaces and hyphens and uppercasing before submission; authoritative verification remains server-side and is never queued offline.
 - Require traveler and collaborator invitations to satisfy their mutually exclusive target fields.
 - Require booking, itinerary, requirement, and document traveler assignments to belong to the same trip.
+- Require selected document usage to contain at least one traveler in the UI; shared and unassigned modes contain no `document_travelers` rows.
+- Keep document traveler usage separate from private/trip/selected-member access and explain that distinction beside the controls.
 - Require every itinerary-document link to reference an event and document from the same trip and prevent duplicate active links for the same pair.
 - Show the active managed-traveler context beside every form that can change another person's information.
 - Require a trip, title, and category before document upload finalization.
@@ -1591,6 +1645,8 @@ Rules:
 - Non-traveling collaborator labels and excluded traveler actions
 - Booking forms by type
 - Document visibility controls
+- Document type presets, Shared/Selected/Assign later usage, assignment/access separation, and exact-duplicate recovery
+- Visible-first PDF/image viewer, automatic verified local caching, Info sheet, and native full-screen action
 - Offline and sync indicators
 - Permission-dependent actions
 - Admin sign-in, unauthorized state, catalog editors, release history, and online-only disabled states
@@ -1612,6 +1668,8 @@ Rules:
 - The traveler context switcher never changes the authenticated account or bypasses Owner/Editor/Viewer trip roles.
 - Viewers cannot edit shared content.
 - Private and selected-member documents remain restricted.
+- Document traveler assignments cannot cross trips and do not broaden private or selected-member visibility.
+- Exact same-trip checksums are surfaced as an existing-document choice rather than a second stored object.
 - Itinerary-document links cannot cross trips, expose an unreadable document, or duplicate an active event/document pair.
 - Unlinking or deleting an itinerary event leaves the linked document and every immutable version intact.
 - Flight legs cannot reference another trip's airline, traveler, or document.
@@ -1719,10 +1777,14 @@ Rules:
 | LLD-034 | Compression boundary | No automatic document changes in MVP; a user-reviewed, explicitly lossy image-copy optimizer may be considered later, but PDFs remain unchanged | Accepted |
 | LLD-035 | Local document-open check | Current profile context plus a verified file in that profile's OPFS namespace is enough; do not evaluate a cached document authorization record before opening | Accepted |
 | LLD-036 | Itinerary event documents | Use a many-to-many link table so one event can have several ordered documents and one document can appear on several events without file duplication | Accepted |
+| LLD-037 | Document traveler usage | Store Shared, Selected, or Assign later on the document and use `document_travelers` for one-or-many selected travelers; usage never grants access | Accepted |
+| LLD-038 | Document route hierarchy | Make the local-first document itself the primary page; move facts and management to an Info sheet and retain native full-screen zoom | Accepted |
+| LLD-039 | Upload classification | Offer travel-language types with contextual defaults: shared stay confirmations, personal boarding/identity documents, and unassigned unnamed admission tickets | Accepted |
+| LLD-040 | Exact duplicate behavior | Compare the current-version SHA-256 within a trip and attach/open the existing Vault record instead of storing duplicate bytes | Accepted |
 
 ## Source File Index
 
-These paths are the implemented ownership map. Tests are co-located with their modules; cross-feature browser acceptance is maintained in the manual guide until dedicated browser automation is added.
+These paths are the implemented ownership map. Tests are co-located with their modules; proposed redesign decisions are tracked separately until accepted.
 
 | Component | Path | Responsibility |
 |---|---|---|
@@ -1735,10 +1797,11 @@ These paths are the implemented ownership map. Tests are co-located with their m
 | Local database | `src/lib/local-db/` | IndexedDB schema, migrations, and repositories |
 | Offline device context | `src/lib/auth/` | Last enrolled profile, explicit local sign-out, and expired-session airplane-mode fallback without storing new credentials |
 | Offline file storage | `src/lib/storage/` | OPFS operations, manifests, and integrity |
+| Document semantics | `src/features/workspace/documentModel.ts` | Travel-specific type presets, assignment labels/filtering, and exact duplicate detection |
 | Backend client | `src/lib/supabase/` | Supabase client and typed repositories |
 | Database definition | `supabase/migrations/` | Schema, functions, grants, and RLS policies |
 | Co-located automated tests | `src/**/*.test.ts`, `src/**/*.test.tsx` | Domain, local database, sync, alert, presentation, and route behavior |
 | Schema smoke test | `supabase/tests/001_schema_smoke.sql` | Tables, policies, functions, and Storage limit assertions |
-| Manual acceptance | `docs/MANUAL_FUNCTIONAL_TEST.md` | Cross-feature, multi-account, document, admin, and true-offline scenarios |
+| Redesign checklist | `docs/REDESIGN_CHECKLIST.md` | Proposed timeline, schema, priority, and responsive preview decisions |
 | High-level design | `docs/HIGH_LEVEL_DESIGN.md` | Architecture and decision gates |
 | Feature catalog | `docs/FEATURES.md` | Product scope and acceptance conditions |

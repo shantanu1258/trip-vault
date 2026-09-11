@@ -24,7 +24,14 @@ export function amountStringToMinor(amount: string, currencyCode: string) {
   return Number(whole) * 10 ** fractionDigits + Number(fraction.padEnd(fractionDigits, "0") || 0);
 }
 
-export function localDateTimeToIso(value: string, timeZone: string) {
+function representedLocalValue(instant: Date, timeZone: string) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  }).formatToParts(instant).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+export function localDateTimeCandidates(value: string, timeZone: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
   if (!match || !isValidTimeZone(timeZone)) throw new Error("Enter a valid date, time, and time zone.");
 
@@ -55,7 +62,19 @@ export function localDateTimeToIso(value: string, timeZone: string) {
     candidate += desired - represented;
   }
 
-  return new Date(candidate).toISOString();
+  const candidates = new Set<string>();
+  for (let offsetMinutes = -180; offsetMinutes <= 180; offsetMinutes += 15) {
+    const instant = new Date(candidate + offsetMinutes * 60_000);
+    if (representedLocalValue(instant, timeZone) === value) candidates.add(instant.toISOString());
+  }
+  return [...candidates].sort();
+}
+
+export function localDateTimeToIso(value: string, timeZone: string, occurrence: "automatic" | "earlier" | "later" = "automatic") {
+  const candidates = localDateTimeCandidates(value, timeZone);
+  if (!candidates.length) throw new Error(`${value.replace("T", " ")} does not exist in ${timeZone} because the clock changes. Choose another time.`);
+  if (candidates.length > 1 && occurrence === "automatic") throw new Error(`${value.replace("T", " ")} occurs twice in ${timeZone}. Choose the earlier or later occurrence.`);
+  return occurrence === "later" ? candidates[candidates.length - 1] : candidates[0];
 }
 
 export function isoToLocalDateTime(value: string | null | undefined, timeZone: string) {
@@ -107,11 +126,11 @@ export const costFormSchema = z
   .superRefine((value, context) => {
     const digits = currencyFractionDigits(value.currencyCode);
     const pattern = new RegExp(`^\\d+(?:\\.\\d{1,${digits}})?$`);
-    if (!pattern.test(value.amount) || Number(value.amount) <= 0) {
+    if (!pattern.test(value.amount) || Number(value.amount) < 0) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["amount"],
-        message: digits === 0 ? "Enter a positive whole amount." : `Enter a positive amount with up to ${digits} decimal places.`
+        message: digits === 0 ? "Enter zero or a positive whole amount." : `Enter zero or a positive amount with up to ${digits} decimal places.`
       });
     }
   });

@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "NODE_OPTIONS=--experimental-global-webcrypto vite",
     "build": "tsc -b && NODE_OPTIONS=--experimental-global-webcrypto vite build",
