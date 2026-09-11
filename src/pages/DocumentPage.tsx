@@ -43,7 +43,7 @@ export function DocumentPage() {
     try {
       const profileId = await localProfileId();
       if (!profileId) throw new Error("Sign in to open this document.");
-      const local = await readOfflineFile(profileId, document.current_version.id);
+      const local = await readOfflineFile(profileId, document.current_version.id, document.current_version.mime_type);
       if (local) { setUrl(URL.createObjectURL(local)); setSource("local"); return; }
       if (!navigator.onLine) throw new Error("This file has not been saved on this device yet. Reconnect once to prepare it for offline use.");
       const blob = await downloadDocumentVersion(document);
@@ -84,13 +84,13 @@ export function DocumentPage() {
     {document && <>
       <header className="page-enter mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-3 shadow-soft sm:px-5">
         <div className="min-w-0"><p className="eyebrow">{documentPurposeLabel(document.purpose)}</p><h1 className="mt-1 truncate font-display text-xl font-black sm:text-2xl">{document.title}</h1></div>
-        <div className="flex shrink-0 gap-2">{url && <a href={url} target="_blank" rel="noreferrer" className="secondary-button size-11 px-0 sm:size-auto sm:px-4" aria-label="Open full-screen viewer"><ExternalLink className="size-4" /><span className="hidden sm:inline">Open full screen</span></a>}<button type="button" className="secondary-button size-11 px-0 sm:size-auto sm:px-4" onClick={() => setShowInfo(true)} aria-label="Document information and actions"><Info className="size-5" /><span className="hidden sm:inline">Info</span></button></div>
+        <div className="flex shrink-0 gap-2">{url && <a href={url} target="_blank" rel="noreferrer" className="secondary-button px-3 sm:px-4" aria-label="Open full-screen viewer"><ExternalLink className="size-4" /><span>Open</span></a>}<button type="button" className="secondary-button size-11 px-0 sm:size-auto sm:px-4" onClick={() => setShowInfo(true)} aria-label="Document information and actions"><Info className="size-5" /><span className="hidden sm:inline">Info</span></button></div>
       </header>
 
       {document.sync_state === "queued" && <p role="status" className={`mt-3 flex items-center gap-2 rounded-xl p-3 text-sm font-bold ${document.sync_error ? "bg-warning/10 text-warning" : "bg-brand-soft text-brand"}`}><HardDrive className="size-4 shrink-0" />{document.sync_error === "permission" || document.sync_error === "schema" ? "Available on this device. Supabase rejected the cloud copy; open Info for the recovery step." : document.sync_error === "authentication" ? "Available on this device. Sign in again to finish the cloud copy." : "Available on this device. The cloud copy is waiting to synchronize."}</p>}
 
       <section className="mt-3 min-h-[62dvh] overflow-hidden rounded-2xl border border-line bg-elevated shadow-soft sm:min-h-[70dvh]">
-        {url && document.current_version?.mime_type === "application/pdf" && <iframe title={document.title} className="h-[72dvh] min-h-[34rem] w-full bg-white" src={url} />}
+        {url && document.current_version?.mime_type === "application/pdf" && <iframe key={url} title={document.title} className="h-[72dvh] min-h-[34rem] w-full bg-white" src={`${url}#view=FitH`} allowFullScreen />}
         {url && document.current_version?.mime_type !== "application/pdf" && <a href={url} target="_blank" rel="noreferrer" className="grid min-h-[62dvh] place-items-center p-2 sm:min-h-[70dvh]"><img alt={document.title} className="max-h-[78dvh] w-full object-contain" src={url} /></a>}
         {!url && <div className="grid min-h-[62dvh] place-items-center p-8 text-center sm:min-h-[70dvh]"><div>{loadingFile ? <><Loader2 className="mx-auto size-8 animate-spin text-brand" /><p className="mt-4 text-sm font-bold">Preparing the viewer and offline copy…</p></> : <><FileWarning className="mx-auto size-8 text-warning" /><p className="mt-4 max-w-md text-sm font-bold">{fileError || "This document does not have a complete file yet."}</p>{document.current_version && <button type="button" className="primary-button mx-auto mt-5" onClick={retryOpen}><FileCheck2 className="size-4" /> Try again</button>}</>}</div></div>}
       </section>

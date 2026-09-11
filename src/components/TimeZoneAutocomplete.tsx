@@ -25,6 +25,11 @@ function supportedTimeZones() {
 
 const allTimeZones = supportedTimeZones();
 
+function visibleViewport() {
+  const viewport = window.visualViewport;
+  return { height: viewport?.height ?? window.innerHeight, top: viewport?.offsetTop ?? 0 };
+}
+
 function readablePart(value: string) {
   return value.replaceAll("_", " ");
 }
@@ -56,6 +61,7 @@ export function TimeZoneAutocomplete({ name, defaultValue, className = "form-inp
   const [open, setOpen] = useState(false);
   const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 639px)").matches);
   const [position, setPosition] = useState({ top: 0, left: 0, width: 420 });
+  const [viewport, setViewport] = useState(visibleViewport);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -95,6 +101,7 @@ export function TimeZoneAutocomplete({ name, defaultValue, className = "form-inp
     const place = () => {
       const isMobile = media.matches;
       setMobile(isMobile);
+      setViewport(visibleViewport());
       if (!isMobile && triggerRef.current) {
         const rect = triggerRef.current.getBoundingClientRect();
         const width = Math.min(Math.max(rect.width, 360), 480);
@@ -104,16 +111,21 @@ export function TimeZoneAutocomplete({ name, defaultValue, className = "form-inp
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
     place();
     const previousOverflow = document.body.style.overflow;
+    const visual = window.visualViewport;
     if (media.matches) document.body.style.overflow = "hidden";
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     window.addEventListener("keydown", closeOnEscape);
+    visual?.addEventListener("resize", place);
+    visual?.addEventListener("scroll", place);
     const timer = window.setTimeout(() => searchRef.current?.focus(), 0);
     return () => {
       window.clearTimeout(timer);
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
       window.removeEventListener("keydown", closeOnEscape);
+      visual?.removeEventListener("resize", place);
+      visual?.removeEventListener("scroll", place);
       document.body.style.overflow = previousOverflow;
     };
   }, [open]);
@@ -148,8 +160,8 @@ export function TimeZoneAutocomplete({ name, defaultValue, className = "form-inp
         <ChevronDown className="size-4 shrink-0 text-muted" />
       </button>
       {open && createPortal(
-        <div className={`fixed inset-0 z-[120] flex ${mobile ? "items-end bg-brand/55" : "items-start bg-transparent"}`} onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
-          <section role="dialog" aria-modal="true" aria-label="Choose time zone" className={`${mobile ? "sheet-enter max-h-[88dvh] w-full rounded-t-[2rem]" : "fixed max-h-[28rem] rounded-2xl border border-line shadow-focus"} flex flex-col overflow-hidden bg-surface p-4`} style={mobile ? undefined : { top: position.top, left: position.left, width: position.width }}>
+        <div className={`fixed inset-0 z-[120] flex ${mobile ? "items-start bg-brand/55" : "items-start bg-transparent"}`} onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
+          <section role="dialog" aria-modal="true" aria-label="Choose time zone" className={`${mobile ? "sheet-enter fixed inset-x-2 rounded-[2rem]" : "fixed max-h-[28rem] rounded-2xl border border-line shadow-focus"} flex flex-col overflow-hidden bg-surface p-4`} style={mobile ? { top: viewport.top + 8, height: Math.max(120, viewport.height - 16), maxHeight: Math.max(120, viewport.height - 16) } : { top: position.top, left: position.left, width: position.width }}>
             <div className="flex items-center justify-between gap-3 px-1 pb-3">
               <div><p className="eyebrow">Local clock</p><h2 className="font-display text-lg font-black">Choose time zone</h2></div>
               <button type="button" className="tap-target grid size-10 place-items-center rounded-full border border-line" onClick={() => setOpen(false)} aria-label="Close time zone picker"><X className="size-4" /></button>

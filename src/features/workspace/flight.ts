@@ -1,4 +1,4 @@
-import type { FlightLeg, VaultDocument } from "./types";
+import type { FlightLeg, FlightTraveler, Traveler, VaultDocument } from "./types";
 
 export function primaryFlightDocument(documents: VaultDocument[]) {
   return documents.find((document) => document.purpose === "boarding_pass") ?? documents.find((document) => document.purpose === "ticket") ?? null;
@@ -26,6 +26,18 @@ export function flightCountdown(flight: FlightLeg, now = new Date()) {
 
 export function trackerUrl(flightNumber: string) {
   return `https://www.flightaware.com/live/flight/${encodeURIComponent(flightNumber.replace(/\s+/g, ""))}`;
+}
+
+export function resolveBoardingInstant(departureAt: string, exactBoardingAt?: string | null, boardingLeadMinutes?: number | null) {
+  if (exactBoardingAt) return exactBoardingAt;
+  if (boardingLeadMinutes === null || boardingLeadMinutes === undefined) return null;
+  return new Date(new Date(departureAt).getTime() - boardingLeadMinutes * 60_000).toISOString();
+}
+
+export function flightSeatLabels(travelers: Traveler[], details: FlightTraveler[], focusedTravelerId?: string | null) {
+  const visible = focusedTravelerId ? travelers.filter((traveler) => traveler.id === focusedTravelerId) : travelers;
+  const byTraveler = new Map(details.map((row) => [row.traveler_id, row]));
+  return visible.map((traveler) => ({ travelerId: traveler.id, travelerName: traveler.display_name, seat: byTraveler.get(traveler.id)?.seat ?? null }));
 }
 
 export function toDateTimeLocal(iso: string | null, timeZone: string) {

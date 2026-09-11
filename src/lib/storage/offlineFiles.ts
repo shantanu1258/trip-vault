@@ -2,6 +2,12 @@ import { clearProfileLocalData, database, type LocalDocumentRecord } from "../lo
 
 type StorageManagerWithDirectory = StorageManager & { getDirectory?: () => Promise<any> };
 
+export function ensureBlobMimeType(blob: Blob, expectedMimeType?: string | null) {
+  const mimeType = expectedMimeType?.trim().toLocaleLowerCase();
+  if (!mimeType || blob.type.toLocaleLowerCase() === mimeType) return blob;
+  return blob.slice(0, blob.size, mimeType);
+}
+
 async function directoryFor(profileId: string) {
   const storage = navigator.storage as StorageManagerWithDirectory;
   if (!storage.getDirectory) return null;
@@ -31,19 +37,20 @@ export async function storeOfflineFile(input: { profileId: string; versionId: st
   return localPath;
 }
 
-export async function readOfflineFile(profileId: string, versionId: string) {
+export async function readOfflineFile(profileId: string, versionId: string, expectedMimeType?: string | null) {
   const record = await database.localDocuments.get([profileId, versionId]);
   if (!record?.verifiedAt) return null;
   if (record.localPath.startsWith("opfs://")) {
     try {
       const directory = await directoryFor(profileId);
       const handle = await directory?.getFileHandle(versionId);
-      return handle ? await (await handle.getFile()) : null;
+      return handle ? ensureBlobMimeType(await (await handle.getFile()), expectedMimeType) : null;
     } catch {
       return null;
     }
   }
-  return (await database.localFileBlobs.get([profileId, versionId]))?.blob ?? null;
+  const blob = (await database.localFileBlobs.get([profileId, versionId]))?.blob;
+  return blob ? ensureBlobMimeType(blob, expectedMimeType) : null;
 }
 
 export async function removeOfflineFile(profileId: string, versionId: string) {

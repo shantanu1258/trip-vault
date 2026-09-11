@@ -4,7 +4,7 @@ description: "Short manual acceptance checklist for the timeline-first Trip Vaul
 scope: [service-wide]
 agents: [tester, reviewer]
 tags: [manual-testing, acceptance, timeline, mobile, admin]
-last_verified: 2026-09-11
+last_verified: 2026-09-12
 ---
 
 # Trip Vault Feature Test Checklist
@@ -31,8 +31,12 @@ For an existing Supabase project, apply migrations through `202609110003_documen
 ## Journeys and Bookings
 
 - [ ] Add an international flight with a mandatory PNR, booking vendor, phone, origin/destination time zones, and two connected legs.
+- [ ] Search airline and Booked via by name, choose saved values, and confirm the selected booking website is filled when catalog data provides it.
+- [ ] Choose saved From and To airports by name/code and confirm each airport code is derived and disabled. Choose Other and confirm manual name, code, country, and strict time-zone inputs appear.
+- [ ] Enter an Other airline, airport, and booking source; save online and confirm each appears in the Admin Suggestions review without exposing the trip or PNR.
 - [ ] Confirm each flight shows the provider-local departure/arrival time, correct elapsed duration, and next-day marker where applicable.
-- [ ] Add boarding lead minutes, then manually add an exact boarding time; confirm exact time takes precedence.
+- [ ] Add boarding lead minutes and confirm boarding is calculated from scheduled departure; then add an exact boarding time and confirm it takes precedence.
+- [ ] Enter a seat for each traveler. In Everyone context confirm all seats appear at the top of Flight details; select one traveler and confirm only that person's seat appears.
 - [ ] Manually update flight delay, status, terminals, gates, baggage claim, and baggage-tag document.
 - [ ] Add domestic Train, Bus, Ferry/Boat, and Cab bookings and open each reservation detail.
 - [ ] Add a connected non-flight journey and confirm it is one booking with ordered legs on one grouped timeline event.
@@ -46,6 +50,8 @@ For an existing Supabase project, apply migrations through `202609110003_documen
 - [ ] Confirm a used, revoked, expired, or regenerated code cannot be reused.
 - [ ] Use the floating People control to switch between Everyone and each traveler without another permission prompt.
 - [ ] Upload PDF/JPEG/PNG/WebP documents; confirm 5 MB or larger and unsupported files are rejected.
+- [ ] Change document type and Who is it for and confirm the generated Vault name updates while the original filename remains in Info.
+- [ ] Open a PDF and image from cloud and from the device copy; confirm the embedded preview renders and Open launches a zoomable full-screen viewer without requiring a download.
 - [ ] Turn the network off, create/edit an event and upload a document; confirm it remains available locally and reports queued synchronization.
 - [ ] Prepare the offline pack, reload while offline, and open the timeline plus a pinned document.
 - [ ] Restore the network and confirm queued work synchronizes without duplicate events or costs.

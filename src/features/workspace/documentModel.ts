@@ -1,4 +1,4 @@
-import type { DocumentAssignmentMode, DocumentCategory, DocumentPurpose, VaultDocument } from "./types";
+import type { DocumentAssignmentMode, DocumentCategory, DocumentPurpose, Traveler, VaultDocument } from "./types";
 
 export type DocumentKind =
   | "flight_ticket"
@@ -44,6 +44,16 @@ export const documentKinds: readonly DocumentKindOption[] = [
 
 export function documentKind(value: DocumentKind) {
   return documentKinds.find((option) => option.value === value) ?? documentKinds.at(-1)!;
+}
+
+export function suggestedDocumentTitle(kind: DocumentKind, assignmentMode: DocumentAssignmentMode, travelerIds: string[], travelers: Traveler[]) {
+  const label = documentKind(kind).label;
+  if (assignmentMode === "shared") return `${label} · Everyone`;
+  if (assignmentMode === "unassigned") return `${label} · Assign later`;
+  const selectedNames = travelerIds.map((id) => travelers.find((traveler) => traveler.id === id)?.display_name).filter((name): name is string => Boolean(name));
+  if (!selectedNames.length) return `${label} · Choose traveler`;
+  if (selectedNames.length <= 3) return `${label} · ${selectedNames.join(", ")}`;
+  return `${label} · ${selectedNames.length} travelers`;
 }
 
 const purposeLabels: Record<DocumentPurpose, string> = {

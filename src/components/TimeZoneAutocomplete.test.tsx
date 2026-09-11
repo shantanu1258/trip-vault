@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { TimeZoneAutocomplete } from "./TimeZoneAutocomplete";
@@ -28,17 +28,32 @@ describe("strict time-zone autocomplete", () => {
     expect(screen.getByRole("button", { name: "Arrival time zone" })).toHaveTextContent("Dubai");
   });
 
-  it("opens as a bottom sheet on a phone-sized viewport", async () => {
+  it("keeps the result sheet inside the visible phone viewport when the keyboard opens", async () => {
     const media = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
       matches: query === "(max-width: 639px)", media: query, onchange: null,
       addListener: () => undefined, removeListener: () => undefined,
       addEventListener: () => undefined, removeEventListener: () => undefined,
       dispatchEvent: () => false
     }));
+    const listeners = new Map<string, EventListener>();
+    const visualViewport = {
+      height: 420,
+      offsetTop: 24,
+      addEventListener: vi.fn((type: string, listener: EventListener) => listeners.set(type, listener)),
+      removeEventListener: vi.fn()
+    };
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: visualViewport });
     const user = userEvent.setup();
     render(<TimeZoneAutocomplete name="timezone" defaultValue="Asia/Kolkata" aria-label="Mobile time zone" />);
     await user.click(screen.getByRole("button", { name: "Mobile time zone" }));
-    expect(screen.getByRole("dialog", { name: "Choose time zone" })).toHaveClass("rounded-t-[2rem]");
+    const dialog = screen.getByRole("dialog", { name: "Choose time zone" });
+    expect(dialog).toHaveClass("fixed", "rounded-[2rem]");
+    expect(dialog).toHaveStyle({ top: "32px", height: "404px" });
+    expect(screen.getByRole("option", { name: /Kolkata Asia · Asia\/Kolkata/i })).toBeVisible();
+    Object.defineProperty(visualViewport, "height", { configurable: true, value: 330 });
+    listeners.get("resize")?.(new Event("resize"));
+    await waitFor(() => expect(dialog).toHaveStyle({ height: "314px" }));
     media.mockRestore();
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: undefined });
   });
 });

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../../lib/supabase/client";
 import { database } from "../../lib/local-db/database";
-import { storeOfflineFile } from "../../lib/storage/offlineFiles";
+import { ensureBlobMimeType, storeOfflineFile } from "../../lib/storage/offlineFiles";
 import { cacheEntity, cacheEntityList, localProfileId, networkWithCache, queueCreate, queueDelete, queueDocumentUpload, queueUpdate, readEntityById, readEntityList, syncOutbox } from "../sync/localSync";
 import type { ItineraryItem, TimelineEventType } from "../trips/types";
 import { addItineraryItem, addTripCost } from "../trips/api";
@@ -786,7 +786,7 @@ export async function downloadDocumentVersion(document: VaultDocument) {
   if (error) throw error;
   const checksum = await sha256(data);
   if (checksum !== document.current_version.sha256) throw new Error("The downloaded file failed its integrity check.");
-  return data;
+  return ensureBlobMimeType(data, document.current_version.mime_type);
 }
 
 export async function replaceDocumentVersion(document: VaultDocument, file: File) {

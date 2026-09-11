@@ -14,9 +14,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../components/ModalSheet", () => ({ ModalSheet: ({ children, title }: { children: React.ReactNode; title: string }) => <section aria-label={title}>{children}</section> }));
-vi.mock("../metadata/AirlinePicker", () => ({ AirlinePicker: ({ name }: { name: string }) => <input name={name} /> }));
-vi.mock("../metadata/AirportPicker", () => ({ AirportPicker: ({ name }: { name: string }) => <input name={name} /> }));
-vi.mock("../metadata/VendorPicker", () => ({ VendorPicker: () => <input name="bookedViaName" /> }));
+vi.mock("../metadata/AirlinePicker", () => ({ AirlinePicker: ({ name }: { name: string }) => <><input name={name} /><input name={`${name}Source`} value="catalog" readOnly /></> }));
+vi.mock("../metadata/AirportPicker", () => ({ AirportPicker: ({ name, codeName, timezoneName, countryName, label }: { name: string; codeName: string; timezoneName: string; countryName: string; label: string }) => <><input aria-label={label} name={name} /><input name={codeName} value={label === "From airport" ? "BLR" : "DXB"} readOnly /><input name={timezoneName} value={label === "From airport" ? "Asia/Kolkata" : "Asia/Dubai"} readOnly /><input name={countryName} value={label === "From airport" ? "IN" : "AE"} readOnly /><input name={`${name}Source`} value="catalog" readOnly /></> }));
+vi.mock("../metadata/VendorPicker", () => ({ VendorPicker: () => <><input name="bookedViaName" /><input name="bookedViaNameSource" value="catalog" readOnly /></> }));
 vi.mock("../workspace/ParticipantSelector", () => ({ ParticipantSelector: () => null }));
 vi.mock("../trips/api", () => ({ addItineraryItem: mocks.addItineraryItem, addTripCost: mocks.addTripCost }));
 vi.mock("../workspace/api", () => ({
@@ -121,9 +121,9 @@ describe("Add Event hotel stay", () => {
     await user.type(screen.getByLabelText("Place / address"), "Marina Bay, Singapore");
     await user.type(screen.getByLabelText("Google Maps link"), "https://maps.google.com/hotel");
     await user.type(screen.getByLabelText("Notes"), "Late arrival");
-    await user.type(screen.getByLabelText("Provider / operator"), "Harbour Hotel");
-    await user.type(screen.getByLabelText(/Reference \/ PNR/), "STAY123");
-    await user.type(screen.getByLabelText("Booked via"), "Booking.example");
+    await user.type(screen.getByLabelText(/^Service provider/), "Harbour Hotel");
+    await user.type(screen.getByLabelText(/Booking reference \/ PNR/), "STAY123");
+    await user.type(screen.getByLabelText(/^Booked via/), "Booking.example");
     await user.type(screen.getByLabelText("Booking website"), "https://booking.example/stay");
     await user.type(screen.getByLabelText("Contact name"), "Front desk");
     await user.type(screen.getByLabelText("Phone number"), "+65 6123 4567");
@@ -160,5 +160,47 @@ describe("Add Event hotel stay", () => {
       }
     })));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Add Event flight flow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.addFlightBooking.mockResolvedValue({ booking: { id: "booking-1" }, flights: [], itinerary: {} });
+  });
+
+  it("uses airline and airport choices, omits a redundant provider, and calculates boarding from the lead", async () => {
+    const { user } = renderAddEvent();
+    await user.click(screen.getByRole("button", { name: /Flight One or more connected legs/i }));
+    expect(screen.queryByLabelText(/^Service provider/)).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Event title"), "Flight to Dubai");
+    await user.type(screen.getByLabelText(/Booking reference \/ PNR/), "PNR123");
+    await user.type(screen.getByLabelText(/^Airline/), "Air India");
+    await user.type(screen.getByLabelText("Flight number"), "AI 909");
+    await user.type(screen.getByLabelText("From airport"), "Kempegowda International Airport");
+    await user.type(screen.getByLabelText("To airport"), "Dubai International Airport");
+    await user.type(screen.getByLabelText("Boarding lead (minutes)"), "45");
+
+    expect(screen.getByText(/Calculated boarding time: 2026-09-26 08:15/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
+
+    await waitFor(() => expect(mocks.addFlightBooking).toHaveBeenCalledWith(expect.objectContaining({
+      tripId: "trip-1",
+      title: "Flight to Dubai",
+      referenceCode: "PNR123",
+      legs: [expect.objectContaining({
+        airlineName: "Air India",
+        flightNumber: "AI 909",
+        departureCode: "BLR",
+        departureName: "Kempegowda International Airport",
+        departureTimezone: "Asia/Kolkata",
+        arrivalCode: "DXB",
+        arrivalName: "Dubai International Airport",
+        arrivalTimezone: "Asia/Dubai",
+        boardingLeadMinutes: 45
+      })]
+    })));
+    expect(mocks.suggestCatalogValue).not.toHaveBeenCalled();
   });
 });

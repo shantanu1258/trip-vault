@@ -4,7 +4,7 @@ description: "Implemented system architecture, responsibilities, major flows, ri
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [architecture, pwa, offline, collaboration, supabase, cloudflare]
-last_verified: 2026-09-11
+last_verified: 2026-09-12
 ---
 
 # Trip Vault High-Level Design
@@ -22,7 +22,7 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 | Area | Current state |
 |---|---|
 | Application | Timeline-first React PWA is implemented on `main` |
-| Automated verification | 26 Vitest files and 121 tests pass; type-check and production build pass |
+| Automated verification | 29 Vitest files and 132 tests pass; type-check and production build pass |
 | Existing Supabase project | Apply migrations through `202609110003_document_experience.sql` before testing the current client |
 | Fresh Supabase project | Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once |
 | Cloudflare | Workers Static Assets configuration exists; the post-push live deployment is not verified here |
@@ -141,7 +141,7 @@ New documents are private to their uploader until the user deliberately chooses 
 
 A document has four independent concerns: immutable file versions, a specific travel purpose, links to bookings/events/journey legs, and traveler usage. Usage is **Shared**, **Selected travelers**, or **Assign later** and never grants access. Visibility remains **Only me**, **Signed-in trip members**, or **Selected signed-in members**. This permits one accommodation confirmation to support a group, a personal visa or boarding pass to follow one traveler, and unnamed admission tickets to remain in a pool until assigned.
 
-The document route is a viewer first: an authorized PDF or image opens automatically from the verified device copy, or downloads once and is then cached locally. Native full-screen viewing remains available for zooming. File facts, access, local-copy controls, replacement, archiving, and version history live behind an information action instead of displacing the travel document.
+The upload flow derives the Vault title from the selected document type and traveler usage while preserving the original filename separately. The document route is a viewer first: an authorized PDF or image opens automatically from the verified device copy, or downloads once and is then cached locally. The client restores the declared MIME type when an extensionless OPFS file is reopened so PDFs still render inline. Native full-screen viewing remains available for zooming. File facts, access, local-copy controls, replacement, archiving, and version history live behind an information action instead of displacing the travel document.
 
 ### 6.8 Timeline is the primary trip interface
 
@@ -149,11 +149,11 @@ Opening a trip displays every itinerary event in chronological order on one conn
 
 ### 6.9 Journey time zones belong to endpoints
 
-Flights, trains, buses, ferries, and cabs store strict IANA time zones for each origin and destination. Provider-local times are converted to instants before storage and are displayed in the relevant endpoint time zone. `trips.primary_timezone` remains only as a compatibility fallback for trip-day grouping and non-journey entries; it is not exposed as a free-text trip setting.
+Flights, trains, buses, ferries, and cabs store strict IANA time zones for each origin and destination. For flights, one airport catalog selection supplies its name, code, country, and time zone as a unit; the derived code is read-only. Choosing **Other airport** exposes manual values and sends the new value to administrator review. Provider-local times are converted to instants before storage and are displayed in the relevant endpoint time zone. `trips.primary_timezone` remains only as a compatibility fallback for trip-day grouping and non-journey entries; it is not exposed as a free-text trip setting.
 
 ### 6.10 Events are the common entry point
 
-The unified Add Event flow creates flights, connected journeys, hotels, meals, activities, preparation work, and custom entries. It may also create linked booking details, journey legs, costs, contacts, and map actions; event details then attach one or many classified Vault documents. A cost is optional, but a missing-cost state remains visible so it can be completed later.
+The unified Add Event flow creates flights, connected journeys, hotels, meals, activities, preparation work, and custom entries. It keeps three travel concepts explicit: an **airline/operator** performs the journey, a **service provider** delivers a non-flight service, and **booked via** identifies the seller, website, or agent used to purchase it. Airlines and booking vendors use searchable catalog pickers with an **Other** path to administrator review. It may also create linked booking details, journey legs, costs, contacts, and map actions; event details then attach one or many classified Vault documents. A cost is optional, but a missing-cost state remains visible so it can be completed later.
 
 ### 6.11 Online reads and offline writes are explicit
 
@@ -225,7 +225,7 @@ flowchart TD
 ### 8.3 Add an event or document
 
 1. The user selects the trip and content type.
-2. For a document, the user chooses a concrete purpose and whether it is shared, assigned to selected travelers, or awaiting assignment; access is chosen separately.
+2. For a document, the user chooses a concrete purpose and whether it is shared, assigned to selected travelers, or awaiting assignment; this combination determines its Vault name, while access is chosen separately.
 3. The app validates the file, calculates its checksum, and points to an existing Vault item when the same bytes already exist in that trip.
 4. A new file and metadata record are saved locally immediately.
 5. If online, structured data is written to Supabase and files upload separately; if offline, the mutation remains in the device outbox.
@@ -393,6 +393,7 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 | HLD-041 | Read/cache order | Read Supabase first while online with IndexedDB fallback; read IndexedDB directly while offline; push queued mutations in foreground | Accepted |
 | HLD-042 | Offline readiness proof | Extend the manifest to cover structured entity versions and generic journey legs before treating the badge as a complete guarantee | Revisit |
 | HLD-043 | Event context | Support optional linked cost, booking vendor, HTTPS website, phone/WhatsApp action, map action, and multiple documents | Accepted |
+| HLD-044 | Travel metadata entry | Use searchable airline, airport, and booking-vendor catalogs; derive airport code/country/time zone atomically and route explicit Other values to online administrator review | Accepted |
 
 ## 14. Risks Requiring Explicit Discussion
 

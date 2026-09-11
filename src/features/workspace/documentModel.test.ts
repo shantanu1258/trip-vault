@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { documentAssignmentLabel, documentKind, documentMatchesTraveler, documentPurposeLabel, findDuplicateDocument } from "./documentModel";
-import type { VaultDocument } from "./types";
+import { documentAssignmentLabel, documentKind, documentMatchesTraveler, documentPurposeLabel, findDuplicateDocument, suggestedDocumentTitle } from "./documentModel";
+import type { Traveler, VaultDocument } from "./types";
 
 function vaultDocument(overrides: Partial<VaultDocument> = {}): VaultDocument {
   return {
@@ -24,6 +24,10 @@ function vaultDocument(overrides: Partial<VaultDocument> = {}): VaultDocument {
 }
 
 describe("document model", () => {
+  const travelers: Traveler[] = [
+    { id: "traveler-1", trip_id: "trip-1", display_name: "Asha", is_minor: false, created_at: "" },
+    { id: "traveler-2", trip_id: "trip-1", display_name: "Ravi", is_minor: false, created_at: "" }
+  ];
   it("uses travel-document defaults", () => {
     expect(documentKind("hotel_confirmation")).toMatchObject({ category: "hotel", purpose: "hotel_confirmation", defaultAssignment: "shared" });
     expect(documentKind("boarding_pass").defaultAssignment).toBe("selected");
@@ -43,5 +47,11 @@ describe("document model", () => {
     expect(documentAssignmentLabel(document, new Map([["traveler-1", "Asha"], ["traveler-2", "Ravi"]]))).toBe("Asha, Ravi");
     expect(findDuplicateDocument([document], "A".repeat(64))).toBe(document);
     expect(findDuplicateDocument([document], "b".repeat(64))).toBeUndefined();
+  });
+  it("names a document from its type and intended traveler assignment", () => {
+    expect(suggestedDocumentTitle("flight_ticket", "shared", [], travelers)).toBe("Flight ticket · Everyone");
+    expect(suggestedDocumentTitle("boarding_pass", "selected", ["traveler-2"], travelers)).toBe("Boarding pass · Ravi");
+    expect(suggestedDocumentTitle("visa", "selected", [], travelers)).toBe("Visa · Choose traveler");
+    expect(suggestedDocumentTitle("activity_ticket", "unassigned", [], travelers)).toBe("Activity admission ticket · Assign later");
   });
 });

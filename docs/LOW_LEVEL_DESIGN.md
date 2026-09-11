@@ -4,7 +4,7 @@ description: "Implemented routes, modules, data model, authorization, file stora
 scope: [service-wide]
 agents: [coder, reviewer, planner, debugger]
 tags: [implementation, data-model, sync, storage, authorization, testing]
-last_verified: 2026-09-11
+last_verified: 2026-09-12
 ---
 
 # Trip Vault Low-Level Design
@@ -38,7 +38,7 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 | Motion | Property-specific Tailwind transitions plus CSS scroll snap and Intersection Observer | Implemented | Restrained focus changes and reduced-motion fallback |
 | Map hand-off | Google Maps URLs | Accepted | Search and directions links need no API key; no embedded maps, geocoding, or downloads in MVP |
 | Flight status | Manual records plus external links | Accepted | No live-data provider, scraping, or background polling |
-| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | The executable local baseline is 26 files and 121 tests; type-check and production PWA build pass |
+| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | The executable local baseline is 29 files and 132 tests; type-check and production PWA build pass |
 
 ## 2. Implemented Repository Layout
 
@@ -1288,8 +1288,9 @@ Today, readiness becomes `stale` automatically when the authorized document-vers
 | `FocusSurface` | Current/active label, accent, elevation, and reduced-motion-safe emphasis |
 | `TripPage` timeline composition | Complete timeline, phase jumps, active-event scroll, event detail sheet, people/sharing sheet, and Details switch |
 | `AddEventForm` | Unified creation for flight, connected journeys, hotel milestones, meals, activities, preparation, transport, and custom events |
-| `TimeZoneAutocomplete` | Strict searchable IANA-zone chooser with compact desktop list and mobile dialog behavior |
-| `AirlinePicker`, `AirportPicker`, `VendorPicker` | Starter/published metadata autocomplete with user-entered-value fallback and privacy-safe suggestion support |
+| `CatalogPicker` | Shared searchable desktop popover/mobile dialog that stays inside the visual viewport when the phone keyboard opens and always exposes an explicit Other path |
+| `TimeZoneAutocomplete` | Strict searchable IANA-zone chooser with compact desktop list and a keyboard-aware mobile dialog |
+| `AirlinePicker`, `AirportPicker`, `VendorPicker` | Published/bundled catalog selectors with manual Other inputs and privacy-safe administrator suggestions; airport selection atomically supplies name, code, country, and time zone |
 | `ParticipantSelector`, `TravelerSwitcher` | Everyone/selected-traveler assignment and persistent management context without impersonation |
 | `EventDocuments` | Complete event document list, multi-select existing attachment, one-at-a-time classified upload, ordering, and unlink |
 | `UploadDocumentForm` and `documentModel` | Travel-purpose presets, assignment/access separation, size validation, duplicate recovery, and queued local copy |
@@ -1330,7 +1331,9 @@ No gradients should be used. Decorative elements must not compete with urgent tr
 - Search matches timeline titles, booking/provider data, PNRs, airport codes/names, documents, travelers, readiness items, and related metadata after two characters, returning at most 40 results.
 - Details view keeps the existing sectioned experience: Overview, Reservations, Costs, People, Readiness, Documents, Offline, Travel data, and Notes.
 
-The floating Add Event sheet exposes Flight, Train, Bus, Ferry/Boat, Cab, Hotel, Meal, Activity, Preparation, Other transport, and Custom. Flight, train, bus, ferry, and cab bookings can contain ordered connecting legs. Each journey is explicitly Domestic or International; each endpoint uses a searchable strict IANA time zone, and the app converts provider-local departure/arrival values to instants while validating DST ambiguity, duration, and connection order. Flight PNR/reference is mandatory. Boarding lead or exact boarding time is journey-only. Hotel creation produces separate check-in and checkout timeline milestones.
+The floating Add Event sheet exposes Flight, Train, Bus, Ferry/Boat, Cab, Hotel, Meal, Activity, Preparation, Other transport, and Custom. Flight, train, bus, ferry, and cab bookings can contain ordered connecting legs. Airline means the carrier operating a flight; service provider means the hotel, restaurant, tour company, or other business delivering a non-flight service; booked via means the website, seller, or agent used to purchase the reservation. Flight creation therefore does not show a redundant service-provider input.
+
+Each journey is explicitly Domestic or International. A flight airport is selected by code or name and fills the name, passenger code, country, and strict IANA time zone together; its derived code is disabled. **Other airport** unlocks manual name/code/country/time-zone entry so a bad or missing catalog row can be submitted for administrator review. Airline and booked-via inputs follow the same saved-list/Other interaction. The app converts provider-local departure/arrival values to instants while validating DST ambiguity, duration, and connection order. Flight PNR/reference is mandatory. Boarding lead or exact boarding time is journey-only; without an exact time, the display derives boarding by subtracting the lead from scheduled departure. Hotel creation produces separate check-in and checkout timeline milestones.
 
 All event types may include an optional linked cost. Bookings may also retain provider/operator, booking vendor, HTTPS website, contact name, and phone number. A valid 7–15 digit phone normalization enables direct `tel:` and `https://wa.me/` actions. Location-bearing entries expose an explicit map URL or a keyless Google Maps search.
 
@@ -1401,6 +1404,7 @@ Presentation rules:
 5. The countdown is `effective_departure_at - now`, recalculated while the app is visible. It changes to **Departed**, **Landed**, or **Cancelled** when the manual status says so.
 6. Delay minutes are derived from estimated minus scheduled departure and are never a separate editable source of truth.
 7. After landing, baggage claim and baggage-tag actions become prominent. All attached tickets, boarding passes, and baggage tags remain reachable throughout.
+8. The flight hero shows seat chips before secondary details. Everyone context shows every participant and their entered seat; a selected-traveler context shows only that traveler's seat.
 
 The manual update sheet edits status, estimated/actual times, boarding time, departure and arrival terminal/gate, baggage claim, and a note in one version-checked mutation. The form always labels the result **Updated by a traveler** with actor and time.
 
@@ -1609,6 +1613,7 @@ Rules:
 - Require traveler and collaborator invitations to satisfy their mutually exclusive target fields.
 - Require booking, itinerary, requirement, and document traveler assignments to belong to the same trip.
 - Require selected document usage to contain at least one traveler in the UI; shared and unassigned modes contain no `document_travelers` rows.
+- Derive each new Vault title from document type plus Shared, Selected traveler names, or Assign later; preserve the device filename only as immutable version metadata.
 - Keep document traveler usage separate from private/trip/selected-member access and explain that distinction beside the controls.
 - Require every itinerary-document link to reference an event and document from the same trip and prevent duplicate active links for the same pair.
 - Show the active managed-traveler context beside every form that can change another person's information.
@@ -1660,9 +1665,9 @@ Rules:
 
 | Check | Last verified | Result |
 |---|---|---|
-| `npm run typecheck` | 2026-09-11 | Pass |
-| `npm test -- --run` | 2026-09-11 | Pass: 26 files, 121 tests |
-| `npm run build` | 2026-09-11 | Pass; only the standard Vite large-chunk advisory remains |
+| `npm run typecheck` | 2026-09-12 | Pass |
+| `npm test -- --run` | 2026-09-12 | Pass: 29 files, 132 tests |
+| `npm run build` | 2026-09-12 | Pass; only the standard Vite chunk-sharing advisory remains |
 | `supabase/tests/001_schema_smoke.sql` | Existing remote schema before the document-experience migration | Previously passed; rerun after applying `202609110003_document_experience.sql` |
 | Phone, desktop, sharing, upload, Cloudflare, and airplane mode | Current release | Manual acceptance pending in `docs/FEATURE_TEST_CHECKLIST.md` |
 
@@ -1704,6 +1709,7 @@ The lists below are the release coverage contract. They do not imply that every 
 - Flight card manual states and document-priority changes
 - Alerts groups, badge count, and empty state
 - Airline picker, missing-logo fallback, and URL warning
+- Airline, airport, and booking-vendor saved-list selection, derived airport metadata, explicit Other entry, and keyboard-aware mobile result dialogs
 - Manual visa input and readiness warnings
 - Join-code entry without pre-redemption trip disclosure
 - Traveler roster and managed-traveler context picker
@@ -1711,6 +1717,7 @@ The lists below are the release coverage contract. They do not imply that every 
 - Booking forms by type
 - Document visibility controls
 - Document type presets, Shared/Selected/Assign later usage, assignment/access separation, and exact-duplicate recovery
+- Document titles derived from purpose and traveler assignment, with original filenames preserved separately
 - Visible-first PDF/image viewer, automatic verified local caching, Info sheet, and native full-screen action
 - Offline and sync indicators
 - Permission-dependent actions
@@ -1856,6 +1863,8 @@ The lists below are the release coverage contract. They do not imply that every 
 | LLD-043 | Unified event creation | Use Add Event for travel, stays, meals, activities, preparation, transport, and custom entries with optional linked booking/cost/context | Accepted |
 | LLD-044 | Offline manifest completeness | Add structured entity/version coverage, explicit generic-journey fetch, and non-document stale detection before the readiness badge alone is authoritative | Revisit |
 | LLD-045 | Event upload interaction | Add one fully classified new file at a time; allow multi-select only when attaching existing Vault documents | Accepted |
+| LLD-046 | Catalog picker fallback | Airline, airport, and booking-vendor selectors use one saved-list/Other interaction; explicit Other values create privacy-safe online suggestions for later administrator approval or rejection | Accepted |
+| LLD-047 | Flight airport consistency | Selecting an airport supplies name, code, country, and IANA time zone atomically; derived values are read-only unless Other is selected | Accepted |
 
 ## Source File Index
 

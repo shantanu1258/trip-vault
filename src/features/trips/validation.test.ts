@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { amountStringToMinor, defaultHotelCheckoutLocal, hotelStayInstants, localDateTimeCandidates, localDateTimeToIso, tripFormSchema } from "./validation";
+import { amountStringToMinor, defaultHotelCheckoutLocal, hotelStayInstants, localDateTimeCandidates, localDateTimeMinusMinutes, localDateTimeToIso, tripFormSchema } from "./validation";
 
 describe("trip validation", () => {
   const valid = { title: "Japan", destination: "Tokyo", startDate: "2026-10-10", endDate: "2026-10-18", timezone: "Asia/Tokyo", baseCurrency: "jpy" };
@@ -17,6 +17,10 @@ describe("trip validation", () => {
     ["a leap day", "2028-02-28T15:00", "2028-02-29T11:00"]
   ])("defaults hotel checkout across %s", (_case, checkIn, expected) => expect(defaultHotelCheckoutLocal(checkIn)).toBe(expected));
   it("does not manufacture a checkout from an incomplete check-in", () => expect(defaultHotelCheckoutLocal("")).toBe(""));
+  it("calculates a boarding clock from the departure and lead, including a previous day", () => {
+    expect(localDateTimeMinusMinutes("2026-09-26T09:00", 45)).toBe("2026-09-26T08:15");
+    expect(localDateTimeMinusMinutes("2026-09-26T00:20", 45)).toBe("2026-09-25T23:35");
+  });
   it("reports which required hotel time is missing", () => {
     expect(() => hotelStayInstants({ checkInLocal: "", checkoutLocal: "2026-09-27T11:00", timeZone: "Asia/Kolkata" })).toThrow(/check-in date and time/);
     expect(() => hotelStayInstants({ checkInLocal: "2026-09-26T15:00", checkoutLocal: "", timeZone: "Asia/Kolkata" })).toThrow(/checkout date and time/);

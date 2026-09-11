@@ -52,8 +52,8 @@ export function CreateTripPage() {
             <p className="mt-2 text-sm text-surface/70">Start with the basics. You can add people, bookings, documents, and readiness items next.</p>
           </div>
           <form ref={draft.formRef} className="space-y-5 p-6 sm:p-8" onSubmit={submit}>
-            <label className="form-label">Trip name<input className="form-input" name="title" placeholder="Japan spring holiday" autoFocus /></label>
-            <label className="form-label">Destination<input className="form-input" name="destination" placeholder="Tokyo, Kyoto & Osaka" /></label>
+            <label className="form-label">Trip name<input className="form-input" name="title" placeholder="Give this trip a name everyone will recognize" autoFocus /></label>
+            <label className="form-label">Destination<input className="form-input" name="destination" placeholder="List the cities, regions, or countries on this trip" /></label>
             <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Start date<input className="form-input" name="startDate" type="date" defaultValue={dateInput(30)} /></label><label className="form-label">End date<input className="form-input" name="endDate" type="date" defaultValue={dateInput(37)} /></label></div>
             <input type="hidden" name="timezone" value={Intl.DateTimeFormat().resolvedOptions().timeZone} />
             <label className="form-label sm:max-w-64">Currency<CurrencySelect name="baseCurrency" defaultValue="INR" /></label>

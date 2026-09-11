@@ -106,7 +106,7 @@ export function SignInPage({ admin = false }: { admin?: boolean }) {
             )}
             <div>
               <label htmlFor="email" className="text-sm font-extrabold">Email address</label>
-              <div className="relative mt-2"><Mail className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted" /><input id="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" className="h-[3.25rem] w-full rounded-2xl border border-line bg-elevated py-3 pl-12 pr-4 text-ink placeholder:text-muted/60" /></div>
+              <div className="relative mt-2"><Mail className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted" /><input id="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Enter the email you will use for Trip Vault" className="h-[3.25rem] w-full rounded-2xl border border-line bg-elevated py-3 pl-12 pr-4 text-ink placeholder:text-muted/60" /></div>
             </div>
             <div>
               <label htmlFor="password" className="text-sm font-extrabold">Password</label>

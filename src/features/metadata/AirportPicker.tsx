@@ -1,26 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
-import { useId, type ChangeEvent } from "react";
-import { listAvailableAirports } from "./publishedConfig";
+import { useMemo, useState } from "react";
+import { CatalogPicker } from "../../components/CatalogPicker";
+import { TimeZoneAutocomplete } from "../../components/TimeZoneAutocomplete";
+import { listAvailableAirports, type AvailableAirport } from "./publishedConfig";
 
-function setNamedField(form: HTMLFormElement | null, name: string, value: string) {
-  const field = form?.elements.namedItem(name);
-  if (!(field instanceof HTMLInputElement) && !(field instanceof HTMLSelectElement)) return;
-  field.value = value;
-  field.dispatchEvent(new Event("input", { bubbles: true }));
-  field.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
-export function AirportPicker({ name, codeName, timezoneName, countryName, placeholder }: { name: string; codeName: string; timezoneName: string; countryName?: string; placeholder: string }) {
-  const listId = useId();
+export function AirportPicker({ name, codeName, timezoneName, countryName, label, defaultTimezone }: { name: string; codeName: string; timezoneName: string; countryName: string; label: "From airport" | "To airport"; defaultTimezone: string }) {
   const query = useQuery({ queryKey: ["available-airports"], queryFn: listAvailableAirports, staleTime: Infinity });
-  const choose = (event: ChangeEvent<HTMLInputElement>) => {
-    const value = event.currentTarget.value.trim().toLocaleLowerCase();
-    const airport = query.data?.find((item) => item.name.toLocaleLowerCase() === value || item.iataCode?.toLocaleLowerCase() === value || `${item.iataCode} — ${item.name}`.toLocaleLowerCase() === value);
-    if (!airport) return;
-    event.currentTarget.value = airport.name;
-    setNamedField(event.currentTarget.form, codeName, airport.iataCode ?? airport.icaoCode ?? "");
-    setNamedField(event.currentTarget.form, timezoneName, airport.timezone);
-    if (countryName) setNamedField(event.currentTarget.form, countryName, airport.countryCode);
-  };
-  return <><input className="form-input" name={name} list={listId} placeholder={placeholder} onChange={choose} /><datalist id={listId}>{query.data?.map((airport) => <option key={`${airport.sourceVersion}:${airport.stableKey}`} value={airport.name}>{airport.iataCode ? `${airport.iataCode} · ` : ""}{airport.city} · {airport.timezone}</option>)}</datalist></>;
+  const [selected, setSelected] = useState<AvailableAirport | null>(null);
+  const [manual, setManual] = useState(false);
+  const options = query.data ?? [];
+  const pickerOptions = useMemo(() => options.map((airport) => ({ id: `${airport.sourceVersion}:${airport.stableKey}`, title: `${airport.iataCode ?? airport.icaoCode ?? "—"} · ${airport.name}`, detail: `${airport.city} · ${airport.countryCode} · ${airport.timezone}`, searchText: `${airport.iataCode ?? ""} ${airport.icaoCode ?? ""} ${airport.city} ${airport.countryCode}` })), [options]);
+  const direction = label === "From airport" ? "From" : "To";
+
+  if (manual) return <div className="grid gap-4 sm:grid-cols-2"><label className="form-label sm:col-span-2">{label}<input className="form-input" name={name} placeholder="Enter the full airport name printed on the ticket" required /></label><label className="form-label">{direction} airport code<input key="manual-airport-code" className="form-input uppercase" name={codeName} maxLength={3} placeholder="Enter the 3-letter IATA code" required /></label><label className="form-label">{direction} country code<input className="form-input uppercase" name={countryName} maxLength={2} placeholder="Enter the 2-letter country code" /></label><label className="form-label sm:col-span-2">{direction} airport time zone<TimeZoneAutocomplete name={timezoneName} defaultValue={defaultTimezone} required /></label><input type="hidden" name={`${name}Source`} value="other" /><button type="button" className="text-left text-xs font-extrabold text-brand sm:col-span-2" onClick={() => setManual(false)}>Choose from saved airports instead</button></div>;
+
+  return <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_9rem]"><label className="form-label">{label}<CatalogPicker label={`Choose ${label.toLocaleLowerCase()}`} value={selected ? { id: `${selected.sourceVersion}:${selected.stableKey}`, title: `${selected.iataCode ?? selected.icaoCode ?? "—"} · ${selected.name}`, detail: `${selected.city} · ${selected.countryCode} · ${selected.timezone}` } : undefined} options={pickerOptions} emptyLabel={`Search ${direction.toLocaleLowerCase()} airport name or code`} searchPlaceholder="Search airport name, city, or IATA code" otherLabel={`Other ${direction.toLocaleLowerCase()} airport`} onChoose={(id) => setSelected(options.find((airport) => `${airport.sourceVersion}:${airport.stableKey}` === id) ?? null)} onOther={() => { setSelected(null); setManual(true); }} /></label><label className="form-label">{direction} airport code<input key="derived-airport-code" className="form-input uppercase opacity-70" value={selected?.iataCode ?? selected?.icaoCode ?? "Derived after selection"} disabled aria-label={`${direction} airport code`} /></label><input type="hidden" name={name} value={selected?.name ?? ""} /><input type="hidden" name={codeName} value={selected?.iataCode ?? selected?.icaoCode ?? ""} /><input type="hidden" name={countryName} value={selected?.countryCode ?? ""} /><input type="hidden" name={timezoneName} value={selected?.timezone ?? ""} /><input type="hidden" name={`${name}Source`} value="catalog" /></div>;
 }

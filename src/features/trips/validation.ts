@@ -84,6 +84,13 @@ export function defaultHotelCheckoutLocal(checkInLocal: string) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}T11:00`;
 }
 
+export function localDateTimeMinusMinutes(value: string, minutes: number) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!match || !Number.isInteger(minutes) || minutes < 0) return "";
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]) - minutes));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}T${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
+}
+
 export function hotelStayInstants(input: {
   checkInLocal: string;
   checkoutLocal: string;
