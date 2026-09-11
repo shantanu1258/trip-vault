@@ -4,6 +4,7 @@ import {
   CookingPot, Ship, Loader2, MapPinned, Plane, Plus, TrainFront, Trash2
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { CurrencySelect } from "../../components/CurrencySelect";
 import { ModalSheet } from "../../components/ModalSheet";
 import { TimeZoneAutocomplete } from "../../components/TimeZoneAutocomplete";
 import { AirlinePicker } from "../metadata/AirlinePicker";
@@ -12,7 +13,7 @@ import { VendorPicker } from "../metadata/VendorPicker";
 import { addItineraryItem, addTripCost } from "../trips/api";
 import { getErrorMessage } from "../trips/presentation";
 import { isJourneyEventType, type CostCategory, type TimelineEventType, type Trip } from "../trips/types";
-import { amountStringToMinor, isValidTimeZone, localDateTimeToIso } from "../trips/validation";
+import { amountStringToMinor, defaultHotelCheckoutLocal, hotelStayInstants, isValidTimeZone, localDateTimeToIso } from "../trips/validation";
 import { addBookedTimelineEvent, addFlightBooking, addJourneyBooking, suggestCatalogValue } from "../workspace/api";
 import { ParticipantSelector } from "../workspace/ParticipantSelector";
 import type { BookingType, JourneyMode, JourneyScope, Traveler } from "../workspace/types";
@@ -80,7 +81,7 @@ function CostFields({ trip }: { trip: Trip }) {
     <input type="hidden" name="includeCost" value={enabled ? "yes" : "no"} />
     {enabled && <div className="mt-4 grid gap-4 sm:grid-cols-2">
       <label className="form-label">Amount<input className="form-input" name="costAmount" inputMode="decimal" placeholder="0 for free" required /></label>
-      <label className="form-label">Currency<input className="form-input uppercase" name="costCurrency" defaultValue={trip.base_currency} maxLength={3} required /></label>
+      <label className="form-label">Currency<CurrencySelect name="costCurrency" defaultValue={trip.base_currency} required /></label>
       <label className="form-label">Cost label<input className="form-input" name="costTitle" placeholder="Uses event title if empty" /></label>
       <label className="form-label">Payment<select className="form-input" name="paymentStatus"><option value="planned">Planned / unpaid</option><option value="paid">Paid</option></select></label>
     </div>}
@@ -109,6 +110,26 @@ function OccurrenceSelect({ name }: { name: string }) {
     <option value="earlier">Earlier occurrence</option>
     <option value="later">Later occurrence</option>
   </select>;
+}
+
+function HotelStayFields({ trip }: { trip: Trip }) {
+  const initialCheckIn = `${trip.start_date}T15:00`;
+  const [checkIn, setCheckIn] = useState(initialCheckIn);
+  const [checkout, setCheckout] = useState(defaultHotelCheckoutLocal(initialCheckIn));
+  const changeCheckIn = (nextCheckIn: string) => {
+    setCheckIn(nextCheckIn);
+    setCheckout((current) => (!current || current <= nextCheckIn) ? defaultHotelCheckoutLocal(nextCheckIn) : current);
+  };
+  return <>
+    <div className="grid gap-4 sm:grid-cols-2">
+      <label className="form-label">Check-in (hotel local time)<input className="form-input" name="startsAt" type="datetime-local" value={checkIn} onChange={(event) => changeCheckIn(event.target.value)} required /></label>
+      <label className="form-label">Checkout (hotel local time)<input className="form-input" name="checkoutAt" type="datetime-local" value={checkout} onChange={(event) => setCheckout(event.target.value)} required /></label>
+      <label className="form-label">Hotel time zone<TimeZoneAutocomplete name="timezone" defaultValue={trip.primary_timezone} required /></label>
+      <label className="form-label">If check-in clock repeats<OccurrenceSelect name="occurrence" /></label>
+      <label className="form-label">If checkout clock repeats<OccurrenceSelect name="checkoutOccurrence" /></label>
+    </div>
+    <p className="-mt-3 text-xs leading-5 text-muted">Checkout starts on the following day by default. Both values use the hotel's local clock and are validated after time-zone conversion.</p>
+  </>;
 }
 
 function FlightLegFields({ index, trip, removable, onRemove }: { index: number; trip: Trip; removable: boolean; onRemove: () => void }) {
@@ -216,10 +237,15 @@ export function AddEventForm({ trip, travelers, preferredTravelerId, onClose }: 
         return created;
       }
       const timezone = text(form, "timezone");
-      const startsAt = instant(form, "startsAt", "timezone", "occurrence");
-      const checkoutLocal = type === "hotel_check_in" ? text(form, "checkoutAt") : "";
-      const endsAt = checkoutLocal ? localDateTimeToIso(checkoutLocal, timezone, (text(form, "checkoutOccurrence") || "automatic") as "automatic" | "earlier" | "later") : undefined;
-      if (endsAt && endsAt < startsAt) throw new Error("Hotel checkout cannot be before check-in.");
+      const stay = type === "hotel_check_in" ? hotelStayInstants({
+        checkInLocal: text(form, "startsAt"),
+        checkoutLocal: text(form, "checkoutAt"),
+        timeZone: timezone,
+        checkInOccurrence: (text(form, "occurrence") || "automatic") as "automatic" | "earlier" | "later",
+        checkoutOccurrence: (text(form, "checkoutOccurrence") || "automatic") as "automatic" | "earlier" | "later"
+      }) : null;
+      const startsAt = stay?.checkInAt ?? instant(form, "startsAt", "timezone", "occurrence");
+      const endsAt = stay?.checkoutAt;
       const common = { tripId: trip.id, eventType: type, title, startsAt, endsAt, timezone, location: text(form, "location"), mapUrl: optionalHttps(text(form, "mapUrl"), "Map link"), notes: text(form, "notes"), travelerIds };
       if (type === "hotel_check_in" || text(form, "hasBooking") === "yes") {
         if (type === "hotel_check_in" && !endsAt) throw new Error("Add the hotel checkout date and time.");
@@ -246,7 +272,7 @@ export function AddEventForm({ trip, travelers, preferredTravelerId, onClose }: 
       {type === "flight" && <><BookingFields always referenceRequired />{legKeys.map((key, index) => <FlightLegFields key={key} index={index} trip={trip} removable={legKeys.length > 1} onRemove={() => setLegKeys((keys) => keys.filter((item) => item !== key))} />)}<button type="button" className="secondary-button w-full" onClick={() => setLegKeys((keys) => [...keys, crypto.randomUUID()])}><Plus className="size-4" /> Add connecting flight</button></>}
       {type && ["train", "bus", "ferry", "cab"].includes(type) && <><BookingFields always />{legKeys.map((key, index) => <JourneyLegFields key={key} index={index} mode={type as JourneyMode} trip={trip} removable={legKeys.length > 1} onRemove={() => setLegKeys((keys) => keys.filter((item) => item !== key))} />)}<button type="button" className="secondary-button w-full" onClick={() => setLegKeys((keys) => [...keys, crypto.randomUUID()])}><Plus className="size-4" /> Add connection</button></>}
       {type && !isJourney && <>
-        <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">{type === "hotel_check_in" ? "Check-in (hotel local time)" : "Starts (place local time)"}<input className="form-input" name="startsAt" type="datetime-local" defaultValue={`${trip.start_date}T09:00`} required /></label><label className="form-label">Time zone<TimeZoneAutocomplete name="timezone" defaultValue={trip.primary_timezone} required /></label><label className="form-label">If clock repeats<OccurrenceSelect name="occurrence" /></label>{type === "hotel_check_in" && <><label className="form-label">Checkout (hotel local time)<input className="form-input" name="checkoutAt" type="datetime-local" required /></label><label className="form-label">If checkout clock repeats<OccurrenceSelect name="checkoutOccurrence" /></label></>}</div>
+        {type === "hotel_check_in" ? <HotelStayFields trip={trip} /> : <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Starts (place local time)<input className="form-input" name="startsAt" type="datetime-local" defaultValue={`${trip.start_date}T09:00`} required /></label><label className="form-label">Time zone<TimeZoneAutocomplete name="timezone" defaultValue={trip.primary_timezone} required /></label><label className="form-label">If clock repeats<OccurrenceSelect name="occurrence" /></label></div>}
         <label className="form-label">Place / address<input className="form-input" name="location" /></label><label className="form-label">Google Maps link<input className="form-input" type="url" name="mapUrl" placeholder="https://maps.google.com/..." /></label><label className="form-label">Notes<textarea className="form-input min-h-24" name="notes" /></label>
         <BookingFields always={type === "hotel_check_in"} />
       </>}

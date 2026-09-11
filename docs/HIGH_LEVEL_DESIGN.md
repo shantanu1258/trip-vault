@@ -13,9 +13,20 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 
 **Document status:** Implemented personal MVP 1.0
 
-**Implementation status:** Timeline-first local application complete; configured Supabase project requires `202609110001_timeline_redesign.sql` and remote acceptance testing
+**Implementation status:** Timeline-first application complete locally. Existing Supabase projects must apply migrations through `202609110003_document_experience.sql` (or run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` on a fresh project) before remote document testing.
 
-**Default decision state:** Accepted unless explicitly marked as deferred
+**Default decision state:** Accepted unless explicitly marked as deferred or revisit
+
+## Release Reality
+
+| Area | Current state |
+|---|---|
+| Application | Timeline-first React PWA is implemented on `main` |
+| Automated verification | 26 Vitest files and 108 tests pass; type-check and production build pass |
+| Existing Supabase project | Apply migrations through `202609110003_document_experience.sql` before testing the current client |
+| Fresh Supabase project | Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once |
+| Cloudflare | Workers Static Assets configuration exists; the post-push live deployment is not verified here |
+| Acceptance | Phone, desktop, multi-member, upload, and airplane-mode tests remain manual release gates |
 
 ## 1. Product Vision
 
@@ -39,7 +50,7 @@ The primary trip experience is a chronological projection over itinerary rows. D
 |---|---|
 | One application across devices | Phone, tablet, and desktop use the same responsive codebase |
 | Personal-use scope | Optimize for the owner and invited travel companions rather than public or commercial use |
-| Immediate trip context | Today and Upcoming views load from locally cached structured data |
+| Immediate trip context | Online views refresh from Supabase and fall back to locally cached structured data; offline views read the device copy |
 | Reliable offline access | Users explicitly pin trips or documents and receive a verified readiness result |
 | Safe collaboration | Trip membership and document visibility control who can access data |
 | Manageable document library | Cloud object storage holds originals while the database holds searchable metadata |
@@ -84,15 +95,13 @@ flowchart LR
     PWA <--> DB[Supabase Postgres and Realtime]
     PWA <--> FILES[Supabase Private Storage]
     CF[Cloudflare Workers Static Assets] --> PWA
-    DB --> BACKUP[Managed Backups]
-    FILES --> BACKUP
 ```
 
 ## 5. Component Responsibilities
 
 | Component | Responsibility | Explicitly does not own |
 |---|---|---|
-| React PWA | User interface, protected admin console, validation, local-first reads, sync orchestration, previews | Authoritative permissions or permanent originals |
+| React PWA | User interface, protected admin console, validation, network-first online reads, offline cache fallback, sync orchestration, previews | Authoritative permissions or permanent originals |
 | Device offline vault | Cached structured data, pinned files, pending mutations | Cross-device truth or long-term backup |
 | Supabase Auth | Email-only identity, sign-in sessions, and identity used to redeem a join code | Trip authorization by itself |
 | Supabase Postgres | Trips, memberships, bookings, itinerary, notes, document metadata, access rules | Binary file contents |
@@ -116,7 +125,9 @@ Supabase Storage holds documents because it shares authentication and row-level 
 
 ### 6.4 Offline readiness is verified
 
-The label **Ready offline** may be shown only when complete structured trip data and every current document version the user is authorized to open exist locally and match the server manifest. A deliberately reduced file set is labeled **Essentials ready**.
+The product contract is that **Ready offline** means complete structured trip data plus every current document version the user is authorized to open. A deliberately reduced document set is labeled **Essentials ready**.
+
+The current implementation downloads and caches the major structured domains and checksum-verifies the selected document versions. Its persisted readiness manifest, however, records only document-version IDs: it does not yet prove the completeness of every structured domain, explicitly fetch generic journey legs, or become stale after every booking or itinerary mutation. Until HLD-042 is resolved, the UI result is provisional and an airplane-mode acceptance test is required before relying on it during travel.
 
 ### 6.5 Sharing is authenticated and code-based
 
@@ -132,6 +143,22 @@ A document has four independent concerns: immutable file versions, a specific tr
 
 The document route is a viewer first: an authorized PDF or image opens automatically from the verified device copy, or downloads once and is then cached locally. Native full-screen viewing remains available for zooming. File facts, access, local-copy controls, replacement, archiving, and version history live behind an information action instead of displacing the travel document.
 
+### 6.8 Timeline is the primary trip interface
+
+Opening a trip displays every itinerary event in chronological order on one connected timeline. The app identifies one current, next, or most-recent event, scrolls it into view on the first open, and distinguishes it with color and an explicit label. Selecting a traveler changes document and action context but never hides the rest of the shared itinerary.
+
+### 6.9 Journey time zones belong to endpoints
+
+Flights, trains, buses, ferries, and cabs store strict IANA time zones for each origin and destination. Provider-local times are converted to instants before storage and are displayed in the relevant endpoint time zone. `trips.primary_timezone` remains only as a compatibility fallback for trip-day grouping and non-journey entries; it is not exposed as a free-text trip setting.
+
+### 6.10 Events are the common entry point
+
+The unified Add Event flow creates flights, connected journeys, hotels, meals, activities, preparation work, and custom entries. It may also create linked booking details, journey legs, costs, contacts, and map actions; event details then attach one or many classified Vault documents. A cost is optional, but a missing-cost state remains visible so it can be completed later.
+
+### 6.11 Online reads and offline writes are explicit
+
+While online, collection reads request Supabase first, update IndexedDB on success, and fall back to the cached collection on failure. TanStack Query controls the in-memory request lifecycle with a 30-second freshness window. Offline reads use IndexedDB directly. Supported mutations are written locally and queued; foreground synchronization retries them when the app is open, online, and authorized.
+
 ## 7. Primary Data Domains
 
 ```mermaid
@@ -144,6 +171,10 @@ flowchart TD
     MANAGER --> TRAVELER
     TRIP --> BOOKING[Booking]
     TRIP --> ITEM[Itinerary Item]
+    BOOKING --> FLIGHT[Flight Legs]
+    BOOKING --> JOURNEY[Train / Bus / Ferry / Cab Legs]
+    TRIP --> COST[Trip Costs]
+    TRIP --> REQUIREMENT[Readiness Requirements]
     TRIP --> NOTE[Note]
     TRIP --> DOCUMENT[Document Metadata]
     DOCUMENT --> VERSION[Immutable File Version]
@@ -169,17 +200,29 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[Launch Trip Vault] --> B[Load cached app shell]
-    B --> C[Load cached profile and active trip]
-    C --> D[Render Today and Upcoming]
-    D --> E{Network available?}
-    E -- No --> F[Show offline state and local data]
-    E -- Yes --> G[Refresh session and synchronize]
-    G --> H[Apply authorized remote changes]
-    H --> I[Update local cache]
+    A[Launch Trip Vault] --> B[Service worker loads app shell]
+    B --> C{Network available?}
+    C -- No --> D[Resolve enrolled profile and read IndexedDB]
+    C -- Yes --> E[Refresh Supabase session]
+    E --> F[Read authorized collections from Supabase]
+    F --> G[Replace cached collections]
+    F -- Request fails --> D
+    D --> H[Render Home or trip]
+    G --> H
+    H --> I[Push queued mutations in foreground]
 ```
 
-### 8.2 Add a booking or document
+### 8.2 Open a trip
+
+1. A trip card opens `/trips/:tripId` directly in Timeline view.
+2. The client loads every authorized itinerary item and its booking/journey summaries.
+3. One event is resolved as current, otherwise next, otherwise most recent.
+4. On the first timeline render, the page scrolls that event into the viewport; returning from Trip details restores the previous timeline position.
+5. Phase shortcuts jump to Past, Current/Next, or Upcoming without filtering events out of the timeline.
+6. Selecting a card opens its details, linked costs, map/contact actions, and attached documents.
+7. The floating controls open Add Event, People & sharing, or jump back to the active event.
+
+### 8.3 Add an event or document
 
 1. The user selects the trip and content type.
 2. For a document, the user chooses a concrete purpose and whether it is shared, assigned to selected travelers, or awaiting assignment; access is chosen separately.
@@ -189,7 +232,7 @@ flowchart TD
 6. The UI shows `Saved locally`, `Syncing`, `Synced`, or a safe `Action required` reason.
 7. Other connected members receive only metadata and files allowed by document visibility.
 
-### 8.3 Prepare a trip for offline use
+### 8.4 Prepare a trip for offline use
 
 1. The user chooses **Make trip available offline**.
 2. The app calculates required structured data and all current documents authorized for that user.
@@ -197,9 +240,9 @@ flowchart TD
 4. Missing files download with visible progress.
 5. Checksums are verified locally.
 6. The trip receives a timestamped readiness result.
-7. Any later server change marks the pack as needing refresh.
+7. A document-version change marks the current manifest stale. Booking, itinerary, and generic journey-leg freshness still require the HLD-042 follow-up and manual airplane-mode verification.
 
-### 8.4 Join with a one-time code
+### 8.5 Join with a one-time code
 
 1. The owner creates or selects a traveler, or chooses **Non-traveling collaborator**.
 2. The owner chooses Editor or Viewer and generates a cryptographically random code.
@@ -209,7 +252,7 @@ flowchart TD
 6. One transaction creates membership, links the account to the traveler when applicable, and consumes the code.
 7. The recipient may then prepare their authorized trip data and documents for offline use.
 
-### 8.5 Operate without a connection
+### 8.6 Operate without a connection
 
 ```mermaid
 flowchart LR
@@ -225,9 +268,9 @@ flowchart LR
     I --> J[Synchronize or resolve conflicts]
 ```
 
-After a device has been authenticated and a trip is marked **Ready offline**, Home, itinerary, bookings, readiness, alerts, manual flight updates, and downloaded documents operate without Supabase or Cloudflare. First-time sign-up, code redemption, membership changes, missing document downloads, external maps, and flight-tracker links still require a connection.
+After a device has been authenticated and its trip data and documents have been prepared, Home, itinerary, bookings, readiness, alerts, queued supported edits, and downloaded document previews can operate without Supabase or Cloudflare. First-time sign-up, code redemption, membership changes, missing document downloads, external maps, and flight-tracker links still require a connection. The current readiness badge remains provisional for the structured-data limitation described in 6.4.
 
-### 8.6 Publish application metadata
+### 8.7 Publish application metadata
 
 Administrator configuration is an online-only workflow. The Admin console never presents an offline edit as saved and never queues a publish or rollback for later replay.
 
@@ -257,7 +300,7 @@ Additional Postgres databases must not be manually created inside another applic
 
 ## 10. Security and Privacy Boundaries
 
-| Concern | Proposed control |
+| Concern | Implemented or accepted control |
 |---|---|
 | Unauthorized database reads | Row Level Security based on active trip membership |
 | Unauthorized file reads | Private storage bucket plus membership-aware policies |
@@ -271,22 +314,22 @@ Additional Postgres databases must not be manually created inside another applic
 | Sensitive logs | Never log document content, booking codes, passport data, or signed URLs |
 | Deleted membership | Block new access immediately; disclose that existing downloaded copies cannot be revoked |
 
-Custom end-to-end encryption remains an unresolved decision. If provider-blind storage becomes mandatory, it must be decided before file previews, sharing, and import automation are implemented.
+Custom end-to-end encryption is deferred. Browser/OS profile isolation, private Storage, and Row Level Security are the accepted personal-MVP boundary; provider-blind storage would require a separate design before adoption.
 
 ## 11. Availability, Backup, and Recovery
 
 - Online data and files remain authoritative even when local browser storage is cleared.
 - The application must remain usable offline from its last verified local state and queue supported edits for later synchronization.
 - Pending local changes must be visibly distinguished from synchronized records.
-- A trip export should provide a user-controlled recovery copy in a portable format.
+- Portable trip export is not implemented and remains a deferred recovery improvement.
 - Free-tier pausing after a quiet period is an accepted limitation for this personal application.
 - Before a trip, the owner resumes the project if necessary, synchronizes current data, and verifies the offline trip pack.
 - During a pause, cloud login, synchronization, and sharing are unavailable; previously verified local data remains the travel fallback.
 - Offline-capable means a previously initialized device can start the cached app, read its authorized trip pack, preview verified local documents, compute alerts, and queue supported edits without contacting the backend.
 - Browser storage remains device-local and can still be removed by the user, PWA uninstall, site-data clearing, quota pressure, or device loss; it is a working travel copy rather than the only permanent archive.
-- The app requests persistent storage, checks quota, bundles its fonts/icons/airline catalog, and verifies every downloaded file before showing **Ready offline**.
+- The app requests persistent storage, checks quota, bundles its app-shell assets, and verifies downloaded files. The structured-data proof needed for a strict **Ready offline** guarantee remains HLD-042.
 - An always-on paid tier is optional and is needed only if the owner later decides manual pre-trip activation is inconvenient.
-- Document deletion should use a recovery window before irreversible object removal.
+- Trip and document removal are soft-delete/archive operations in the current UI. A permanent purge workflow is not implemented.
 
 ## 12. Scale Assumptions
 
@@ -321,7 +364,7 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 | HLD-012 | Login and onboarding | Email-only Supabase authentication; onboarding has no separate confirmation gate for now | Accepted |
 | HLD-013 | Free-tier availability | Pausing is acceptable with pre-trip resume, sync, and offline verification | Accepted |
 | HLD-014 | Backend isolation | Trip Vault receives its own Supabase project rather than another database in an existing project | Accepted |
-| HLD-015 | Current-trip context | Each user has at most one focused current trip; current mode begins one calendar day before departure in the trip time zone | Accepted |
+| HLD-015 | Current-trip context | Each user has at most one focused current trip; current mode begins one calendar day before departure using the captured trip-time-zone fallback | Accepted |
 | HLD-016 | Flight operations | Flight status, delays, gates, terminals, and baggage details are maintained manually; airline and public tracker links are supporting actions | Accepted |
 | HLD-017 | Reminder delivery | MVP reminders are recomputed on app load and shown in an in-app Alerts page; web push is optional later | Accepted |
 | HLD-018 | Map integration | MVP opens keyless Google Maps URLs; embedded map images, paid geocoding, route optimization, and offline map downloads are excluded | Accepted |
@@ -344,12 +387,22 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 | HLD-035 | Document traveler usage | Keep usage separate from access and support Shared, Selected travelers, and Assign later with a many-to-many traveler relationship | Accepted |
 | HLD-036 | Document interaction | Open PDFs/images directly in a local-first viewer; put metadata and management behind an Info action and retain native full-screen zoom | Accepted |
 | HLD-037 | Duplicate files | Compare SHA-256 within the trip before storing another copy and direct the user to the existing Vault document | Accepted |
+| HLD-038 | Primary trip experience | Show one complete chronological timeline, auto-scroll to the current/next/most-recent event, and keep traveler focus from hiding shared events | Accepted |
+| HLD-039 | Journey time zones | Store strict origin and destination IANA zones on every journey leg; retain trip time zone only as a compatibility fallback | Accepted |
+| HLD-040 | Unified creation | Route travel, stay, meal, activity, preparation, and custom creation through Add Event with linked domain records | Accepted |
+| HLD-041 | Read/cache order | Read Supabase first while online with IndexedDB fallback; read IndexedDB directly while offline; push queued mutations in foreground | Accepted |
+| HLD-042 | Offline readiness proof | Extend the manifest to cover structured entity versions and generic journey legs before treating the badge as a complete guarantee | Revisit |
+| HLD-043 | Event context | Support optional linked cost, booking vendor, HTTPS website, phone/WhatsApp action, map action, and multiple documents | Accepted |
 
 ## 14. Risks Requiring Explicit Discussion
 
 | Risk | Why it matters | Candidate response |
 |---|---|---|
 | Browser storage eviction | A traveler may assume a file is present when it is not | Persistent-storage request, readiness verification, and export fallback |
+| Provisional offline manifest | The current badge verifies document versions but not every structured entity or generic journey leg | Treat airplane-mode acceptance as mandatory and implement HLD-042 before relying on the badge alone |
+| Schema/client mismatch | A deployed client can reference columns, triggers, or policies missing from an older Supabase project | Run the migration set through `202609110003`, then execute the schema smoke test before client testing |
+| Silent cache fallback | A failed online request can display older cached data | Keep sync state visible and show freshness/failure rather than implying the cache is current |
+| Stale service worker | An installed phone can continue running an older application bundle | Preserve update prompts and verify an update/reload during deployment acceptance |
 | Sensitive travel documents | Passports and visas have higher impact than ordinary attachments | Private defaults, least-privilege access, optional local storage, audit trail |
 | Conflicting offline edits | Two travelers can change the same record | Version checks and an explicit conflict-resolution screen |
 | Stale itinerary times | Time zones and schedule changes can mislead travelers | Store original time zone and mark last synchronization time |
@@ -361,15 +414,15 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 | Free backend suspension | Cloud access may be unavailable at the beginning of a trip | Owner resumes before travel, synchronizes, and verifies the offline pack |
 | Scope expansion | Imports, maps, notifications, and expenses can delay the core | Freeze MVP after feature review |
 
-## 15. Recorded Review Order
+## 15. Post-Implementation Validation Order
 
-1. Confirm PWA-first and whether a native wrapper is ever needed for personal use.
-2. Agree on the privacy model for passports, visas, and local copies.
-3. Define exactly what **Ready offline** promises.
-4. Agree on trip roles and per-document visibility.
-5. Confirm the MVP feature boundary.
-6. Review the detailed data model and conflict behavior.
-7. Approve visual direction and only then begin implementation.
+1. Apply the current consolidated database migration and rerun the schema smoke test.
+2. Create a fresh three-member trip and verify owner, editor, viewer, managed traveler, and collaborator behavior.
+3. Exercise the complete timeline on phone and desktop, including current-event scrolling and connected journeys.
+4. Upload, assign, open, retry, and unlink each important document purpose.
+5. Prepare the trip and repeat the defined flows in airplane mode; treat failures as HLD-042 blockers.
+6. Verify Admin online-only catalog, suggestion, theme, publish, and rollback behavior.
+7. Validate Cloudflare installation, update prompting, and phone launch from the installed PWA.
 
 ## Source File Index
 
@@ -382,5 +435,6 @@ The implementation is organized by application shell, product feature, local per
 | Feature catalog | `docs/FEATURES.md` | Product scope and acceptance conditions |
 | Redesign checklist | `docs/REDESIGN_CHECKLIST.md` | Active timeline-first decisions, schema impact, and preview slices |
 | Database migrations | `supabase/migrations/` | Authoritative schema, functions, grants, Storage configuration, and RLS |
+| Consolidated database setup | `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` | Fresh-project schema or full idempotent upgrade path |
 | Application source | `src/` | React PWA, feature workflows, offline storage, and tests |
 | Documentation conventions | `docs/doc-conventions.md` | Status and writing rules |

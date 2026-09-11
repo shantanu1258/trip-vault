@@ -77,6 +77,30 @@ export function localDateTimeToIso(value: string, timeZone: string, occurrence: 
   return occurrence === "later" ? candidates[candidates.length - 1] : candidates[0];
 }
 
+export function defaultHotelCheckoutLocal(checkInLocal: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}$/.exec(checkInLocal);
+  if (!match) return "";
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}T11:00`;
+}
+
+export function hotelStayInstants(input: {
+  checkInLocal: string;
+  checkoutLocal: string;
+  timeZone: string;
+  checkInOccurrence?: "automatic" | "earlier" | "later";
+  checkoutOccurrence?: "automatic" | "earlier" | "later";
+}) {
+  if (!input.checkInLocal) throw new Error("Add the hotel check-in date and time.");
+  if (!input.checkoutLocal) throw new Error("Add the hotel checkout date and time.");
+  const checkInAt = localDateTimeToIso(input.checkInLocal, input.timeZone, input.checkInOccurrence);
+  const checkoutAt = localDateTimeToIso(input.checkoutLocal, input.timeZone, input.checkoutOccurrence);
+  if (Date.parse(checkoutAt) <= Date.parse(checkInAt)) {
+    throw new Error("Hotel checkout date and time must be after check-in.");
+  }
+  return { checkInAt, checkoutAt };
+}
+
 export function isoToLocalDateTime(value: string | null | undefined, timeZone: string) {
   if (!value || !isValidTimeZone(timeZone)) return "";
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
