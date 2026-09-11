@@ -9,7 +9,7 @@ last_verified: 2026-09-11
 
 # Trip Vault Feature Test Checklist
 
-Run `202609110001_timeline_redesign.sql` first, then sign in with three test accounts. Use synthetic names and documents smaller than 5 MB.
+For an existing Supabase project, apply migrations through `202609110003_document_experience.sql`; for a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`. Then sign in with three test accounts. Use synthetic names and documents smaller than 5 MB.
 
 ## Organizer and Timeline
 
@@ -17,8 +17,12 @@ Run `202609110001_timeline_redesign.sql` first, then sign in with three test acc
 - [ ] Add preparation tasks before departure and confirm the separate Trip readiness summary remains above the timeline.
 - [ ] Add a readiness check, complete it, and confirm the readiness count changes.
 - [ ] Add an activity, meal, and custom event; include a map link and attach several documents to one event.
-- [ ] Add a hotel and confirm one reservation creates separate check-in and checkout timeline milestones.
-- [ ] Add a free event cost (`0`), a paid cost, and leave one event without cost; confirm `Free`, totals, and `Cost missing` are distinct.
+- [ ] Open Add Hotel and confirm check-in starts at 15:00 on the trip start date while checkout starts at 11:00 the following day.
+- [ ] Set a deliberate later checkout, move check-in while it remains earlier, and confirm the chosen checkout is preserved.
+- [ ] Move check-in to the same time as or after checkout and confirm checkout advances to 11:00 the following day.
+- [ ] Manually set checkout equal to and earlier than check-in; confirm saving is blocked, no partial reservation appears, and the form remains open for correction.
+- [ ] Correct checkout, save, and confirm one hotel reservation creates separate check-in and checkout timeline milestones in the selected hotel time zone.
+- [ ] Add a free event cost (`0`), a paid cost in a non-trip currency selected from the dropdown, and leave one event without cost; confirm `Free`, per-currency totals, and `Cost missing` are distinct.
 - [ ] Confirm the timeline has day separators, a vertical line on phone, and only the current/next item is highlighted.
 - [ ] Reopen the trip and confirm it scrolls to the current/next item; switch to Trip details and back and confirm the position is restored.
 - [ ] Search by title, PNR, airport code, vendor, traveler, document, and readiness item; open or jump to each result.

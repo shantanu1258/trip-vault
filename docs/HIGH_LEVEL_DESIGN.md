@@ -22,7 +22,7 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 | Area | Current state |
 |---|---|
 | Application | Timeline-first React PWA is implemented on `main` |
-| Automated verification | 26 Vitest files and 108 tests pass; type-check and production build pass |
+| Automated verification | 26 Vitest files and 121 tests pass; type-check and production build pass |
 | Existing Supabase project | Apply migrations through `202609110003_document_experience.sql` before testing the current client |
 | Fresh Supabase project | Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once |
 | Cloudflare | Workers Static Assets configuration exists; the post-push live deployment is not verified here |

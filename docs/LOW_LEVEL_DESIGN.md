@@ -38,7 +38,7 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 | Motion | Property-specific Tailwind transitions plus CSS scroll snap and Intersection Observer | Implemented | Restrained focus changes and reduced-motion fallback |
 | Map hand-off | Google Maps URLs | Accepted | Search and directions links need no API key; no embedded maps, geocoding, or downloads in MVP |
 | Flight status | Manual records plus external links | Accepted | No live-data provider, scraping, or background polling |
-| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | The executable local baseline is 26 files and 108 tests; type-check and production PWA build pass |
+| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | The executable local baseline is 26 files and 121 tests; type-check and production PWA build pass |
 
 ## 2. Implemented Repository Layout
 
@@ -1661,7 +1661,7 @@ Rules:
 | Check | Last verified | Result |
 |---|---|---|
 | `npm run typecheck` | 2026-09-11 | Pass |
-| `npm test -- --run` | 2026-09-11 | Pass: 26 files, 108 tests |
+| `npm test -- --run` | 2026-09-11 | Pass: 26 files, 121 tests |
 | `npm run build` | 2026-09-11 | Pass; only the standard Vite large-chunk advisory remains |
 | `supabase/tests/001_schema_smoke.sql` | Existing remote schema before the document-experience migration | Previously passed; rerun after applying `202609110003_document_experience.sql` |
 | Phone, desktop, sharing, upload, Cloudflare, and airplane mode | Current release | Manual acceptance pending in `docs/FEATURE_TEST_CHECKLIST.md` |

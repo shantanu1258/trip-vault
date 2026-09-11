@@ -19,4 +19,15 @@ describe("currency selector", () => {
     render(<CurrencySelect aria-label="Existing currency" defaultValue="inr" />);
     expect(screen.getByRole("combobox", { name: "Existing currency" })).toHaveValue("INR");
   });
+
+  it("keeps a legacy three-letter value available instead of blanking the form", () => {
+    render(<CurrencySelect aria-label="Legacy currency" defaultValue="ZZZ" />);
+    expect(screen.getByRole("combobox", { name: "Legacy currency" })).toHaveValue("ZZZ");
+    expect(screen.getByRole("option", { name: "ZZZ" })).toBeInTheDocument();
+  });
+
+  it("normalizes a controlled value without changing the submitted currency", () => {
+    render(<CurrencySelect aria-label="Controlled currency" value="usd" onChange={() => undefined} />);
+    expect(screen.getByRole("combobox", { name: "Controlled currency" })).toHaveValue("USD");
+  });
 });
