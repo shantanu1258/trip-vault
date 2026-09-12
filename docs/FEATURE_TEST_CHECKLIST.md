@@ -9,7 +9,7 @@ last_verified: 2026-09-12
 
 # Trip Vault Feature Test Checklist
 
-For an existing Supabase project, apply migrations through `202609110003_document_experience.sql`; for a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`. Then sign in with three test accounts. Use synthetic names and documents smaller than 5 MB.
+For an existing Supabase project, run `supabase/migrations/202609120001_traveler_focus_and_known_accounts.sql`; for a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`. Then run `supabase/tests/001_schema_smoke.sql` and sign in with three test accounts. Use synthetic names and documents smaller than 5 MB.
 
 ## Organizer and Timeline
 
@@ -40,6 +40,7 @@ For an existing Supabase project, apply migrations through `202609110003_documen
 - [ ] Manually update flight delay, status, terminals, gates, baggage claim, and baggage-tag document.
 - [ ] Add domestic Train, Bus, Ferry/Boat, and Cab bookings and open each reservation detail.
 - [ ] Add a connected non-flight journey and confirm it is one booking with ordered legs on one grouped timeline event.
+- [ ] Create a one-leg flight, open Flight details, add a later connection, and confirm the full route appears at the top, seats remain correct, and the timeline ends at the new arrival.
 - [ ] Tap Call and WhatsApp on a real phone and confirm the correct number is passed to the installed handler.
 - [ ] Tap Navigate for a hotel, activity, meal, and other location and confirm Google Maps opens without an API key.
 
@@ -49,8 +50,13 @@ For an existing Supabase project, apply migrations through `202609110003_documen
 - [ ] Create a non-traveling helper invitation and confirm it joins without being assigned as a traveler.
 - [ ] Confirm a used, revoked, expired, or regenerated code cannot be reused.
 - [ ] Use the floating People control to switch between Everyone and each traveler without another permission prompt.
+- [ ] In Everyone, confirm all events/reservations/readiness/costs/documents appear. Select traveler A and confirm shared plus A's records remain while traveler B-only records disappear, including inside an opened event.
+- [ ] Reopen the trip and confirm its last traveler selection is restored without changing the signed-in account or role.
+- [ ] After account B has joined one trip, create another trip, choose B under Known account, and confirm B sees Accept/Decline on Home and cannot open the new trip before accepting.
+- [ ] Repeat the known-account offer as a non-traveling helper and confirm acceptance creates no traveler assignment.
 - [ ] Upload PDF/JPEG/PNG/WebP documents; confirm 5 MB or larger and unsupported files are rejected.
 - [ ] Change document type and Who is it for and confirm the generated Vault name updates while the original filename remains in Info.
+- [ ] Upload from an event and confirm the default name includes document type, traveler context, and event title. Enter a custom name and confirm the derived context still appears below it.
 - [ ] Open a PDF and image from cloud and from the device copy; confirm the embedded preview renders and Open launches a zoomable full-screen viewer without requiring a download.
 - [ ] Turn the network off, create/edit an event and upload a document; confirm it remains available locally and reports queued synchronization.
 - [ ] Prepare the offline pack, reload while offline, and open the timeline plus a pinned document.

@@ -48,6 +48,39 @@ export type TripInvitation = {
   created_at: string;
 };
 
+export type AssociatedAccount = {
+  user_id: string;
+  display_name: string;
+};
+
+export type TripMembershipOffer = {
+  id: string;
+  trip_id: string;
+  trip_title: string;
+  destination_summary: string;
+  start_date: string;
+  end_date: string;
+  target_type: "traveler" | "collaborator";
+  traveler_id: string | null;
+  traveler_name: string | null;
+  role: Exclude<MemberRole, "owner">;
+  offered_by_name: string;
+  created_at: string;
+};
+
+export type BookingTraveler = {
+  id: string;
+  booking_id: string;
+  traveler_id: string;
+};
+
+export type RequirementAssignee = {
+  id: string;
+  requirement_id: string;
+  traveler_id: string;
+  completed_at?: string | null;
+};
+
 export type TravelerManager = {
   traveler_id: string;
   user_id: string;
@@ -321,6 +354,25 @@ export type CreateFlightInput = {
   }>;
   travelerIds?: string[];
   cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid" };
+};
+
+export type AddFlightConnectionInput = {
+  tripId: string;
+  bookingId: string;
+  journeyScope: JourneyScope;
+  airlineName: string;
+  flightNumber: string;
+  departureCode?: string;
+  departureName: string;
+  departureCountryCode?: string;
+  arrivalCode?: string;
+  arrivalName: string;
+  arrivalCountryCode?: string;
+  departureAt: string;
+  arrivalAt: string;
+  departureTimezone: string;
+  arrivalTimezone: string;
+  boardingLeadMinutes?: number;
 };
 
 export type CreateJourneyInput = {

@@ -53,5 +53,6 @@ describe("document model", () => {
     expect(suggestedDocumentTitle("boarding_pass", "selected", ["traveler-2"], travelers)).toBe("Boarding pass · Ravi");
     expect(suggestedDocumentTitle("visa", "selected", [], travelers)).toBe("Visa · Choose traveler");
     expect(suggestedDocumentTitle("activity_ticket", "unassigned", [], travelers)).toBe("Activity admission ticket · Assign later");
+    expect(suggestedDocumentTitle("boarding_pass", "selected", ["traveler-1"], travelers, "Flight to Dubai")).toBe("Boarding pass · Asha · Flight to Dubai");
   });
 });

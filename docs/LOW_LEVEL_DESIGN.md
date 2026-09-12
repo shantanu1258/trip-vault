@@ -13,7 +13,7 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 
 **Document status:** Implemented personal MVP 1.0
 
-**Implementation status:** Timeline-first implementation complete locally. Existing Supabase projects must apply migrations through `202609110003_document_experience.sql`; fresh projects may run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once. Remote and airplane-mode acceptance remain pending.
+**Implementation status:** Timeline-first implementation complete locally. Existing Supabase projects apply `supabase/migrations/202609120001_traveler_focus_and_known_accounts.sql`; fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once. Remote and airplane-mode acceptance remain pending.
 
 ## 1. Technology Set
 
@@ -38,7 +38,7 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 | Motion | Property-specific Tailwind transitions plus CSS scroll snap and Intersection Observer | Implemented | Restrained focus changes and reduced-motion fallback |
 | Map hand-off | Google Maps URLs | Accepted | Search and directions links need no API key; no embedded maps, geocoding, or downloads in MVP |
 | Flight status | Manual records plus external links | Accepted | No live-data provider, scraping, or background polling |
-| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | The executable local baseline is 29 files and 132 tests; type-check and production PWA build pass |
+| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | The executable local baseline is 30 files and 135 tests; type-check and production PWA build pass |
 
 ## 2. Implemented Repository Layout
 
@@ -426,6 +426,24 @@ Primary key: `(traveler_id, user_id)`.
 
 The displayed code contains the lookup prefix and a cryptographically random secret. It is unique per invitation, not shared across the trip. Before redemption it is bound to an intended traveler slot or collaborator role; after redemption it is permanently bound to that authenticated user.
 
+#### `trip_membership_offers`
+
+This table supports later trips between accounts that have already shared an accepted trip. The owner selects a known account rather than sending another code, but the recipient still decides whether to join.
+
+| Field | Type | Purpose |
+|---|---|---|
+| `id` | UUID, primary key | Offer identity |
+| `trip_id` | UUID | Trip being offered |
+| `invited_user_id` | UUID | Existing associated account that must respond |
+| `target_type` | `traveler` or `collaborator` | Whether acceptance links a traveler profile |
+| `traveler_id` | UUID, nullable | Intended traveler; null for a helper |
+| `role` | `editor` or `viewer` | Membership role created on acceptance |
+| `status` | Text | Pending, accepted, declined, or revoked |
+| `offered_by` | UUID | Owner who sent the offer |
+| `created_at`, `responded_at` | Timestamps | Consent audit |
+
+Only one pending offer may exist for an account and trip. A security-definer RPC verifies prior association, trip ownership, target shape, and traveler availability. Acceptance creates membership and the optional traveler-account link atomically.
+
 #### `booking_travelers`
 
 | Field | Type | Purpose |
@@ -801,6 +819,7 @@ Primary key: `(user_id, alert_key)`.
 - A collaborator membership has no traveler-account link. A traveler membership must receive its intended traveler link in the same transaction that redeems the code.
 - A traveler-targeted invitation requires a traveler from the same trip; a collaborator invitation requires `traveler_id` to be null.
 - Code redemption succeeds only for a signed-in user and only when the code is unexpired, unrevoked, unused, and within rate limits. Membership creation and code consumption are atomic.
+- A known-account offer is available only after the two accounts have an accepted shared-trip history; it creates no membership until the recipient accepts it.
 - `flight_legs.booking_id` must reference a flight booking. Referenced trip airlines, documents, and travelers must belong to the same trip.
 - Scheduled arrival must be after scheduled departure as an instant; different local calendar dates are valid.
 - Latitude and longitude are either both null or both valid ranges.
@@ -838,6 +857,8 @@ erDiagram
     PROFILES ||--o{ TRAVELER_MANAGERS : manages
     TRIPS ||--o{ TRIP_INVITATIONS : offers
     TRAVELERS o|--o{ TRIP_INVITATIONS : targeted_by
+    TRIPS ||--o{ TRIP_MEMBERSHIP_OFFERS : proposes
+    PROFILES ||--o{ TRIP_MEMBERSHIP_OFFERS : receives
     TRIPS ||--o{ TRIP_AIRLINES : configures
     TRIPS ||--o{ BOOKINGS : contains
     BOOKINGS ||--o{ BOOKING_TRAVELERS : covers
@@ -967,6 +988,10 @@ The first four code characters are stored as a non-secret lookup prefix; the com
 
 Code redemption requires a connection. Once redeemed, membership—not continued possession of the code—controls access.
 
+#### Reusing an associated account
+
+After a recipient has joined any trip shared with the owner, People & sharing can list that account by display name. The owner can offer a later trip as a selected traveler or non-traveling helper with an Editor or Viewer role. The recipient sees the pending offer on Home and chooses Accept or Decline. Both operations require a connection; acceptance performs the membership and optional traveler link in one transaction. A pending offer reveals trip details only to its authenticated intended recipient.
+
 ### 6.5 Traveler and collaborator behavior
 
 | Membership case | Traveler link | Appears in traveler roster | Can receive itinerary/bookings | Can use the app |
@@ -975,7 +1000,7 @@ Code redemption requires a connection. Once redeemed, membership—not continued
 | Managed child or parent | No account link required | Yes | Yes | Through a signed-in Owner or Editor |
 | Non-traveling collaborator | None | Separately as collaborator | No | Yes, according to Editor/Viewer role |
 
-If an elderly parent uses their own phone, the organizer helps create that parent's account, redeem their targeted code, and prepare the device offline. If the parent does not operate an account, an Owner or Editor remains signed in as themselves and selects the managed traveler from the persistent trip switcher. The selection pre-populates new bookings, requirements, itinerary items, and documents; it never changes the authenticated identity.
+If an elderly parent uses their own phone, the organizer helps create that parent's account, redeem their targeted code, and prepare the device offline. If the parent does not operate an account, an Owner or Editor remains signed in as themselves and selects the managed traveler from the persistent trip switcher. The selection pre-populates new records and filters the visible trip to shared records plus that traveler's timeline, bookings, requirements, costs, seats, and documents; it never changes the authenticated identity or server permissions.
 
 ### 6.6 Trip-information boundary
 
@@ -1284,13 +1309,14 @@ Today, readiness becomes `stale` automatically when the authorized document-vers
 |---|---|
 | `AppShell` | Responsive header, desktop side navigation, phone bottom navigation, alert count, theme, and sync placement |
 | `TripUi` exports | Shared `PageHeader`, `TripCard`, badges, empty states, and trip-facing visual primitives |
-| `ModalSheet` | Accessible modal/sheet container used by mobile-friendly creation and management flows |
+| `ModalSheet` | Accessible modal/sheet container with an explicit Back action and Escape dismissal for mobile-friendly creation and management flows |
 | `FocusSurface` | Current/active label, accent, elevation, and reduced-motion-safe emphasis |
 | `TripPage` timeline composition | Complete timeline, phase jumps, active-event scroll, event detail sheet, people/sharing sheet, and Details switch |
 | `AddEventForm` | Unified creation for flight, connected journeys, hotel milestones, meals, activities, preparation, transport, and custom events |
 | `CatalogPicker` | Shared searchable desktop popover/mobile dialog that stays inside the visual viewport when the phone keyboard opens and always exposes an explicit Other path |
 | `TimeZoneAutocomplete` | Strict searchable IANA-zone chooser with compact desktop list and a keyboard-aware mobile dialog |
 | `AirlinePicker`, `AirportPicker`, `VendorPicker` | Published/bundled catalog selectors with manual Other inputs and privacy-safe administrator suggestions; airport selection atomically supplies name, code, country, and time zone |
+| `AddFlightConnectionForm` | Appends a validated airline/airport leg to an existing flight and extends the booking and timeline end |
 | `ParticipantSelector`, `TravelerSwitcher` | Everyone/selected-traveler assignment and persistent management context without impersonation |
 | `EventDocuments` | Complete event document list, multi-select existing attachment, one-at-a-time classified upload, ordering, and unlink |
 | `UploadDocumentForm` and `documentModel` | Travel-purpose presets, assignment/access separation, size validation, duplicate recovery, and queued local copy |
@@ -1326,12 +1352,12 @@ No gradients should be used. Decorative elements must not compete with urgent tr
 - After the first data-backed render, two animation frames allow layout to settle before the active card scrolls near the viewport center. Returning from Details restores the saved timeline scroll unless the user explicitly requests a jump.
 - The current/next card is the only card with the contextual accent and label. Every card remains clickable and keyboard-operable and opens the event-detail sheet.
 - Event icons sit inside the card corner on phone layouts to preserve width; on desktop they align centrally with the vertical connector.
-- Traveler focus changes defaults and document context but never removes other travelers' shared events from the timeline.
+- Everyone shows the complete trip. Traveler focus retains shared events and the selected person's assigned events, reservations, linked costs, readiness, seats, and documents while hiding records assigned only to someone else.
 - The floating control group opens Add Event, People & sharing/current member, or the active-event jump. Creation controls are hidden from Viewers.
 - Search matches timeline titles, booking/provider data, PNRs, airport codes/names, documents, travelers, readiness items, and related metadata after two characters, returning at most 40 results.
 - Details view keeps the existing sectioned experience: Overview, Reservations, Costs, People, Readiness, Documents, Offline, Travel data, and Notes.
 
-The floating Add Event sheet exposes Flight, Train, Bus, Ferry/Boat, Cab, Hotel, Meal, Activity, Preparation, Other transport, and Custom. Flight, train, bus, ferry, and cab bookings can contain ordered connecting legs. Airline means the carrier operating a flight; service provider means the hotel, restaurant, tour company, or other business delivering a non-flight service; booked via means the website, seller, or agent used to purchase the reservation. Flight creation therefore does not show a redundant service-provider input.
+The floating Add Event sheet exposes Flight, Train, Bus, Ferry/Boat, Cab, Hotel, Meal, Activity, Preparation, Other transport, and Custom. Flight, train, bus, ferry, and cab bookings can contain ordered connecting legs. An editor who omitted a flight connection can later append it from Flight details; the new leg inherits booking travelers and extends the booking/timeline end. Airline means the carrier operating a flight; service provider means the hotel, restaurant, tour company, or other business delivering a non-flight service; booked via means the website, seller, or agent used to purchase the reservation. Flight creation therefore does not show a redundant service-provider input.
 
 Each journey is explicitly Domestic or International. A flight airport is selected by code or name and fills the name, passenger code, country, and strict IANA time zone together; its derived code is disabled. **Other airport** unlocks manual name/code/country/time-zone entry so a bad or missing catalog row can be submitted for administrator review. Airline and booked-via inputs follow the same saved-list/Other interaction. The app converts provider-local departure/arrival values to instants while validating DST ambiguity, duration, and connection order. Flight PNR/reference is mandatory. Boarding lead or exact boarding time is journey-only; without an exact time, the display derives boarding by subtracting the lead from scheduled departure. Hotel creation produces separate check-in and checkout timeline milestones.
 
@@ -1613,7 +1639,8 @@ Rules:
 - Require traveler and collaborator invitations to satisfy their mutually exclusive target fields.
 - Require booking, itinerary, requirement, and document traveler assignments to belong to the same trip.
 - Require selected document usage to contain at least one traveler in the UI; shared and unassigned modes contain no `document_travelers` rows.
-- Derive each new Vault title from document type plus Shared, Selected traveler names, or Assign later; preserve the device filename only as immutable version metadata.
+- Derive each new Vault title from document type, Shared/Selected/Assign later traveler context, and linked event title. A custom name overrides the saved title but leaves the derived context visible below it; preserve the device filename only as immutable version metadata.
+- When missing-cost recovery starts from an event, display that event title as a fixed source instead of asking the user to name the cost again.
 - Keep document traveler usage separate from private/trip/selected-member access and explain that distinction beside the controls.
 - Require every itinerary-document link to reference an event and document from the same trip and prevent duplicate active links for the same pair.
 - Show the active managed-traveler context beside every form that can change another person's information.
@@ -1666,9 +1693,9 @@ Rules:
 | Check | Last verified | Result |
 |---|---|---|
 | `npm run typecheck` | 2026-09-12 | Pass |
-| `npm test -- --run` | 2026-09-12 | Pass: 29 files, 132 tests |
+| `npm test -- --run` | 2026-09-12 | Pass: 30 files, 135 tests |
 | `npm run build` | 2026-09-12 | Pass; only the standard Vite chunk-sharing advisory remains |
-| `supabase/tests/001_schema_smoke.sql` | Existing remote schema before the document-experience migration | Previously passed; rerun after applying `202609110003_document_experience.sql` |
+| `supabase/tests/001_schema_smoke.sql` | Existing remote schema before the traveler-focus migration | Rerun after applying `202609120001_traveler_focus_and_known_accounts.sql` |
 | Phone, desktop, sharing, upload, Cloudflare, and airplane mode | Current release | Manual acceptance pending in `docs/FEATURE_TEST_CHECKLIST.md` |
 
 The lists below are the release coverage contract. They do not imply that every bullet already has a dedicated automated test; remote RLS, Storage, PWA installation, and true airplane-mode behavior require the named manual or SQL acceptance step.
@@ -1718,6 +1745,7 @@ The lists below are the release coverage contract. They do not imply that every 
 - Document visibility controls
 - Document type presets, Shared/Selected/Assign later usage, assignment/access separation, and exact-duplicate recovery
 - Document titles derived from purpose and traveler assignment, with original filenames preserved separately
+- Traveler-focused filtering across timeline, reservations, costs, readiness, document lists, and event attachments
 - Visible-first PDF/image viewer, automatic verified local caching, Info sheet, and native full-screen action
 - Offline and sync indicators
 - Permission-dependent actions
@@ -1736,6 +1764,7 @@ The lists below are the release coverage contract. They do not imply that every 
 - Non-members cannot read or mutate trip records.
 - Unauthenticated users and unredeemed codes cannot read real trip metadata.
 - A join code creates at most one membership and cannot be reused after concurrent redemption attempts.
+- A known-account offer is limited to previously associated accounts and creates no membership before recipient acceptance.
 - Traveler invitations cannot claim a different traveler, and collaborator invitations cannot create traveler-account links.
 - The traveler context switcher never changes the authenticated account or bypasses Owner/Editor/Viewer trip roles.
 - Viewers cannot edit shared content.
@@ -1745,6 +1774,7 @@ The lists below are the release coverage contract. They do not imply that every 
 - Itinerary-document links cannot cross trips, expose an unreadable document, or duplicate an active event/document pair.
 - Unlinking or deleting an itinerary event leaves the linked document and every immutable version intact.
 - Flight legs cannot reference another trip's airline, traveler, or document.
+- A post-creation connection must follow the previous leg, inherit booking travelers, and extend the flight booking and timeline event.
 - Only owners and editors can change shared flight operations or airline metadata.
 - Alert read state and manual reminders remain user-scoped.
 - Ordinary users cannot read drafts, mutate configuration, publish releases, or add themselves to `app_admins`.
@@ -1759,10 +1789,13 @@ The lists below are the release coverage contract. They do not imply that every 
 
 - Onboarding through first trip creation
 - Trip cards open the trip timeline directly; all past/current/future events remain present and connected, and first open scrolls to the resolved active event
+- Switching to one traveler leaves shared and selected-traveler records visible across the trip while hiding records assigned only to another traveler
 - Phone event icons remain inside the card corner while desktop icons stay centered on the connector
 - Flight, train, bus, ferry, and cab creation supports connected legs, strict endpoint time zones, domestic/international scope, and correct elapsed duration
 - Event detail exposes optional cost, missing-cost recovery, map, Call/WhatsApp, booking-vendor, and all linked documents
 - Share-code text and locally generated QR redeem the same one-time traveler or collaborator invitation only after sign-in
+- A previously associated account can receive a later trip offer on Home and must accept before joining
+- An existing flight can receive a missing connection from Flight details without recreating the booking
 - Invite acceptance and role enforcement
 - Sign-up followed by successful one-time code redemption
 - Invalid, expired, revoked, reused, brute-force-limited, and concurrent code redemption
@@ -1865,6 +1898,9 @@ The lists below are the release coverage contract. They do not imply that every 
 | LLD-045 | Event upload interaction | Add one fully classified new file at a time; allow multi-select only when attaching existing Vault documents | Accepted |
 | LLD-046 | Catalog picker fallback | Airline, airport, and booking-vendor selectors use one saved-list/Other interaction; explicit Other values create privacy-safe online suggestions for later administrator approval or rejection | Accepted |
 | LLD-047 | Flight airport consistency | Selecting an airport supplies name, code, country, and IANA time zone atomically; derived values are read-only unless Other is selected | Accepted |
+| LLD-048 | Traveler presentation focus | Everyone shows the whole trip; selecting one traveler shows shared plus that person's timeline, bookings, costs, readiness, seats, and documents without changing authorization | Accepted |
+| LLD-049 | Known-account trip offer | Accounts that previously shared an accepted trip may be selected again, but the recipient must accept the new trip from Home before membership is created | Accepted |
+| LLD-050 | Post-creation flight connections | Owners and editors can append a chronological flight leg later; travelers are inherited and booking/timeline end times advance atomically | Accepted |
 
 ## Source File Index
 
@@ -1884,8 +1920,8 @@ These paths are the implemented ownership map. Tests are co-located with their m
 | Offline file storage | `src/lib/storage/` | OPFS operations, manifests, and integrity |
 | Document semantics | `src/features/workspace/documentModel.ts` | Travel-specific type presets, assignment labels/filtering, and exact duplicate detection |
 | Backend client | `src/lib/supabase/` | Supabase client and typed repositories |
-| Database definition | `supabase/migrations/` | Schema, functions, grants, and RLS policies |
-| Consolidated database setup | `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` | Fresh-project setup and idempotent full upgrade script |
+| Database deltas | `supabase/migrations/` | Post-baseline schema, function, grant, and RLS changes for existing projects |
+| Consolidated database setup | `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` | Full current setup for a fresh project |
 | Co-located automated tests | `src/**/*.test.ts`, `src/**/*.test.tsx` | Domain, local database, sync, alert, presentation, and route behavior |
 | Schema smoke test | `supabase/tests/001_schema_smoke.sql` | Tables, policies, functions, and Storage limit assertions |
 | Redesign checklist | `docs/REDESIGN_CHECKLIST.md` | Implemented timeline redesign scope and retained follow-ups |

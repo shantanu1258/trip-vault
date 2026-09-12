@@ -8,6 +8,9 @@ import { addItineraryItem, addTripCost } from "../trips/api";
 import { listAvailableAirlines } from "../metadata/publishedConfig";
 import type {
   Booking,
+  BookingTraveler,
+  AssociatedAccount,
+  AddFlightConnectionInput,
   CreateBookingInput,
   CreateFlightInput,
   CreateJourneyInput,
@@ -24,6 +27,7 @@ import type {
   MemberRole,
   ParticipationType,
   Requirement,
+  RequirementAssignee,
   RequirementStatus,
   RequirementType,
   RequirementInput,
@@ -31,6 +35,7 @@ import type {
   TravelerManager,
   TripMember,
   TripInvitation,
+  TripMembershipOffer,
   TripAirline,
   TripNote,
   UserProfile,
@@ -184,6 +189,40 @@ export async function redeemInvitation(code: string) {
   return String(data);
 }
 
+export async function listAssociatedAccounts(): Promise<AssociatedAccount[]> {
+  if (!navigator.onLine) return [];
+  const { data, error } = await client().rpc("list_associated_accounts");
+  if (error) throw error;
+  return (data ?? []) as AssociatedAccount[];
+}
+
+export async function createTripMembershipOffer(input: { tripId: string; userId: string; targetType: "traveler" | "collaborator"; travelerId?: string; role: Exclude<MemberRole, "owner"> }) {
+  if (!navigator.onLine) throw new Error("Known-account invitations require a connection.");
+  const { data, error } = await client().rpc("create_trip_membership_offer", {
+    requested_trip_id: input.tripId,
+    requested_user_id: input.userId,
+    requested_target_type: input.targetType,
+    requested_traveler_id: input.travelerId ?? null,
+    requested_role: input.role
+  });
+  if (error) throw error;
+  return String(data);
+}
+
+export async function listIncomingTripOffers(): Promise<TripMembershipOffer[]> {
+  if (!navigator.onLine) return [];
+  const { data, error } = await client().rpc("list_incoming_trip_membership_offers");
+  if (error) throw error;
+  return (data ?? []) as TripMembershipOffer[];
+}
+
+export async function respondToTripOffer(offerId: string, accept: boolean) {
+  if (!navigator.onLine) throw new Error("Responding to an invitation requires a connection.");
+  const { data, error } = await client().rpc("respond_trip_membership_offer", { requested_offer_id: offerId, accept_offer: accept });
+  if (error) throw error;
+  return data ? String(data) : null;
+}
+
 const bookingSelect = "id,trip_id,type,title,provider,reference_code,start_at,end_at,source_timezone,location,details,journey_scope,booked_via_name,booked_via_url,booking_vendor_catalog_key,contact_name,contact_phone,version,created_at,updated_at";
 
 function bookingFields(input: CreateBookingInput) {
@@ -271,6 +310,28 @@ export async function listTripItineraryParticipants(tripId: string, itineraryIte
   return rows;
 }
 
+export async function listTripBookingTravelers(tripId: string, bookingIds: string[]): Promise<BookingTraveler[]> {
+  const key = `booking-travelers:${tripId}`;
+  if (!navigator.onLine) return readEntityList<BookingTraveler>(key);
+  if (!bookingIds.length) { await cacheEntityList(key, []); return []; }
+  const { data, error } = await client().from("booking_travelers").select("booking_id,traveler_id,updated_at").in("booking_id", bookingIds);
+  if (error) throw error;
+  const rows = (data ?? []).map((row) => ({ ...row, id: `${row.booking_id}:${row.traveler_id}` })) as BookingTraveler[];
+  await cacheEntityList(key, rows);
+  return rows;
+}
+
+export async function listTripRequirementAssignees(tripId: string, requirementIds: string[]): Promise<RequirementAssignee[]> {
+  const key = `requirement-assignees:${tripId}`;
+  if (!navigator.onLine) return readEntityList<RequirementAssignee>(key);
+  if (!requirementIds.length) { await cacheEntityList(key, []); return []; }
+  const { data, error } = await client().from("requirement_assignees").select("requirement_id,traveler_id,completed_at,updated_at").in("requirement_id", requirementIds);
+  if (error) throw error;
+  const rows = (data ?? []).map((row) => ({ ...row, id: `${row.requirement_id}:${row.traveler_id}` })) as RequirementAssignee[];
+  await cacheEntityList(key, rows);
+  return rows;
+}
+
 export async function updateBooking(input: UpdateBookingInput): Promise<Booking> {
   const existing = await getBooking(input.id);
   const fields = bookingFields(input);
@@ -338,6 +399,37 @@ export async function addFlightBooking(input: CreateFlightInput): Promise<{ book
   const itinerary = await addItineraryItem({ tripId: input.tripId, bookingId: booking.id, eventType: "flight", title: input.title, startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.departureTimezone, travelerIds: input.travelerIds, dependsOn: [bookingOperation?.operationId, ...flightOperationIds].filter((id): id is string => Boolean(id)) });
   if (input.cost) await addTripCost({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary.id, title: input.cost.title, category: "flight", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
   return { booking, flights, itinerary };
+}
+
+export async function addFlightConnection(input: AddFlightConnectionInput): Promise<FlightLeg> {
+  if (!navigator.onLine) throw new Error("Adding a connection currently requires a connection to Supabase.");
+  const actor = await userId();
+  const airline = await ensureTripAirline(input.tripId, input.airlineName, actor);
+  const { data, error } = await client().rpc("add_flight_connection", {
+    requested_booking_id: input.bookingId,
+    requested_leg: {
+      airline_name: input.airlineName,
+      marketing_airline_id: airline.id,
+      flight_number: input.flightNumber,
+      departure_airport_code: input.departureCode || null,
+      departure_airport_name: input.departureName,
+      departure_country_code: input.departureCountryCode || null,
+      arrival_airport_code: input.arrivalCode || null,
+      arrival_airport_name: input.arrivalName,
+      arrival_country_code: input.arrivalCountryCode || null,
+      scheduled_departure_at: input.departureAt,
+      scheduled_arrival_at: input.arrivalAt,
+      departure_timezone: input.departureTimezone,
+      arrival_timezone: input.arrivalTimezone,
+      boarding_lead_minutes: input.boardingLeadMinutes ?? null,
+      journey_scope: input.journeyScope
+    }
+  });
+  if (error) throw error;
+  const created = await getFlightLeg(String(data));
+  const cached = await readEntityList<FlightLeg>(`flights:${input.tripId}`);
+  await cacheEntityList(`flights:${input.tripId}`, [...cached.filter((leg) => leg.id !== created.id), created]);
+  return created;
 }
 
 export async function addJourneyBooking(input: CreateJourneyInput): Promise<{ booking: Booking; legs: JourneyLeg[]; itinerary: ItineraryItem }> {

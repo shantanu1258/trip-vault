@@ -13,6 +13,7 @@ declare
     'trip_requirements', 'requirement_assignees', 'trip_costs', 'reminders', 'alert_states',
     'activity_events', 'config_releases', 'airline_catalog_entries', 'airport_catalog_entries',
     'booking_vendor_catalog_entries', 'catalog_suggestions', 'journey_legs',
+    'trip_membership_offers',
     'metadata_defaults', 'theme_palettes', 'config_audit_events'
   ];
   table_name text;
@@ -40,6 +41,18 @@ begin
   end if;
   if to_regprocedure('public.redeem_trip_invitation(text)') is null then
     raise exception 'redeem_trip_invitation RPC is missing';
+  end if;
+  if to_regprocedure('public.create_trip_membership_offer(uuid,uuid,public.invitation_target_type,uuid,public.member_role)') is null then
+    raise exception 'create_trip_membership_offer RPC is missing';
+  end if;
+  if to_regprocedure('public.list_associated_accounts()') is null or to_regprocedure('public.list_incoming_trip_membership_offers()') is null then
+    raise exception 'Known-account invitation query RPCs are missing';
+  end if;
+  if to_regprocedure('public.respond_trip_membership_offer(uuid,boolean)') is null then
+    raise exception 'respond_trip_membership_offer RPC is missing';
+  end if;
+  if to_regprocedure('public.add_flight_connection(uuid,jsonb)') is null then
+    raise exception 'add_flight_connection RPC is missing';
   end if;
   if to_regprocedure('public.reorder_itinerary_items(uuid,uuid[])') is null then
     raise exception 'reorder_itinerary_items RPC is missing';

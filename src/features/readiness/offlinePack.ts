@@ -2,7 +2,7 @@ import { database, type OfflineManifest } from "../../lib/local-db/database";
 import { removeOfflineFile, requestPersistentStorage, storageEstimate, storeOfflineFile } from "../../lib/storage/offlineFiles";
 import { listAlertStates, listCosts, listItinerary, listReminders } from "../trips/api";
 import { localProfileId } from "../sync/localSync";
-import { cacheTripRelationships, downloadDocumentVersion, listBookings, listEventDocumentLinks, listFlightLegsForTrip, listFlightTravelers, listMembers, listNotes, listRequirements, listTravelerManagers, listTravelers, listTripAirlines, listVaultDocuments } from "../workspace/api";
+import { cacheTripRelationships, downloadDocumentVersion, listBookings, listEventDocumentLinks, listFlightLegsForTrip, listFlightTravelers, listMembers, listNotes, listRequirements, listTravelerManagers, listTravelers, listTripAirlines, listTripBookingTravelers, listTripItineraryParticipants, listTripRequirementAssignees, listVaultDocuments } from "../workspace/api";
 
 export function calculatePackState(expectedVersionIds: string[], verifiedVersionIds: string[], essentials = false): OfflineManifest["state"] {
   if (!expectedVersionIds.length) return "ready";
@@ -28,7 +28,13 @@ export async function prepareTripOffline(tripId: string, onProgress?: (complete:
   let verified: string[] = [];
   try {
   const [itinerary, , bookings, flights, travelers, requirements] = await Promise.all([listItinerary(tripId), listCosts(tripId), listBookings(tripId), listFlightLegsForTrip(tripId), listTravelers(tripId), listRequirements(tripId), listMembers(tripId), listTravelerManagers(tripId), listNotes(tripId), listTripAirlines(tripId), listReminders(), listAlertStates()]);
-  await Promise.all([...itinerary.map((item) => listEventDocumentLinks(item.id)), ...flights.map((flight) => listFlightTravelers(flight.id))]);
+  await Promise.all([
+    ...itinerary.map((item) => listEventDocumentLinks(item.id)),
+    ...flights.map((flight) => listFlightTravelers(flight.id)),
+    listTripItineraryParticipants(tripId, itinerary.map((item) => item.id)),
+    listTripBookingTravelers(tripId, bookings.map((booking) => booking.id)),
+    listTripRequirementAssignees(tripId, requirements.map((requirement) => requirement.id)),
+  ]);
   await cacheTripRelationships(tripId, itinerary, bookings, requirements, travelers);
   const allDocuments = await listVaultDocuments(tripId);
   const documents = essentialsOnly ? allDocuments.filter((document) => ["boarding_pass", "ticket", "visa", "passport", "insurance"].includes(document.purpose)) : allDocuments;

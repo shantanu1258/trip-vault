@@ -13,7 +13,7 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 
 **Document status:** Implemented personal MVP 1.0
 
-**Implementation status:** Timeline-first application complete locally. Existing Supabase projects must apply migrations through `202609110003_document_experience.sql` (or run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` on a fresh project) before remote document testing.
+**Implementation status:** Timeline-first application complete locally. Existing Supabase projects must apply `supabase/migrations/202609120001_traveler_focus_and_known_accounts.sql`; fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once.
 
 **Default decision state:** Accepted unless explicitly marked as deferred or revisit
 
@@ -22,8 +22,8 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 | Area | Current state |
 |---|---|
 | Application | Timeline-first React PWA is implemented on `main` |
-| Automated verification | 29 Vitest files and 132 tests pass; type-check and production build pass |
-| Existing Supabase project | Apply migrations through `202609110003_document_experience.sql` before testing the current client |
+| Automated verification | 30 Vitest files and 135 tests pass; type-check and production build pass |
+| Existing Supabase project | Apply `202609120001_traveler_focus_and_known_accounts.sql`, then run the schema smoke test |
 | Fresh Supabase project | Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once |
 | Cloudflare | Workers Static Assets configuration exists; the post-push live deployment is not verified here |
 | Acceptance | Phone, desktop, multi-member, upload, and airplane-mode tests remain manual release gates |
@@ -129,9 +129,9 @@ The product contract is that **Ready offline** means complete structured trip da
 
 The current implementation downloads and caches the major structured domains and checksum-verifies the selected document versions. Its persisted readiness manifest, however, records only document-version IDs: it does not yet prove the completeness of every structured domain, explicitly fetch generic journey legs, or become stale after every booking or itinerary mutation. Until HLD-042 is resolved, the UI result is provisional and an airplane-mode acceptance test is required before relying on it during travel.
 
-### 6.5 Sharing is authenticated and code-based
+### 6.5 Sharing is authenticated and consent-based
 
-The owner creates a unique, expiring, one-time code for an intended traveler or non-traveling collaborator. The recipient signs up or signs in before entering the code. Redeeming it creates membership atomically and invalidates the code. A code never provides anonymous trip access, and permanent public trip or document URLs are not part of the design.
+For a first shared trip, the owner creates a unique, expiring, one-time code for an intended traveler or non-traveling collaborator. The recipient signs up or signs in before entering the code. Redeeming it creates membership atomically and invalidates the code. After two accounts have shared an accepted trip, the owner can offer a later trip directly to that known account. The recipient sees the pending offer on Home and must accept before membership and any traveler link are created. Neither mechanism provides anonymous access, and permanent public trip or document URLs are not part of the design.
 
 ### 6.6 Sensitive defaults
 
@@ -141,11 +141,11 @@ New documents are private to their uploader until the user deliberately chooses 
 
 A document has four independent concerns: immutable file versions, a specific travel purpose, links to bookings/events/journey legs, and traveler usage. Usage is **Shared**, **Selected travelers**, or **Assign later** and never grants access. Visibility remains **Only me**, **Signed-in trip members**, or **Selected signed-in members**. This permits one accommodation confirmation to support a group, a personal visa or boarding pass to follow one traveler, and unnamed admission tickets to remain in a pool until assigned.
 
-The upload flow derives the Vault title from the selected document type and traveler usage while preserving the original filename separately. The document route is a viewer first: an authorized PDF or image opens automatically from the verified device copy, or downloads once and is then cached locally. The client restores the declared MIME type when an extensionless OPFS file is reopened so PDFs still render inline. Native full-screen viewing remains available for zooming. File facts, access, local-copy controls, replacement, archiving, and version history live behind an information action instead of displacing the travel document.
+The upload flow derives the Vault title from document type, traveler usage, and linked event context while preserving the original filename separately. A custom title may replace the generated title, but the generated context remains visible beneath it. The document route is a viewer first: an authorized PDF or image opens automatically from the verified device copy, or downloads once and is then cached locally. The client restores the declared MIME type when an extensionless OPFS file is reopened so PDFs still render inline. Native full-screen viewing remains available for zooming. File facts, access, local-copy controls, replacement, archiving, and version history live behind an information action instead of displacing the travel document.
 
 ### 6.8 Timeline is the primary trip interface
 
-Opening a trip displays every itinerary event in chronological order on one connected timeline. The app identifies one current, next, or most-recent event, scrolls it into view on the first open, and distinguishes it with color and an explicit label. Selecting a traveler changes document and action context but never hides the rest of the shared itinerary.
+Opening a trip displays the applicable itinerary in chronological order on one connected timeline. The app identifies one current, next, or most-recent event, scrolls it into view on the first open, and distinguishes it with color and an explicit label. Everyone context shows the complete trip. Selecting a traveler becomes a presentation filter across the timeline, reservations, costs, readiness, seats, and documents: shared records plus that traveler's assigned records remain, while another traveler's private planning context is hidden. This filter never changes authentication or database authorization.
 
 ### 6.9 Journey time zones belong to endpoints
 
@@ -167,6 +167,8 @@ flowchart TD
     TRIP[Trip] --> MEMBER
     TRIP --> TRAVELER[Traveler]
     PROFILE -. optional account link .-> TRAVELER
+    PROFILE --> OFFER[Pending Trip Offer]
+    TRIP --> OFFER
     PROFILE --> MANAGER[Traveler Management]
     MANAGER --> TRAVELER
     TRIP --> BOOKING[Booking]
@@ -215,11 +217,11 @@ flowchart TD
 ### 8.2 Open a trip
 
 1. A trip card opens `/trips/:tripId` directly in Timeline view.
-2. The client loads every authorized itinerary item and its booking/journey summaries.
+2. The client loads every authorized itinerary item and its booking/journey summaries, then applies the selected Everyone/traveler presentation context.
 3. One event is resolved as current, otherwise next, otherwise most recent.
 4. On the first timeline render, the page scrolls that event into the viewport; returning from Trip details restores the previous timeline position.
 5. Phase shortcuts jump to Past, Current/Next, or Upcoming without filtering events out of the timeline.
-6. Selecting a card opens its details, linked costs, map/contact actions, and attached documents.
+6. Selecting a card opens its details, linked costs, map/contact actions, and attached documents relevant to the current traveler context.
 7. The floating controls open Add Event, People & sharing, or jump back to the active event.
 
 ### 8.3 Add an event or document
@@ -270,7 +272,15 @@ flowchart LR
 
 After a device has been authenticated and its trip data and documents have been prepared, Home, itinerary, bookings, readiness, alerts, queued supported edits, and downloaded document previews can operate without Supabase or Cloudflare. First-time sign-up, code redemption, membership changes, missing document downloads, external maps, and flight-tracker links still require a connection. The current readiness badge remains provisional for the structured-data limitation described in 6.4.
 
-### 8.7 Publish application metadata
+### 8.7 Re-invite a known account
+
+1. The owner opens People & sharing and selects **Known account**.
+2. The server lists only accounts that have already joined at least one trip shared with that owner.
+3. The owner selects the account, traveler or non-traveling helper target, and Editor or Viewer role.
+4. Home shows the recipient a pending offer with Accept and Decline actions.
+5. Accepting atomically creates active membership and the optional traveler link; declining creates neither.
+
+### 8.8 Publish application metadata
 
 Administrator configuration is an online-only workflow. The Admin console never presents an offline edit as saved and never queues a publish or rollback for later replay.
 
@@ -369,8 +379,8 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 | HLD-017 | Reminder delivery | MVP reminders are recomputed on app load and shown in an in-app Alerts page; web push is optional later | Accepted |
 | HLD-018 | Map integration | MVP opens keyless Google Maps URLs; embedded map images, paid geocoding, route optimization, and offline map downloads are excluded | Accepted |
 | HLD-019 | Visa guidance | Store user-entered visa requirements and dates without automated eligibility claims | Accepted |
-| HLD-020 | Trip invitation | Authenticated recipient enters a unique, expiring, one-time code bound to one traveler or collaborator invitation | Accepted |
-| HLD-021 | Traveler identity | Travelers exist independently from accounts; an account can claim a traveler or join as a non-traveling collaborator, while Owner/Editor members use a convenient traveler context switcher without impersonation or per-traveler capability setup | Accepted |
+| HLD-020 | Trip invitation | A first-time recipient redeems a unique one-time code; an account previously associated through a shared trip can receive a later consent-required trip offer | Accepted |
+| HLD-021 | Traveler identity and focus | Travelers exist independently from accounts; Owner/Editor members can select Everyone or one traveler to filter the trip presentation without impersonation or changing authorization | Accepted |
 | HLD-022 | Trip privacy | No real trip details are visible before sign-in and active membership | Accepted |
 | HLD-023 | Offline operating boundary | A previously initialized and verified trip pack supports local reads, document preview, alerts, and queued edits; enrollment and synchronization remain online | Accepted |
 | HLD-024 | Administrator access | Separate Admin sign-in route and dedicated Supabase Auth account protected by an application-admin allowlist | Accepted |
@@ -387,13 +397,14 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 | HLD-035 | Document traveler usage | Keep usage separate from access and support Shared, Selected travelers, and Assign later with a many-to-many traveler relationship | Accepted |
 | HLD-036 | Document interaction | Open PDFs/images directly in a local-first viewer; put metadata and management behind an Info action and retain native full-screen zoom | Accepted |
 | HLD-037 | Duplicate files | Compare SHA-256 within the trip before storing another copy and direct the user to the existing Vault document | Accepted |
-| HLD-038 | Primary trip experience | Show one complete chronological timeline, auto-scroll to the current/next/most-recent event, and keep traveler focus from hiding shared events | Accepted |
+| HLD-038 | Primary trip experience | Show one chronological timeline for the current traveler context, auto-scroll to its current/next/most-recent event, and retain shared plus selected-traveler records | Accepted |
 | HLD-039 | Journey time zones | Store strict origin and destination IANA zones on every journey leg; retain trip time zone only as a compatibility fallback | Accepted |
 | HLD-040 | Unified creation | Route travel, stay, meal, activity, preparation, and custom creation through Add Event with linked domain records | Accepted |
 | HLD-041 | Read/cache order | Read Supabase first while online with IndexedDB fallback; read IndexedDB directly while offline; push queued mutations in foreground | Accepted |
 | HLD-042 | Offline readiness proof | Extend the manifest to cover structured entity versions and generic journey legs before treating the badge as a complete guarantee | Revisit |
 | HLD-043 | Event context | Support optional linked cost, booking vendor, HTTPS website, phone/WhatsApp action, map action, and multiple documents | Accepted |
 | HLD-044 | Travel metadata entry | Use searchable airline, airport, and booking-vendor catalogs; derive airport code/country/time zone atomically and route explicit Other values to online administrator review | Accepted |
+| HLD-045 | Post-creation flight connection | Allow an owner/editor to append a validated leg to an existing flight booking and extend its timeline end without rebuilding the booking | Accepted |
 
 ## 14. Risks Requiring Explicit Discussion
 
@@ -401,7 +412,7 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 |---|---|---|
 | Browser storage eviction | A traveler may assume a file is present when it is not | Persistent-storage request, readiness verification, and export fallback |
 | Provisional offline manifest | The current badge verifies document versions but not every structured entity or generic journey leg | Treat airplane-mode acceptance as mandatory and implement HLD-042 before relying on the badge alone |
-| Schema/client mismatch | A deployed client can reference columns, triggers, or policies missing from an older Supabase project | Run the migration set through `202609110003`, then execute the schema smoke test before client testing |
+| Schema/client mismatch | A deployed client can reference tables, functions, triggers, or policies missing from an older Supabase project | Run `202609120001_traveler_focus_and_known_accounts.sql`, then execute the schema smoke test before client testing |
 | Silent cache fallback | A failed online request can display older cached data | Keep sync state visible and show freshness/failure rather than implying the cache is current |
 | Stale service worker | An installed phone can continue running an older application bundle | Preserve update prompts and verify an update/reload during deployment acceptance |
 | Sensitive travel documents | Passports and visas have higher impact than ordinary attachments | Private defaults, least-privilege access, optional local storage, audit trail |
@@ -435,7 +446,7 @@ The implementation is organized by application shell, product feature, local per
 | Low-level design | `docs/LOW_LEVEL_DESIGN.md` | Implemented application and data contract |
 | Feature catalog | `docs/FEATURES.md` | Product scope and acceptance conditions |
 | Redesign checklist | `docs/REDESIGN_CHECKLIST.md` | Active timeline-first decisions, schema impact, and preview slices |
-| Database migrations | `supabase/migrations/` | Authoritative schema, functions, grants, Storage configuration, and RLS |
-| Consolidated database setup | `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` | Fresh-project schema or full idempotent upgrade path |
+| Database migrations | `supabase/migrations/` | Post-baseline deltas for existing deployments |
+| Consolidated database setup | `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` | Full current setup for a fresh project |
 | Application source | `src/` | React PWA, feature workflows, offline storage, and tests |
 | Documentation conventions | `docs/doc-conventions.md` | Status and writing rules |

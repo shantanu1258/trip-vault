@@ -46,14 +46,15 @@ export function documentKind(value: DocumentKind) {
   return documentKinds.find((option) => option.value === value) ?? documentKinds.at(-1)!;
 }
 
-export function suggestedDocumentTitle(kind: DocumentKind, assignmentMode: DocumentAssignmentMode, travelerIds: string[], travelers: Traveler[]) {
+export function suggestedDocumentTitle(kind: DocumentKind, assignmentMode: DocumentAssignmentMode, travelerIds: string[], travelers: Traveler[], contextTitle?: string) {
   const label = documentKind(kind).label;
-  if (assignmentMode === "shared") return `${label} · Everyone`;
-  if (assignmentMode === "unassigned") return `${label} · Assign later`;
+  const context = contextTitle?.trim() ? ` · ${contextTitle.trim()}` : "";
+  if (assignmentMode === "shared") return `${label} · Everyone${context}`;
+  if (assignmentMode === "unassigned") return `${label} · Assign later${context}`;
   const selectedNames = travelerIds.map((id) => travelers.find((traveler) => traveler.id === id)?.display_name).filter((name): name is string => Boolean(name));
-  if (!selectedNames.length) return `${label} · Choose traveler`;
-  if (selectedNames.length <= 3) return `${label} · ${selectedNames.join(", ")}`;
-  return `${label} · ${selectedNames.length} travelers`;
+  if (!selectedNames.length) return `${label} · Choose traveler${context}`;
+  if (selectedNames.length <= 3) return `${label} · ${selectedNames.join(", ")}${context}`;
+  return `${label} · ${selectedNames.length} travelers${context}`;
 }
 
 const purposeLabels: Record<DocumentPurpose, string> = {

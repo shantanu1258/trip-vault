@@ -4,7 +4,7 @@ description: "Prioritized inventory of Trip Vault capabilities, MVP boundaries, 
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [features, product-scope, mvp, acceptance-criteria, roadmap]
-last_verified: 2026-09-11
+last_verified: 2026-09-12
 ---
 
 # Trip Vault Feature Catalog
@@ -30,6 +30,9 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 - Keep Reservations, Costs, People, Readiness, Documents, Offline, Travel metadata, Notes, and Settings in a sectioned Trip details workspace.
 - Classify uploaded files in travel language, assign them to everyone, selected travelers, or later, and keep that assignment separate from signed-in access.
 - Open a document directly in a local-first viewer, retain native full-screen zoom, and move metadata/management behind an Info action.
+- Use Everyone or one traveler as a trip-wide presentation filter so timeline, reservations, costs, readiness, seats, and documents stay relevant without changing access rights.
+- Reuse accounts from previously shared trips through a consent-required Home offer, while retaining private code/QR sharing for first-time recipients.
+- Add an omitted connecting flight later from Flight details and keep the grouped journey, travelers, and timeline end in sync.
 
 ## 1. Priority and Release Definitions
 
@@ -150,6 +153,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DSH-025 | Overlap resolution | P1 | MVP | If trip windows overlap, the user can choose the focused trip and can switch without changing either trip's dates |
 | DSH-026 | Contextual-focus motion mockup | P0 | Prototype | Demonstrates a restrained zoom/elevation treatment for the current trip and current timeline item, scroll-settled carousel focus, route continuity, and a reduced-motion variant |
 | DSH-027 | Contextual-focus motion system | P0 | MVP | Current content receives a label, accent, and small transform without relying on motion or color alone; animations use approved properties/timings and become static when reduced motion is requested |
+| DSH-028 | Traveler-focused trip presentation | P0 | MVP | Everyone shows the complete trip; selecting one traveler shows shared plus that person's timeline, reservations, costs, readiness, seats, and documents and hides records assigned only to another traveler |
 
 ## 7. Bookings
 
@@ -202,6 +206,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DOC-025 | Multiple documents per itinerary event | P0 | MVP | An itinerary event can link, order, open, and unlink multiple existing or newly uploaded documents; unlinking or deleting the event does not delete the underlying Vault documents |
 | DOC-026 | Travel-specific document types | P0 | MVP | Upload offers flight ticket, boarding pass, baggage tag, visa, passport, stay confirmation, journey ticket, activity confirmation/admission, meal voucher, receipt, insurance, and Other with sensible assignment defaults |
 | DOC-027 | Assignment/access separation | P0 | MVP | The upload form explains that who uses a document is independent from Only me, signed-in trip, or selected-member access |
+| DOC-028 | Context-derived document name | P0 | MVP | Default name combines document type, who it is for, and linked event; a custom name is allowed while the derived context remains visible below it |
 
 ## 9. Offline and Synchronization
 
@@ -256,6 +261,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | COL-021 | Itinerary participants | P0 | MVP | Each itinerary item applies to everyone or selected traveler profiles, independently from account membership |
 | COL-022 | Per-traveler manager permissions | P2 | Later | Explicit per-person capability grants may be added later; the personal MVP relies on Owner/Editor trip roles and does not show delegation permission controls |
 | COL-023 | No anonymous trip access | P0 | MVP | A code-entry screen reveals no real trip details until the user is signed in and the code has been successfully redeemed |
+| COL-024 | Known-account trip offer | P0 | MVP | Once two accounts have shared an accepted trip, the owner can offer a later trip to that account; the recipient must accept on Home before membership or traveler linkage is created |
 
 ## 11. Search and Organization
 
@@ -398,6 +404,7 @@ When no trip is current, the Home page emphasizes the next upcoming trip and its
 | FLT-011 | Ticket-to-boarding-pass transition | P0 | MVP | Before a boarding pass exists the flight card prioritizes the ticket; after one is attached it prioritizes the boarding pass with seat, boarding time, terminal, and gate |
 | FLT-012 | Baggage tag attachments | P0 | MVP | User can attach one or more baggage-tag documents to a flight and label each for the relevant traveler or bag |
 | FLT-013 | Delay-aware countdown | P0 | MVP | Countdown uses the latest user-entered estimated departure when delayed and otherwise uses the scheduled departure, with source and update time visible |
+| FLT-014 | Add a missing connection later | P0 | MVP | An owner/editor can append a chronological leg from Flight details; the leg inherits booking travelers and extends the grouped booking and timeline event |
 
 ### 16.1 Flight-data conclusion
 
@@ -493,6 +500,9 @@ The MVP is ready for private travel use only when:
 33. A stay confirmation can be shared, a boarding pass or visa can target one or more travelers, and an unnamed admission ticket can remain unassigned without changing who may open it.
 34. Opening a document immediately shows the verified local PDF/image, or retrieves and caches it once; metadata and destructive actions remain behind Info.
 35. Uploading the same bytes twice in one trip offers the existing Vault document instead of storing a duplicate.
+36. Selecting one traveler consistently hides another traveler's assigned events, bookings, readiness, costs, seats, and documents while retaining records shared with everyone.
+37. An owner can offer a later trip to a previously associated account, and no membership exists until that account accepts from Home.
+38. An owner/editor can add a missing flight connection after creation and see the complete route and seats at the top of Flight details.
 
 ## 21. Product Decisions and Open Reviews
 
@@ -528,6 +538,9 @@ The MVP is ready for private travel use only when:
 | 28 | Document usage versus access | Accepted | Shared, selected-traveler, and unassigned usage is independent from private, trip, or selected-member authorization |
 | 29 | Document-page hierarchy | Accepted | The document is visible first and cached locally; Info contains facts and management, while full-screen uses the device viewer |
 | 30 | Exact duplicate handling | Accepted | Same-trip SHA-256 matches reuse the existing Vault record and bytes |
+| 31 | Traveler-focused presentation | Accepted | Everyone shows all authorized trip data; one traveler shows only shared and person-relevant planning records |
+| 32 | Reuse associated accounts | Accepted | Prior shared-trip history enables a consent-required direct offer; first-time sharing still uses a private code/QR |
+| 33 | Late flight connections | Accepted | Editors may append a validated connection later without recreating the flight booking |
 
 ## 22. Research Sources
 

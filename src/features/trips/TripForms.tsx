@@ -85,7 +85,7 @@ export function AddItineraryForm({ trip, travelers, bookings = [], item, preferr
   );
 }
 
-export function AddCostForm({ trip, cost, bookingId, itineraryItemId, onClose }: { trip: Trip; cost?: TripCost; bookingId?: string; itineraryItemId?: string; onClose: () => void }) {
+export function AddCostForm({ trip, cost, bookingId, itineraryItemId, sourceTitle, onClose }: { trip: Trip; cost?: TripCost; bookingId?: string; itineraryItemId?: string; sourceTitle?: string; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const draft = useFormDraft(`cost:${cost?.id ?? "new"}:${trip.id}`);
@@ -123,7 +123,7 @@ export function AddCostForm({ trip, cost, bookingId, itineraryItemId, onClose }:
   return (
     <ModalSheet eyebrow={trip.title} title={cost ? "Edit trip cost" : "Add a trip cost"} onClose={onClose}>
       <form ref={draft.formRef} className="mt-6 space-y-4" onSubmit={submit}>
-        <label className="form-label">What was it for?<input className="form-input" name="title" placeholder="Describe what this amount covers" defaultValue={cost?.title} autoFocus /></label>
+        {sourceTitle && !cost ? <label className="form-label">Event<input className="form-input bg-elevated" name="title" value={sourceTitle} readOnly autoFocus /><span className="mt-1 block text-xs font-normal text-muted">This cost will stay attached to this timeline event.</span></label> : <label className="form-label">What was it for?<input className="form-input" name="title" placeholder="Describe what this amount covers" defaultValue={cost?.title} autoFocus /></label>}
         <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Category<select className="form-input capitalize" name="category" defaultValue={cost?.category ?? "other"}>{["flight", "hotel", "transport", "activity", "food", "visa", "insurance", "other"].map((item) => <option key={item}>{item}</option>)}</select></label><label className="form-label">Status<select className="form-input" name="paymentStatus" defaultValue={cost?.payment_status ?? "planned"}><option value="planned">Planned</option><option value="paid">Paid</option><option value="refunded">Refunded</option></select></label></div>
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(9rem,12rem)] gap-4"><label className="form-label">Amount<input className="form-input" name="amount" inputMode="decimal" placeholder="Enter 0 if this item was free" defaultValue={cost ? (cost.amount_minor / 10 ** currencyFractionDigits(cost.currency_code)).toFixed(currencyFractionDigits(cost.currency_code)) : ""} /></label><label className="form-label">Currency<CurrencySelect name="currencyCode" defaultValue={cost?.currency_code ?? trip.base_currency} /></label></div>
         <label className="form-label">Notes (optional)<textarea className="form-input min-h-20 resize-y" name="notes" defaultValue={cost?.notes ?? ""} /></label>
