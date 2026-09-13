@@ -1150,10 +1150,14 @@ begin
       (to_jsonb(new)->>'logo_asset_path' is not null and ((to_jsonb(new)->>'logo_asset_path') like '%..%' or (to_jsonb(new)->>'logo_asset_path') !~* '^[a-z0-9][a-z0-9/_-]*\.(png|jpe?g|webp)$'))
       or (to_jsonb(new)->>'banner_asset_path' is not null and ((to_jsonb(new)->>'banner_asset_path') like '%..%' or (to_jsonb(new)->>'banner_asset_path') !~* '^[a-z0-9][a-z0-9/_-]*\.(png|jpe?g|webp)$'))
     ) then raise exception 'Invalid catalog asset path'; end if;
-  elsif tg_table_name = 'airport_catalog_entries' and not public.valid_iana_timezone(new.timezone) then
-    raise exception 'Invalid IANA timezone';
-  elsif tg_table_name = 'theme_palettes' and (not public.valid_theme_tokens(new.light_tokens) or not public.valid_theme_tokens(new.dark_tokens)) then
-    raise exception 'Invalid or inaccessible theme tokens';
+  elsif tg_table_name = 'airport_catalog_entries' then
+    if not public.valid_iana_timezone(new.timezone) then
+      raise exception 'Invalid IANA timezone';
+    end if;
+  elsif tg_table_name = 'theme_palettes' then
+    if not public.valid_theme_tokens(new.light_tokens) or not public.valid_theme_tokens(new.dark_tokens) then
+      raise exception 'Invalid or inaccessible theme tokens';
+    end if;
   end if;
   return new;
 end;

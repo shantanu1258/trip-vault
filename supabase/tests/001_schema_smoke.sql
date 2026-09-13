@@ -118,6 +118,22 @@ begin
   if not exists (select 1 from pg_trigger where tgname = 'journeys_valid_timezones' and not tgisinternal) then
     raise exception 'Strict journey timezone validation trigger is missing';
   end if;
+  if not exists (select 1 from pg_trigger where tgname = 'airport_catalog_validate' and not tgisinternal)
+    or not exists (select 1 from pg_trigger where tgname = 'theme_palettes_validate' and not tgisinternal) then
+    raise exception 'Admin metadata validation triggers are missing';
+  end if;
+  -- These no-op updates are rolled back below. They ensure the shared trigger
+  -- never tries to resolve airport-only fields while validating a theme row.
+  if exists (select 1 from public.theme_palettes) then
+    update public.theme_palettes
+    set light_tokens = light_tokens
+    where config_release_id = (select config_release_id from public.theme_palettes limit 1);
+  end if;
+  if exists (select 1 from public.airport_catalog_entries) then
+    update public.airport_catalog_entries
+    set timezone = timezone
+    where id = (select id from public.airport_catalog_entries limit 1);
+  end if;
   if not exists (select 1 from pg_trigger where tgname = 'document_journey_reference' and not tgisinternal) then
     raise exception 'Journey document same-trip validation trigger is missing';
   end if;

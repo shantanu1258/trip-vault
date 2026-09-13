@@ -3,6 +3,34 @@
 
 begin;
 
+-- Repair the shared metadata trigger before inserting catalogue/theme rows.
+-- Table-specific NEW fields must only be referenced inside their table branch;
+-- PostgreSQL otherwise tries to resolve airport fields for theme palette rows.
+create or replace function public.enforce_admin_metadata()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_table_name in ('airline_catalog_entries', 'trip_airlines') then
+    if not public.valid_action_template(new.check_in_url_template) or not public.valid_action_template(new.manage_booking_url_template)
+      or not public.valid_action_template(new.status_url_template) or not public.valid_action_template(new.tracker_url_template) then
+      raise exception 'Invalid HTTPS action template';
+    end if;
+    if tg_table_name = 'airline_catalog_entries' and (
+      (to_jsonb(new)->>'logo_asset_path' is not null and ((to_jsonb(new)->>'logo_asset_path') like '%..%' or (to_jsonb(new)->>'logo_asset_path') !~* '^[a-z0-9][a-z0-9/_-]*\.(png|jpe?g|webp)$'))
+      or (to_jsonb(new)->>'banner_asset_path' is not null and ((to_jsonb(new)->>'banner_asset_path') like '%..%' or (to_jsonb(new)->>'banner_asset_path') !~* '^[a-z0-9][a-z0-9/_-]*\.(png|jpe?g|webp)$'))
+    ) then raise exception 'Invalid catalog asset path'; end if;
+  elsif tg_table_name = 'airport_catalog_entries' then
+    if not public.valid_iana_timezone(new.timezone) then
+      raise exception 'Invalid IANA timezone';
+    end if;
+  elsif tg_table_name = 'theme_palettes' then
+    if not public.valid_theme_tokens(new.light_tokens) or not public.valid_theme_tokens(new.dark_tokens) then
+      raise exception 'Invalid or inaccessible theme tokens';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
 do $catalog$
 declare
   actor_id uuid;
