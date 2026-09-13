@@ -1,5 +1,6 @@
 -- Run in Supabase SQL Editor after every migration.
--- It is read-only and raises a clear error if an essential LLD invariant is absent.
+-- It leaves no changes behind: trigger probes run inside a rolled-back transaction.
+-- A missing essential LLD invariant raises a clear error.
 
 begin;
 
@@ -17,6 +18,9 @@ declare
     'metadata_defaults', 'theme_palettes', 'config_audit_events'
   ];
   expected_table_name text;
+  expected_airport_code text;
+  expected_airline_code text;
+  published_release_id uuid;
 begin
   foreach expected_table_name in array expected_tables loop
     if to_regclass('public.' || expected_table_name) is null then
@@ -33,9 +37,57 @@ begin
   if not exists (select 1 from storage.buckets where id = 'trip-documents' and not public and file_size_limit = 4999999) then
     raise exception 'The private trip-documents bucket is missing or has the wrong size limit';
   end if;
-  if (select count(*) from public.config_releases where status = 'published') > 1 then
-    raise exception 'More than one configuration release is published';
+  if (select count(*) from public.config_releases where status = 'published') <> 1 then
+    raise exception 'Exactly one configuration release must be published';
   end if;
+  select id into published_release_id
+  from public.config_releases
+  where status = 'published';
+  if (select count(*) from public.airport_catalog_entries where config_release_id = published_release_id) < 103 then
+    raise exception 'Published catalogue contains fewer than 103 airports';
+  end if;
+  if (select count(*) from public.airline_catalog_entries where config_release_id = published_release_id) < 27 then
+    raise exception 'Published catalogue contains fewer than 27 airlines';
+  end if;
+  if (select count(*) from public.booking_vendor_catalog_entries where config_release_id = published_release_id) < 7 then
+    raise exception 'Published catalogue contains fewer than 7 booking vendors';
+  end if;
+  if not exists (select 1 from public.theme_palettes where config_release_id = published_release_id) then
+    raise exception 'Published catalogue theme palette is missing';
+  end if;
+  if exists (
+    select 1 from public.airport_catalog_entries
+    where config_release_id = published_release_id and not public.valid_iana_timezone(timezone)
+  ) then
+    raise exception 'Published catalogue contains an invalid airport timezone';
+  end if;
+  if exists (
+    select 1 from public.airline_catalog_entries
+    where config_release_id = published_release_id and (
+      not public.valid_action_template(check_in_url_template)
+      or not public.valid_action_template(manage_booking_url_template)
+      or not public.valid_action_template(status_url_template)
+      or not public.valid_action_template(tracker_url_template)
+    )
+  ) then
+    raise exception 'Published catalogue contains an invalid airline action URL';
+  end if;
+  foreach expected_airport_code in array array['DEL','BOM','BLR','HYD','MAA','CCU','COK','GOX','SIN','KUL','PEN','CGK','DPS','SUB'] loop
+    if not exists (
+      select 1 from public.airport_catalog_entries
+      where config_release_id = published_release_id and upper(iata_code) = expected_airport_code and is_enabled
+    ) then
+      raise exception 'Published catalogue is missing airport %', expected_airport_code;
+    end if;
+  end loop;
+  foreach expected_airline_code in array array['AI','6E','IX','QP','SG','9I','SQ','TR','MH','AK','GA','QG','JT','ID'] loop
+    if not exists (
+      select 1 from public.airline_catalog_entries
+      where config_release_id = published_release_id and upper(iata_code) = expected_airline_code and is_enabled
+    ) then
+      raise exception 'Published catalogue is missing airline %', expected_airline_code;
+    end if;
+  end loop;
   if to_regprocedure('public.create_trip_invitation(uuid,public.invitation_target_type,uuid,public.member_role)') is null then
     raise exception 'create_trip_invitation RPC is missing';
   end if;
@@ -164,6 +216,10 @@ $$;
 select
   'Trip Vault schema smoke test passed' as result,
   (select count(*) from pg_policies where schemaname = 'public') as public_rls_policies,
-  (select file_size_limit from storage.buckets where id = 'trip-documents') as document_byte_limit;
+  (select file_size_limit from storage.buckets where id = 'trip-documents') as document_byte_limit,
+  (select version_number from public.config_releases where status = 'published') as published_catalog_version,
+  (select count(*) from public.airport_catalog_entries where config_release_id = (select id from public.config_releases where status = 'published')) as published_airports,
+  (select count(*) from public.airline_catalog_entries where config_release_id = (select id from public.config_releases where status = 'published')) as published_airlines,
+  (select count(*) from public.booking_vendor_catalog_entries where config_release_id = (select id from public.config_releases where status = 'published')) as published_booking_vendors;
 
 rollback;
