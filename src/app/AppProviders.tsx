@@ -6,6 +6,7 @@ import { RealtimeRefresh } from "../features/sync/RealtimeRefresh";
 import { PwaUpdatePrompt } from "../components/PwaUpdatePrompt";
 import { PublishedConfigSync } from "../features/metadata/PublishedConfigSync";
 import { InstallAppManager } from "../components/InstallAppButton";
+import { ModalHistoryProvider } from "../components/ModalHistoryProvider";
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -20,7 +21,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider><InstallAppManager /><ForegroundSync /><RealtimeRefresh /><PublishedConfigSync />{children}<PwaUpdatePrompt /></ThemeProvider>
+      <ThemeProvider><ModalHistoryProvider><InstallAppManager /><ForegroundSync /><RealtimeRefresh /><PublishedConfigSync />{children}<PwaUpdatePrompt /></ModalHistoryProvider></ThemeProvider>
     </QueryClientProvider>
   );
 }

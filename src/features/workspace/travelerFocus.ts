@@ -47,10 +47,9 @@ export function filterTravelerWorkspace(input: {
   return {
     itinerary,
     bookings: input.bookings.filter((booking) => bookingIds.has(booking.id)),
-    costs: input.costs.filter((cost) =>
-      Boolean(cost.itinerary_item_id && visibleItineraryIds.has(cost.itinerary_item_id))
-      || Boolean(cost.booking_id && bookingIds.has(cost.booking_id))
-    ),
+    costs: input.costs.filter((cost) => cost.participants?.length
+      ? cost.participants.some((participant) => participant.traveler_id === input.travelerId)
+      : Boolean(cost.itinerary_item_id && visibleItineraryIds.has(cost.itinerary_item_id)) || Boolean(cost.booking_id && bookingIds.has(cost.booking_id))),
     requirements: input.requirements.filter((requirement) => input.requirementAssignees.some((row) => row.requirement_id === requirement.id && row.traveler_id === input.travelerId)),
     documents: input.documents.filter((document) => documentMatchesTraveler(document, input.travelerId!))
   };

@@ -4,7 +4,7 @@ description: "Prioritized product, interaction, and database decisions for rebui
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [redesign, timeline, bookings, metadata, database, responsive-ui]
-last_verified: 2026-09-11
+last_verified: 2026-09-13
 ---
 
 # Trip Vault Redesign Checklist
@@ -505,6 +505,28 @@ Discuss these in order; they block the largest amount of later work.
 - [ ] No automatic publication of user-entered master data.
 - [ ] No native iOS or Android application rewrite.
 - [ ] No broad visual rewrite outside the active implementation slice.
+
+## 18. Current Lifecycle and Expense Decisions
+
+- [x] Flexible event timing supports exact time, date-only, all-day, before/after a dated event, and unscheduled work.
+- [x] Event status is Planned, Done, Skipped, or Cancelled and is independent of Archive.
+- [x] Archiving a booking-backed milestone archives the whole booking group; standalone events archive individually.
+- [x] Archived trip items are restored from one section. Documents retain their independent archive flow.
+- [x] Event dates are constrained to the trip date range in both the form and database.
+- [x] Timeline cards expose Navigation and flag missing locations without requiring the detail sheet.
+- [x] Trip costs record a traveler payer and participants, split equally with integer minor units, and derive balances separately by currency.
+- [x] The total cost at the top opens the expense section; incorrect costs can be archived and restored.
+- [x] A clearly labeled owner-only permanent-delete control exists temporarily for clearing stale test trips.
+- [ ] TODO after the trip experience is stable: redesign the Admin console from first principles for plain language, responsive navigation, guided draft/publish steps, and clear review queues.
+- [ ] Later option: grow trip expenses into an independent Splitwise-style feature only after the trip-scoped flow succeeds.
+
+### Open-source expense companion benchmark
+
+- [x] Spliit confirms that group-first expenses, participant selection, uneven splits, reimbursements, receipts, and PWA delivery form a practical product boundary: <https://github.com/spliit-app/spliit>.
+- [x] SplitPro reinforces deriving balances from source expenses and supporting equal, percentage, share, and exact splits without making the balance itself authoritative: <https://github.com/oss-apps/split-pro>.
+- [x] Balancia reinforces deterministic settlements, multiple payers, receipts, and keeping currencies separate unless the user explicitly chooses conversion: <https://github.com/sebitr/balancia>.
+- [x] Trip Vault implements only the trip-linked first slice now: one payer, selected participants, equal minor-unit shares, per-currency balances, and archive/restore.
+- [ ] Later, after trip retesting: consider multiple payers, exact/percentage/share splits, settlements, receipts, and an independent expense entry point.
 
 ## Source File Index
 

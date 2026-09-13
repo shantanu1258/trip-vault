@@ -4,7 +4,7 @@ description: "Implemented routes, modules, data model, authorization, file stora
 scope: [service-wide]
 agents: [coder, reviewer, planner, debugger]
 tags: [implementation, data-model, sync, storage, authorization, testing]
-last_verified: 2026-09-12
+last_verified: 2026-09-13
 ---
 
 # Trip Vault Low-Level Design
@@ -754,13 +754,25 @@ Primary key: `(requirement_id, traveler_id)`.
 | `amount_minor` | Big integer | Non-negative amount in minor currency units |
 | `currency_code` | Three-letter code | Currency used for the amount |
 | `payment_status` | `payment_status` | Planned, paid, or refunded |
-| `paid_by` | UUID, nullable | Optional paying account; no expense splitting is inferred |
+| `paid_by` | UUID, nullable | Legacy optional paying account retained for compatibility |
+| `paid_by_traveler_id` | UUID, nullable | Traveler who paid, including an organizer-managed traveler without an account |
 | `notes` | Text, nullable | User-entered context |
 | `created_by` | UUID | Audit actor |
 | `version` | Integer | Optimistic concurrency counter |
 | `created_at`, `updated_at`, `deleted_at` | Timestamps | Audit, synchronization, and soft deletion |
 
-Trip totals group non-refunded costs by currency. Every Add Event path may create an optional linked cost; if none exists, the event details explicitly show that cost is missing and offer a completion action.
+Trip totals group non-refunded costs by currency. Every Add Event path may create an optional linked cost; if none exists, the event details explicitly show that cost is missing and offer a completion action. A cost may be archived and restored without archiving its event.
+
+#### `trip_cost_participants`
+
+| Field | Type | Purpose |
+|---|---|---|
+| `cost_id` | UUID | Parent trip cost |
+| `traveler_id` | UUID | Traveler included in the expense |
+| `share_amount_minor` | Big integer, nullable | Explicit minor-unit share; null currently means derive an equal split |
+| `updated_at` | Timestamp | Change detection |
+
+Primary key: `(cost_id, traveler_id)`. The current trip companion divides equal shares deterministically in minor currency units, assigns any remainder in stable traveler order, and derives per-currency balances from source costs. It never combines currencies or stores mutable running balances as authoritative data.
 
 #### `reminders`
 
@@ -1854,7 +1866,7 @@ The lists below are the release coverage contract. They do not imply that every 
 | LLD-001 | May editors invite members? | Owner only for MVP | Accepted |
 | LLD-002 | How are sensitive documents protected locally? | Browser/OS profile isolation for the personal MVP; clear-local-copy and sign-out controls are provided | Accepted |
 | LLD-003 | What is mandatory in a trip offline pack? | Product contract: complete structured trip data and all authorized current files; an explicitly reduced document set is `Essentials ready` | Accepted |
-| LLD-004 | How long is recoverable deletion retained? | Current lists surface soft-deleted records for 30 days; irreversible purge is not implemented | Revisit |
+| LLD-004 | How long is recoverable deletion retained? | Current lists surface soft-deleted records for 30 days; a separately confirmed owner-only irreversible purge exists temporarily for test cleanup | Revisit after testing |
 | LLD-005 | Which files may preview inline? | PDF and common images only | Accepted |
 | LLD-006 | Does v1 include activity history? | Retain scoped security/configuration events; defer a general user-visible history screen | Accepted |
 | LLD-007 | Styling implementation | Tailwind plus semantic CSS design tokens | Accepted |
@@ -1901,6 +1913,13 @@ The lists below are the release coverage contract. They do not imply that every 
 | LLD-048 | Traveler presentation focus | Everyone shows the whole trip; selecting one traveler shows shared plus that person's timeline, bookings, costs, readiness, seats, and documents without changing authorization | Accepted |
 | LLD-049 | Known-account trip offer | Accounts that previously shared an accepted trip may be selected again, but the recipient must accept the new trip from Home before membership is created | Accepted |
 | LLD-050 | Post-creation flight connections | Owners and editors can append a chronological flight leg later; travelers are inherited and booking/timeline end times advance atomically | Accepted |
+| LLD-051 | Flexible event timing | Non-journey events may use exact time, date-only, all-day, before/after a dated event, or an Unscheduled section; journey tickets retain exact endpoint times | Accepted |
+| LLD-052 | Timeline state versus archive | Planned, Done, Skipped, and Cancelled remain visible states; Archive is reversible and a booking-backed milestone archives/restores its complete booking group | Accepted |
+| LLD-053 | Trip date boundary | Dated events and their ends must stay within the trip start/end dates; the form constrains input and a database trigger is authoritative | Accepted |
+| LLD-054 | Modal browser history | Device/browser Back closes the top sheet; nested edit/cost/upload returns to the underlying event sheet before navigating away | Accepted |
+| LLD-055 | Trip-scoped expense sharing | Paid costs may name a traveler payer and participants; equal shares use integer minor units, balances are derived, and currencies are never silently combined | Accepted |
+| LLD-056 | Testing deletion | The owner-only permanent-delete action is visibly temporary, requires the exact trip title, removes Storage objects before cascading database deletion, and is online-only | Accepted for testing |
+| LLD-057 | Admin redesign | Do not extend the current console until the trip application stabilizes; later rebuild it responsively with plain language and guided draft/publish/review flows | Deferred |
 
 ## Source File Index
 

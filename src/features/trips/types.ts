@@ -5,6 +5,8 @@ export const timelineEventTypes = [
   "transport", "meal", "activity", "preparation", "custom"
 ] as const;
 export type TimelineEventType = (typeof timelineEventTypes)[number];
+export type EventTimingMode = "exact" | "date_only" | "all_day" | "relative" | "unscheduled";
+export type EventStatus = "planned" | "done" | "skipped" | "cancelled";
 
 export const journeyTimelineEventTypes = ["flight", "train", "bus", "ferry", "cab"] as const;
 
@@ -41,10 +43,16 @@ export type ItineraryItem = {
   applies_to_all_travelers: boolean;
   is_all_day?: boolean;
   completed_at?: string | null;
+  timing_mode?: EventTimingMode;
+  scheduled_date?: string | null;
+  anchor_itinerary_item_id?: string | null;
+  relative_position?: "before" | "after" | null;
+  event_status?: EventStatus;
   sort_key?: string;
   version?: number;
   created_at: string;
   updated_at?: string;
+  deleted_at?: string | null;
 };
 
 export const costCategories = ["flight", "hotel", "transport", "activity", "food", "visa", "insurance", "other"] as const;
@@ -61,10 +69,25 @@ export type TripCost = {
   amount_minor: number;
   currency_code: string;
   payment_status: PaymentStatus;
+  paid_by_traveler_id?: string | null;
+  participants?: CostParticipant[];
   notes: string | null;
   version?: number;
   created_at: string;
   updated_at?: string;
+  deleted_at?: string | null;
+};
+
+export type CostParticipant = {
+  traveler_id: string;
+  share_amount_minor: number | null;
+};
+
+export type ArchivedTripItem = {
+  id: string;
+  kind: "event" | "booking" | "cost";
+  title: string;
+  archived_at: string;
 };
 
 export type Reminder = {
@@ -120,6 +143,12 @@ export type CreateItineraryInput = {
   travelerIds?: string[];
   isAllDay?: boolean;
   completedAt?: string | null;
+  timingMode?: EventTimingMode;
+  scheduledDate?: string;
+  anchorItineraryItemId?: string;
+  relativePosition?: "before" | "after";
+  eventStatus?: EventStatus;
+  sortKey?: string;
   dependsOn?: string[];
 };
 
@@ -134,6 +163,8 @@ export type CreateCostInput = {
   amountMinor: number;
   currencyCode: string;
   paymentStatus: PaymentStatus;
+  paidByTravelerId?: string;
+  participantTravelerIds?: string[];
   notes?: string;
   dependsOn?: string[];
 };

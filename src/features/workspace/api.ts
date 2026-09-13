@@ -397,7 +397,7 @@ export async function addFlightBooking(input: CreateFlightInput): Promise<{ book
     await cacheEntityList(`flights:${input.tripId}`, flights);
   }
   const itinerary = await addItineraryItem({ tripId: input.tripId, bookingId: booking.id, eventType: "flight", title: input.title, startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.departureTimezone, travelerIds: input.travelerIds, dependsOn: [bookingOperation?.operationId, ...flightOperationIds].filter((id): id is string => Boolean(id)) });
-  if (input.cost) await addTripCost({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary.id, title: input.cost.title, category: "flight", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
+  if (input.cost) await addTripCost({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary.id, title: input.cost.title, category: "flight", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, paidByTravelerId: input.cost.paidByTravelerId, participantTravelerIds: input.cost.participantTravelerIds, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
   return { booking, flights, itinerary };
 }
 
@@ -442,7 +442,7 @@ export async function addJourneyBooking(input: CreateJourneyInput): Promise<{ bo
   if (!navigator.onLine) for (const leg of legs) operationIds.push(await queueCreate({ entityType: `journey-legs:${input.tripId}`, table: "journey_legs", row: leg, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) }));
   else { const { data, error } = await client().from("journey_legs").insert(legs).select("*"); if (error) throw error; legs.splice(0, legs.length, ...((data ?? []) as JourneyLeg[])); await cacheEntityList(`journey-legs:${input.tripId}`, legs); }
   const itinerary = await addItineraryItem({ tripId: input.tripId, bookingId: booking.id, eventType: input.mode, title: input.title, startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.originTimezone, travelerIds: input.travelerIds, dependsOn: [bookingOperation?.operationId, ...operationIds].filter((id): id is string => Boolean(id)) });
-  if (input.cost) await addTripCost({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary.id, title: input.cost.title, category: "transport", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
+  if (input.cost) await addTripCost({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary.id, title: input.cost.title, category: "transport", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, paidByTravelerId: input.cost.paidByTravelerId, participantTravelerIds: input.cost.participantTravelerIds, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
   return { booking, legs, itinerary };
 }
 
@@ -507,14 +507,35 @@ export async function listJourneyLegsForBooking(bookingId: string, tripId: strin
   return rows;
 }
 
-export async function addBookedTimelineEvent(input: CreateBookingInput & { eventType: TimelineEventType; mapUrl?: string; cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid" } }) {
+export async function addBookedTimelineEvent(input: CreateBookingInput & { eventType: TimelineEventType; mapUrl?: string; timingMode?: import("../trips/types").EventTimingMode; scheduledDate?: string; anchorItineraryItemId?: string; relativePosition?: "before" | "after"; isAllDay?: boolean; cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid"; paidByTravelerId?: string; participantTravelerIds?: string[] } }) {
   const booking = await addBooking(input);
   const bookingOperation = !navigator.onLine ? await database.outbox.where("entityId").equals(booking.id).filter((operation) => operation.operation === "create").first() : undefined;
-  const createMilestone = (eventType: TimelineEventType, title: string, startsAt: string, endsAt?: string) => addItineraryItem({ tripId: input.tripId, bookingId: booking.id, eventType, title, startsAt, endsAt, timezone: input.timezone!, location: input.location, mapUrl: input.mapUrl, notes: input.notes, travelerIds: input.travelerIds, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
+  const createMilestone = (eventType: TimelineEventType, title: string, startsAt: string, endsAt?: string) => {
+    const isHotelMilestone = input.type === "hotel";
+    return addItineraryItem({
+      tripId: input.tripId,
+      bookingId: booking.id,
+      eventType,
+      title,
+      startsAt,
+      endsAt,
+      timezone: input.timezone!,
+      timingMode: isHotelMilestone ? "exact" : input.timingMode,
+      scheduledDate: isHotelMilestone ? undefined : input.scheduledDate,
+      anchorItineraryItemId: isHotelMilestone ? undefined : input.anchorItineraryItemId,
+      relativePosition: isHotelMilestone ? undefined : input.relativePosition,
+      isAllDay: isHotelMilestone ? false : input.isAllDay,
+      location: input.location,
+      mapUrl: input.mapUrl,
+      notes: input.notes,
+      travelerIds: input.travelerIds,
+      dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id))
+    });
+  };
   const itinerary = input.type === "hotel"
     ? [await createMilestone("hotel_check_in", `${input.title} · Check in`, input.startsAt!), await createMilestone("hotel_check_out", `${input.title} · Check out`, input.endsAt!)]
     : [await createMilestone(input.eventType, input.title, input.startsAt!, input.endsAt)];
-  if (input.cost) await addTripCost({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary[0].id, title: input.cost.title, category: input.type === "restaurant" ? "food" : input.type === "hotel" ? "hotel" : input.type === "activity" ? "activity" : "transport", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
+  if (input.cost) await addTripCost({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary[0].id, title: input.cost.title, category: input.type === "restaurant" ? "food" : input.type === "hotel" ? "hotel" : input.type === "activity" ? "activity" : "transport", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, paidByTravelerId: input.cost.paidByTravelerId, participantTravelerIds: input.cost.participantTravelerIds, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
   return { booking, itinerary };
 }
 

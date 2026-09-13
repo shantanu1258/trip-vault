@@ -10,23 +10,23 @@ declare
     'traveler_managers', 'trip_invitations', 'bookings', 'booking_travelers', 'trip_airlines',
     'flight_legs', 'flight_leg_travelers', 'itinerary_items', 'itinerary_participants',
     'itinerary_item_documents', 'documents', 'document_versions', 'document_access', 'document_travelers', 'notes',
-    'trip_requirements', 'requirement_assignees', 'trip_costs', 'reminders', 'alert_states',
+    'trip_requirements', 'requirement_assignees', 'trip_costs', 'trip_cost_participants', 'reminders', 'alert_states',
     'activity_events', 'config_releases', 'airline_catalog_entries', 'airport_catalog_entries',
     'booking_vendor_catalog_entries', 'catalog_suggestions', 'journey_legs',
     'trip_membership_offers',
     'metadata_defaults', 'theme_palettes', 'config_audit_events'
   ];
-  table_name text;
+  expected_table_name text;
 begin
-  foreach table_name in array expected_tables loop
-    if to_regclass('public.' || table_name) is null then
-      raise exception 'Missing required table: public.%', table_name;
+  foreach expected_table_name in array expected_tables loop
+    if to_regclass('public.' || expected_table_name) is null then
+      raise exception 'Missing required table: public.%', expected_table_name;
     end if;
     if not exists (
       select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = 'public' and c.relname = table_name and c.relrowsecurity
+      where n.nspname = 'public' and c.relname = expected_table_name and c.relrowsecurity
     ) then
-      raise exception 'RLS is not enabled on public.%', table_name;
+      raise exception 'RLS is not enabled on public.%', expected_table_name;
     end if;
   end loop;
 
@@ -57,6 +57,12 @@ begin
   if to_regprocedure('public.reorder_itinerary_items(uuid,uuid[])') is null then
     raise exception 'reorder_itinerary_items RPC is missing';
   end if;
+  if to_regprocedure('public.archive_trip_item(uuid)') is null or to_regprocedure('public.restore_trip_item(uuid)') is null then
+    raise exception 'Timeline archive/restore RPCs are missing';
+  end if;
+  if to_regprocedure('public.delete_trip_permanently(uuid)') is null then
+    raise exception 'Owner-only permanent trip deletion RPC is missing';
+  end if;
   if to_regprocedure('public.can_edit_traveler_profile(uuid,uuid)') is null then
     raise exception 'Delegated traveler profile authorization is missing';
   end if;
@@ -66,6 +72,21 @@ begin
       and policyname = 'trips_create' and cmd = 'INSERT'
   ) then
     raise exception 'Authenticated trip creation policy is missing';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'itinerary_items' and column_name = 'timing_mode'
+  ) then
+    raise exception 'Flexible timeline timing is missing';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'trip_costs' and column_name = 'paid_by_traveler_id'
+  ) then
+    raise exception 'Trip expense payer support is missing';
+  end if;
+  if not exists (select 1 from pg_trigger where tgname = 'trip_date_bounds_include_itinerary' and not tgisinternal) then
+    raise exception 'Trip date changes are not protected by timeline bounds';
   end if;
   if not exists (select 1 from pg_trigger where tgname = 'on_trip_created_add_owner' and not tgisinternal) then
     raise exception 'Trip owner bootstrap trigger is missing';

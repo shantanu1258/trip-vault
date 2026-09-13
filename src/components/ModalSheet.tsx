@@ -1,7 +1,9 @@
 import { ArrowLeft } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
+import { useModalHistory } from "./ModalHistoryProvider";
 
 export function ModalSheet({ title, eyebrow, onClose, children }: { title: string; eyebrow: string; onClose: () => void; children: ReactNode }) {
+  useModalHistory(onClose);
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", closeOnEscape);

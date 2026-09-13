@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrivalDayOffset, journeyDuration, journeyEndDetails, normalizePhoneNumber, phoneActionUrls, readinessSummary, resolveCurrentTimelineItem, searchTrip, timelinePhase, validateLegOrder } from "./model";
+import { arrivalDayOffset, eventEndDetails, eventTimeLabel, journeyDuration, journeyEndDetails, normalizePhoneNumber, phoneActionUrls, readinessSummary, resolveCurrentTimelineItem, searchTrip, sortTimelineItems, timelinePhase, validateLegOrder } from "./model";
 import type { ItineraryItem } from "../trips/types";
 
 const event = (id: string, start: string, end: string | null = null): ItineraryItem => ({ id, trip_id: "trip", booking_id: null, title: id, event_type: "activity", starts_at: start, ends_at: end, timezone: "UTC", location: null, notes: null, applies_to_all_travelers: true, created_at: "" });
@@ -15,13 +15,27 @@ describe("timeline model", () => {
     expect(timelinePhase({ ...event("current", "2026-09-11T10:00:00Z", "2026-09-11T11:00:00Z"), event_type: "train" }, now)).toBe("current");
     expect(timelinePhase(event("future", "2026-09-11T12:00:00Z"), now)).toBe("future");
   });
-  it("uses end times only for journey events", () => {
+  it("uses end times for activities while retaining journey arrival details", () => {
     const ordinary = event("museum", "2026-09-11T10:00:00Z", "2026-09-11T12:00:00Z");
     const flight = { ...ordinary, id: "flight", event_type: "flight" as const };
-    expect(timelinePhase(ordinary, new Date("2026-09-11T11:00:00Z"))).toBe("past");
+    expect(timelinePhase(ordinary, new Date("2026-09-11T11:00:00Z"))).toBe("current");
     expect(journeyEndDetails(ordinary)).toBeNull();
     expect(timelinePhase(flight, new Date("2026-09-11T11:00:00Z"))).toBe("current");
     expect(journeyEndDetails(flight)).toEqual({ endsAt: "2026-09-11T12:00:00Z", duration: "2h" });
+    expect(eventEndDetails(ordinary)).toEqual({ endsAt: "2026-09-11T12:00:00Z", duration: "2h", journey: false });
+  });
+  it("keeps flexible and unscheduled entries in one ordered timeline", () => {
+    const anchor = event("anchor", "2026-09-11T10:00:00Z");
+    const before = { ...event("before", "2026-09-11T10:00:00Z"), timing_mode: "relative" as const, anchor_itinerary_item_id: "anchor", relative_position: "before" as const };
+    const unscheduled = { ...event("unscheduled", "2026-09-30T23:59:00Z"), timing_mode: "unscheduled" as const };
+    expect(sortTimelineItems([unscheduled, anchor, before]).map((item) => item.id)).toEqual(["before", "anchor", "unscheduled"]);
+    expect(timelinePhase(unscheduled, new Date("2026-09-11T10:30:00Z"))).toBe("unscheduled");
+    expect(eventTimeLabel(unscheduled)).toBe("No date yet");
+  });
+  it("skips done and cancelled entries when choosing what needs attention", () => {
+    const done = { ...event("done", "2026-09-11T10:00:00Z"), event_status: "done" as const };
+    const cancelled = { ...event("cancelled", "2026-09-11T10:15:00Z"), event_status: "cancelled" as const };
+    expect(resolveCurrentTimelineItem([done, cancelled, event("next", "2026-09-11T11:00:00Z")], new Date("2026-09-11T10:30:00Z"))?.id).toBe("next");
   });
   it("calculates elapsed time from instants rather than wall-clock labels", () => expect(journeyDuration("2026-09-11T03:30:00Z", "2026-09-11T12:15:00Z")).toBe("8h 45m"));
   it("shows ticket-style next-day arrival", () => expect(arrivalDayOffset("2026-09-11T18:00:00Z", "Asia/Dubai", "2026-09-12T06:00:00Z", "Europe/London")).toBe(1));

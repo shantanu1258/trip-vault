@@ -4,10 +4,11 @@ import type { Booking, FlightLeg, JourneyLeg, Requirement, Traveler, VaultDocume
 export type TimelineSearchGroup = "Timeline" | "Bookings" | "Documents" | "Travelers" | "Readiness";
 export type TimelineSearchResult = { id: string; group: TimelineSearchGroup; title: string; detail: string; timelineItemId?: string; href?: string };
 
-export type TimelinePhase = "past" | "current" | "future";
+export type TimelinePhase = "past" | "current" | "future" | "unscheduled";
 
 export function timelinePhase(item: ItineraryItem, now = new Date()): TimelinePhase {
-  if (item.is_all_day) {
+  if (item.timing_mode === "unscheduled") return "unscheduled";
+  if (item.is_all_day || item.timing_mode === "date_only" || item.timing_mode === "all_day") {
     const today = dateKey(now.toISOString(), item.timezone);
     if (today < dateKey(item.starts_at, item.timezone)) return "future";
     if (today === dateKey(item.starts_at, item.timezone)) return "current";
@@ -15,7 +16,7 @@ export function timelinePhase(item: ItineraryItem, now = new Date()): TimelinePh
   }
   const timestamp = now.getTime();
   const start = new Date(item.starts_at).getTime();
-  const end = new Date(isJourneyEventType(item.event_type) ? item.ends_at ?? item.starts_at : item.starts_at).getTime();
+  const end = new Date(item.ends_at ?? item.starts_at).getTime();
   if (timestamp < start) return "future";
   if (timestamp <= end) return "current";
   return "past";
@@ -26,12 +27,38 @@ export function journeyEndDetails(item: ItineraryItem) {
   return { endsAt: item.ends_at, duration: journeyDuration(item.starts_at, item.ends_at) };
 }
 
+export function eventEndDetails(item: ItineraryItem) {
+  if (!item.ends_at) return null;
+  return { endsAt: item.ends_at, duration: journeyDuration(item.starts_at, item.ends_at), journey: isJourneyEventType(item.event_type) };
+}
+
+export function eventTimeLabel(item: ItineraryItem) {
+  if (item.timing_mode === "unscheduled") return "No date yet";
+  if (item.timing_mode === "relative") return `${item.relative_position === "before" ? "Before" : "After"} another event`;
+  if (item.timing_mode === "date_only") return "Date only";
+  if (item.timing_mode === "all_day" || item.is_all_day) return "All day";
+  return null;
+}
+
+export function sortTimelineItems(items: ItineraryItem[]) {
+  return [...items].sort((left, right) => {
+    if (left.anchor_itinerary_item_id === right.id) return left.relative_position === "before" ? -1 : 1;
+    if (right.anchor_itinerary_item_id === left.id) return right.relative_position === "before" ? 1 : -1;
+    const leftUnscheduled = left.timing_mode === "unscheduled";
+    const rightUnscheduled = right.timing_mode === "unscheduled";
+    if (leftUnscheduled !== rightUnscheduled) return leftUnscheduled ? 1 : -1;
+    return left.starts_at.localeCompare(right.starts_at) || (left.sort_key ?? "").localeCompare(right.sort_key ?? "") || left.id.localeCompare(right.id);
+  });
+}
+
 export function resolveCurrentTimelineItem(items: ItineraryItem[], now = new Date()) {
-  const ordered = [...items].sort((left, right) => left.starts_at.localeCompare(right.starts_at) || (left.sort_key ?? "").localeCompare(right.sort_key ?? "") || left.id.localeCompare(right.id));
+  const ordered = sortTimelineItems(items);
   const timestamp = now.getTime();
-  return ordered.find((item) => !item.completed_at && timelinePhase(item, now) === "current")
-    ?? ordered.find((item) => !item.completed_at && new Date(item.starts_at).getTime() >= timestamp)
-    ?? [...ordered].reverse().find((item) => !item.completed_at)
+  const available = ordered.filter((item) => !item.completed_at && (item.event_status ?? "planned") === "planned" && item.timing_mode !== "unscheduled");
+  return available.find((item) => timelinePhase(item, now) === "current")
+    ?? available.find((item) => new Date(item.starts_at).getTime() >= timestamp)
+    ?? [...available].reverse().find(Boolean)
+    ?? ordered.find((item) => item.timing_mode === "unscheduled")
     ?? ordered.at(-1)
     ?? null;
 }

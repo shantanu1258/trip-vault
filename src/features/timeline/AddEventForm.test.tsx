@@ -156,7 +156,9 @@ describe("Add Event hotel stay", () => {
         title: "Hotel stay",
         amountMinor: 12_345,
         currencyCode: "SGD",
-        paymentStatus: "paid"
+        paymentStatus: "paid",
+        paidByTravelerId: undefined,
+        participantTravelerIds: []
       }
     })));
     expect(onClose).toHaveBeenCalledOnce();

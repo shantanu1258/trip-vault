@@ -4,7 +4,7 @@ description: "Prioritized inventory of Trip Vault capabilities, MVP boundaries, 
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [features, product-scope, mvp, acceptance-criteria, roadmap]
-last_verified: 2026-09-12
+last_verified: 2026-09-13
 ---
 
 # Trip Vault Feature Catalog
@@ -117,6 +117,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | TRP-006 | Trip progress | P1 | MVP | Progress is based on an explicit checklist definition rather than an unexplained percentage |
 | TRP-007 | Archive trip | P1 | MVP | Owner can archive and restore a trip without deleting its records |
 | TRP-008 | Recoverable deletion | P1 | MVP | Owner can delete a trip into a retention window and restore it before final removal |
+| TRP-008A | Temporary test-trip purge | P0 | Testing | Owner can type the exact trip name to permanently remove stale trip data and cloud documents while the product is being retested; remove or redesign this before normal use |
 | TRP-009 | Duplicate trip | P2 | Later | User can copy structure without copying sensitive documents by default |
 | TRP-010 | Trip templates | P2 | Later | Reusable packing, booking, and document checklists can seed new trips |
 | TRP-011 | Multiple destinations | P1 | MVP | Itinerary supports multiple stops without forcing the trip summary into one city |
@@ -325,7 +326,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | Collaborative trip editing | Wanderlog and Tripsy support shared planning and guest permissions | Keep invitation-based owner, editor, and viewer access |
 | Confirmation-email import | TripIt, Tripsy, and KAYAK accept forwarded reservation emails | Do not adopt; manual entry avoids inbox access and parsing complexity |
 | Flight monitoring | TripIt, Tripsy, Flighty, and Wanderlog offer live flight status, generally as a paid capability | Recreate the useful flight-day states from user-maintained times, gates, and status; keep external tracker links |
-| Maps, budgets, and packing | Wanderlog combines these with trip planning | Use keyless external map links; exclude route optimization, expense splitting, and offline map downloads; consider packing later |
+| Maps, budgets, and packing | Wanderlog combines these with trip planning | Use keyless external map links; support trip-scoped payer/participants/equal splits, but exclude route optimization, automatic currency conversion, offline map downloads, and a standalone expense product |
 
 ### 14.2 Recommended App Home information order
 
@@ -541,6 +542,11 @@ The MVP is ready for private travel use only when:
 | 31 | Traveler-focused presentation | Accepted | Everyone shows all authorized trip data; one traveler shows only shared and person-relevant planning records |
 | 32 | Reuse associated accounts | Accepted | Prior shared-trip history enables a consent-required direct offer; first-time sharing still uses a private code/QR |
 | 33 | Late flight connections | Accepted | Editors may append a validated connection later without recreating the flight booking |
+| 34 | Flexible timeline placement | Accepted | Exact, date-only, all-day, relative, and unscheduled events remain accessible on one timeline |
+| 35 | Event lifecycle | Accepted | Planned, Done, Skipped, Cancelled, Archive, and Restore have separate meanings |
+| 36 | Trip expense companion | Accepted | Record payer and participants, split equally, and show derived balances per currency inside the trip |
+| 37 | Independent expense product | Deferred | Revisit a full Splitwise-style experience only after trip-scoped expenses are proven |
+| 38 | Admin experience redesign | Deferred | Finish and retest the trip application before rebuilding the responsive administrator experience |
 
 ## 22. Research Sources
 

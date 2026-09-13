@@ -11,14 +11,23 @@ import type {
   Reminder,
   Trip,
   TripCost,
+  ArchivedTripItem,
+  EventStatus,
   TripDocument,
   TripStatus
   , UpdateCostInput, UpdateTripInput
 } from "./types";
 import { moveEqualTimeItem } from "./presentation";
 
-const itinerarySelect = "id,trip_id,booking_id,title,event_type,starts_at,ends_at,timezone,location,notes,applies_to_all_travelers,is_all_day,completed_at,sort_key,version,created_at,updated_at";
-const costSelect = "id,trip_id,booking_id,itinerary_item_id,title,category,amount_minor,currency_code,payment_status,notes,version,created_at,updated_at";
+const itinerarySelect = "id,trip_id,booking_id,title,event_type,starts_at,ends_at,timezone,location,notes,applies_to_all_travelers,is_all_day,completed_at,timing_mode,scheduled_date,anchor_itinerary_item_id,relative_position,event_status,sort_key,version,created_at,updated_at,deleted_at";
+const costSelect = "id,trip_id,booking_id,itinerary_item_id,title,category,amount_minor,currency_code,payment_status,paid_by_traveler_id,notes,version,created_at,updated_at,deleted_at,trip_cost_participants(traveler_id,share_amount_minor)";
+
+type CostResponse = TripCost & { trip_cost_participants?: Array<{ traveler_id: string; share_amount_minor: number | null }> };
+
+function normalizeCost(raw: CostResponse): TripCost {
+  const { trip_cost_participants, ...cost } = raw;
+  return { ...cost, participants: trip_cost_participants ?? cost.participants ?? [] };
+}
 
 function client(): SupabaseClient {
   if (!supabase) throw new Error("Supabase is not connected. Add the project URL and publishable key, then restart the app.");
@@ -36,6 +45,11 @@ function statusForDates(startDate: string, endDate: string): TripStatus {
   if (endDate < today) return "completed";
   if (startDate <= today) return "active";
   return "upcoming";
+}
+
+function localDateForInstant(value: string, timeZone: string) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(value)).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 export async function listTrips(includeArchived = false): Promise<Trip[]> {
@@ -106,6 +120,13 @@ export async function createTrip(input: CreateTripInput): Promise<Trip> {
 
 export async function updateTrip(input: UpdateTripInput): Promise<Trip> {
   const existing = await getTrip(input.id);
+  const outside = (await readEntityList<ItineraryItem>(`itinerary:${input.id}`)).find((item) => {
+    if (item.deleted_at || item.timing_mode === "unscheduled") return false;
+    const startDate = item.scheduled_date ?? localDateForInstant(item.starts_at, item.timezone);
+    const endDate = item.ends_at ? localDateForInstant(item.ends_at, item.timezone) : startDate;
+    return startDate < input.startDate || startDate > input.endDate || endDate < input.startDate || endDate > input.endDate;
+  });
+  if (outside) throw new Error(`Move or archive “${outside.title}” before shortening the trip dates.`);
   const patch = {
     title: input.title,
     destination_summary: input.destination,
@@ -158,6 +179,49 @@ export async function restoreDeletedTrip(trip: Trip) {
   return data as Trip;
 }
 
+export async function deleteTripPermanently(trip: Trip) {
+  if (!navigator.onLine) throw new Error("Permanent deletion requires a connection.");
+  const profileId = await currentUserId();
+  const { data: membership, error: membershipError } = await client().from("trip_members").select("role").eq("trip_id", trip.id).eq("user_id", profileId).maybeSingle();
+  if (membershipError) throw membershipError;
+  if (membership?.role !== "owner") throw new Error("Only the trip owner can permanently delete this trip.");
+  const { data: versions, error: versionError } = await client().from("document_versions")
+    .select("id,storage_path,documents!inner(trip_id)")
+    .eq("documents.trip_id", trip.id);
+  if (versionError) throw versionError;
+  const paths = (versions ?? []).map((version) => String(version.storage_path));
+  if (paths.length) {
+    const { error: storageError } = await client().storage.from("trip-documents").remove(paths);
+    if (storageError) throw new Error(`The trip was not deleted because its stored documents could not be removed: ${storageError.message}`);
+  }
+  const { error } = await client().rpc("delete_trip_permanently", { requested_trip_id: trip.id });
+  if (error) throw error;
+  const { database } = await import("../../lib/local-db/database");
+  const pendingUploads = await database.outbox.where("profileId").equals(profileId).filter((operation) => {
+    if (operation.operation !== "upload_document") return false;
+    const payload = operation.payload as { document?: { trip_id?: string } };
+    return payload.document?.trip_id === trip.id;
+  }).toArray();
+  const versionIds = [...new Set([
+    ...(versions ?? []).map((version) => String(version.id)),
+    ...pendingUploads.map((operation) => String((operation.payload as { version: { id: string } }).version.id))
+  ])];
+  const { removeOfflineFile } = await import("../../lib/storage/offlineFiles");
+  await Promise.all(versionIds.map((versionId) => removeOfflineFile(profileId, versionId)));
+  await database.transaction("rw", [database.entities, database.localDocuments, database.localFileBlobs, database.outbox, database.offlineManifests], async () => {
+    await database.entities.where("profileId").equals(profileId).filter((row) => {
+      const data = row.data as { id?: string; trip_id?: string };
+      return data.trip_id === trip.id || (row.entityType === "trips" && data.id === trip.id) || row.entityType.endsWith(`:${trip.id}`);
+    }).delete();
+    await database.outbox.where("profileId").equals(profileId).filter((row) => row.entityType.endsWith(`:${trip.id}`) || row.entityId === trip.id).delete();
+    await database.offlineManifests.delete([profileId, trip.id]);
+    for (const versionId of versionIds) {
+      await database.localDocuments.delete([profileId, versionId]);
+      await database.localFileBlobs.delete([profileId, versionId]);
+    }
+  });
+}
+
 export async function getSavedTripFocus(): Promise<string | null> {
   const userId = await currentUserId();
   if (navigator.onLine) {
@@ -196,7 +260,7 @@ export async function addItineraryItem(input: CreateItineraryInput): Promise<Iti
   const id = crypto.randomUUID(); const now = new Date().toISOString();
   const appliesToAll = !input.travelerIds?.length;
   const location = input.location || input.mapUrl ? { label: input.location || undefined, address: input.location || undefined, map_url: input.mapUrl || undefined } : null;
-  const item: ItineraryItem = { id, trip_id: input.tripId, booking_id: input.bookingId || null, title: input.title, event_type: input.eventType ?? "custom", starts_at: input.startsAt, ends_at: input.endsAt || null, timezone: input.timezone, location, notes: input.notes || null, applies_to_all_travelers: appliesToAll, is_all_day: Boolean(input.isAllDay), completed_at: input.completedAt ?? null, sort_key: `${input.startsAt}:${id}`, created_at: now, updated_at: now };
+  const item: ItineraryItem = { id, trip_id: input.tripId, booking_id: input.bookingId || null, title: input.title, event_type: input.eventType ?? "custom", starts_at: input.startsAt, ends_at: input.endsAt || null, timezone: input.timezone, location, notes: input.notes || null, applies_to_all_travelers: appliesToAll, is_all_day: Boolean(input.isAllDay), completed_at: input.completedAt ?? null, timing_mode: input.timingMode ?? (input.isAllDay ? "all_day" : "exact"), scheduled_date: input.scheduledDate ?? null, anchor_itinerary_item_id: input.anchorItineraryItemId ?? null, relative_position: input.relativePosition ?? null, event_status: input.eventStatus ?? "planned", sort_key: input.sortKey ?? `${input.startsAt}:${id}`, created_at: now, updated_at: now };
   const row = { ...item, created_by: userId };
   if (!navigator.onLine) {
     const parentOperation = await queueCreate({ entityType: `itinerary:${input.tripId}`, table: "itinerary_items", row, dependsOn: input.dependsOn });
@@ -217,7 +281,12 @@ export async function addItineraryItem(input: CreateItineraryInput): Promise<Iti
       applies_to_all_travelers: appliesToAll,
       is_all_day: Boolean(input.isAllDay),
       completed_at: input.completedAt ?? null,
-      sort_key: `${input.startsAt}:${id}`,
+      timing_mode: input.timingMode ?? (input.isAllDay ? "all_day" : "exact"),
+      scheduled_date: input.scheduledDate ?? null,
+      anchor_itinerary_item_id: input.anchorItineraryItemId ?? null,
+      relative_position: input.relativePosition ?? null,
+      event_status: input.eventStatus ?? "planned",
+      sort_key: input.sortKey ?? `${input.startsAt}:${id}`,
       created_by: userId
     })
     .select(itinerarySelect)
@@ -232,7 +301,7 @@ export async function updateItineraryItem(input: UpdateItineraryInput): Promise<
   const existing = (await readEntityList<ItineraryItem>(`itinerary:${input.tripId}`)).find((item) => item.id === input.id);
   if (!existing) throw new Error("Refresh the itinerary before editing this item.");
   const appliesToAll = !input.travelerIds?.length;
-  const patch = { booking_id: input.bookingId || null, title: input.title, event_type: input.eventType ?? existing.event_type ?? "custom", starts_at: input.startsAt, ends_at: input.endsAt || null, timezone: input.timezone, location: input.location || input.mapUrl ? { label: input.location || undefined, address: input.location || undefined, map_url: input.mapUrl || undefined } : null, notes: input.notes || null, applies_to_all_travelers: appliesToAll, is_all_day: Boolean(input.isAllDay), completed_at: input.completedAt ?? existing.completed_at ?? null, sort_key: existing.sort_key ?? `${input.startsAt}:${input.id}` };
+  const patch = { booking_id: input.bookingId || null, title: input.title, event_type: input.eventType ?? existing.event_type ?? "custom", starts_at: input.startsAt, ends_at: input.endsAt || null, timezone: input.timezone, location: input.location || input.mapUrl ? { label: input.location || undefined, address: input.location || undefined, map_url: input.mapUrl || undefined } : null, notes: input.notes || null, applies_to_all_travelers: appliesToAll, is_all_day: Boolean(input.isAllDay), completed_at: input.completedAt ?? existing.completed_at ?? null, timing_mode: input.timingMode ?? existing.timing_mode ?? (input.isAllDay ? "all_day" : "exact"), scheduled_date: input.scheduledDate ?? null, anchor_itinerary_item_id: input.anchorItineraryItemId ?? null, relative_position: input.relativePosition ?? null, event_status: input.eventStatus ?? existing.event_status ?? "planned", sort_key: input.sortKey ?? existing.sort_key ?? `${input.startsAt}:${input.id}` };
   if (!navigator.onLine) {
     const updated = { ...existing, ...patch, version: (existing.version ?? 1) + 1, updated_at: new Date().toISOString() };
     const parent = await queueUpdate({ entityType: `itinerary:${input.tripId}`, table: "itinerary_items", row: updated, patch, baseVersion: existing.version });
@@ -259,11 +328,63 @@ export async function archiveItineraryItem(item: ItineraryItem) {
   if (!navigator.onLine) {
     const profileId = await currentUserId();
     const { database } = await import("../../lib/local-db/database");
-    await database.entities.delete([profileId, `itinerary:${item.trip_id}`, item.id]);
-    await queueDelete({ entityType: `itinerary:${item.trip_id}`, table: "itinerary_items", entityId: item.id });
+    const group = item.booking_id
+      ? (await readEntityList<ItineraryItem>(`itinerary:${item.trip_id}`)).filter((candidate) => candidate.booking_id === item.booking_id)
+      : [item];
+    if (item.booking_id) {
+      const bookingDelete = await queueDelete({ entityType: `bookings:${item.trip_id}`, table: "bookings", entityId: item.booking_id });
+      await database.entities.delete([profileId, `bookings:${item.trip_id}`, item.booking_id]);
+      for (const candidate of group) {
+        await database.entities.delete([profileId, `itinerary:${item.trip_id}`, candidate.id]);
+        await queueDelete({ entityType: `itinerary:${item.trip_id}`, table: "itinerary_items", entityId: candidate.id, dependsOn: [bookingDelete] });
+      }
+    } else {
+      await database.entities.delete([profileId, `itinerary:${item.trip_id}`, item.id]);
+      await queueDelete({ entityType: `itinerary:${item.trip_id}`, table: "itinerary_items", entityId: item.id });
+    }
     return;
   }
-  const { error } = await client().from("itinerary_items").update({ deleted_at: new Date().toISOString() }).eq("id", item.id); if (error) throw error;
+  const { error } = await client().rpc("archive_trip_item", { requested_itinerary_item_id: item.id }); if (error) throw error;
+}
+
+export async function restoreItineraryItem(itemId: string) {
+  if (!navigator.onLine) throw new Error("Restoring an archived item requires a connection.");
+  const { error } = await client().rpc("restore_trip_item", { requested_itinerary_item_id: itemId });
+  if (error) throw error;
+}
+
+export async function listArchivedTripItems(tripId: string): Promise<ArchivedTripItem[]> {
+  if (!navigator.onLine) return [];
+  const [{ data: events, error: eventError }, { data: costs, error: costError }] = await Promise.all([
+    client().from("itinerary_items").select("id,title,deleted_at,booking_id").eq("trip_id", tripId).not("deleted_at", "is", null).order("deleted_at", { ascending: false }),
+    client().from("trip_costs").select("id,title,deleted_at").eq("trip_id", tripId).not("deleted_at", "is", null).order("deleted_at", { ascending: false })
+  ]);
+  if (eventError) throw eventError;
+  if (costError) throw costError;
+  const seenBookings = new Set<string>();
+  const eventItems = (events ?? []).flatMap((event) => {
+    const bookingId = event.booking_id ? String(event.booking_id) : null;
+    if (bookingId && seenBookings.has(bookingId)) return [];
+    if (bookingId) seenBookings.add(bookingId);
+    return [{ id: String(event.id), kind: bookingId ? "booking" as const : "event" as const, title: String(event.title), archived_at: String(event.deleted_at) }];
+  });
+  return [...eventItems, ...(costs ?? []).map((cost) => ({ id: String(cost.id), kind: "cost" as const, title: String(cost.title), archived_at: String(cost.deleted_at) }))]
+    .sort((left, right) => right.archived_at.localeCompare(left.archived_at));
+}
+
+export async function setItineraryItemStatus(item: ItineraryItem, status: EventStatus) {
+  const completedAt = status === "done" ? new Date().toISOString() : null;
+  const patch = { event_status: status, completed_at: completedAt };
+  if (!navigator.onLine) {
+    const updated = { ...item, ...patch, version: (item.version ?? 1) + 1, updated_at: new Date().toISOString() };
+    await queueUpdate({ entityType: `itinerary:${item.trip_id}`, table: "itinerary_items", row: updated, patch, baseVersion: item.version });
+    return updated;
+  }
+  const { data, error } = await client().from("itinerary_items").update(patch).eq("id", item.id).select(itinerarySelect).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("This event changed on another device. Refresh before updating it.");
+  await cacheEntity(`itinerary:${item.trip_id}`, data as ItineraryItem);
+  return data as ItineraryItem;
 }
 
 export async function setItineraryItemCompleted(item: ItineraryItem, completed: boolean) {
@@ -309,15 +430,16 @@ export async function listCosts(tripId: string): Promise<TripCost[]> {
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (error) throw error;
-  return (data ?? []) as TripCost[]; });
+  return ((data ?? []) as unknown as CostResponse[]).map(normalizeCost); });
 }
 
 export async function addTripCost(input: CreateCostInput): Promise<TripCost> {
   const userId = await currentUserId();
   const id = crypto.randomUUID(); const now = new Date().toISOString();
-  const cost: TripCost = { id, trip_id: input.tripId, booking_id: input.bookingId || null, itinerary_item_id: input.itineraryItemId || null, title: input.title, category: input.category, amount_minor: input.amountMinor, currency_code: input.currencyCode, payment_status: input.paymentStatus, notes: input.notes || null, created_at: now, updated_at: now };
-  const row = { ...cost, created_by: userId, paid_by: input.paymentStatus === "paid" ? userId : null };
-  if (!navigator.onLine) { await queueCreate({ entityType: `costs:${input.tripId}`, table: "trip_costs", row, dependsOn: input.dependsOn }); return cost; }
+  const participants = [...new Set(input.participantTravelerIds ?? [])].map((traveler_id) => ({ traveler_id, share_amount_minor: null }));
+  const cost: TripCost = { id, trip_id: input.tripId, booking_id: input.bookingId || null, itinerary_item_id: input.itineraryItemId || null, title: input.title, category: input.category, amount_minor: input.amountMinor, currency_code: input.currencyCode, payment_status: input.paymentStatus, paid_by_traveler_id: input.paidByTravelerId || null, participants, notes: input.notes || null, created_at: now, updated_at: now };
+  const row = { ...cost, participants: undefined, created_by: userId, paid_by: input.paymentStatus === "paid" ? userId : null };
+  if (!navigator.onLine) { const parent = await queueCreate({ entityType: `costs:${input.tripId}`, table: "trip_costs", row, dependsOn: input.dependsOn }); for (const participant of participants) await queueCreate({ entityType: `cost-participants:${input.tripId}`, table: "trip_cost_participants", row: { id: `${id}:${participant.traveler_id}`, cost_id: id, ...participant }, serverRow: { cost_id: id, ...participant }, dependsOn: [parent] }); return cost; }
   const { data, error } = await client()
     .from("trip_costs")
     .insert({
@@ -329,6 +451,7 @@ export async function addTripCost(input: CreateCostInput): Promise<TripCost> {
       amount_minor: input.amountMinor,
       currency_code: input.currencyCode,
       payment_status: input.paymentStatus,
+      paid_by_traveler_id: input.paidByTravelerId || null,
       notes: input.notes || null,
       created_by: userId,
       paid_by: input.paymentStatus === "paid" ? userId : null
@@ -336,23 +459,33 @@ export async function addTripCost(input: CreateCostInput): Promise<TripCost> {
     .select(costSelect)
     .single();
   if (error) throw error;
-  await cacheEntity(`costs:${input.tripId}`, data as TripCost);
-  return data as TripCost;
+  if (participants.length) { const { error: participantError } = await client().from("trip_cost_participants").insert(participants.map((participant) => ({ cost_id: id, ...participant }))); if (participantError) throw participantError; }
+  const created = { ...normalizeCost(data as unknown as CostResponse), participants };
+  await cacheEntity(`costs:${input.tripId}`, created);
+  return created;
 }
 
 export async function updateTripCost(input: UpdateCostInput): Promise<TripCost> {
   const existing = (await readEntityList<TripCost>(`costs:${input.tripId}`)).find((cost) => cost.id === input.id);
   if (!existing) throw new Error("Refresh the cost list before editing this item.");
-  const patch = { booking_id: input.bookingId || existing.booking_id || null, itinerary_item_id: input.itineraryItemId || existing.itinerary_item_id || null, title: input.title, category: input.category, amount_minor: input.amountMinor, currency_code: input.currencyCode, payment_status: input.paymentStatus, notes: input.notes || null };
+  const patch = { booking_id: input.bookingId || existing.booking_id || null, itinerary_item_id: input.itineraryItemId || existing.itinerary_item_id || null, title: input.title, category: input.category, amount_minor: input.amountMinor, currency_code: input.currencyCode, payment_status: input.paymentStatus, paid_by_traveler_id: input.paidByTravelerId || null, notes: input.notes || null };
   if (!navigator.onLine) {
-    const updated = { ...existing, ...patch, version: (existing.version ?? 1) + 1, updated_at: new Date().toISOString() };
-    await queueUpdate({ entityType: `costs:${input.tripId}`, table: "trip_costs", row: updated, patch, baseVersion: existing.version }); return updated;
+    const participants = [...new Set(input.participantTravelerIds ?? [])].map((traveler_id) => ({ traveler_id, share_amount_minor: null }));
+    const updated = { ...existing, ...patch, participants, version: (existing.version ?? 1) + 1, updated_at: new Date().toISOString() };
+    const parent = await queueUpdate({ entityType: `costs:${input.tripId}`, table: "trip_costs", row: updated, patch, baseVersion: existing.version });
+    const removals = await Promise.all((existing.participants ?? []).map((participant) => queueDelete({ entityType: `cost-participants:${input.tripId}`, table: "trip_cost_participants", entityId: `${input.id}:${participant.traveler_id}`, match: { cost_id: input.id, traveler_id: participant.traveler_id }, hard: true, dependsOn: [parent] })));
+    for (const participant of participants) await queueCreate({ entityType: `cost-participants:${input.tripId}`, table: "trip_cost_participants", row: { id: `${input.id}:${participant.traveler_id}`, cost_id: input.id, ...participant }, serverRow: { cost_id: input.id, ...participant }, dependsOn: [parent, ...removals] });
+    return updated;
   }
   let request = client().from("trip_costs").update(patch).eq("id", input.id); if (input.version !== undefined) request = request.eq("version", input.version);
   const { data, error } = await request.select(costSelect).maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("This cost changed on another device. Refresh before saving.");
-  await cacheEntity(`costs:${input.tripId}`, data as TripCost); return data as TripCost;
+  const { error: removeParticipantsError } = await client().from("trip_cost_participants").delete().eq("cost_id", input.id); if (removeParticipantsError) throw removeParticipantsError;
+  const participants = [...new Set(input.participantTravelerIds ?? [])].map((traveler_id) => ({ traveler_id, share_amount_minor: null }));
+  if (participants.length) { const { error: participantError } = await client().from("trip_cost_participants").insert(participants.map((participant) => ({ cost_id: input.id, ...participant }))); if (participantError) throw participantError; }
+  const updated = { ...normalizeCost(data as unknown as CostResponse), participants };
+  await cacheEntity(`costs:${input.tripId}`, updated); return updated;
 }
 
 export async function archiveTripCost(cost: TripCost) {
@@ -361,6 +494,12 @@ export async function archiveTripCost(cost: TripCost) {
     await database.entities.delete([profileId, `costs:${cost.trip_id}`, cost.id]); await queueDelete({ entityType: `costs:${cost.trip_id}`, table: "trip_costs", entityId: cost.id }); return;
   }
   const { error } = await client().from("trip_costs").update({ deleted_at: new Date().toISOString() }).eq("id", cost.id); if (error) throw error;
+}
+
+export async function restoreTripCost(costId: string) {
+  if (!navigator.onLine) throw new Error("Restoring an archived cost requires a connection.");
+  const { error } = await client().from("trip_costs").update({ deleted_at: null }).eq("id", costId);
+  if (error) throw error;
 }
 
 export async function listReminders(): Promise<Reminder[]> {

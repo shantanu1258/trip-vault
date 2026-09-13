@@ -353,7 +353,7 @@ export type CreateFlightInput = {
     boardingLeadMinutes?: number;
   }>;
   travelerIds?: string[];
-  cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid" };
+  cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid"; paidByTravelerId?: string; participantTravelerIds?: string[] };
 };
 
 export type AddFlightConnectionInput = {
@@ -406,5 +406,5 @@ export type CreateJourneyInput = {
     coachOrCabin?: string;
     seat?: string;
   }>;
-  cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid" };
+  cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid"; paidByTravelerId?: string; participantTravelerIds?: string[] };
 };

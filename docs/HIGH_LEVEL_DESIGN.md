@@ -4,7 +4,7 @@ description: "Implemented system architecture, responsibilities, major flows, ri
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [architecture, pwa, offline, collaboration, supabase, cloudflare]
-last_verified: 2026-09-12
+last_verified: 2026-09-13
 ---
 
 # Trip Vault High-Level Design
@@ -13,7 +13,7 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 
 **Document status:** Implemented personal MVP 1.0
 
-**Implementation status:** Timeline-first application complete locally. Existing Supabase projects must apply `supabase/migrations/202609120001_traveler_focus_and_known_accounts.sql`; fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once.
+**Implementation status:** Timeline-first application complete locally. Existing Supabase projects must apply migrations through `supabase/migrations/202609130001_timeline_lifecycle_and_trip_expenses.sql`; fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once.
 
 **Default decision state:** Accepted unless explicitly marked as deferred or revisit
 
@@ -65,7 +65,7 @@ The primary trip experience is a chronological projection over itinerary rows. D
 | Automatic support for every email provider | Manual entry and upload establish the core model first |
 | Provider-blind end-to-end encryption | Key recovery, sharing, search, and previews require a separate product decision |
 | Guaranteed background work on every mobile browser | Browser support is inconsistent; foreground resume is the reliable baseline |
-| Full expense-splitting platform | Useful later, but not part of the core travel-information problem |
+| Standalone expense-splitting platform | Trip-scoped payer, participants, equal splits, and per-currency balances are supported; an independent Splitwise-style product remains later |
 | Native iOS and Android applications | The installable PWA is the first delivery format |
 | Commercial or public product | Billing, subscriptions, public acquisition, organization tenancy, commercial support, and commercialization are outside the permanent product scope |
 
@@ -339,7 +339,7 @@ Custom end-to-end encryption is deferred. Browser/OS profile isolation, private 
 - Browser storage remains device-local and can still be removed by the user, PWA uninstall, site-data clearing, quota pressure, or device loss; it is a working travel copy rather than the only permanent archive.
 - The app requests persistent storage, checks quota, bundles its app-shell assets, and verifies downloaded files. The structured-data proof needed for a strict **Ready offline** guarantee remains HLD-042.
 - An always-on paid tier is optional and is needed only if the owner later decides manual pre-trip activation is inconvenient.
-- Trip and document removal are soft-delete/archive operations in the current UI. A permanent purge workflow is not implemented.
+- Trip and document removal normally use recoverable archive/soft-delete flows. During testing only, the owner also has an explicitly labeled online-only permanent trip purge that requires typing the exact trip title and removes cloud files before cascading database deletion.
 
 ## 12. Scale Assumptions
 
@@ -433,8 +433,8 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 3. Exercise the complete timeline on phone and desktop, including current-event scrolling and connected journeys.
 4. Upload, assign, open, retry, and unlink each important document purpose.
 5. Prepare the trip and repeat the defined flows in airplane mode; treat failures as HLD-042 blockers.
-6. Verify Admin online-only catalog, suggestion, theme, publish, and rollback behavior.
-7. Validate Cloudflare installation, update prompting, and phone launch from the installed PWA.
+6. Validate Cloudflare installation, update prompting, and phone launch from the installed PWA.
+7. After the trip application is stable, redesign the Admin console and only then verify its catalog, suggestion, theme, publish, and rollback behavior.
 
 ## Source File Index
 

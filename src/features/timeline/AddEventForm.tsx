@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BedDouble, Bus, CalendarPlus, CarTaxiFront, ChevronLeft, CircleEllipsis,
   CookingPot, Ship, Loader2, MapPinned, Plane, Plus, TrainFront, Trash2
@@ -10,13 +10,14 @@ import { TimeZoneAutocomplete } from "../../components/TimeZoneAutocomplete";
 import { AirlinePicker } from "../metadata/AirlinePicker";
 import { AirportPicker } from "../metadata/AirportPicker";
 import { VendorPicker } from "../metadata/VendorPicker";
-import { addItineraryItem, addTripCost } from "../trips/api";
+import { addItineraryItem, addTripCost, listItinerary } from "../trips/api";
 import { getErrorMessage } from "../trips/presentation";
 import { isJourneyEventType, type CostCategory, type TimelineEventType, type Trip } from "../trips/types";
 import { amountStringToMinor, defaultHotelCheckoutLocal, hotelStayInstants, isValidTimeZone, localDateTimeMinusMinutes, localDateTimeToIso } from "../trips/validation";
 import { addBookedTimelineEvent, addFlightBooking, addJourneyBooking, suggestCatalogValue } from "../workspace/api";
 import { ParticipantSelector } from "../workspace/ParticipantSelector";
 import type { BookingType, JourneyMode, JourneyScope, Traveler } from "../workspace/types";
+import { readEventTiming, TimingFields } from "./TimingFields";
 
 type Choice = {
   type: TimelineEventType;
@@ -60,17 +61,21 @@ function instant(form: FormData, dateName: string, zoneName: string, occurrenceN
   return localDateTimeToIso(local, zone, occurrence);
 }
 
-function optionalCost(form: FormData, trip: Trip) {
+function optionalCost(form: FormData, trip: Trip, travelers: Traveler[]) {
   if (text(form, "includeCost") !== "yes") return undefined;
   const rawAmount = text(form, "costAmount");
   const currencyCode = text(form, "costCurrency").toUpperCase();
   if (!/^\d+(?:\.\d+)?$/.test(rawAmount)) throw new Error("Enter zero or a positive cost amount.");
   if (!/^[A-Z]{3}$/.test(currencyCode)) throw new Error("Use a three-letter currency code.");
+  const participantTravelerIds = form.getAll("costTravelerIds").map(String);
+  if (travelers.length > 0 && participantTravelerIds.length === 0) throw new Error("Choose at least one traveler to share this cost.");
   return {
     title: text(form, "costTitle") || text(form, "title") || "Event cost",
     amountMinor: amountStringToMinor(rawAmount, currencyCode),
     currencyCode: currencyCode || trip.base_currency,
-    paymentStatus: (text(form, "paymentStatus") || "planned") as "planned" | "paid"
+    paymentStatus: (text(form, "paymentStatus") || "planned") as "planned" | "paid",
+    paidByTravelerId: text(form, "paidByTravelerId") || undefined,
+    participantTravelerIds
   };
 }
 
@@ -82,8 +87,9 @@ function optionalBoardingLead(form: FormData, name: string, label: string) {
   return minutes;
 }
 
-function CostFields({ trip }: { trip: Trip }) {
+function CostFields({ trip, travelers }: { trip: Trip; travelers: Traveler[] }) {
   const [enabled, setEnabled] = useState(false);
+  const [everyone, setEveryone] = useState(true);
   return <fieldset className="rounded-2xl border border-line p-4">
     <label className="flex items-center gap-3 text-sm font-extrabold"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /> Add cost</label>
     <input type="hidden" name="includeCost" value={enabled ? "yes" : "no"} />
@@ -92,6 +98,8 @@ function CostFields({ trip }: { trip: Trip }) {
       <label className="form-label">Currency<CurrencySelect name="costCurrency" defaultValue={trip.base_currency} required /></label>
       <label className="form-label">Cost label<input className="form-input" name="costTitle" placeholder="Describe what this amount covers" /></label>
       <label className="form-label">Payment<select className="form-input" name="paymentStatus"><option value="planned">Planned / unpaid</option><option value="paid">Paid</option></select></label>
+      {travelers.length > 0 && <label className="form-label">Paid by<select className="form-input" name="paidByTravelerId"><option value="">Not recorded yet</option>{travelers.map((traveler) => <option key={traveler.id} value={traveler.id}>{traveler.display_name}</option>)}</select></label>}
+      {travelers.length > 0 && <div className="sm:col-span-2"><div className="flex flex-wrap gap-4 text-sm"><label className="flex items-center gap-2"><input type="radio" checked={everyone} onChange={() => setEveryone(true)} /> Split among everyone</label><label className="flex items-center gap-2"><input type="radio" checked={!everyone} onChange={() => setEveryone(false)} /> Choose people</label></div>{everyone ? travelers.map((traveler) => <input key={traveler.id} type="hidden" name="costTravelerIds" value={traveler.id} />) : <div className="mt-3 grid gap-2 sm:grid-cols-2">{travelers.map((traveler) => <label key={traveler.id} className="flex items-center gap-2 rounded-xl bg-elevated p-3 text-sm font-bold"><input type="checkbox" name="costTravelerIds" value={traveler.id} />{traveler.display_name}</label>)}</div>}</div>}
     </div>}
   </fieldset>;
 }
@@ -135,8 +143,8 @@ function HotelStayFields({ trip }: { trip: Trip }) {
   };
   return <>
     <div className="grid gap-4 sm:grid-cols-2">
-      <label className="form-label">Check-in (hotel local time)<input className="form-input" name="startsAt" type="datetime-local" value={checkIn} onChange={(event) => changeCheckIn(event.target.value)} required /></label>
-      <label className="form-label">Checkout (hotel local time)<input className="form-input" name="checkoutAt" type="datetime-local" value={checkout} onChange={(event) => setCheckout(event.target.value)} required /></label>
+      <label className="form-label">Check-in (hotel local time)<input className="form-input" name="startsAt" type="datetime-local" min={`${trip.start_date}T00:00`} max={`${trip.end_date}T23:59`} value={checkIn} onChange={(event) => changeCheckIn(event.target.value)} required /></label>
+      <label className="form-label">Checkout (hotel local time)<input className="form-input" name="checkoutAt" type="datetime-local" min={`${trip.start_date}T00:00`} max={`${trip.end_date}T23:59`} value={checkout} onChange={(event) => setCheckout(event.target.value)} required /></label>
       <label className="form-label">Hotel time zone<TimeZoneAutocomplete name="timezone" defaultValue={trip.primary_timezone} required /></label>
       <label className="form-label">If check-in clock repeats<OccurrenceSelect name="occurrence" /></label>
       <label className="form-label">If checkout clock repeats<OccurrenceSelect name="checkoutOccurrence" /></label>
@@ -154,9 +162,9 @@ function FlightLegFields({ index, trip, removable, onRemove }: { index: number; 
     <div className="flex items-center justify-between"><legend className="font-display text-lg font-black">{index ? `Connection ${index + 1}` : "First flight"}</legend>{removable && <button type="button" className="tap-target grid size-9 place-items-center text-danger" onClick={onRemove} aria-label={`Remove flight leg ${index + 1}`}><Trash2 className="size-4" /></button>}</div>
     <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Airline<AirlinePicker name={`${prefix}.airline`} /><span className="mt-1 block text-xs font-medium text-muted">The carrier operating this flight; this is different from where it was booked.</span></label><label className="form-label">Flight number<input className="form-input uppercase" name={`${prefix}.number`} placeholder="Enter the number printed on the ticket" required /></label></div>
     <div className="mt-4"><AirportPicker name={`${prefix}.departureName`} codeName={`${prefix}.departureCode`} timezoneName={`${prefix}.departureTimezone`} countryName={`${prefix}.departureCountry`} label="From airport" defaultTimezone={trip.primary_timezone} /></div>
-    <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Departure (origin local time)<input className="form-input" type="datetime-local" name={`${prefix}.departureAt`} value={departure} onChange={(event) => setDeparture(event.target.value)} required /></label><label className="form-label">If the clock repeats<OccurrenceSelect name={`${prefix}.departureOccurrence`} /></label></div>
+    <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Departure (origin local time)<input className="form-input" type="datetime-local" name={`${prefix}.departureAt`} min={`${trip.start_date}T00:00`} max={`${trip.end_date}T23:59`} value={departure} onChange={(event) => setDeparture(event.target.value)} required /></label><label className="form-label">If the clock repeats<OccurrenceSelect name={`${prefix}.departureOccurrence`} /></label></div>
     <div className="mt-4"><AirportPicker name={`${prefix}.arrivalName`} codeName={`${prefix}.arrivalCode`} timezoneName={`${prefix}.arrivalTimezone`} countryName={`${prefix}.arrivalCountry`} label="To airport" defaultTimezone={trip.primary_timezone} /></div>
-    <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Arrival (destination local time)<input className="form-input" type="datetime-local" name={`${prefix}.arrivalAt`} defaultValue={`${trip.start_date}T12:00`} required /></label><label className="form-label">If the clock repeats<OccurrenceSelect name={`${prefix}.arrivalOccurrence`} /></label></div>
+    <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Arrival (destination local time)<input className="form-input" type="datetime-local" name={`${prefix}.arrivalAt`} min={`${trip.start_date}T00:00`} max={`${trip.end_date}T23:59`} defaultValue={`${trip.start_date}T12:00`} required /></label><label className="form-label">If the clock repeats<OccurrenceSelect name={`${prefix}.arrivalOccurrence`} /></label></div>
     <div className="mt-4 grid gap-4 sm:grid-cols-3"><label className="form-label">Boarding lead (minutes)<input className="form-input" type="number" min="0" max="360" name={`${prefix}.boardingLead`} value={boardingLead} onChange={(event) => setBoardingLead(event.target.value)} placeholder="Enter minutes before departure" /></label><label className="form-label">Exact boarding time override<input className="form-input" type="datetime-local" name={`${prefix}.boardingAt`} /></label><label className="form-label">If boarding clock repeats<OccurrenceSelect name={`${prefix}.boardingOccurrence`} /></label></div>
     {calculatedBoarding && <p className="mt-3 rounded-xl bg-brand-soft px-3 py-2 text-xs font-bold text-brand">Calculated boarding time: {calculatedBoarding.replace("T", " ")} at the departure airport. An exact time overrides this.</p>}<RepeatedClockHelp />
   </fieldset>;
@@ -170,8 +178,8 @@ function JourneyLegFields({ index, mode, trip, removable, onRemove }: { index: n
   return <fieldset className="rounded-2xl border border-line p-4">
     <div className="flex items-center justify-between"><legend className="font-display text-lg font-black">{index ? `Connection ${index + 1}` : `First ${mode}`}</legend>{removable && <button type="button" className="tap-target grid size-9 place-items-center text-danger" onClick={onRemove} aria-label={`Remove journey leg ${index + 1}`}><Trash2 className="size-4" /></button>}</div>
     <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Operator<input className="form-input" name={`${prefix}.operator`} placeholder={`Enter the ${mode} company or driver's name`} required /></label><label className="form-label">Service number<input className="form-input" name={`${prefix}.service`} placeholder="Enter the route or service number, if provided" /></label></div>
-    <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Origin<input className="form-input" name={`${prefix}.originName`} placeholder="Enter the departure station, stop, port, or address" required /></label><label className="form-label">Origin code<input className="form-input uppercase" name={`${prefix}.originCode`} placeholder="Enter a station or terminal code, if used" /></label><label className="form-label">Origin country<input className="form-input uppercase" maxLength={2} name={`${prefix}.originCountry`} placeholder="Enter the 2-letter country code" /></label><label className="form-label">Origin time zone<TimeZoneAutocomplete name={`${prefix}.originTimezone`} defaultValue={trip.primary_timezone} required /></label><label className="form-label">Departure (origin local)<input className="form-input" type="datetime-local" name={`${prefix}.departureAt`} value={departure} onChange={(event) => setDeparture(event.target.value)} required /></label><label className="form-label">If clock repeats<OccurrenceSelect name={`${prefix}.departureOccurrence`} /></label></div>
-    <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Destination<input className="form-input" name={`${prefix}.destinationName`} placeholder="Enter the arrival station, stop, port, or address" required /></label><label className="form-label">Destination code<input className="form-input uppercase" name={`${prefix}.destinationCode`} placeholder="Enter a station or terminal code, if used" /></label><label className="form-label">Destination country<input className="form-input uppercase" maxLength={2} name={`${prefix}.destinationCountry`} placeholder="Enter the 2-letter country code" /></label><label className="form-label">Destination time zone<TimeZoneAutocomplete name={`${prefix}.destinationTimezone`} defaultValue={trip.primary_timezone} required /></label><label className="form-label">Arrival (destination local)<input className="form-input" type="datetime-local" name={`${prefix}.arrivalAt`} defaultValue={`${trip.start_date}T12:00`} required /></label><label className="form-label">If clock repeats<OccurrenceSelect name={`${prefix}.arrivalOccurrence`} /></label></div>
+    <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Origin<input className="form-input" name={`${prefix}.originName`} placeholder="Enter the departure station, stop, port, or address" required /></label><label className="form-label">Origin code<input className="form-input uppercase" name={`${prefix}.originCode`} placeholder="Enter a station or terminal code, if used" /></label><label className="form-label">Origin country<input className="form-input uppercase" maxLength={2} name={`${prefix}.originCountry`} placeholder="Enter the 2-letter country code" /></label><label className="form-label">Origin time zone<TimeZoneAutocomplete name={`${prefix}.originTimezone`} defaultValue={trip.primary_timezone} required /></label><label className="form-label">Departure (origin local)<input className="form-input" type="datetime-local" name={`${prefix}.departureAt`} min={`${trip.start_date}T00:00`} max={`${trip.end_date}T23:59`} value={departure} onChange={(event) => setDeparture(event.target.value)} required /></label><label className="form-label">If clock repeats<OccurrenceSelect name={`${prefix}.departureOccurrence`} /></label></div>
+    <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Destination<input className="form-input" name={`${prefix}.destinationName`} placeholder="Enter the arrival station, stop, port, or address" required /></label><label className="form-label">Destination code<input className="form-input uppercase" name={`${prefix}.destinationCode`} placeholder="Enter a station or terminal code, if used" /></label><label className="form-label">Destination country<input className="form-input uppercase" maxLength={2} name={`${prefix}.destinationCountry`} placeholder="Enter the 2-letter country code" /></label><label className="form-label">Destination time zone<TimeZoneAutocomplete name={`${prefix}.destinationTimezone`} defaultValue={trip.primary_timezone} required /></label><label className="form-label">Arrival (destination local)<input className="form-input" type="datetime-local" name={`${prefix}.arrivalAt`} min={`${trip.start_date}T00:00`} max={`${trip.end_date}T23:59`} defaultValue={`${trip.start_date}T12:00`} required /></label><label className="form-label">If clock repeats<OccurrenceSelect name={`${prefix}.arrivalOccurrence`} /></label></div>
     <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Boarding lead (minutes)<input className="form-input" type="number" min="0" max="360" name={`${prefix}.boardingLead`} value={boardingLead} onChange={(event) => setBoardingLead(event.target.value)} placeholder="Enter minutes before departure" /></label><label className="form-label">Exact boarding time override<input className="form-input" type="datetime-local" name={`${prefix}.boardingAt`} /></label><label className="form-label">If boarding clock repeats<OccurrenceSelect name={`${prefix}.boardingOccurrence`} /></label><label className="form-label">Departure platform / bay<input className="form-input" name={`${prefix}.departurePlatform`} placeholder="Enter the platform, gate, or bay" /></label><label className="form-label">Arrival platform / bay<input className="form-input" name={`${prefix}.arrivalPlatform`} placeholder="Enter the arrival platform or bay" /></label><label className="form-label">Coach / cabin<input className="form-input" name={`${prefix}.coach`} placeholder="Enter the coach, cabin, or vehicle" /></label><label className="form-label">Seat<input className="form-input" name={`${prefix}.seat`} placeholder="Enter the assigned seat" /></label></div>
     {calculatedBoarding && <p className="mt-3 rounded-xl bg-brand-soft px-3 py-2 text-xs font-bold text-brand">Calculated boarding time: {calculatedBoarding.replace("T", " ")} in the origin time zone. An exact time overrides this.</p>}<RepeatedClockHelp />
   </fieldset>;
@@ -199,6 +207,7 @@ function costCategoryFor(type: TimelineEventType): CostCategory {
 
 export function AddEventForm({ trip, travelers, preferredTravelerId, onClose }: { trip: Trip; travelers: Traveler[]; preferredTravelerId?: string; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const itineraryQuery = useQuery({ queryKey: ["itinerary", trip.id], queryFn: () => listItinerary(trip.id) });
   const [type, setType] = useState<TimelineEventType | null>(null);
   const [legKeys, setLegKeys] = useState([crypto.randomUUID()]);
   const mutation = useMutation({
@@ -207,7 +216,7 @@ export function AddEventForm({ trip, travelers, preferredTravelerId, onClose }: 
       const title = text(form, "title");
       if (!title) throw new Error("Name this event.");
       const travelerIds = form.getAll("travelerIds").map(String);
-      const cost = optionalCost(form, trip);
+      const cost = optionalCost(form, trip, travelers);
       const bookedViaUrl = optionalHttps(text(form, "bookedViaUrl"), "Booking website");
       if (type === "flight") {
         const legs = legKeys.map((_, index) => {
@@ -263,9 +272,10 @@ export function AddEventForm({ trip, travelers, preferredTravelerId, onClose }: 
         checkInOccurrence: (text(form, "occurrence") || "automatic") as "automatic" | "earlier" | "later",
         checkoutOccurrence: (text(form, "checkoutOccurrence") || "automatic") as "automatic" | "earlier" | "later"
       }) : null;
-      const startsAt = stay?.checkInAt ?? instant(form, "startsAt", "timezone", "occurrence");
-      const endsAt = stay?.checkoutAt;
-      const common = { tripId: trip.id, eventType: type, title, startsAt, endsAt, timezone, location: text(form, "location"), mapUrl: optionalHttps(text(form, "mapUrl"), "Map link"), notes: text(form, "notes"), travelerIds };
+      const timing = stay ? { startsAt: stay.checkInAt, endsAt: stay.checkoutAt, timezone, timingMode: "exact" as const, scheduledDate: text(form, "startsAt").slice(0, 10), isAllDay: false } : readEventTiming(form, trip, itineraryQuery.data ?? []);
+      const startsAt = timing.startsAt;
+      const endsAt = timing.endsAt;
+      const common = { tripId: trip.id, eventType: type, title, ...timing, location: text(form, "location"), mapUrl: optionalHttps(text(form, "mapUrl"), "Map link"), notes: text(form, "notes"), travelerIds };
       if (type === "hotel_check_in" || text(form, "hasBooking") === "yes") {
         if (type === "hotel_check_in" && !endsAt) throw new Error("Add the hotel checkout date and time.");
         const created = await addBookedTimelineEvent({ ...common, type: type === "hotel_check_in" ? "hotel" : bookingTypeFor(type), provider: text(form, "provider"), referenceCode: text(form, "referenceCode"), journeyScope: undefined, bookedViaName: text(form, "bookedViaName"), bookedViaUrl, contactName: text(form, "contactName"), contactPhone: text(form, "contactPhone"), cost });
@@ -273,7 +283,7 @@ export function AddEventForm({ trip, travelers, preferredTravelerId, onClose }: 
         return created;
       }
       const item = await addItineraryItem(common);
-      if (cost) await addTripCost({ tripId: trip.id, itineraryItemId: item.id, title: cost.title, category: costCategoryFor(type), amountMinor: cost.amountMinor, currencyCode: cost.currencyCode, paymentStatus: cost.paymentStatus });
+      if (cost) await addTripCost({ tripId: trip.id, itineraryItemId: item.id, title: cost.title, category: costCategoryFor(type), amountMinor: cost.amountMinor, currencyCode: cost.currencyCode, paymentStatus: cost.paymentStatus, paidByTravelerId: cost.paidByTravelerId, participantTravelerIds: cost.participantTravelerIds });
       return item;
     },
     onSuccess: async () => {
@@ -291,12 +301,12 @@ export function AddEventForm({ trip, travelers, preferredTravelerId, onClose }: 
       {type === "flight" && <><BookingFields always referenceRequired showProvider={false} />{legKeys.map((key, index) => <FlightLegFields key={key} index={index} trip={trip} removable={legKeys.length > 1} onRemove={() => setLegKeys((keys) => keys.filter((item) => item !== key))} />)}<button type="button" className="secondary-button w-full" onClick={() => setLegKeys((keys) => [...keys, crypto.randomUUID()])}><Plus className="size-4" /> Add connecting flight</button></>}
       {type && ["train", "bus", "ferry", "cab"].includes(type) && <><BookingFields always showProvider={false} />{legKeys.map((key, index) => <JourneyLegFields key={key} index={index} mode={type as JourneyMode} trip={trip} removable={legKeys.length > 1} onRemove={() => setLegKeys((keys) => keys.filter((item) => item !== key))} />)}<button type="button" className="secondary-button w-full" onClick={() => setLegKeys((keys) => [...keys, crypto.randomUUID()])}><Plus className="size-4" /> Add connection</button></>}
       {type && !isJourney && <>
-        {type === "hotel_check_in" ? <HotelStayFields trip={trip} /> : <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Starts (place local time)<input className="form-input" name="startsAt" type="datetime-local" defaultValue={`${trip.start_date}T09:00`} required /></label><label className="form-label">Time zone<TimeZoneAutocomplete name="timezone" defaultValue={trip.primary_timezone} required /></label><label className="form-label">If clock repeats<OccurrenceSelect name="occurrence" /></label></div>}
+        {type === "hotel_check_in" ? <HotelStayFields trip={trip} /> : <TimingFields trip={trip} itinerary={itineraryQuery.data ?? []} />}
         <label className="form-label">Place / address<input className="form-input" name="location" placeholder="Enter the place name or full address" /></label><label className="form-label">Google Maps link<input className="form-input" type="url" name="mapUrl" placeholder="Paste a Google Maps place or directions link" /></label><label className="form-label">Notes<textarea className="form-input min-h-24" name="notes" placeholder="Add instructions you may need during the trip" /></label>
         <BookingFields always={type === "hotel_check_in"} />
       </>}
       <ParticipantSelector travelers={travelers} selectedTravelerIds={preferredTravelerId ? [preferredTravelerId] : undefined} explicitAll />
-      <CostFields trip={trip} />
+      <CostFields trip={trip} travelers={travelers} />
       {mutation.error && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{getErrorMessage(mutation.error)}</p>}
       <button className="primary-button w-full" disabled={mutation.isPending}>{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <CalendarPlus className="size-4" />} Save to timeline</button>
     </form>}
