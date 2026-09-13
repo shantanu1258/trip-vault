@@ -13,7 +13,7 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 
 **Document status:** Implemented personal MVP 1.0
 
-**Implementation status:** Timeline-first application complete locally. Existing Supabase projects must apply migrations through `supabase/migrations/202609130001_timeline_lifecycle_and_trip_expenses.sql`; fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once.
+**Implementation status:** Timeline-first application complete locally. Existing Supabase projects must apply migrations through `supabase/migrations/202609130003_account_document_inbox.sql`; fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once.
 
 **Default decision state:** Accepted unless explicitly marked as deferred or revisit
 
@@ -22,8 +22,8 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 | Area | Current state |
 |---|---|
 | Application | Timeline-first React PWA is implemented on `main` |
-| Automated verification | 30 Vitest files and 135 tests pass; type-check and production build pass |
-| Existing Supabase project | Apply `202609120001_traveler_focus_and_known_accounts.sql`, then run the schema smoke test |
+| Automated verification | 33 Vitest files and 146 tests pass; type-check and production build pass |
+| Existing Supabase project | Apply every not-yet-run migration through `202609130003_account_document_inbox.sql`, then run the schema smoke test |
 | Fresh Supabase project | Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once |
 | Cloudflare | Workers Static Assets configuration exists; the post-push live deployment is not verified here |
 | Acceptance | Phone, desktop, multi-member, upload, and airplane-mode tests remain manual release gates |
@@ -104,7 +104,7 @@ flowchart LR
 | React PWA | User interface, protected admin console, validation, network-first online reads, offline cache fallback, sync orchestration, previews | Authoritative permissions or permanent originals |
 | Device offline vault | Cached structured data, pinned files, pending mutations | Cross-device truth or long-term backup |
 | Supabase Auth | Email-only identity, sign-in sessions, and identity used to redeem a join code | Trip authorization by itself |
-| Supabase Postgres | Trips, memberships, bookings, itinerary, notes, document metadata, access rules | Binary file contents |
+| Supabase Postgres | Trips, memberships, bookings, itinerary, notes, account-upload receipts, document metadata, access rules | Binary file contents |
 | Supabase Realtime | Notify connected members of shared-data changes | Durable event history or file transfer |
 | Supabase Storage | Private original files and immutable versions | Business metadata or offline guarantees |
 | Cloudflare | Application deployment, TLS, static-asset delivery, optional narrow API routes | Primary trip database or duplicate document storage |
@@ -141,7 +141,7 @@ New documents are private to their uploader until the user deliberately chooses 
 
 A document has four independent concerns: immutable file versions, a specific travel purpose, links to bookings/events/journey legs, and traveler usage. Usage is **Shared**, **Selected travelers**, or **Assign later** and never grants access. Visibility remains **Only me**, **Signed-in trip members**, or **Selected signed-in members**. This permits one accommodation confirmation to support a group, a personal visa or boarding pass to follow one traveler, and unnamed admission tickets to remain in a pool until assigned.
 
-The upload flow derives the Vault title from document type, traveler usage, and linked event context while preserving the original filename separately. A custom title may replace the generated title, but the generated context remains visible beneath it. The document route is a viewer first: an authorized PDF or image opens automatically from the verified device copy, or downloads once and is then cached locally. The client restores the declared MIME type when an extensionless OPFS file is reopened so PDFs still render inline. Native full-screen viewing remains available for zooming. File facts, access, local-copy controls, replacement, archiving, and version history live behind an information action instead of displacing the travel document.
+The upload flow derives the Vault title from document type, traveler usage, and linked event context while preserving the original filename separately. A custom title may replace the generated title, but the generated context remains visible beneath it. File persistence is deliberately two-phase: the original is first checksum-verified into the current profile's device vault and private account Storage inbox, then one atomic database operation associates it with a trip, booking or leg, travelers, and visibility. A failed or interrupted association leaves an account-owned inbox item in Profile for retry, later association, or explicit deletion; it never presents a missing object as an attached document. The document route is a viewer first: an authorized PDF or image opens automatically from the verified device copy, or downloads once and is then cached locally. The client restores the declared MIME type when an extensionless OPFS file is reopened so PDFs still render inline. Native full-screen viewing remains available for zooming. File facts, access, local-copy controls, replacement, archiving, and version history live behind an information action instead of displacing the travel document.
 
 ### 6.8 Timeline is the primary trip interface
 
@@ -229,10 +229,11 @@ flowchart TD
 1. The user selects the trip and content type.
 2. For a document, the user chooses a concrete purpose and whether it is shared, assigned to selected travelers, or awaiting assignment; this combination determines its Vault name, while access is chosen separately.
 3. The app validates the file, calculates its checksum, and points to an existing Vault item when the same bytes already exist in that trip.
-4. A new file and metadata record are saved locally immediately.
-5. If online, structured data is written to Supabase and files upload separately; if offline, the mutation remains in the device outbox.
-6. The UI shows `Saved locally`, `Syncing`, `Synced`, or a safe `Action required` reason.
-7. Other connected members receive only metadata and files allowed by document visibility.
+4. The original is saved locally and queued into the signed-in account's private Storage inbox before trip metadata is attempted.
+5. Only after the file upload succeeds may the dependent association atomically create its trip document, version, traveler usage, and selected-member access.
+6. A cancelled, interrupted, or rejected association remains in Profile for retry, later association, or explicit deletion.
+7. The UI shows `Saved locally`, `Syncing`, `Synced`, or a safe `Action required` reason.
+8. Other connected members receive only metadata and files allowed by document visibility.
 
 ### 8.4 Prepare a trip for offline use
 
@@ -405,6 +406,7 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 | HLD-043 | Event context | Support optional linked cost, booking vendor, HTTPS website, phone/WhatsApp action, map action, and multiple documents | Accepted |
 | HLD-044 | Travel metadata entry | Use searchable airline, airport, and booking-vendor catalogs; derive airport code/country/time zone atomically and route explicit Other values to online administrator review | Accepted |
 | HLD-045 | Post-creation flight connection | Allow an owner/editor to append a validated leg to an existing flight booking and extend its timeline end without rebuilding the booking | Accepted |
+| HLD-046 | Account document inbox | Persist each original under the signed-in account before trip association; make association atomic and retain interrupted uploads in Profile for retry, completion, or deletion | Accepted |
 
 ## 14. Risks Requiring Explicit Discussion
 
@@ -412,7 +414,7 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 |---|---|---|
 | Browser storage eviction | A traveler may assume a file is present when it is not | Persistent-storage request, readiness verification, and export fallback |
 | Provisional offline manifest | The current badge verifies document versions but not every structured entity or generic journey leg | Treat airplane-mode acceptance as mandatory and implement HLD-042 before relying on the badge alone |
-| Schema/client mismatch | A deployed client can reference tables, functions, triggers, or policies missing from an older Supabase project | Run `202609120001_traveler_focus_and_known_accounts.sql`, then execute the schema smoke test before client testing |
+| Schema/client mismatch | A deployed client can reference tables, functions, triggers, or policies missing from an older Supabase project | Run every pending migration through `202609130003_account_document_inbox.sql`, then execute the schema smoke test before client testing |
 | Silent cache fallback | A failed online request can display older cached data | Keep sync state visible and show freshness/failure rather than implying the cache is current |
 | Stale service worker | An installed phone can continue running an older application bundle | Preserve update prompts and verify an update/reload during deployment acceptance |
 | Sensitive travel documents | Passports and visas have higher impact than ordinary attachments | Private defaults, least-privilege access, optional local storage, audit trail |

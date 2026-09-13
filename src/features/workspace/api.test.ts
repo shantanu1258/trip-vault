@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { googleMapsDirectionsUrl, googleMapsSearchUrl, mergeCloudAndPendingDocuments, normalizeJoinCode, sanitizeFilename, validateDocumentFile } from "./api";
-import type { VaultDocument } from "./types";
+import { googleMapsDirectionsUrl, googleMapsSearchUrl, mergeAccountDocumentUploads, mergeCloudAndPendingDocuments, normalizeJoinCode, sanitizeFilename, validateDocumentFile } from "./api";
+import type { AccountDocumentUpload, VaultDocument } from "./types";
 
 function document(id: string, title: string, updatedAt: string, withFile = true): VaultDocument {
   return {
@@ -35,5 +35,23 @@ describe("workspace boundaries", () => {
     const local = document("retry", "Local ticket", "2026-09-11T10:00:00Z");
     const partialCloud = document("retry", "Cloud row", "2026-09-11T09:00:00Z", false);
     expect(mergeCloudAndPendingDocuments([partialCloud], [local], [local.id])[0]).toMatchObject({ title: "Local ticket", current_version_id: "retry-version", sync_state: "queued" });
+  });
+  it("keeps an unfinished account upload in the private inbox until association succeeds", () => {
+    const upload: AccountDocumentUpload = {
+      id: "upload-1",
+      owner_id: "account-1",
+      storage_path: "account-1/upload-1/ticket.pdf",
+      original_filename: "ticket.pdf",
+      mime_type: "application/pdf",
+      byte_size: 42,
+      sha256: "a".repeat(64),
+      associated_document_id: null,
+      created_at: "2026-09-13T10:00:00Z",
+      updated_at: "2026-09-13T10:00:00Z"
+    };
+    expect(mergeAccountDocumentUploads([], [upload], [upload.id])).toEqual([
+      { ...upload, sync_state: "queued" }
+    ]);
+    expect(mergeAccountDocumentUploads([{ ...upload, associated_document_id: "document-1" }], [], [])).toEqual([]);
   });
 });

@@ -54,6 +54,20 @@ export async function queueDocumentUpload(input: { document: Record<string, unkn
   return operationId;
 }
 
+export async function queueAccountDocumentUpload(input: { upload: Record<string, unknown> & { id: string }; storagePath: string }) {
+  const profileId = await localProfileId(); if (!profileId) throw new Error("Sign in online once before saving offline.");
+  const operationId = crypto.randomUUID();
+  await database.outbox.put({ operationId, profileId, entityType: "account-document-uploads", entityId: input.upload.id, operation: "upload_account_document", payload: input, dependsOn: [], attemptCount: 0, createdAt: new Date().toISOString() });
+  return operationId;
+}
+
+export async function queueDocumentAssociation(input: { documentId: string; uploadId: string; rpc: Record<string, unknown>; dependsOn?: string[] }) {
+  const profileId = await localProfileId(); if (!profileId) throw new Error("Sign in online once before saving offline.");
+  const operationId = crypto.randomUUID();
+  await database.outbox.put({ operationId, profileId, entityType: "documents", entityId: input.documentId, operation: "associate_account_document", payload: { uploadId: input.uploadId, rpc: input.rpc }, dependsOn: input.dependsOn ?? [], attemptCount: 0, createdAt: new Date().toISOString() });
+  return operationId;
+}
+
 export async function queueUpdate<T extends { id: string }>(input: { entityType: string; table: string; row: T; patch: Record<string, unknown>; baseVersion?: number }) {
   const profileId = await localProfileId(); if (!profileId) throw new Error("Sign in online once before saving offline.");
   await cacheEntity(input.entityType, input.row);
@@ -127,6 +141,16 @@ async function discardOperationTree(operationId: string) {
   await database.outbox.delete(operationId);
 }
 
+export async function discardDocumentUploadOperations(uploadId: string, documentId?: string) {
+  const profileId = await localProfileId(); if (!profileId) return;
+  const operations = await database.outbox.where("profileId").equals(profileId).filter((operation) => {
+    if (operation.entityId === uploadId || (documentId && operation.entityId === documentId)) return true;
+    const payload = operation.payload as { uploadId?: unknown };
+    return payload.uploadId === uploadId;
+  }).toArray();
+  for (const operation of operations) await discardOperationTree(operation.operationId);
+}
+
 export async function resolveSyncIssue(operationId: string, resolution: "keep_local" | "use_server" | "retry" | "discard") {
   const operation = await database.outbox.get(operationId); if (!operation) return;
   const payload = operation.payload as { conflictServer?: Record<string, unknown> | null };
@@ -168,13 +192,36 @@ async function pushDocument(operation: OutboxOperation) {
   const { error: finalError } = await supabase.from("documents").update({ current_version_id: payload.version.id }).eq("id", payload.document.id); if (finalError) throw finalError;
 }
 
+async function pushAccountDocument(operation: OutboxOperation) {
+  if (!supabase) throw new Error("Supabase is not connected.");
+  const payload = operation.payload as { upload: Record<string, unknown> & { id: string }; storagePath: string };
+  const blob = await readOfflineFile(operation.profileId, payload.upload.id); if (!blob) throw new Error("Local document bytes are missing.");
+  const { error: rowError } = await supabase.from("account_document_uploads").upsert(payload.upload, { onConflict: "id", ignoreDuplicates: true });
+  if (rowError) throw rowError;
+  const { error: uploadError } = await supabase.storage.from("account-documents").upload(payload.storagePath, blob, { contentType: String(payload.upload.mime_type), upsert: false });
+  if (uploadError && !/exist|duplicate/i.test(uploadError.message)) throw uploadError;
+}
+
+async function pushDocumentAssociation(operation: OutboxOperation) {
+  if (!supabase) throw new Error("Supabase is not connected.");
+  const payload = operation.payload as { rpc: Record<string, unknown> };
+  const { error } = await supabase.rpc("associate_account_document", payload.rpc);
+  if (error) throw error;
+}
+
 export async function syncOutbox() {
   if (!navigator.onLine || !supabase) return { synced: 0, failed: 0 };
   const profileId = await localProfileId(); if (!profileId) return { synced: 0, failed: 0 };
   const operations = orderOutbox(await database.outbox.where("profileId").equals(profileId).toArray()); let synced = 0; let failed = 0;
   for (const operation of operations) {
+    const unresolvedDependencies = operation.dependsOn.length
+      ? (await database.outbox.bulkGet(operation.dependsOn)).some(Boolean)
+      : false;
+    if (unresolvedDependencies) continue;
     try {
       if (operation.operation === "upload_document") await pushDocument(operation);
+      else if (operation.operation === "upload_account_document") await pushAccountDocument(operation);
+      else if (operation.operation === "associate_account_document") await pushDocumentAssociation(operation);
       else {
         const payload = operation.payload as { table: string; row?: Record<string, unknown>; patch?: Record<string, unknown>; match?: Record<string, string>; hard?: boolean };
         if (operation.operation === "create" && payload.row) { const { error } = await supabase.from(payload.table).upsert(payload.row, { ignoreDuplicates: true }); if (error) throw error; }

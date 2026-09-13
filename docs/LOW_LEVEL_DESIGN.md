@@ -13,7 +13,7 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 
 **Document status:** Implemented personal MVP 1.0
 
-**Implementation status:** Timeline-first implementation complete locally. Existing Supabase projects apply `supabase/migrations/202609120001_traveler_focus_and_known_accounts.sql`; fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once. Remote and airplane-mode acceptance remain pending.
+**Implementation status:** Timeline-first implementation complete locally. Existing Supabase projects apply every pending migration through `supabase/migrations/202609130003_account_document_inbox.sql`; fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once. Remote and airplane-mode acceptance remain pending.
 
 ## 1. Technology Set
 
@@ -29,7 +29,7 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 | Local file storage | Origin Private File System with fallback | Implemented | Pinned documents and checksum verification |
 | PWA lifecycle | Service worker generated through a Vite-compatible PWA plugin | Implemented | App-shell caching and update prompts |
 | Database and identity backend | Supabase | Accepted | Auth, Postgres, and Realtime in a dedicated Trip Vault project |
-| Cloud file storage | Supabase private Storage | Implemented | Keeps file authorization aligned with trip data |
+| Cloud file storage | Supabase private Storage | Implemented | Separate private account inbox and trip-version bucket keep persistence independent from association |
 | Authentication | Supabase email-only authentication | Accepted | Onboarding has no separate confirmation gate for now; detailed session behavior follows the Supabase project configuration |
 | Administrator authorization | Dedicated Supabase Auth account plus `app_admins` allowlist and RLS | Accepted | Separate Admin entry; no new authentication provider and no implicit trip access |
 | Validation | Zod | Implemented | Shared parsing at network and form boundaries |
@@ -125,7 +125,7 @@ Feature folders should own their views, hooks, validation, and tests. Shared pri
 | `/trips/:tripId/documents/:documentId` | Authorized member | Local-first document viewer with secondary information/actions sheet | Verified local version opens immediately; a permitted cloud version downloads once and is cached |
 | `/vault` | Authenticated | Searchable cross-trip document index | Searches local metadata; remote refresh when online |
 | `/add` | Authenticated | Quick-add chooser | Drafts can be stored locally |
-| `/profile` | Authenticated | Account, devices, storage, and security | Local settings available |
+| `/profile` | Authenticated | Account, private document inbox, devices, storage, and security | Local settings and locally staged uploads remain available |
 
 The wide-screen layout may render several routes as side panels, but URL identity must remain stable.
 
@@ -649,6 +649,24 @@ Primary key: `(itinerary_item_id, document_id)`. Unlinking a row or deleting an 
 
 Traveler usage and authorization are deliberately independent. A shared document is not public: its `visibility` still determines which signed-in members may open it. A selected assignment may contain one or several travelers. An unassigned activity ticket or meal voucher remains visible in the all-travelers trip view until someone decides who will use it.
 
+#### `account_document_uploads`
+
+This is the private, account-owned staging record created before any trip association. Only the owner can list an unfinished row. Association is performed by one database function after the Storage object exists.
+
+| Field | Type | Purpose |
+|---|---|---|
+| `id` | UUID, primary key | Upload identity and first immutable-version identity |
+| `owner_id` | UUID | Signed-in account that owns the unassociated upload |
+| `storage_path` | Text, unique | Path beneath the owner's UUID in the `account-documents` bucket |
+| `original_filename` | Text | Original device filename |
+| `mime_type` | Text | Approved PDF/image type |
+| `byte_size` | Big integer | Must remain below 5,000,000 bytes |
+| `sha256` | Text | Integrity proof shared with the eventual document version |
+| `associated_document_id` | UUID, nullable | Set only by the atomic association function |
+| `created_at`, `updated_at` | Timestamp | Recovery ordering and synchronization state |
+
+Unassociated rows appear in Profile. Deleting one removes its private object and local copy; associated rows are managed through the Vault document lifecycle instead.
+
 #### `document_travelers`
 
 Used only when `documents.assignment_mode = selected`.
@@ -669,11 +687,13 @@ Primary key: `(document_id, traveler_id)`. A same-trip trigger rejects cross-tri
 | `id` | UUID, primary key | File-version identity |
 | `document_id` | UUID | Parent document |
 | `version_number` | Integer | Monotonic version |
+| `storage_bucket` | Text | `trip-documents` for legacy/replacement versions or `account-documents` for inbox-originated versions |
 | `storage_path` | Text, unique | Private object location |
 | `original_filename` | Text | Download name |
 | `mime_type` | Text | Preview and validation |
 | `byte_size` | Big integer | Quota and progress |
 | `sha256` | Text | Integrity and offline verification |
+| `source_upload_id` | UUID, nullable | Account-inbox provenance for the first associated version |
 | `created_by` | UUID | Upload actor |
 | `created_at` | Timestamp | Audit timestamp |
 
@@ -839,6 +859,7 @@ Primary key: `(user_id, alert_key)`.
 - `assignment_mode` describes usage only and never participates in `can_read_document`; visibility remains the sole document-access input after active trip membership.
 - Every itinerary-document link references an event and document from the same trip; deleting or unlinking the event relationship never deletes the document.
 - Every `document_versions.byte_size` is smaller than `5_000_000`; the same bound is checked before local queuing and enforced by the private bucket.
+- An account upload path starts with its `owner_id`; trip metadata is created only by `associate_account_document` after the dependent account-object upload succeeds.
 - `traveler_and_managers` visibility requires `documents.traveler_id`; trip-level documents use `trip` or `selected_members` visibility.
 - Booking, flight-leg, itinerary, and requirement assignments always reference traveler profiles rather than account IDs.
 - `validity_buffer_days` is non-negative; visa and passport warnings are advisory calculations only.
@@ -892,6 +913,8 @@ erDiagram
     BOOKINGS o|--o{ DOCUMENTS : attaches
     FLIGHT_LEGS o|--o{ DOCUMENTS : uses
     DOCUMENTS ||--o{ DOCUMENT_VERSIONS : versions
+    PROFILES ||--o{ ACCOUNT_DOCUMENT_UPLOADS : stages
+    ACCOUNT_DOCUMENT_UPLOADS o|--o| DOCUMENT_VERSIONS : becomes
     DOCUMENTS ||--o{ DOCUMENT_ACCESS : grants
     PROFILES ||--o{ DOCUMENT_ACCESS : receives
     TRIPS ||--o{ NOTES : contains
@@ -1224,7 +1247,7 @@ The app requests persistent storage through `navigator.storage.persist()` and re
 | `operation_id` | Client-generated idempotency key |
 | `entity_type` | Target domain |
 | `entity_id` | Stable client-generated UUID |
-| `operation` | Create, update, or delete |
+| `operation` | Create, update, delete, account-file upload, or account-file association |
 | `payload` | Validated mutation data |
 | `base_version` | Server version observed before edit |
 | `depends_on` | Earlier operations that must finish first |
@@ -1254,6 +1277,8 @@ flowchart TD
 ```
 
 There is no incremental pull cursor in the current client. Online reads use complete authorized collection queries and update the cache; Supabase Realtime invalidates mounted query data after shared changes. Background Sync may be used as an enhancement where supported, but correctness cannot depend on it.
+
+For new documents, `upload_account_document` always precedes `associate_account_document`. A dependent association is skipped while its upload operation still exists in the outbox, including after a failed upload attempt. This preserves an unassociated Profile inbox row rather than creating trip metadata that points at absent bytes. Retrying the inbox item replays the existing idempotent operations instead of creating another document identity.
 
 ### 9.3 Conflict policy
 
@@ -1920,6 +1945,7 @@ The lists below are the release coverage contract. They do not imply that every 
 | LLD-055 | Trip-scoped expense sharing | Paid costs may name a traveler payer and participants; equal shares use integer minor units, balances are derived, and currencies are never silently combined | Accepted |
 | LLD-056 | Testing deletion | The owner-only permanent-delete action is visibly temporary, requires the exact trip title, removes Storage objects before cascading database deletion, and is online-only | Accepted for testing |
 | LLD-057 | Admin redesign | Do not extend the current console until the trip application stabilizes; later rebuild it responsively with plain language and guided draft/publish/review flows | Deferred |
+| LLD-058 | Account document staging | Cache and upload the original under the signed-in account first, then atomically associate it with trip metadata; retain incomplete work in the Profile inbox | Accepted |
 
 ## Source File Index
 

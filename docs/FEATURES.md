@@ -208,6 +208,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DOC-026 | Travel-specific document types | P0 | MVP | Upload offers flight ticket, boarding pass, baggage tag, visa, passport, stay confirmation, journey ticket, activity confirmation/admission, meal voucher, receipt, insurance, and Other with sensible assignment defaults |
 | DOC-027 | Assignment/access separation | P0 | MVP | The upload form explains that who uses a document is independent from Only me, signed-in trip, or selected-member access |
 | DOC-028 | Context-derived document name | P0 | MVP | Default name combines document type, who it is for, and linked event; a custom name is allowed while the derived context remains visible below it |
+| DOC-029 | Private upload inbox | P0 | MVP | Every new original is first retained under the signed-in account; a failed, cancelled, or interrupted trip association remains in Profile for retry, later association, or deletion |
 
 ## 9. Offline and Synchronization
 
@@ -313,6 +314,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | PRF-005 | Data export request | P1 | Later | User can request a portable export of their authorized account data |
 | PRF-006 | Account deletion | P1 | Later | Flow explains ownership transfer, shared records, retention, and irreversible effects |
 | PRF-007 | Privacy controls | P1 | MVP | User can review offline behavior, remove one file or trip pack, and sign out while either keeping or clearing all local copies |
+| PRF-008 | Unfinished document manager | P0 | MVP | Profile lists unassociated account uploads and lets the owner attach each to a trip, retry its cloud work, or permanently delete it |
 
 ## 14. Research-Informed Product Review
 
@@ -504,6 +506,7 @@ The MVP is ready for private travel use only when:
 36. Selecting one traveler consistently hides another traveler's assigned events, bookings, readiness, costs, seats, and documents while retaining records shared with everyone.
 37. An owner can offer a later trip to a previously associated account, and no membership exists until that account accepts from Home.
 38. An owner/editor can add a missing flight connection after creation and see the complete route and seats at the top of Flight details.
+39. If a document's cloud upload or trip association is interrupted, the file remains visible only to its signed-in owner in Profile and can be retried, associated without reselecting the bytes, or deleted.
 
 ## 21. Product Decisions and Open Reviews
 

@@ -265,6 +265,7 @@ export type DocumentAssignmentMode = "shared" | "selected" | "unassigned";
 
 export type DocumentVersion = {
   id: string;
+  storage_bucket?: "trip-documents" | "account-documents";
   storage_path: string;
   original_filename: string;
   mime_type: string;
@@ -272,6 +273,22 @@ export type DocumentVersion = {
   sha256: string;
   version_number: number;
   created_at: string;
+};
+
+export type AccountDocumentUpload = {
+  id: string;
+  owner_id: string;
+  storage_path: string;
+  original_filename: string;
+  mime_type: string;
+  byte_size: number;
+  sha256: string;
+  associated_document_id: string | null;
+  created_at: string;
+  updated_at: string;
+  sync_state?: "queued" | "synced";
+  sync_error?: string;
+  association_pending?: boolean;
 };
 
 export type VaultDocument = {

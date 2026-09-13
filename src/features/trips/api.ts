@@ -186,22 +186,41 @@ export async function deleteTripPermanently(trip: Trip) {
   if (membershipError) throw membershipError;
   if (membership?.role !== "owner") throw new Error("Only the trip owner can permanently delete this trip.");
   const { data: versions, error: versionError } = await client().from("document_versions")
-    .select("id,storage_path,documents!inner(trip_id)")
+    .select("id,storage_bucket,storage_path,source_upload_id,documents!inner(trip_id)")
     .eq("documents.trip_id", trip.id);
   if (versionError) throw versionError;
-  const paths = (versions ?? []).map((version) => String(version.storage_path));
-  if (paths.length) {
-    const { error: storageError } = await client().storage.from("trip-documents").remove(paths);
+  const legacyPaths = (versions ?? [])
+    .filter((version) => !version.storage_bucket || version.storage_bucket === "trip-documents")
+    .map((version) => String(version.storage_path));
+  const ownedInboxVersions = (versions ?? []).filter((version) =>
+    version.storage_bucket === "account-documents"
+      && String(version.storage_path).startsWith(`${profileId}/`)
+  );
+  const ownedInboxPaths = ownedInboxVersions.map((version) => String(version.storage_path));
+  for (const [bucket, paths] of [["trip-documents", legacyPaths], ["account-documents", ownedInboxPaths]] as const) {
+    if (!paths.length) continue;
+    const { error: storageError } = await client().storage.from(bucket).remove(paths);
     if (storageError) throw new Error(`The trip was not deleted because its stored documents could not be removed: ${storageError.message}`);
   }
   const { error } = await client().rpc("delete_trip_permanently", { requested_trip_id: trip.id });
   if (error) throw error;
+  const ownedUploadIds = ownedInboxVersions.flatMap((version) => version.source_upload_id ? [String(version.source_upload_id)] : []);
+  if (ownedUploadIds.length) {
+    const { error: uploadRowsError } = await client().from("account_document_uploads").delete().in("id", ownedUploadIds).is("associated_document_id", null);
+    if (uploadRowsError) throw uploadRowsError;
+  }
   const { database } = await import("../../lib/local-db/database");
   const pendingUploads = await database.outbox.where("profileId").equals(profileId).filter((operation) => {
     if (operation.operation !== "upload_document") return false;
     const payload = operation.payload as { document?: { trip_id?: string } };
     return payload.document?.trip_id === trip.id;
   }).toArray();
+  const pendingAssociations = await database.outbox.where("profileId").equals(profileId).filter((operation) => {
+    if (operation.operation !== "associate_account_document") return false;
+    const payload = operation.payload as { rpc?: { requested_trip_id?: string } };
+    return payload.rpc?.requested_trip_id === trip.id;
+  }).toArray();
+  const pendingAssociationDocumentIds = new Set(pendingAssociations.map((operation) => operation.entityId));
   const versionIds = [...new Set([
     ...(versions ?? []).map((version) => String(version.id)),
     ...pendingUploads.map((operation) => String((operation.payload as { version: { id: string } }).version.id))
@@ -211,9 +230,9 @@ export async function deleteTripPermanently(trip: Trip) {
   await database.transaction("rw", [database.entities, database.localDocuments, database.localFileBlobs, database.outbox, database.offlineManifests], async () => {
     await database.entities.where("profileId").equals(profileId).filter((row) => {
       const data = row.data as { id?: string; trip_id?: string };
-      return data.trip_id === trip.id || (row.entityType === "trips" && data.id === trip.id) || row.entityType.endsWith(`:${trip.id}`);
+      return data.trip_id === trip.id || pendingAssociationDocumentIds.has(row.id) || (row.entityType === "trips" && data.id === trip.id) || row.entityType.endsWith(`:${trip.id}`);
     }).delete();
-    await database.outbox.where("profileId").equals(profileId).filter((row) => row.entityType.endsWith(`:${trip.id}`) || row.entityId === trip.id).delete();
+    await database.outbox.where("profileId").equals(profileId).filter((row) => pendingAssociationDocumentIds.has(row.entityId) || row.entityType.endsWith(`:${trip.id}`) || row.entityId === trip.id).delete();
     await database.offlineManifests.delete([profileId, trip.id]);
     for (const versionId of versionIds) {
       await database.localDocuments.delete([profileId, versionId]);

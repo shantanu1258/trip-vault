@@ -10,7 +10,7 @@ declare
     'profiles', 'app_admins', 'trips', 'trip_members', 'travelers', 'traveler_accounts',
     'traveler_managers', 'trip_invitations', 'bookings', 'booking_travelers', 'trip_airlines',
     'flight_legs', 'flight_leg_travelers', 'itinerary_items', 'itinerary_participants',
-    'itinerary_item_documents', 'documents', 'document_versions', 'document_access', 'document_travelers', 'notes',
+    'itinerary_item_documents', 'documents', 'document_versions', 'account_document_uploads', 'document_access', 'document_travelers', 'notes',
     'trip_requirements', 'requirement_assignees', 'trip_costs', 'trip_cost_participants', 'reminders', 'alert_states',
     'activity_events', 'config_releases', 'airline_catalog_entries', 'airport_catalog_entries',
     'booking_vendor_catalog_entries', 'catalog_suggestions', 'journey_legs',
@@ -36,6 +36,9 @@ begin
 
   if not exists (select 1 from storage.buckets where id = 'trip-documents' and not public and file_size_limit = 4999999) then
     raise exception 'The private trip-documents bucket is missing or has the wrong size limit';
+  end if;
+  if not exists (select 1 from storage.buckets where id = 'account-documents' and not public and file_size_limit = 4999999) then
+    raise exception 'The private account-documents inbox bucket is missing or has the wrong size limit';
   end if;
   if (select count(*) from public.config_releases where status = 'published') <> 1 then
     raise exception 'Exactly one configuration release must be published';
@@ -114,6 +117,9 @@ begin
   end if;
   if to_regprocedure('public.delete_trip_permanently(uuid)') is null then
     raise exception 'Owner-only permanent trip deletion RPC is missing';
+  end if;
+  if to_regprocedure('public.associate_account_document(uuid,uuid,uuid,uuid,text,public.document_category,public.document_purpose,public.document_assignment_mode,public.document_visibility,uuid,uuid,uuid,text,uuid[],uuid[])') is null then
+    raise exception 'Account document association RPC is missing';
   end if;
   if to_regprocedure('public.can_edit_traveler_profile(uuid,uuid)') is null then
     raise exception 'Delegated traveler profile authorization is missing';
@@ -206,6 +212,21 @@ begin
     where table_schema = 'public' and table_name = 'documents' and column_name = 'assignment_mode'
   ) then
     raise exception 'Document traveler assignment mode is missing';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'document_versions' and column_name = 'storage_bucket'
+  ) or not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'document_versions' and column_name = 'source_upload_id'
+  ) then
+    raise exception 'Account document version provenance is missing';
+  end if;
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage' and tablename = 'objects' and policyname = 'account_documents_create'
+  ) then
+    raise exception 'Account document storage write policy is missing';
   end if;
   if not exists (select 1 from pg_trigger where tgname = 'document_traveler_same_trip' and not tgisinternal) then
     raise exception 'Document traveler same-trip validation trigger is missing';

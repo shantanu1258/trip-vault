@@ -1,14 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../../lib/supabase/client";
 import { database } from "../../lib/local-db/database";
-import { ensureBlobMimeType, storeOfflineFile } from "../../lib/storage/offlineFiles";
-import { cacheEntity, cacheEntityList, localProfileId, networkWithCache, queueCreate, queueDelete, queueDocumentUpload, queueUpdate, readEntityById, readEntityList, syncOutbox } from "../sync/localSync";
+import { ensureBlobMimeType, removeOfflineFile, storeOfflineFile } from "../../lib/storage/offlineFiles";
+import { cacheEntity, cacheEntityList, discardDocumentUploadOperations, localProfileId, networkWithCache, queueAccountDocumentUpload, queueCreate, queueDelete, queueDocumentAssociation, queueDocumentUpload, queueUpdate, readEntityById, readEntityList, syncOutbox } from "../sync/localSync";
 import type { ItineraryItem, TimelineEventType } from "../trips/types";
 import { addItineraryItem, addTripCost } from "../trips/api";
 import { listAvailableAirlines } from "../metadata/publishedConfig";
 import type {
   Booking,
   BookingTraveler,
+  AccountDocumentUpload,
   AssociatedAccount,
   AddFlightConnectionInput,
   CreateBookingInput,
@@ -732,7 +733,8 @@ export async function updateRequirementStatus(id: string, status: RequirementSta
   if (tripId) await cacheEntity(`requirements:${tripId}`, data as Requirement); return data as Requirement;
 }
 
-const documentSelect = "id,trip_id,booking_id,flight_leg_id,journey_leg_id,traveler_id,assignment_mode,title,category,purpose,short_label,visibility,uploaded_by,current_version_id,version,updated_at,deleted_at,document_travelers(traveler_id),current_version:document_versions!documents_current_version_id_fkey(id,storage_path,original_filename,mime_type,byte_size,sha256,version_number,created_at)";
+const documentSelect = "id,trip_id,booking_id,flight_leg_id,journey_leg_id,traveler_id,assignment_mode,title,category,purpose,short_label,visibility,uploaded_by,current_version_id,version,updated_at,deleted_at,document_travelers(traveler_id),current_version:document_versions!documents_current_version_id_fkey(id,storage_bucket,storage_path,original_filename,mime_type,byte_size,sha256,version_number,created_at)";
+const accountDocumentUploadSelect = "id,owner_id,storage_path,original_filename,mime_type,byte_size,sha256,associated_document_id,created_at,updated_at";
 
 type DocumentResponse = VaultDocument & { document_travelers?: { traveler_id: string }[] };
 
@@ -757,12 +759,62 @@ export function mergeCloudAndPendingDocuments(cloud: VaultDocument[], local: Vau
   return [...merged.values()].sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
 }
 
-async function pendingDocumentUploads(documentIds?: string[]) {
+async function pendingDocumentOperations(documentIds?: string[]) {
   const profileId = await localProfileId();
   if (!profileId) return [];
   return database.outbox.where("profileId").equals(profileId).filter((operation) =>
-    operation.operation === "upload_document" && (!documentIds || documentIds.includes(operation.entityId))
+    ["upload_document", "associate_account_document"].includes(operation.operation)
+      && (!documentIds || documentIds.includes(operation.entityId))
   ).toArray();
+}
+
+async function pendingAccountUploadOperations(uploadIds?: string[]) {
+  const profileId = await localProfileId();
+  if (!profileId) return [];
+  return database.outbox.where("profileId").equals(profileId).filter((operation) => {
+    const payload = operation.payload as { uploadId?: unknown };
+    const matchesId = !uploadIds || uploadIds.includes(operation.entityId) || (typeof payload.uploadId === "string" && uploadIds.includes(payload.uploadId));
+    return matchesId && ["upload_account_document", "associate_account_document"].includes(operation.operation);
+  }).toArray();
+}
+
+export function mergeAccountDocumentUploads(cloud: AccountDocumentUpload[], local: AccountDocumentUpload[], pendingIds: Iterable<string>) {
+  const pending = new Set(pendingIds);
+  const merged = new Map<string, AccountDocumentUpload>(
+    cloud.map((upload) => [upload.id, { ...upload, sync_state: "synced" as const }])
+  );
+  for (const upload of local) {
+    if (pending.has(upload.id) || !merged.has(upload.id)) {
+      merged.set(upload.id, {
+        ...upload,
+        sync_state: pending.has(upload.id) ? "queued" : (upload.sync_state ?? "synced")
+      });
+    }
+  }
+  return [...merged.values()].filter((upload) => !upload.associated_document_id).sort((left, right) => right.created_at.localeCompare(left.created_at));
+}
+
+export async function listAccountDocumentUploads(): Promise<AccountDocumentUpload[]> {
+  const local = await readEntityList<AccountDocumentUpload>("account-document-uploads");
+  const operations = await pendingAccountUploadOperations();
+  const pendingIds = operations.map((operation) => operation.operation === "upload_account_document" ? operation.entityId : String((operation.payload as { uploadId?: string }).uploadId ?? ""));
+  const annotate = (uploads: AccountDocumentUpload[]) => uploads.map((upload) => ({
+    ...upload,
+    sync_error: operations.find((operation) => operation.entityId === upload.id || (operation.payload as { uploadId?: string }).uploadId === upload.id)?.lastErrorCode,
+    association_pending: operations.some((operation) => operation.operation === "associate_account_document" && (operation.payload as { uploadId?: string }).uploadId === upload.id)
+  }));
+  let rows = annotate(mergeAccountDocumentUploads([], local, pendingIds));
+  if (navigator.onLine) {
+    try {
+      const { data, error } = await client().from("account_document_uploads").select(accountDocumentUploadSelect).is("associated_document_id", null).order("created_at", { ascending: false });
+      if (error) throw error;
+      rows = annotate(mergeAccountDocumentUploads((data ?? []) as AccountDocumentUpload[], local, pendingIds));
+      await cacheEntityList("account-document-uploads", rows);
+    } catch (error) {
+      if (!local.length) throw error;
+    }
+  }
+  return rows;
 }
 
 export async function listVaultDocuments(tripId?: string): Promise<VaultDocument[]> {
@@ -775,7 +827,7 @@ export async function listVaultDocuments(tripId?: string): Promise<VaultDocument
       if (tripId) query = query.eq("trip_id", tripId);
       const { data, error } = await query;
       if (error) throw error;
-      const uploads = await pendingDocumentUploads();
+      const uploads = await pendingDocumentOperations();
       const cloud = ((data ?? []) as unknown as DocumentResponse[]).map(normalizeVaultDocument);
       documents = mergeCloudAndPendingDocuments(cloud, localDocuments, uploads.map((operation) => operation.entityId))
         .map((document) => ({ ...document, sync_error: uploads.find((operation) => operation.entityId === document.id)?.lastErrorCode }));
@@ -800,7 +852,7 @@ export async function listVaultDocuments(tripId?: string): Promise<VaultDocument
 
 export async function getVaultDocument(documentId: string): Promise<VaultDocument> {
   const local = await readEntityById<VaultDocument>("documents", documentId);
-  const uploads = await pendingDocumentUploads([documentId]);
+  const uploads = await pendingDocumentOperations([documentId]);
   if (!navigator.onLine) {
     if (local) return { ...local, sync_state: uploads.length ? "queued" : (local.sync_state ?? "synced"), sync_error: uploads[0]?.lastErrorCode };
     throw new Error("This document is not available on this device.");
@@ -829,7 +881,7 @@ export async function restoreDocument(document: VaultDocument) {
 
 export async function listDocumentVersions(documentId: string): Promise<DocumentVersion[]> {
   if (!navigator.onLine) return [];
-  const { data, error } = await client().from("document_versions").select("id,storage_path,original_filename,mime_type,byte_size,sha256,version_number,created_at").eq("document_id", documentId).order("version_number", { ascending: false });
+  const { data, error } = await client().from("document_versions").select("id,storage_bucket,storage_path,original_filename,mime_type,byte_size,sha256,version_number,created_at").eq("document_id", documentId).order("version_number", { ascending: false });
   if (error) throw error; return (data ?? []) as DocumentVersion[];
 }
 
@@ -862,40 +914,154 @@ export class DuplicateDocumentError extends Error {
   }
 }
 
+export async function stageAccountDocument(file: File, knownChecksum?: string): Promise<AccountDocumentUpload> {
+  validateDocumentFile(file);
+  const actor = await userId();
+  const checksum = knownChecksum ?? await sha256(file);
+  const uploadId = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+  const storagePath = `${actor}/${uploadId}/${sanitizeFilename(file.name)}`;
+  const upload: AccountDocumentUpload = { id: uploadId, owner_id: actor, storage_path: storagePath, original_filename: file.name, mime_type: file.type, byte_size: file.size, sha256: checksum, associated_document_id: null, created_at: createdAt, updated_at: createdAt, sync_state: "queued" };
+  const row = { id: upload.id, owner_id: upload.owner_id, storage_path: upload.storage_path, original_filename: upload.original_filename, mime_type: upload.mime_type, byte_size: upload.byte_size, sha256: upload.sha256, associated_document_id: null };
+  await storeOfflineFile({ profileId: actor, versionId: upload.id, blob: file, sha256: checksum, pinReason: "created" });
+  await cacheEntity("account-document-uploads", upload);
+  const operationId = await queueAccountDocumentUpload({ upload: row, storagePath });
+  if (navigator.onLine) {
+    await syncOutbox();
+    const pending = await database.outbox.get(operationId);
+    if (!pending) return { ...upload, sync_state: "synced" };
+    return { ...upload, sync_error: pending.lastErrorCode };
+  }
+  return upload;
+}
+
+export type AssociateAccountDocumentInput = {
+  upload: AccountDocumentUpload;
+  tripId: string;
+  title: string;
+  category: DocumentCategory;
+  purpose: DocumentPurpose;
+  assignmentMode: DocumentAssignmentMode;
+  visibility: DocumentVisibility;
+  travelerIds?: string[];
+  bookingId?: string;
+  flightLegId?: string;
+  journeyLegId?: string;
+  shortLabel?: string;
+  selectedUserIds?: string[];
+};
+
+export async function associateAccountDocument(input: AssociateAccountDocumentInput): Promise<VaultDocument> {
+  const actor = await userId();
+  const existingAssociation = (await pendingAccountUploadOperations([input.upload.id]))
+    .find((operation) => operation.operation === "associate_account_document");
+  if (existingAssociation) {
+    await database.outbox.update(existingAssociation.operationId, { lastErrorCode: undefined, attemptCount: 0 });
+    if (navigator.onLine) await syncOutbox();
+    const stillPending = await database.outbox.get(existingAssociation.operationId);
+    const existingDocumentId = String((existingAssociation.payload as { rpc?: { requested_document_id?: string } }).rpc?.requested_document_id ?? "");
+    const localDocument = existingDocumentId ? await readEntityById<VaultDocument>("documents", existingDocumentId) : undefined;
+    if (!stillPending && existingDocumentId) {
+      await cacheEntity("account-document-uploads", { ...input.upload, associated_document_id: existingDocumentId, updated_at: new Date().toISOString(), sync_state: "synced" });
+      return getVaultDocument(existingDocumentId);
+    }
+    if (localDocument) return { ...localDocument, sync_state: "queued", sync_error: stillPending?.lastErrorCode };
+    throw new Error("This upload already has a pending trip association. Retry it from Profile.");
+  }
+  const documentId = crypto.randomUUID();
+  const versionId = input.upload.id;
+  const createdAt = new Date().toISOString();
+  const travelerIds = input.assignmentMode === "selected" ? [...new Set(input.travelerIds ?? [])] : [];
+  if (input.assignmentMode === "selected" && !travelerIds.length) throw new Error("Choose at least one traveler, or select Assign later.");
+  const rpc = {
+    requested_upload_id: input.upload.id,
+    requested_document_id: documentId,
+    requested_version_id: versionId,
+    requested_trip_id: input.tripId,
+    requested_title: input.title,
+    requested_category: input.category,
+    requested_purpose: input.purpose,
+    requested_assignment_mode: input.assignmentMode,
+    requested_visibility: input.visibility,
+    requested_booking_id: input.bookingId || null,
+    requested_flight_leg_id: input.flightLegId || null,
+    requested_journey_leg_id: input.journeyLegId || null,
+    requested_short_label: input.shortLabel || null,
+    requested_traveler_ids: travelerIds,
+    requested_user_ids: input.selectedUserIds ?? []
+  };
+  const document: VaultDocument = {
+    id: documentId, trip_id: input.tripId, booking_id: input.bookingId || null, flight_leg_id: input.flightLegId || null,
+    journey_leg_id: input.journeyLegId || null, traveler_id: travelerIds.length === 1 ? travelerIds[0] : null,
+    assignment_mode: input.assignmentMode, traveler_ids: travelerIds, title: input.title, category: input.category,
+    purpose: input.purpose, short_label: input.shortLabel || null, visibility: input.visibility, uploaded_by: actor,
+    current_version_id: versionId, updated_at: createdAt,
+    current_version: { id: versionId, storage_bucket: "account-documents", storage_path: input.upload.storage_path, original_filename: input.upload.original_filename, mime_type: input.upload.mime_type, byte_size: input.upload.byte_size, sha256: input.upload.sha256, version_number: 1, created_at: createdAt },
+    sync_state: "queued"
+  };
+  await Promise.all([cacheEntity(`documents:${input.tripId}`, document), cacheEntity("documents", document)]);
+  const dependencies = (await pendingAccountUploadOperations([input.upload.id])).filter((operation) => operation.operation === "upload_account_document").map((operation) => operation.operationId);
+  const associationOperation = await queueDocumentAssociation({ documentId, uploadId: input.upload.id, rpc, dependsOn: dependencies });
+  if (navigator.onLine) {
+    await syncOutbox();
+    const pending = await database.outbox.get(associationOperation);
+    if (!pending) {
+      await cacheEntity("account-document-uploads", { ...input.upload, associated_document_id: documentId, updated_at: new Date().toISOString(), sync_state: "synced" });
+      return { ...(await getVaultDocument(documentId)), sync_state: "synced" };
+    }
+    return { ...document, sync_error: pending.lastErrorCode };
+  }
+  return document;
+}
+
+export async function retryAccountDocumentUpload(uploadId: string) {
+  const operations = await pendingAccountUploadOperations([uploadId]);
+  for (const operation of operations) await database.outbox.update(operation.operationId, { lastErrorCode: undefined, attemptCount: 0 });
+  const result = await syncOutbox();
+  if (navigator.onLine) {
+    const { data } = await client().from("account_document_uploads").select(accountDocumentUploadSelect).eq("id", uploadId).maybeSingle();
+    if (data) await cacheEntity("account-document-uploads", { ...(data as AccountDocumentUpload), sync_state: "synced" });
+  }
+  return result;
+}
+
+export async function deleteAccountDocumentUpload(upload: AccountDocumentUpload) {
+  const actor = await userId();
+  const operations = await pendingAccountUploadOperations([upload.id]);
+  const association = operations.find((operation) => operation.operation === "associate_account_document");
+  const documentId = association ? String((association.payload as { rpc?: { requested_document_id?: string } }).rpc?.requested_document_id ?? "") : undefined;
+  if (navigator.onLine) {
+    const { data } = await client().from("account_document_uploads").select("associated_document_id").eq("id", upload.id).maybeSingle();
+    if (data?.associated_document_id) throw new Error("This file is already attached to a trip. Archive it from the Vault instead.");
+    const { error: storageError } = await client().storage.from("account-documents").remove([upload.storage_path]);
+    if (storageError && !/not found/i.test(storageError.message)) throw storageError;
+    const { error: rowError } = await client().from("account_document_uploads").delete().eq("id", upload.id).is("associated_document_id", null);
+    if (rowError) throw rowError;
+  }
+  await discardDocumentUploadOperations(upload.id, documentId);
+  await removeOfflineFile(actor, upload.id);
+  await database.entities.delete([actor, "account-document-uploads", upload.id]);
+  if (documentId) {
+    const documentRows = await database.entities.where("profileId").equals(actor).filter((row) => row.id === documentId).toArray();
+    await database.entities.bulkDelete(documentRows.map((row) => [row.profileId, row.entityType, row.id] as [string, string, string]));
+  }
+}
+
 export async function uploadDocument(input: { tripId: string; title: string; category: DocumentCategory; purpose: DocumentPurpose; assignmentMode: DocumentAssignmentMode; visibility: DocumentVisibility; file: File; travelerIds?: string[]; bookingId?: string; flightLegId?: string; journeyLegId?: string; shortLabel?: string; selectedUserIds?: string[] }): Promise<VaultDocument> {
   validateDocumentFile(input.file);
-  const actor = await userId();
   const checksum = await sha256(input.file);
   let existingDocuments: VaultDocument[];
   try { existingDocuments = await listVaultDocuments(input.tripId); }
   catch { existingDocuments = await readEntityList<VaultDocument>(`documents:${input.tripId}`); }
   const duplicate = findDuplicateDocument(existingDocuments, checksum);
   if (duplicate) throw new DuplicateDocumentError(duplicate.id, duplicate.title);
-  const documentId = crypto.randomUUID();
-  const versionId = crypto.randomUUID();
-  const storagePath = `trips/${input.tripId}/documents/${documentId}/versions/${versionId}/${sanitizeFilename(input.file.name)}`;
-  const createdAt = new Date().toISOString();
-  const travelerIds = input.assignmentMode === "selected" ? [...new Set(input.travelerIds ?? [])] : [];
-  const documentRow = { id: documentId, trip_id: input.tripId, booking_id: input.bookingId || null, flight_leg_id: input.flightLegId || null, journey_leg_id: input.journeyLegId || null, traveler_id: travelerIds.length === 1 ? travelerIds[0] : null, assignment_mode: input.assignmentMode, title: input.title, category: input.category, purpose: input.purpose, short_label: input.shortLabel || null, visibility: input.visibility, uploaded_by: actor };
-  const versionRow = { id: versionId, document_id: documentId, version_number: 1, storage_path: storagePath, original_filename: input.file.name, mime_type: input.file.type, byte_size: input.file.size, sha256: checksum, created_by: actor };
-  const document: VaultDocument = { ...documentRow, traveler_ids: travelerIds, current_version_id: versionId, updated_at: createdAt, current_version: { ...versionRow, created_at: createdAt }, sync_state: "queued" };
-  await storeOfflineFile({ profileId: actor, versionId, blob: input.file, sha256: checksum, pinReason: "created" });
-  await Promise.all([cacheEntity(`documents:${input.tripId}`, document), cacheEntity("documents", document)]);
-  const uploadOperation = await queueDocumentUpload({ document: documentRow, version: versionRow, storagePath });
-  for (const travelerId of travelerIds) await queueCreate({ entityType: `document-travelers:${documentId}`, table: "document_travelers", row: { id: `${documentId}:${travelerId}`, document_id: documentId, traveler_id: travelerId }, serverRow: { document_id: documentId, traveler_id: travelerId, assigned_by: actor }, dependsOn: [uploadOperation] });
-  for (const selectedUserId of input.selectedUserIds ?? []) await queueCreate({ entityType: `document-access:${documentId}`, table: "document_access", row: { id: `${documentId}:${selectedUserId}`, document_id: documentId, user_id: selectedUserId }, serverRow: { document_id: documentId, user_id: selectedUserId, granted_by: actor }, dependsOn: [uploadOperation] });
-  if (navigator.onLine) {
-    await syncOutbox();
-    const pending = await database.outbox.get(uploadOperation);
-    if (!pending) return { ...(await getVaultDocument(documentId)), sync_state: "synced" };
-    return { ...document, sync_state: "queued", sync_error: pending.lastErrorCode };
-  }
-  return { ...document, sync_state: "queued" };
+  const upload = await stageAccountDocument(input.file, checksum);
+  return associateAccountDocument({ ...input, upload });
 }
 
 export async function downloadDocumentVersion(document: VaultDocument) {
   if (!document.current_version) throw new Error("This document does not have an uploaded file yet.");
-  const { data, error } = await client().storage.from("trip-documents").download(document.current_version.storage_path);
+  const { data, error } = await client().storage.from(document.current_version.storage_bucket ?? "trip-documents").download(document.current_version.storage_path);
   if (error) throw error;
   const checksum = await sha256(data);
   if (checksum !== document.current_version.sha256) throw new Error("The downloaded file failed its integrity check.");
@@ -905,7 +1071,7 @@ export async function downloadDocumentVersion(document: VaultDocument) {
 export async function replaceDocumentVersion(document: VaultDocument, file: File) {
   validateDocumentFile(file); const actor = await userId(); const versionId = crypto.randomUUID(); const checksum = await sha256(file); const now = new Date().toISOString();
   const storagePath = `trips/${document.trip_id}/documents/${document.id}/versions/${versionId}/${sanitizeFilename(file.name)}`;
-  const versionRow = { id: versionId, document_id: document.id, version_number: (document.current_version?.version_number ?? 0) + 1, storage_path: storagePath, original_filename: file.name, mime_type: file.type, byte_size: file.size, sha256: checksum, created_by: actor };
+  const versionRow = { id: versionId, document_id: document.id, version_number: (document.current_version?.version_number ?? 0) + 1, storage_bucket: "trip-documents" as const, storage_path: storagePath, original_filename: file.name, mime_type: file.type, byte_size: file.size, sha256: checksum, created_by: actor };
   const documentRow = { id: document.id, trip_id: document.trip_id, booking_id: document.booking_id, flight_leg_id: document.flight_leg_id, journey_leg_id: document.journey_leg_id ?? null, traveler_id: document.traveler_id, assignment_mode: document.assignment_mode ?? (document.traveler_id ? "selected" : "shared"), title: document.title, category: document.category, purpose: document.purpose, short_label: document.short_label, visibility: document.visibility, uploaded_by: actor };
   const updated: VaultDocument = { ...document, current_version_id: versionId, current_version: { ...versionRow, created_at: now }, updated_at: now, sync_state: "queued" };
   await storeOfflineFile({ profileId: actor, versionId, blob: file, sha256: checksum, pinReason: "created" });
@@ -955,7 +1121,7 @@ export async function attachDocumentsToEvent(itineraryItem: ItineraryItem, docum
   const existing = await listEventDocumentLinks(itineraryItem.id);
   const newIds = documentIds.filter((id) => !existing.some((link) => link.document_id === id));
   if (!newIds.length) return existing;
-  const pendingUploads = await pendingDocumentUploads(newIds);
+  const pendingUploads = await pendingDocumentOperations(newIds);
   if (!navigator.onLine || pendingUploads.length > 0) {
     const documents = await readEntityList<VaultDocument>(`documents:${itineraryItem.trip_id}`);
     const created = newIds.map((documentId, index) => ({ id: `${itineraryItem.id}:${documentId}`, itinerary_item_id: itineraryItem.id, document_id: documentId, label: null, sort_order: existing.length + index, document: documents.find((document) => document.id === documentId)! })).filter((link) => link.document);
