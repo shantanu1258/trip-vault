@@ -38,7 +38,7 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 | Motion | Property-specific Tailwind transitions plus CSS scroll snap and Intersection Observer | Implemented | Restrained focus changes and reduced-motion fallback |
 | Map hand-off | Google Maps URLs | Accepted | Search and directions links need no API key; no embedded maps, geocoding, or downloads in MVP |
 | Flight status | Manual records plus external links | Accepted | No live-data provider, scraping, or background polling |
-| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | The executable local baseline is 47 files and 247 tests; type-check and production PWA build pass |
+| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | The executable local baseline is 48 files and 249 tests; type-check and production PWA build pass |
 
 ## 2. Implemented Repository Layout
 
@@ -1183,7 +1183,7 @@ The app never stores a permanent public file address. A verified local file need
 
 ### 7.6 File-size and optimization boundary
 
-`MAX_DOCUMENT_BYTES` is exactly `5_000_000`; an accepted file must satisfy `file.size < MAX_DOCUMENT_BYTES`. The UI describes this as **smaller than 5 MB** and shows the measured size when a file is rejected. Shared validation checks the limit before an offline file is copied into OPFS or added to the outbox and checks it again during upload finalization. Both private document buckets use a `4_999_999`-byte limit so a modified client cannot bypass the strict inequality. Supabase supports restrictions at both the project and [bucket level](https://supabase.com/docs/guides/storage/uploads/file-limits).
+`MAX_DOCUMENT_BYTES` is exactly `5_000_000`; an accepted file must satisfy `file.size < MAX_DOCUMENT_BYTES`. The UI describes this as **smaller than 5 MB** and shows the measured size when a file is rejected. Shared validation checks the limit before an offline file is copied into OPFS or added to the outbox and checks it again during upload finalization. Both private document buckets use a `4_999_999`-byte limit so a modified client cannot bypass the strict inequality. Supabase supports restrictions at both the project and [bucket level](https://supabase.com/docs/guides/storage/uploads/file-limits). OPFS stores files under extensionless version IDs and may return an empty or generic Blob MIME on Safari/Chrome. `readOfflineFile(profileId, versionId, expectedMimeType)` therefore retypes the Blob from the already-validated receipt/version metadata before both `trip-documents` and `account-documents` uploads. This is required because the Storage client wraps Blob bodies in multipart form data and derives the part MIME from `Blob.type`; its `contentType` option alone does not override that multipart part.
 
 The MVP does not automatically compress, resize, recompress, rasterize, or rewrite an uploaded document:
 
@@ -1833,7 +1833,7 @@ Rules:
 | Check | Last verified | Result |
 |---|---|---|
 | `npm run typecheck` | 2026-09-13 | Pass |
-| `npm test -- --run` | 2026-09-13 | Pass: 47 files, 247 tests |
+| `npm test -- --run` | 2026-09-13 | Pass: 48 files, 249 tests |
 | `npm run build` | 2026-09-13 | Pass; only the existing chunk-size and dynamic-import advisories remain |
 | `supabase/tests/001_schema_smoke.sql` | Current local SQL includes booking-vendor, trip-cleanup, and relative-event timing assertions | Rerun remotely after every pending migration through `202609130007_relative_event_timing.sql` |
 | Phone, desktop, sharing, upload, Cloudflare, and airplane mode | Current release | Manual acceptance pending in `docs/FEATURE_TEST_CHECKLIST.md` |

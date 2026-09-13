@@ -204,7 +204,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DOC-004 | Category filters | P0 | Prototype | User can switch between all documents and major travel categories |
 | DOC-005 | Private upload | P0 | MVP | New document is private to uploader unless a broader scope is deliberately selected |
 | DOC-006 | Shared upload | P0 | MVP | Authorized user can share with the whole trip or selected active members |
-| DOC-007 | Retryable small-file upload | P0 | MVP | An interrupted file remains in the outbox and retries safely from its verified local copy; the under-5-MB MVP does not promise chunk-level resume |
+| DOC-007 | Retryable small-file upload | P0 | MVP | An interrupted file remains in the outbox and retries safely from its verified local copy; extensionless device blobs regain their approved PDF/image MIME before upload instead of becoming `application/octet-stream`; the under-5-MB MVP does not promise chunk-level resume |
 | DOC-008 | Immutable versions | P0 | MVP | Replacing a document creates a new version and preserves version history |
 | DOC-009 | Safe preview | P0 | MVP | PDFs and approved images open automatically from a verified local copy, or download once from private storage and then remain cached |
 | DOC-010 | Download original | P0 | MVP | Authorized user receives the original with correct filename and MIME type |

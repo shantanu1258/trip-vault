@@ -228,7 +228,7 @@ export async function resolveSyncIssue(operationId: string, resolution: "keep_lo
 async function pushDocument(operation: OutboxOperation) {
   if (!supabase) throw new Error("Supabase is not connected.");
   const payload = operation.payload as { document: Record<string, unknown> & { id: string }; version: Record<string, unknown> & { id: string }; storagePath: string };
-  const blob = await readOfflineFile(operation.profileId, payload.version.id); if (!blob) throw new Error("Local document bytes are missing.");
+  const blob = await readOfflineFile(operation.profileId, payload.version.id, String(payload.version.mime_type)); if (!blob) throw new Error("Local document bytes are missing.");
   // Uploads are resumable: a previous attempt may have created either row before
   // the storage upload or final pointer update failed. `ignoreDuplicates` maps to
   // ON CONFLICT DO NOTHING, so retries do not emit a 23505 response or require
@@ -258,7 +258,7 @@ async function pushAccountDocument(operation: OutboxOperation) {
       // Read bytes only when the preflight proves Storage still needs them. A
       // completed server upload can therefore reconcile even if this device's
       // temporary blob was cleared after the response was lost.
-      const blob = await readOfflineFile(operation.profileId, payload.upload.id);
+      const blob = await readOfflineFile(operation.profileId, payload.upload.id, String(payload.upload.mime_type));
       if (!blob) throw new Error("Local document bytes are missing.");
       return api.storage.from("account-documents").upload(payload.storagePath, blob, { contentType: String(payload.upload.mime_type), upsert: false });
     }
