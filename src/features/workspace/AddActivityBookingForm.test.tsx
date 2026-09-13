@@ -71,9 +71,9 @@ const booking: Booking = {
   created_at: "2026-09-01T00:00:00.000Z"
 };
 
-function renderForm(onClose = vi.fn(), activity = item) {
+function renderForm(onClose = vi.fn(), activity = item, itinerary: ItineraryItem[] = []) {
   const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
-  render(<MemoryRouter><QueryClientProvider client={queryClient}><AddActivityBookingForm trip={trip} item={activity} travelers={travelers} eventTravelerIds={["asha"]} onClose={onClose} /></QueryClientProvider></MemoryRouter>);
+  render(<MemoryRouter><QueryClientProvider client={queryClient}><AddActivityBookingForm trip={trip} item={activity} itinerary={itinerary} travelers={travelers} eventTravelerIds={["asha"]} onClose={onClose} /></QueryClientProvider></MemoryRouter>);
   return onClose;
 }
 
@@ -127,6 +127,7 @@ describe("Add booking details to an existing event", () => {
 
   it("creates an untimed restaurant booking for a relative meal and links only the existing event", async () => {
     const user = userEvent.setup();
+    const anchor = { ...item, id: "hotel-1", title: "Marina hotel check-in" };
     const relativeMeal = {
       ...item,
       id: "meal-1",
@@ -138,8 +139,9 @@ describe("Add booking details to an existing event", () => {
       has_explicit_start_time: false
     };
     mocks.linkBookingToItineraryItem.mockResolvedValueOnce({ ...relativeMeal, booking_id: booking.id });
-    renderForm(vi.fn(), relativeMeal);
+    renderForm(vi.fn(), relativeMeal, [anchor, relativeMeal]);
 
+    expect(screen.getByText(/After Marina hotel check-in/)).toBeInTheDocument();
     await user.type(screen.getByLabelText("Restaurant or venue (optional)"), "Marina Kitchen");
     await user.click(screen.getByRole("button", { name: "Save booking details" }));
 

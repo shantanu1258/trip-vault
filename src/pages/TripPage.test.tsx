@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { ItineraryItem, Trip, TripCost } from "../features/trips/types";
+import { CostDetailsSheet, TripExpensesContent } from "../features/trips/TripExpenses";
 import type { Booking, FlightLeg, Traveler, TripNote } from "../features/workspace/types";
 
 const mocks = vi.hoisted(() => ({
@@ -26,7 +27,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../components/AppShell", () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
-vi.mock("../components/ModalSheet", () => ({ ModalSheet: ({ children, title }: { children: React.ReactNode; title: string }) => <section aria-label={title}>{children}</section> }));
+vi.mock("../components/ModalSheet", () => ({ ModalSheet: ({ children, title, onClose }: { children: React.ReactNode; title: string; onClose: () => void }) => <section aria-label={title}><button type="button" onClick={onClose}>Back</button>{children}</section> }));
 vi.mock("../features/readiness/OfflinePackControl", () => ({ OfflinePackControl: () => null }));
 vi.mock("../features/sync/localSync", () => ({ localProfileId: vi.fn().mockResolvedValue("owner-user") }));
 vi.mock("../features/trips/api", async () => {
@@ -60,7 +61,7 @@ vi.mock("../features/workspace/api", async () => {
   };
 });
 
-import { CostDetailsSheet, EventDetailsSheet, indexFirstFlightByBooking, NoteCard, ReservationCard, TripExpensesContent, TripPage } from "./TripPage";
+import { EventDetailsSheet, indexFirstFlightByBooking, NoteCard, ReservationCard, TripPage } from "./TripPage";
 
 const activity: ItineraryItem = {
   id: "activity-1",
@@ -150,6 +151,59 @@ describe("trip overview card", () => {
     await userEvent.click(cardBody);
 
     expect(screen.getByRole("region", { name: "Trip settings" })).toBeInTheDocument();
+  });
+});
+
+describe("trip expense summary", () => {
+  it("opens from the trip total and returns to the summary after viewing an expense", async () => {
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listCosts.mockResolvedValue([expense]);
+    mocks.listItinerary.mockResolvedValue([]);
+    mocks.listTravelers.mockResolvedValue(expenseTravelers);
+    mocks.listMembers.mockResolvedValue([
+      { user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1"]}>
+          <Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open trip expenses" }));
+
+    const summary = screen.getByRole("region", { name: "Trip expenses" });
+    await userEvent.click(within(summary).getByRole("button", { name: "View details for Museum tickets" }));
+    const details = screen.getByRole("region", { name: "Museum tickets" });
+    expect(screen.queryByRole("region", { name: "Trip expenses" })).not.toBeInTheDocument();
+
+    await userEvent.click(within(details).getByRole("button", { name: "Back" }));
+
+    expect(screen.queryByRole("region", { name: "Museum tickets" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Trip expenses" })).toBeInTheDocument();
+  });
+
+  it("opens the same summary from the itemized expenses card", async () => {
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listCosts.mockResolvedValue([expense]);
+    mocks.listTravelers.mockResolvedValue(expenseTravelers);
+    mocks.listMembers.mockResolvedValue([
+      { user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1?view=details"]}>
+          <Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open itemized trip expenses" }));
+
+    expect(screen.getByRole("region", { name: "Trip expenses" })).toBeInTheDocument();
   });
 });
 

@@ -201,6 +201,28 @@ describe("relative event timing", () => {
     expect(screen.getByLabelText("Duration (optional)")).toHaveValue(2);
     expect(screen.getByLabelText("Duration unit")).toHaveValue("hours");
   });
+
+  it("retains the saved order while the anchor options load", () => {
+    const relativeItem: ItineraryItem = {
+      ...anchor,
+      id: "relative-1",
+      title: "Museum",
+      timing_mode: "relative",
+      anchor_itinerary_item_id: anchor.id,
+      relative_position: "before",
+      has_explicit_start_time: false
+    };
+    const view = render(<TimingFields trip={trip} itinerary={[]} item={relativeItem} />);
+
+    expect(screen.getByLabelText("Position")).toHaveValue("before");
+    expect(screen.getByLabelText("Event")).toHaveValue("");
+
+    view.rerender(<TimingFields trip={trip} itinerary={[anchor]} item={relativeItem} />);
+
+    expect(screen.getByLabelText("Position")).toHaveValue("before");
+    expect(screen.getByLabelText("Event")).toHaveValue(anchor.id);
+    expect(screen.getByLabelText("Start date & time (optional)")).toHaveValue("");
+  });
 });
 
 describe("exact event timing", () => {

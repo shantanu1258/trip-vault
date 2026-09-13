@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowRight, Check, Clock3, CloudDownload, FileCheck2, MapPin, MapPinned, Plus, Sparkles, TicketCheck, UserPlus, UsersRound, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { CompactCostTotal, ErrorCard, LoadingCard, PageHeader, TripCard } from "../components/TripUi";
 import { getSavedTripFocus, listCosts, listItinerary, listTrips, saveTripFocus } from "../features/trips/api";
+import { calculateTripBalances } from "../features/trips/expenses";
 import { formatEventTime, selectFocusedTrip, sortTripsByRelevance, tripPhase } from "../features/trips/presentation";
-import { listBookings, listFlightLegsForTrip, listIncomingTripOffers, listRequirements, listVaultDocuments, respondToTripOffer } from "../features/workspace/api";
+import { CostDetailsSheet, TripExpensesSheet } from "../features/trips/TripExpenses";
+import type { TripCost } from "../features/trips/types";
+import { listBookings, listFlightLegsForTrip, listIncomingTripOffers, listRequirements, listTravelers, listVaultDocuments, respondToTripOffer } from "../features/workspace/api";
 import { resolveNeedNow } from "../features/home/needNow";
 import { loadAlertInputs } from "../features/alerts/load";
 import { deriveAlerts } from "../features/alerts/engine";
@@ -53,6 +56,8 @@ export function EmptyHomeDashboard() {
 export function HomePage() {
   const queryClient = useQueryClient();
   const [savedFocus, setSavedFocus] = useState<string | null>(null);
+  const [showingExpenses, setShowingExpenses] = useState(false);
+  const [viewingCost, setViewingCost] = useState<TripCost | null>(null);
   const offersQuery = useQuery({ queryKey: ["incoming-trip-offers"], queryFn: listIncomingTripOffers, enabled: navigator.onLine });
   const respondToOffer = useMutation({ mutationFn: ({ id, accept }: { id: string; accept: boolean }) => respondToTripOffer(id, accept), onSuccess: async (_, input) => { await Promise.all([queryClient.invalidateQueries({ queryKey: ["incoming-trip-offers"] }), input.accept ? queryClient.invalidateQueries({ queryKey: ["trips"] }) : Promise.resolve()]); } });
   const tripsQuery = useQuery({ queryKey: ["trips"], queryFn: () => listTrips() });
@@ -60,18 +65,20 @@ export function HomePage() {
   const focusedTrip = selectFocusedTrip(trips, savedFocus);
   const overlappingTrips = trips.filter((trip) => tripPhase(trip) === "current");
   useEffect(() => { getSavedTripFocus().then(setSavedFocus).catch(() => undefined); }, []);
-  const chooseFocus = (tripId: string) => { setSavedFocus(tripId); saveTripFocus(tripId).catch(() => undefined); };
+  const chooseFocus = (tripId: string) => { setSavedFocus(tripId); setShowingExpenses(false); setViewingCost(null); saveTripFocus(tripId).catch(() => undefined); };
   const costsQuery = useQuery({ queryKey: ["home-costs", focusedTrip?.id], queryFn: () => listCosts(focusedTrip!.id), enabled: Boolean(focusedTrip) });
   const itineraryQuery = useQuery({ queryKey: ["itinerary", focusedTrip?.id], queryFn: () => listItinerary(focusedTrip!.id), enabled: Boolean(focusedTrip) });
   const bookingsQuery = useQuery({ queryKey: ["bookings", focusedTrip?.id], queryFn: () => listBookings(focusedTrip!.id), enabled: Boolean(focusedTrip) });
   const flightsQuery = useQuery({ queryKey: ["flights", focusedTrip?.id], queryFn: () => listFlightLegsForTrip(focusedTrip!.id), enabled: Boolean(focusedTrip) });
   const requirementsQuery = useQuery({ queryKey: ["requirements", focusedTrip?.id], queryFn: () => listRequirements(focusedTrip!.id), enabled: Boolean(focusedTrip) });
+  const travelersQuery = useQuery({ queryKey: ["travelers", focusedTrip?.id], queryFn: () => listTravelers(focusedTrip!.id), enabled: Boolean(focusedTrip) });
   const documentsQuery = useQuery({ queryKey: ["documents", focusedTrip?.id], queryFn: () => listVaultDocuments(focusedTrip!.id), enabled: Boolean(focusedTrip) });
   const alertsQuery = useQuery({ queryKey: ["alerts"], queryFn: loadAlertInputs, refetchInterval: 60_000 });
   const criticalAlert = alertsQuery.data ? deriveAlerts(alertsQuery.data).find((alert) => alert.group === "urgent" && (!focusedTrip || !alert.tripId || alert.tripId === focusedTrip.id)) : undefined;
   const now = Date.now();
   const nextItem = itineraryQuery.data?.find((item) => new Date(item.ends_at ?? item.starts_at).getTime() >= now) ?? itineraryQuery.data?.at(-1);
   const needNow = focusedTrip ? resolveNeedNow({ tripId: focusedTrip.id, bookings: bookingsQuery.data ?? [], flights: flightsQuery.data ?? [], requirements: requirementsQuery.data ?? [], documents: documentsQuery.data ?? [] }) : [];
+  const balances = useMemo(() => calculateTripBalances(costsQuery.data ?? []), [costsQuery.data]);
 
   return (
     <AppShell>
@@ -94,13 +101,15 @@ export function HomePage() {
             {overlappingTrips.length > 1 && <section className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-surface p-3"><span className="mr-1 text-xs font-bold text-muted">Current trip:</span>{overlappingTrips.map((trip) => <button type="button" key={trip.id} onClick={() => chooseFocus(trip.id)} aria-pressed={focusedTrip.id === trip.id} className={`tap-target min-h-9 rounded-xl px-3 text-xs font-extrabold ${focusedTrip.id === trip.id ? "bg-brand text-surface" : "bg-elevated text-muted"}`}>{trip.title}</button>)}</section>}
             {needNow.length > 0 && <section className="mt-5"><p className="eyebrow mb-3">Need now</p><div className="flex snap-x gap-3 overflow-x-auto pb-2">{needNow.map((item) => <Link key={item.id} to={item.target} className="surface-card min-w-[10.5rem] snap-start p-4 transition-transform duration-200 hover:-translate-y-0.5 motion-reduce:hover:translate-y-0"><span className="grid size-9 place-items-center rounded-xl bg-brand-soft text-brand"><FileCheck2 className="size-4" /></span><p className="mt-4 text-sm font-black">{item.label}</p><p className="mt-1 line-clamp-2 text-xs text-muted">{item.detail}</p></Link>)}</div></section>}
             <section className="mt-5 grid gap-4 md:grid-cols-2">
-              <div className="surface-card page-enter p-5"><Link to={`/trips/${focusedTrip.id}?view=details&section=costs`} className="group block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-brand"><p className="eyebrow">Trip expenses</p><div className="mt-3 flex items-center justify-between gap-3"><CompactCostTotal costs={costsQuery.data ?? []} emptyText="No costs added yet" /><ArrowRight className="size-4 shrink-0 text-brand transition-transform group-hover:translate-x-0.5" /></div><p className="mt-2 text-xs text-muted">Open the itemized costs, payers, participants, and balances.</p></Link><Link to={`/trips/${focusedTrip.id}?add=cost`} className="mt-3 inline-flex items-center gap-2 text-sm font-extrabold text-brand"><Plus className="size-4" /> Add cost</Link></div>
+              <div className="surface-card page-enter p-5"><button type="button" onClick={() => setShowingExpenses(true)} className="group block w-full rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-brand" aria-label="Open trip expenses"><p className="eyebrow">Trip expenses</p><div className="mt-3 flex items-center justify-between gap-3"><CompactCostTotal costs={costsQuery.data ?? []} emptyText="No costs added yet" /><ArrowRight className="size-4 shrink-0 text-brand transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" /></div><p className="mt-2 text-xs text-muted">Open the itemized costs, payers, participants, and balances.</p></button><Link to={`/trips/${focusedTrip.id}?add=cost`} className="mt-3 inline-flex items-center gap-2 text-sm font-extrabold text-brand"><Plus className="size-4" /> Add cost</Link></div>
               <div className="surface-card page-enter p-5"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted"><Sparkles className="size-4" /> Upcoming work</div><p className="mt-3 font-display text-xl font-black">{(requirementsQuery.data?.filter((item) => !["complete", "not_required"].includes(item.status)).length ?? 0) > 0 ? `${requirementsQuery.data?.filter((item) => !["complete", "not_required"].includes(item.status)).length} readiness item${requirementsQuery.data?.filter((item) => !["complete", "not_required"].includes(item.status)).length === 1 ? "" : "s"} left` : nextItem ? "Add bookings and documents" : "Build your itinerary"}</p><p className="mt-2 text-sm leading-6 text-muted">{requirementsQuery.data?.find((item) => !["complete", "not_required"].includes(item.status))?.due_date ? `Nearest due date: ${requirementsQuery.data.find((item) => !["complete", "not_required"].includes(item.status))?.due_date}.` : "Keep the information you will need during the trip directly on its timeline."}</p><Link to={(requirementsQuery.data?.some((item) => !["complete", "not_required"].includes(item.status))) ? `/trips/${focusedTrip.id}/readiness` : `/trips/${focusedTrip.id}?add=itinerary`} className="mt-3 inline-flex items-center gap-2 text-sm font-extrabold text-brand">Continue setup <ArrowRight className="size-4" /></Link></div>
             </section>
             {trips.length > 1 && <section className="mt-10"><div className="mb-3 flex items-center justify-between"><h2 className="font-display text-xl font-black">Other trips</h2><Link className="text-sm font-bold text-brand" to="/trips">See all</Link></div><div className="grid gap-4 md:grid-cols-2">{trips.slice(1, 3).map((trip) => <TripCard key={trip.id} trip={trip} />)}</div></section>}
           </>
         )}
       </div>
+      {focusedTrip && showingExpenses && <TripExpensesSheet costs={costsQuery.data ?? []} balances={balances} travelers={travelersQuery.data ?? []} onClose={() => { setShowingExpenses(false); setViewingCost(null); }} onViewCost={(cost) => { setShowingExpenses(false); setViewingCost(cost); }} />}
+      {focusedTrip && viewingCost && <CostDetailsSheet cost={viewingCost} travelers={travelersQuery.data ?? []} itinerary={itineraryQuery.data ?? []} bookings={bookingsQuery.data ?? []} editable={false} onClose={() => { setViewingCost(null); setShowingExpenses(true); }} onEdit={() => undefined} onArchive={() => undefined} />}
     </AppShell>
   );
 }
