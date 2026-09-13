@@ -81,6 +81,18 @@ export function CostTotals({ costs, emptyText = "No costs added yet" }: { costs:
   );
 }
 
+export function CompactCostTotal({ costs, emptyText = "No costs added yet", inverse = false }: { costs: TripCost[]; emptyText?: string; inverse?: boolean }) {
+  const totals = Object.entries(groupCostTotals(costs));
+  const value = totals.length ? totals.map(([currency, amount]) => formatMoney(amount, currency)).join(" + ") : emptyText;
+  return (
+    <span className={`inline-flex min-w-0 items-center gap-2 text-sm ${inverse ? "text-surface/70" : "text-muted"}`}>
+      <WalletCards className="size-4 shrink-0" />
+      <span className="font-bold">Total trip cost</span>
+      <strong className={`truncate font-display text-base ${inverse ? "text-surface" : "text-ink"}`}>{value}</strong>
+    </span>
+  );
+}
+
 export function AddButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
   return <button type="button" onClick={onClick} className="tap-target inline-flex items-center justify-center gap-2 rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm font-extrabold hover:border-brand/40"><Plus className="size-4" />{children}</button>;
 }

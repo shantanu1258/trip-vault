@@ -271,7 +271,14 @@ export async function addBooking(input: CreateBookingInput): Promise<Booking> {
   }
   const { data, error } = await client().from("bookings").insert({ id, trip_id: input.tripId, ...bookingFields(input), created_by: actor }).select(bookingSelect).single();
   if (error) throw error;
-  if (input.travelerIds?.length) { const { error: travelersError } = await client().from("booking_travelers").insert(input.travelerIds.map((travelerId) => ({ booking_id: id, traveler_id: travelerId }))); if (travelersError) throw travelersError; }
+  if (input.travelerIds?.length) {
+    const { error: travelersError } = await client().from("booking_travelers").insert(input.travelerIds.map((travelerId) => ({ booking_id: id, traveler_id: travelerId })));
+    if (travelersError) {
+      const { error: rollbackError } = await client().from("bookings").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+      if (rollbackError) throw new Error(`Booking travelers could not be saved, and the unfinished booking could not be archived. Booking ID: ${id}. Refresh the trip before trying again.`);
+      throw travelersError;
+    }
+  }
   await cacheEntity(`bookings:${input.tripId}`, data as Booking);
   return data as Booking;
 }
@@ -734,7 +741,7 @@ export async function updateRequirementStatus(id: string, status: RequirementSta
 }
 
 const documentSelect = "id,trip_id,booking_id,flight_leg_id,journey_leg_id,traveler_id,assignment_mode,title,category,purpose,short_label,visibility,uploaded_by,current_version_id,version,updated_at,deleted_at,document_travelers(traveler_id),current_version:document_versions!documents_current_version_id_fkey(id,storage_bucket,storage_path,original_filename,mime_type,byte_size,sha256,version_number,created_at)";
-const accountDocumentUploadSelect = "id,owner_id,storage_path,original_filename,mime_type,byte_size,sha256,associated_document_id,created_at,updated_at";
+const accountDocumentUploadSelect = "id,owner_id,storage_path,original_filename,mime_type,byte_size,sha256,associated_document_id,stored_at,created_at,updated_at";
 
 type DocumentResponse = VaultDocument & { document_travelers?: { traveler_id: string }[] };
 
@@ -781,34 +788,70 @@ async function pendingAccountUploadOperations(uploadIds?: string[]) {
 export function mergeAccountDocumentUploads(cloud: AccountDocumentUpload[], local: AccountDocumentUpload[], pendingIds: Iterable<string>) {
   const pending = new Set(pendingIds);
   const merged = new Map<string, AccountDocumentUpload>(
-    cloud.map((upload) => [upload.id, { ...upload, sync_state: "synced" as const }])
+    cloud.map((upload) => [upload.id, { ...upload, sync_state: upload.stored_at ? "synced" as const : "queued" as const }])
   );
   for (const upload of local) {
-    if (pending.has(upload.id) || !merged.has(upload.id)) {
+    const cloudUpload = merged.get(upload.id);
+    // A cloud association is authoritative even if an old local outbox entry
+    // survived a lost response. Keeping the local row here would make a file
+    // that is already in the Vault reappear in the unfinished inbox.
+    if (cloudUpload?.associated_document_id) continue;
+    if (pending.has(upload.id) || !cloudUpload) {
       merged.set(upload.id, {
         ...upload,
-        sync_state: pending.has(upload.id) ? "queued" : (upload.sync_state ?? "synced")
+        sync_state: pending.has(upload.id) || !upload.stored_at ? "queued" : (upload.sync_state ?? "synced")
       });
     }
   }
   return [...merged.values()].filter((upload) => !upload.associated_document_id).sort((left, right) => right.created_at.localeCompare(left.created_at));
 }
 
+export function isMissingAccountDocumentObject(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { message?: unknown; details?: unknown; hint?: unknown };
+  return [candidate.message, candidate.details, candidate.hint]
+    .some((value) => /document file is not stored yet/i.test(String(value ?? "")));
+}
+
+async function verifyAccountDocumentObject(upload: AccountDocumentUpload): Promise<AccountDocumentUpload> {
+  const { data: storedAt, error } = await client().rpc("finalize_account_document_upload", { requested_upload_id: upload.id });
+  if (error) return {
+    ...upload,
+    sync_state: "queued",
+    sync_error: isMissingAccountDocumentObject(error) ? "storage_missing" : "verification_failed",
+    can_retry: false,
+    can_verify: true
+  };
+  if (typeof storedAt !== "string") return { ...upload, sync_state: "queued", sync_error: "verification_failed", can_retry: false, can_verify: true };
+  return { ...upload, stored_at: storedAt, sync_state: "synced", sync_error: undefined, can_retry: false, can_verify: false };
+}
+
 export async function listAccountDocumentUploads(): Promise<AccountDocumentUpload[]> {
   const local = await readEntityList<AccountDocumentUpload>("account-document-uploads");
   const operations = await pendingAccountUploadOperations();
   const pendingIds = operations.map((operation) => operation.operation === "upload_account_document" ? operation.entityId : String((operation.payload as { uploadId?: string }).uploadId ?? ""));
-  const annotate = (uploads: AccountDocumentUpload[]) => uploads.map((upload) => ({
-    ...upload,
-    sync_error: operations.find((operation) => operation.entityId === upload.id || (operation.payload as { uploadId?: string }).uploadId === upload.id)?.lastErrorCode,
-    association_pending: operations.some((operation) => operation.operation === "associate_account_document" && (operation.payload as { uploadId?: string }).uploadId === upload.id)
-  }));
+  const annotate = (uploads: AccountDocumentUpload[]) => uploads.map((upload) => {
+    const operation = operations.find((candidate) => candidate.entityId === upload.id || (candidate.payload as { uploadId?: string }).uploadId === upload.id);
+    return {
+      ...upload,
+      sync_error: operation?.lastErrorCode ?? upload.sync_error,
+      association_pending: operations.some((candidate) => candidate.operation === "associate_account_document" && (candidate.payload as { uploadId?: string }).uploadId === upload.id),
+      can_retry: Boolean(operation),
+      can_verify: upload.can_verify ?? (!upload.stored_at && !operation)
+    };
+  });
   let rows = annotate(mergeAccountDocumentUploads([], local, pendingIds));
   if (navigator.onLine) {
     try {
-      const { data, error } = await client().from("account_document_uploads").select(accountDocumentUploadSelect).is("associated_document_id", null).order("created_at", { ascending: false });
+      const { data, error } = await client().from("account_document_uploads").select(accountDocumentUploadSelect).order("created_at", { ascending: false });
       if (error) throw error;
-      rows = annotate(mergeAccountDocumentUploads((data ?? []) as AccountDocumentUpload[], local, pendingIds));
+      const cloudRows = (data ?? []) as AccountDocumentUpload[];
+      const reconciledCloud = await Promise.all(cloudRows.map((upload) =>
+        upload.associated_document_id || upload.stored_at || operations.some((operation) => operation.entityId === upload.id)
+          ? upload
+          : verifyAccountDocumentObject(upload)
+      ));
+      rows = annotate(mergeAccountDocumentUploads(reconciledCloud, local, pendingIds));
       await cacheEntityList("account-document-uploads", rows);
     } catch (error) {
       if (!local.length) throw error;
@@ -921,7 +964,7 @@ export async function stageAccountDocument(file: File, knownChecksum?: string): 
   const uploadId = crypto.randomUUID();
   const createdAt = new Date().toISOString();
   const storagePath = `${actor}/${uploadId}/${sanitizeFilename(file.name)}`;
-  const upload: AccountDocumentUpload = { id: uploadId, owner_id: actor, storage_path: storagePath, original_filename: file.name, mime_type: file.type, byte_size: file.size, sha256: checksum, associated_document_id: null, created_at: createdAt, updated_at: createdAt, sync_state: "queued" };
+  const upload: AccountDocumentUpload = { id: uploadId, owner_id: actor, storage_path: storagePath, original_filename: file.name, mime_type: file.type, byte_size: file.size, sha256: checksum, associated_document_id: null, stored_at: null, created_at: createdAt, updated_at: createdAt, sync_state: "queued", can_retry: true };
   const row = { id: upload.id, owner_id: upload.owner_id, storage_path: upload.storage_path, original_filename: upload.original_filename, mime_type: upload.mime_type, byte_size: upload.byte_size, sha256: upload.sha256, associated_document_id: null };
   await storeOfflineFile({ profileId: actor, versionId: upload.id, blob: file, sha256: checksum, pinReason: "created" });
   await cacheEntity("account-document-uploads", upload);
@@ -929,7 +972,16 @@ export async function stageAccountDocument(file: File, knownChecksum?: string): 
   if (navigator.onLine) {
     await syncOutbox();
     const pending = await database.outbox.get(operationId);
-    if (!pending) return { ...upload, sync_state: "synced" };
+    if (!pending) {
+      const finalized = await readEntityById<AccountDocumentUpload>("account-document-uploads", upload.id);
+      if (finalized?.stored_at) return { ...finalized, sync_state: "synced", sync_error: undefined, can_retry: false };
+      const { data, error } = await client().from("account_document_uploads").select(accountDocumentUploadSelect).eq("id", upload.id).single();
+      if (error) throw error;
+      if (!data.stored_at) throw new Error("Supabase did not confirm the stored document file.");
+      const stored = { ...(data as AccountDocumentUpload), sync_state: "synced" as const, can_retry: false };
+      await cacheEntity("account-document-uploads", stored);
+      return stored;
+    }
     return { ...upload, sync_error: pending.lastErrorCode };
   }
   return upload;
@@ -953,7 +1005,11 @@ export type AssociateAccountDocumentInput = {
 
 export async function associateAccountDocument(input: AssociateAccountDocumentInput): Promise<VaultDocument> {
   const actor = await userId();
-  const existingAssociation = (await pendingAccountUploadOperations([input.upload.id]))
+  const uploadOperations = await pendingAccountUploadOperations([input.upload.id]);
+  if (!input.upload.stored_at && !uploadOperations.some((operation) => operation.operation === "upload_account_document")) {
+    throw new Error("This file did not finish uploading on this device. Select it again here, or retry it on the device where it was added.");
+  }
+  const existingAssociation = uploadOperations
     .find((operation) => operation.operation === "associate_account_document");
   if (existingAssociation) {
     await database.outbox.update(existingAssociation.operationId, { lastErrorCode: undefined, attemptCount: 0 });
@@ -1000,7 +1056,7 @@ export async function associateAccountDocument(input: AssociateAccountDocumentIn
     sync_state: "queued"
   };
   await Promise.all([cacheEntity(`documents:${input.tripId}`, document), cacheEntity("documents", document)]);
-  const dependencies = (await pendingAccountUploadOperations([input.upload.id])).filter((operation) => operation.operation === "upload_account_document").map((operation) => operation.operationId);
+  const dependencies = uploadOperations.filter((operation) => operation.operation === "upload_account_document").map((operation) => operation.operationId);
   const associationOperation = await queueDocumentAssociation({ documentId, uploadId: input.upload.id, rpc, dependsOn: dependencies });
   if (navigator.onLine) {
     await syncOutbox();
@@ -1016,11 +1072,36 @@ export async function associateAccountDocument(input: AssociateAccountDocumentIn
 
 export async function retryAccountDocumentUpload(uploadId: string) {
   const operations = await pendingAccountUploadOperations([uploadId]);
+  if (!operations.length) {
+    if (!navigator.onLine) throw new Error("Reconnect to check this private upload.");
+    const { data, error } = await client().from("account_document_uploads").select(accountDocumentUploadSelect).eq("id", uploadId).maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("This private upload no longer exists.");
+    const verified = data.stored_at
+      ? { ...(data as AccountDocumentUpload), sync_state: "synced" as const, sync_error: undefined, can_retry: false, can_verify: false }
+      : await verifyAccountDocumentObject(data as AccountDocumentUpload);
+    await cacheEntity("account-document-uploads", verified);
+    if (!verified.stored_at) {
+      if (verified.sync_error === "storage_missing") throw new Error("The cloud file is missing. Delete this unfinished entry and select the original again here, or retry on the device where it was added.");
+      throw new Error("Supabase could not verify this cloud file yet. Check your connection and try again.");
+    }
+    return { synced: 0, failed: 0 };
+  }
   for (const operation of operations) await database.outbox.update(operation.operationId, { lastErrorCode: undefined, attemptCount: 0 });
   const result = await syncOutbox();
   if (navigator.onLine) {
-    const { data } = await client().from("account_document_uploads").select(accountDocumentUploadSelect).eq("id", uploadId).maybeSingle();
-    if (data) await cacheEntity("account-document-uploads", { ...(data as AccountDocumentUpload), sync_state: "synced" });
+    const [remaining, response] = await Promise.all([
+      pendingAccountUploadOperations([uploadId]),
+      client().from("account_document_uploads").select(accountDocumentUploadSelect).eq("id", uploadId).maybeSingle()
+    ]);
+    if (response.error) throw response.error;
+    if (response.data) await cacheEntity("account-document-uploads", {
+      ...(response.data as AccountDocumentUpload),
+      sync_state: response.data.stored_at && !remaining.length ? "synced" : "queued",
+      sync_error: remaining[0]?.lastErrorCode ?? (!response.data.stored_at && !remaining.length ? "storage_missing" : undefined),
+      association_pending: remaining.some((operation) => operation.operation === "associate_account_document"),
+      can_retry: Boolean(remaining.length)
+    });
   }
   return result;
 }
@@ -1028,6 +1109,10 @@ export async function retryAccountDocumentUpload(uploadId: string) {
 export async function deleteAccountDocumentUpload(upload: AccountDocumentUpload) {
   const actor = await userId();
   const operations = await pendingAccountUploadOperations([upload.id]);
+  const neverAttemptedUpload = operations.some((operation) => operation.operation === "upload_account_document" && operation.attemptCount === 0);
+  if (!navigator.onLine && (upload.stored_at || upload.sync_state === "synced" || !neverAttemptedUpload)) {
+    throw new Error("Reconnect to delete this Document Inbox file. Only files still waiting for their first upload can be discarded offline; a cloud-backed file would reappear on the next sync.");
+  }
   const association = operations.find((operation) => operation.operation === "associate_account_document");
   const documentId = association ? String((association.payload as { rpc?: { requested_document_id?: string } }).rpc?.requested_document_id ?? "") : undefined;
   if (navigator.onLine) {

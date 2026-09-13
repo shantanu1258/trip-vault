@@ -32,6 +32,14 @@ export function eventEndDetails(item: ItineraryItem) {
   return { endsAt: item.ends_at, duration: journeyDuration(item.starts_at, item.ends_at), journey: isJourneyEventType(item.event_type) };
 }
 
+export function eventEndTimeZone(item: ItineraryItem, flights: FlightLeg[], journeys: JourneyLeg[]) {
+  if (!item.booking_id || !isJourneyEventType(item.event_type)) return item.timezone;
+  const flight = flights.filter((leg) => leg.booking_id === item.booking_id).sort((left, right) => left.segment_order - right.segment_order).at(-1);
+  if (flight) return flight.arrival_timezone;
+  const journey = journeys.filter((leg) => leg.booking_id === item.booking_id).sort((left, right) => left.segment_order - right.segment_order).at(-1);
+  return journey?.destination_timezone ?? item.timezone;
+}
+
 export function eventTimeLabel(item: ItineraryItem) {
   if (item.timing_mode === "unscheduled") return "No date yet";
   if (item.timing_mode === "relative") return `${item.relative_position === "before" ? "Before" : "After"} another event`;
@@ -65,8 +73,26 @@ export function resolveCurrentTimelineItem(items: ItineraryItem[], now = new Dat
 
 export function journeyDuration(start: string, end: string) {
   const minutes = Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60_000));
-  const days = Math.floor(minutes / 1_440); const hours = Math.floor((minutes % 1_440) / 60); const remainder = minutes % 60;
-  return [days ? `${days}d` : "", hours ? `${hours}h` : "", remainder ? `${remainder}m` : ""].filter(Boolean).join(" ") || "0m";
+  const showWeeks = minutes > 10_080;
+  const showDays = minutes > 1_440;
+  const weeks = showWeeks ? Math.floor(minutes / 10_080) : 0;
+  const afterWeeks = showWeeks ? minutes % 10_080 : minutes;
+  const days = showDays ? Math.floor(afterWeeks / 1_440) : 0;
+  const afterDays = showDays ? afterWeeks % 1_440 : afterWeeks;
+  const hours = Math.floor(afterDays / 60);
+  const remainder = minutes % 60;
+  return [weeks ? `${weeks}w` : "", days ? `${days}d` : "", hours ? `${hours}h` : "", remainder ? `${remainder}m` : ""].filter(Boolean).join(" ") || "0m";
+}
+
+export function journeyRoute(legs: Array<{ origin?: string | null; destination?: string | null }>) {
+  const stops: string[] = [];
+  for (const leg of legs) {
+    const origin = leg.origin?.trim();
+    const destination = leg.destination?.trim();
+    if (origin && stops.at(-1) !== origin) stops.push(origin);
+    if (destination && stops.at(-1) !== destination) stops.push(destination);
+  }
+  return stops.join(" → ");
 }
 
 function dateKey(value: string, timeZone: string) {

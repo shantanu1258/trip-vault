@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useDeviceAuthentication } from "../lib/auth/useDeviceAuthentication";
 import { WelcomePage } from "../pages/WelcomePage";
 import { getSavedTripFocus, listTrips } from "../features/trips/api";
-import { tripPhase } from "../features/trips/presentation";
+import { selectFocusedTrip, tripPhase } from "../features/trips/presentation";
 
 export function RootRoute() {
   const authenticated = useDeviceAuthentication();
@@ -21,7 +21,7 @@ export function RootRoute() {
 
   if (authenticated === null || (authenticated && (trips.isLoading || !focusReady))) return <div className="grid min-h-dvh place-items-center bg-canvas text-brand"><Loader2 className="size-7 animate-spin motion-reduce:animate-none" aria-label="Opening Trip Vault" /></div>;
   if (!authenticated) return <WelcomePage />;
-  const currentTrips = (trips.data ?? []).filter((trip) => tripPhase(trip) === "current");
-  const launchTrip = currentTrips.find((trip) => trip.id === savedFocus) ?? (currentTrips.length === 1 ? currentTrips[0] : null);
+  const currentTrips = (trips.data ?? []).filter((trip) => trip.status !== "archived" && tripPhase(trip) === "current");
+  const launchTrip = currentTrips.length ? selectFocusedTrip(currentTrips, savedFocus) : null;
   return <Navigate to={launchTrip ? `/trips/${launchTrip.id}` : "/home"} replace />;
 }

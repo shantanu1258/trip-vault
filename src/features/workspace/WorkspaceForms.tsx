@@ -32,7 +32,6 @@ import { ParticipantSelector } from "./ParticipantSelector";
 import { useFormDraft } from "../../lib/forms/useFormDraft";
 import { AddEventForm } from "../timeline/AddEventForm";
 import { VendorPicker } from "../metadata/VendorPicker";
-import { TimeZoneAutocomplete } from "../../components/TimeZoneAutocomplete";
 
 const requiredText = (message: string, max = 160) => z.string().trim().min(1, message).max(max);
 
@@ -43,6 +42,7 @@ const bookingSchema = z.object({
   journeyScope: z.enum(["domestic", "international"]).optional(), bookedViaName: z.string().trim().max(160).optional(),
   bookedViaUrl: z.string().trim().url("Use a complete booking website address.").or(z.literal("")).optional(), contactName: z.string().trim().max(160).optional(), contactPhone: z.string().trim().max(40).optional()
 }).superRefine((value, context) => {
+  if (value.type === "flight" && !value.referenceCode) context.addIssue({ code: "custom", path: ["referenceCode"], message: "Add the flight booking reference / PNR." });
   if (value.startsAt && value.endsAt && value.endsAt < value.startsAt) context.addIssue({ code: "custom", path: ["endsAt"], message: "End time cannot be before start time." });
 });
 
@@ -51,12 +51,91 @@ export function AddBookingForm({ trip, travelers, preferredTravelerId, onClose }
 }
 
 export function EditBookingForm({ trip, booking, travelers, selectedTravelerIds, onClose }: { trip: Trip; booking: Booking; travelers: Traveler[]; selectedTravelerIds: string[]; onClose: () => void }) {
-  const queryClient = useQueryClient(); const [message, setMessage] = useState("");
-  const mutation = useMutation({ mutationFn: updateBooking, onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ["booking", booking.id] }), queryClient.invalidateQueries({ queryKey: ["bookings", trip.id] }), queryClient.invalidateQueries({ queryKey: ["booking-traveler-ids", booking.id] })]); onClose(); } });
+  const queryClient = useQueryClient();
+  const [message, setMessage] = useState("");
+  const [bookedViaUrl, setBookedViaUrl] = useState(booking.booked_via_url ?? "");
+  const mutation = useMutation({
+    mutationFn: updateBooking,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["booking", booking.id] }),
+        queryClient.invalidateQueries({ queryKey: ["bookings", trip.id] }),
+        queryClient.invalidateQueries({ queryKey: ["booking-traveler-ids", booking.id] })
+      ]);
+      onClose();
+    }
+  });
   const timezone = booking.source_timezone ?? trip.primary_timezone;
-  const providerIsDerived = ["flight", "train", "bus", "ferry", "cab"].includes(booking.type);
-  const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setMessage(""); const form = new FormData(event.currentTarget); const parsed = bookingSchema.safeParse(Object.fromEntries(form)); if (!parsed.success) { setMessage(firstValidationMessage(parsed.error)); return; } const zone = parsed.data.timezone || timezone; try { mutation.mutate({ ...parsed.data, id: booking.id, tripId: trip.id, version: booking.version, startsAt: parsed.data.startsAt ? localDateTimeToIso(parsed.data.startsAt, zone) : undefined, endsAt: parsed.data.endsAt ? localDateTimeToIso(parsed.data.endsAt, zone) : undefined, timezone: zone, travelerIds: form.getAll("travelerIds").map(String) }); } catch (error) { setMessage(getErrorMessage(error)); } };
-  return <ModalSheet eyebrow={trip.title} title="Edit booking" onClose={onClose}><form className="mt-6 space-y-4" onSubmit={submit}><input type="hidden" name="type" value={booking.type} /><label className="form-label">Type<input className="form-input capitalize opacity-70" value={booking.type} readOnly /></label><label className="form-label">Booking title<input autoFocus className="form-input" name="title" defaultValue={booking.title} /></label><div className="grid gap-4 sm:grid-cols-2">{providerIsDerived ? <><input type="hidden" name="provider" value={booking.provider ?? ""} /><div className="rounded-xl bg-elevated p-3 text-sm"><strong className="block">Airline / operator</strong><span className="mt-1 block text-xs text-muted">{booking.provider || "Derived from the journey details"}</span></div></> : <label className="form-label">Service provider<input className="form-input" name="provider" defaultValue={booking.provider ?? ""} placeholder="Enter the business delivering this service" /></label>}<label className="form-label">Booking reference / PNR<input className="form-input uppercase" name="referenceCode" defaultValue={booking.reference_code ?? ""} placeholder="Enter the reference from the confirmation" /></label></div>{booking.journey_scope && <label className="form-label">Journey type<select className="form-input" name="journeyScope" defaultValue={booking.journey_scope}><option value="domestic">Domestic</option><option value="international">International</option></select></label>}<div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Starts<input className="form-input" name="startsAt" type="datetime-local" defaultValue={isoToLocalDateTime(booking.start_at, timezone)} /></label><label className="form-label">Ends<input className="form-input" name="endsAt" type="datetime-local" defaultValue={isoToLocalDateTime(booking.end_at, timezone)} /></label></div><label className="form-label">Booking time zone<TimeZoneAutocomplete name="timezone" defaultValue={timezone} /></label><label className="form-label">Location<input className="form-input" name="location" defaultValue={booking.location?.address ?? booking.location?.label ?? ""} /></label><div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Booked via<VendorPicker defaultValue={booking.booked_via_name ?? ""} /></label><label className="form-label">Booking website<input className="form-input" type="url" name="bookedViaUrl" defaultValue={booking.booked_via_url ?? ""} placeholder="Paste the reservation or confirmation link" /></label><label className="form-label">Contact name<input className="form-input" name="contactName" defaultValue={booking.contact_name ?? ""} placeholder="Enter the service contact or driver name" /></label><label className="form-label">Phone<input className="form-input" type="tel" name="contactPhone" defaultValue={booking.contact_phone ?? ""} placeholder="Include country code for Call and WhatsApp" /></label></div><label className="form-label">Notes<textarea className="form-input min-h-24" name="notes" defaultValue={typeof booking.details.notes === "string" ? booking.details.notes : ""} /></label><ParticipantSelector travelers={travelers} selectedTravelerIds={selectedTravelerIds} explicitAll />{(message || mutation.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{message || getErrorMessage(mutation.error)}</p>}<button className="primary-button w-full" disabled={mutation.isPending}>{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <TicketCheck className="size-4" />} Save changes</button></form></ModalSheet>;
+  const isJourney = ["flight", "train", "bus", "ferry", "cab"].includes(booking.type);
+  const isHotel = booking.type === "hotel";
+  const providerIsDerived = isJourney || isHotel;
+  const showContactName = booking.type !== "flight" && booking.type !== "train";
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMessage("");
+    const form = new FormData(event.currentTarget);
+    const parsed = bookingSchema.safeParse(Object.fromEntries(form));
+    if (!parsed.success) { setMessage(firstValidationMessage(parsed.error)); return; }
+    const zone = parsed.data.timezone || timezone;
+    try {
+      mutation.mutate({
+        ...parsed.data,
+        provider: isHotel ? parsed.data.title : parsed.data.provider,
+        id: booking.id,
+        tripId: trip.id,
+        version: booking.version,
+        startsAt: parsed.data.startsAt ? localDateTimeToIso(parsed.data.startsAt, zone) : undefined,
+        endsAt: parsed.data.endsAt ? localDateTimeToIso(parsed.data.endsAt, zone) : undefined,
+        timezone: zone,
+        travelerIds: form.getAll("travelerIds").map(String)
+      });
+    } catch (error) { setMessage(getErrorMessage(error)); }
+  };
+
+  return <ModalSheet eyebrow={trip.title} title="Edit booking" onClose={onClose}>
+    <form className="mt-6 space-y-4" onSubmit={submit}>
+      <input type="hidden" name="type" value={booking.type} />
+      <input type="hidden" name="timezone" value={timezone} />
+      <label className="form-label">Type<input className="form-input capitalize opacity-70" value={booking.type} readOnly /></label>
+      <label className="form-label">{isHotel ? "Hotel / property name" : "Booking title"}<input autoFocus className="form-input" name="title" defaultValue={booking.title} /></label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {providerIsDerived ? <>
+          <input type="hidden" name="provider" value={booking.provider ?? ""} />
+          <div className="rounded-xl bg-elevated p-3 text-sm">
+            <strong className="block">{isHotel ? "Property" : "Airline / operator"}</strong>
+            <span className="mt-1 block text-xs text-muted">{isHotel ? "Uses the hotel / property name above" : booking.provider || "Derived from the journey legs"}</span>
+          </div>
+        </> : <label className="form-label">Service provider<input className="form-input" name="provider" defaultValue={booking.provider ?? ""} placeholder="Name the business providing this booking" /></label>}
+        <label className="form-label">{booking.type === "flight" ? "Booking reference / PNR" : "Booking reference"}<input className="form-input uppercase" name="referenceCode" defaultValue={booking.reference_code ?? ""} placeholder="Enter the reference shown on the confirmation" /></label>
+      </div>
+      {booking.journey_scope && <>
+        <input type="hidden" name="journeyScope" value={booking.journey_scope} />
+        <div className="rounded-xl bg-elevated p-3 text-sm"><strong className="capitalize">{booking.journey_scope} journey</strong><span className="mt-1 block text-xs text-muted">Edit route times, airports, stations, and connections in the journey details.</span></div>
+      </>}
+      {isJourney ? <>
+        <input type="hidden" name="startsAt" value={isoToLocalDateTime(booking.start_at, timezone)} />
+        <input type="hidden" name="endsAt" value={isoToLocalDateTime(booking.end_at, timezone)} />
+        <input type="hidden" name="location" value="" />
+      </> : <>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="form-label">Starts<input className="form-input" name="startsAt" type="datetime-local" defaultValue={isoToLocalDateTime(booking.start_at, timezone)} /></label>
+          <label className="form-label">Ends<input className="form-input" name="endsAt" type="datetime-local" defaultValue={isoToLocalDateTime(booking.end_at, timezone)} /></label>
+        </div>
+        <label className="form-label">Location<input className="form-input" name="location" defaultValue={booking.location?.address ?? booking.location?.label ?? ""} placeholder="Enter the place name or full address" /></label>
+      </>}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="form-label">Booked via<VendorPicker defaultValue={booking.booked_via_name ?? ""} onWebsite={setBookedViaUrl} /></label>
+        <label className="form-label">Booking website<input className="form-input" type="url" name="bookedViaUrl" value={bookedViaUrl} onChange={(event) => setBookedViaUrl(event.target.value)} placeholder="Paste the reservation or confirmation link" /></label>
+        {showContactName && <label className="form-label">Contact name<input className="form-input" name="contactName" defaultValue={booking.contact_name ?? ""} placeholder="Name the property, activity, or transport contact" /></label>}
+        {!showContactName && <input type="hidden" name="contactName" value={booking.contact_name ?? ""} />}
+        <label className="form-label">Phone<input className="form-input" type="tel" name="contactPhone" defaultValue={booking.contact_phone ?? ""} placeholder="Include country code for Call and WhatsApp" /></label>
+      </div>
+      <label className="form-label">Notes<textarea className="form-input min-h-24" name="notes" defaultValue={typeof booking.details.notes === "string" ? booking.details.notes : ""} /></label>
+      <ParticipantSelector travelers={travelers} selectedTravelerIds={selectedTravelerIds} explicitAll />
+      {(message || mutation.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{message || getErrorMessage(mutation.error)}</p>}
+      <button className="primary-button w-full" disabled={mutation.isPending}>{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <TicketCheck className="size-4" />} Save changes</button>
+    </form>
+  </ModalSheet>;
 }
 
 export function AddTravelerForm({ trip, onClose }: { trip: Trip; onClose: () => void }) {

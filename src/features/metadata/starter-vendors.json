@@ -4,6 +4,8 @@
   { "stableKey": "expedia", "name": "Expedia", "websiteUrl": "https://www.expedia.com", "brandColor": "#1f1f1f" },
   { "stableKey": "makemytrip", "name": "MakeMyTrip", "websiteUrl": "https://www.makemytrip.com", "brandColor": "#e64129" },
   { "stableKey": "cleartrip", "name": "Cleartrip", "websiteUrl": "https://www.cleartrip.com", "brandColor": "#f77728" },
+  { "stableKey": "airbnb", "name": "Airbnb", "websiteUrl": "https://www.airbnb.com", "brandColor": "#ff385c" },
+  { "stableKey": "trip-com", "name": "Trip.com", "websiteUrl": "https://www.trip.com", "brandColor": "#287dfa" },
   { "stableKey": "airline-direct", "name": "Airline website", "websiteUrl": null, "brandColor": "#142f31" },
   { "stableKey": "hotel-direct", "name": "Hotel directly", "websiteUrl": null, "brandColor": "#142f31" }
 ]

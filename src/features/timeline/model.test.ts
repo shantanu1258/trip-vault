@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrivalDayOffset, eventEndDetails, eventTimeLabel, journeyDuration, journeyEndDetails, normalizePhoneNumber, phoneActionUrls, readinessSummary, resolveCurrentTimelineItem, searchTrip, sortTimelineItems, timelinePhase, validateLegOrder } from "./model";
+import { arrivalDayOffset, eventEndDetails, eventEndTimeZone, eventTimeLabel, journeyDuration, journeyEndDetails, journeyRoute, normalizePhoneNumber, phoneActionUrls, readinessSummary, resolveCurrentTimelineItem, searchTrip, sortTimelineItems, timelinePhase, validateLegOrder } from "./model";
 import type { ItineraryItem } from "../trips/types";
 
 const event = (id: string, start: string, end: string | null = null): ItineraryItem => ({ id, trip_id: "trip", booking_id: null, title: id, event_type: "activity", starts_at: start, ends_at: end, timezone: "UTC", location: null, notes: null, applies_to_all_travelers: true, created_at: "" });
@@ -38,6 +38,21 @@ describe("timeline model", () => {
     expect(resolveCurrentTimelineItem([done, cancelled, event("next", "2026-09-11T11:00:00Z")], new Date("2026-09-11T10:30:00Z"))?.id).toBe("next");
   });
   it("calculates elapsed time from instants rather than wall-clock labels", () => expect(journeyDuration("2026-09-11T03:30:00Z", "2026-09-11T12:15:00Z")).toBe("8h 45m"));
+  it("uses days and weeks for long journeys", () => {
+    expect(journeyDuration("2026-09-01T00:00:00Z", "2026-09-02T00:00:00Z")).toBe("24h");
+    expect(journeyDuration("2026-09-01T00:00:00Z", "2026-09-03T03:30:00Z")).toBe("2d 3h 30m");
+    expect(journeyDuration("2026-09-01T00:00:00Z", "2026-09-08T00:00:00Z")).toBe("7d");
+    expect(journeyDuration("2026-09-01T00:00:00Z", "2026-09-10T04:00:00Z")).toBe("1w 2d 4h");
+  });
+  it("shows every stop in a connected journey", () => expect(journeyRoute([
+    { origin: "BLR", destination: "DEL" },
+    { origin: "DEL", destination: "DXB" }
+  ])).toBe("BLR → DEL → DXB"));
+  it("renders a journey's prominent arrival in the final destination zone", () => expect(eventEndTimeZone(
+    { ...event("flight", "2026-09-11T10:00:00Z", "2026-09-11T16:00:00Z"), event_type: "flight", booking_id: "booking" },
+    [{ booking_id: "booking", segment_order: 0, arrival_timezone: "Asia/Dubai" } as never],
+    []
+  )).toBe("Asia/Dubai"));
   it("shows ticket-style next-day arrival", () => expect(arrivalDayOffset("2026-09-11T18:00:00Z", "Asia/Dubai", "2026-09-12T06:00:00Z", "Europe/London")).toBe(1));
   it("rejects overlapping connections", () => expect(validateLegOrder([{ departureAt: "2026-09-11T10:00:00Z", arrivalAt: "2026-09-11T12:00:00Z" }, { departureAt: "2026-09-11T11:00:00Z", arrivalAt: "2026-09-11T14:00:00Z" }])).toContain("Leg 2"));
   it("builds call and WhatsApp actions from an international number", () => expect(phoneActionUrls("+91 98765-43210")).toEqual({ call: "tel:+919876543210", whatsapp: "https://wa.me/919876543210" }));

@@ -28,6 +28,12 @@ describe("strict time-zone autocomplete", () => {
     expect(screen.getByRole("button", { name: "Arrival time zone" })).toHaveTextContent("Dubai");
   });
 
+  it("can require an explicit international endpoint selection instead of silently using the device zone", () => {
+    const { container } = render(<TimeZoneAutocomplete name="timezone" requireSelection required aria-label="Required endpoint time zone" />);
+    expect(container.querySelector<HTMLInputElement>('input[name="timezone"]')?.value).toBe("");
+    expect(screen.getByRole("button", { name: "Required endpoint time zone" })).toHaveTextContent("Choose time zone");
+  });
+
   it("keeps the result sheet inside the visible phone viewport when the keyboard opens", async () => {
     const media = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
       matches: query === "(max-width: 639px)", media: query, onchange: null,

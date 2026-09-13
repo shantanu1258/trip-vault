@@ -13,7 +13,7 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 
 **Document status:** Implemented personal MVP 1.0
 
-**Implementation status:** Timeline-first application complete locally. Existing Supabase projects must apply migrations through `supabase/migrations/202609130003_account_document_inbox.sql`; fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once.
+**Implementation status:** Timeline-first application complete locally. Existing Supabase projects must apply migrations through `supabase/migrations/202609130006_trip_storage_cleanup_queue.sql`; fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once for the current schema, then publish the regional and booking-vendor catalogs after an administrator is bootstrapped. Remote and airplane-mode acceptance remain pending.
 
 **Default decision state:** Accepted unless explicitly marked as deferred or revisit
 
@@ -22,9 +22,9 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 | Area | Current state |
 |---|---|
 | Application | Timeline-first React PWA is implemented on `main` |
-| Automated verification | 33 Vitest files and 146 tests pass; type-check and production build pass |
-| Existing Supabase project | Apply every not-yet-run migration through `202609130003_account_document_inbox.sql`, then run the schema smoke test |
-| Fresh Supabase project | Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once |
+| Automated verification | 44 Vitest files and 209 tests pass; type-check and production build pass |
+| Existing Supabase project | Apply every not-yet-run migration in filename order through `202609130006_trip_storage_cleanup_queue.sql`, then run the schema smoke test |
+| Fresh Supabase project | Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`, which already includes the `202609130006` schema contract; after bootstrapping an active `app_admins` row, run `202609130002_regional_travel_catalog.sql` and then `202609130005_booking_vendor_catalog_additions.sql` before the smoke test |
 | Cloudflare | Workers Static Assets configuration exists; the post-push live deployment is not verified here |
 | Acceptance | Phone, desktop, multi-member, upload, and airplane-mode tests remain manual release gates |
 
@@ -141,19 +141,27 @@ New documents are private to their uploader until the user deliberately chooses 
 
 A document has four independent concerns: immutable file versions, a specific travel purpose, links to bookings/events/journey legs, and traveler usage. Usage is **Shared**, **Selected travelers**, or **Assign later** and never grants access. Visibility remains **Only me**, **Signed-in trip members**, or **Selected signed-in members**. This permits one accommodation confirmation to support a group, a personal visa or boarding pass to follow one traveler, and unnamed admission tickets to remain in a pool until assigned.
 
-The upload flow derives the Vault title from document type, traveler usage, and linked event context while preserving the original filename separately. A custom title may replace the generated title, but the generated context remains visible beneath it. File persistence is deliberately two-phase: the original is first checksum-verified into the current profile's device vault and private account Storage inbox, then one atomic database operation associates it with a trip, booking or leg, travelers, and visibility. A failed or interrupted association leaves an account-owned inbox item in Profile for retry, later association, or explicit deletion; it never presents a missing object as an attached document. The document route is a viewer first: an authorized PDF or image opens automatically from the verified device copy, or downloads once and is then cached locally. The client restores the declared MIME type when an extensionless OPFS file is reopened so PDFs still render inline. Native full-screen viewing remains available for zooming. File facts, access, local-copy controls, replacement, archiving, and version history live behind an information action instead of displacing the travel document.
+The upload flow derives the Vault title from document type, traveler usage, and linked event context while preserving the original filename separately. A custom title may replace the generated title, but the generated context remains visible beneath it. File persistence is deliberately two-phase: the original is first checksum-verified into the current profile's device vault and private account Storage inbox, then one atomic database operation associates it with a trip, booking or leg, travelers, and visibility. A failed or interrupted association leaves an account-owned inbox item in Profile for retry, later association, or deletion while it remains unassociated; it never presents a missing object as an attached document. The private Storage lifecycle is intentionally append-only: an object may be inserted only for an owned pending receipt, object updates are disallowed, and deletion is allowed only while the receipt is unassociated. Once associated, both the receipt and bytes are immutable through the inbox; the resulting Vault document uses its archive/version flows instead. The document route is a viewer first: an authorized PDF or image opens automatically from the verified device copy, or downloads once and is then cached locally. The client restores the declared MIME type when an extensionless OPFS file is reopened so PDFs still render inline. Native full-screen viewing remains available for zooming. File facts, access, local-copy controls, replacement, archiving, and version history live behind an information action instead of displacing the travel document.
 
 ### 6.8 Timeline is the primary trip interface
 
 Opening a trip displays the applicable itinerary in chronological order on one connected timeline. The app identifies one current, next, or most-recent event, scrolls it into view on the first open, and distinguishes it with color and an explicit label. Everyone context shows the complete trip. Selecting a traveler becomes a presentation filter across the timeline, reservations, costs, readiness, seats, and documents: shared records plus that traveler's assigned records remain, while another traveler's private planning context is hidden. This filter never changes authentication or database authorization.
 
+Timeline scroll state belongs to one trip and one internal view. Returning from that trip's Details view may restore its prior timeline position, but Home, Profile, Vault, another trip, and other unrelated routes start at their own top position instead of inheriting the previous page's scroll. The trip header shows only a compact, readable per-currency cost summary; activating it opens the itemized Trip expenses section.
+
 ### 6.9 Journey time zones belong to endpoints
 
-Flights, trains, buses, ferries, and cabs store strict IANA time zones for each origin and destination. For flights, one airport catalog selection supplies its name, code, country, and time zone as a unit; the derived code is read-only. Choosing **Other airport** exposes manual values and sends the new value to administrator review. Provider-local times are converted to instants before storage and are displayed in the relevant endpoint time zone. `trips.primary_timezone` remains only as a compatibility fallback for trip-day grouping and non-journey entries; it is not exposed as a free-text trip setting.
+Flights, trains, buses, ferries, and cabs persist strict IANA time zones for each origin and destination, but the form exposes them only when the traveler must resolve missing international metadata. A Domestic journey never asks for a time zone. A known flight airport supplies its name, code, country, and time zone as one catalog selection; the derived code is read-only. An International **Other airport** asks for a strict manual IANA zone and sends the proposed airport to administrator review. Hotels, activities, meals, and other local events also keep an internal zone for correct storage without asking the traveler to choose one.
+
+Travelers enter departure and arrival exactly as printed in each endpoint's local time. The client converts each value independently with that endpoint's zone, stores the resulting instants, and calculates real elapsed duration from those instants. Departure displays use the origin zone; arrival and overall journey-end displays use the final destination zone. A time zone does not invent an arrival time: both printed local values remain required. `trips.primary_timezone` is a compatibility fallback for local event grouping and manual domestic endpoints, not a free-text trip setting. Known domestic airports still retain their own catalog zones. Other Domestic endpoints intentionally use one hidden fallback zone, and a non-flight Domestic journey asks for its two-letter country once rather than once per leg. If a route remains inside one country but crosses time-zone regions, the user must choose International so separate origin and destination zones are available. Domestic Flight editing likewise keeps daylight-saving occurrence controls hidden; International editing exposes them because repeated local clock times may need disambiguation.
 
 ### 6.10 Events are the common entry point
 
-The unified Add Event flow creates flights, connected journeys, hotels, meals, activities, preparation work, and custom entries. It keeps three travel concepts explicit: an **airline/operator** performs the journey, a **service provider** delivers a non-flight service, and **booked via** identifies the seller, website, or agent used to purchase it. Airlines and booking vendors use searchable catalog pickers with an **Other** path to administrator review. It may also create linked booking details, journey legs, costs, contacts, and map actions; event details then attach one or many classified Vault documents. A cost is optional, but a missing-cost state remains visible so it can be completed later.
+The unified Add Event flow presents the most-used choices first—Flight, Hotel, Activity, and Bus—then the remaining journey, meal, preparation, and custom types. A journey asks **Direct** or **Connecting** before its detailed fields: Direct owns exactly one leg, while Connecting starts with two ordered legs and may add more. Each later leg must depart from the endpoint where the previous leg arrived; normalized endpoint codes are compared when both exist, otherwise normalized endpoint names are compared. Leg count remains the stored source of truth, so no redundant route-type column is required. When a missing flight connection is appended later, the UI locks its origin to the prior arrival and filters a Domestic destination to that same country; the database function locks the booking and prior leg and independently enforces endpoint/time-zone continuity, positive layover, journey scope, and Domestic country. Journey location is derived from the complete ordered route, such as `BLR → DEL → DXB`; it is never collected as a generic place.
+
+The form keeps three travel concepts explicit: an **airline/operator** performs a journey, a **hotel/property name** identifies a stay, and **booked via** identifies the seller, website, or agent used to purchase it. Airline and booking-vendor pickers remain visible after **Other** is chosen so the traveler can switch back to a catalog value. Selecting a saved vendor reconciles the booking website to that catalog entry—filling its official URL or clearing a stale URL when none is defined—while choosing **Other** clears the prior catalog URL before manual entry. The same rule applies during create and edit. The bundled booking-vendor fallback includes Airbnb and Trip.com; migration `202609130005_booking_vendor_catalog_additions.sql` copies the existing published release and publishes those same additions for database-backed clients. Hotel creation does not ask for a separate service provider, time-zone chooser, or clock-repeat choice. Contact name is omitted for flights and trains, while a phone remains optional where a Call or WhatsApp action is useful. A planned Activity with **Exact date & time** may gain booking details later through an online enrichment action that creates and links a booking while preserving the timeline event. Date-only, all-day, relative, and unscheduled activities must first use **Set exact time**; their synthetic ordering instants are never copied into bookings.
+
+Add Event may create linked booking details, ordered journey legs, costs, contacts, and map actions; event details then attach one or many classified Vault documents. A cost is optional, but a missing-cost state remains visible so it can be completed later. Durations use compact human units: hours through exactly 24 hours, days above 24 hours through exactly seven days, and weeks above seven days.
 
 ### 6.11 Online reads and offline writes are explicit
 
@@ -209,17 +217,23 @@ flowchart TD
     E --> F[Read authorized collections from Supabase]
     F --> G[Replace cached collections]
     F -- Request fails --> D
-    D --> H[Render Home or trip]
+    D --> H[Resolve fresh-launch current trip]
     G --> H
-    H --> I[Push queued mutations in foreground]
+    H --> J{Current D-1 trip exists?}
+    J -- Yes --> K[Open saved eligible focus or deterministic overlap fallback]
+    J -- No --> L[Open Home]
+    K --> I[Push queued mutations in foreground]
+    L --> I
 ```
+
+This automatic routing runs only at the root fresh-launch entry. It prefers a saved focus among eligible overlapping current trips; otherwise it chooses earliest end date, then earliest start date, then stable ID. Navigating explicitly to `/home` afterward stays on Home instead of reopening the trip in the same session.
 
 ### 8.2 Open a trip
 
 1. A trip card opens `/trips/:tripId` directly in Timeline view.
 2. The client loads every authorized itinerary item and its booking/journey summaries, then applies the selected Everyone/traveler presentation context.
 3. One event is resolved as current, otherwise next, otherwise most recent.
-4. On the first timeline render, the page scrolls that event into the viewport; returning from Trip details restores the previous timeline position.
+4. On the first timeline render, the page scrolls that event into the viewport; returning from Trip details restores the previous timeline position. Leaving for an unrelated route does not transfer that scroll position.
 5. Phase shortcuts jump to Past, Current/Next, or Upcoming without filtering events out of the timeline.
 6. Selecting a card opens its details, linked costs, map/contact actions, and attached documents relevant to the current traveler context.
 7. The floating controls open Add Event, People & sharing, or jump back to the active event.
@@ -231,9 +245,10 @@ flowchart TD
 3. The app validates the file, calculates its checksum, and points to an existing Vault item when the same bytes already exist in that trip.
 4. The original is saved locally and queued into the signed-in account's private Storage inbox before trip metadata is attempted.
 5. Only after the file upload succeeds may the dependent association atomically create its trip document, version, traveler usage, and selected-member access.
-6. A cancelled, interrupted, or rejected association remains in Profile for retry, later association, or explicit deletion.
-7. The UI shows `Saved locally`, `Syncing`, `Synced`, or a safe `Action required` reason.
-8. Other connected members receive only metadata and files allowed by document visibility.
+6. A cancelled, interrupted, or rejected association remains in Profile for retry, later association, or deletion while it is still unassociated. Offline deletion is limited to a local pending upload whose first cloud attempt has not started; any attempted or cloud-backed upload requires a connection so it cannot reappear at the next synchronization.
+7. After association succeeds, the local receipt is immediately reconciled to the returned document ID and its pending/error state is cleared. Later inbox reads include associated server receipts specifically so a server-associated row suppresses any stale unassociated device copy rather than making the upload reappear.
+8. The UI shows `Saved locally`, `Syncing`, `Synced`, or a safe `Action required` reason.
+9. Other connected members receive only metadata and files allowed by document visibility.
 
 ### 8.4 Prepare a trip for offline use
 
@@ -309,6 +324,30 @@ Trip Vault uses its own Supabase project, separate from every other personal app
 
 Additional Postgres databases must not be manually created inside another application's Supabase project. Supabase's integrated Dashboard, Auth, API, Storage, and Realtime services are designed around each project's default database.
 
+### 9.2 Document Storage deployment boundary
+
+There is no Supabase Dashboard switch that makes Trip Vault document upload work safely. The deployed database must include the latest schema, which creates the private `account-documents` bucket, its PDF/JPEG/PNG/WebP and 4,999,999-byte limits, account-owned object policies, upload receipts, and the atomic association function. Keep the bucket private; making it public would bypass the product's document-privacy model.
+
+An upload is considered stored only after Supabase Storage has accepted the object and the server has recorded that verified state. A database receipt by itself is not proof that bytes exist. Trip association must reject any receipt whose object is missing, while the originating device keeps its verified local copy and retry operation. When another device sees an unfinished receipt, it first asks the server to verify whether the object already exists; a successfully uploaded object can therefore recover from an interrupted final response. Only after the server confirms that the object is absent does the app require the original device or a reselected file. Storage policies allow INSERT only while the owned receipt is pending and unassociated, expose no UPDATE path, and allow DELETE only while it remains unassociated; association therefore makes the stored original immutable to the inbox owner.
+
+The SQL smoke test verifies bucket, policy, function, and schema presence. A real signed-in upload remains a deployment acceptance test because a browser, stale PWA, content filter, or network gateway can block the Storage request even when Postgres is healthy. Supabase JSON errors indicate a project policy/schema problem; an HTML block page or request that never reaches the Supabase host indicates the intervening network, browser, or device policy instead.
+
+### 9.3 Schema and catalog deployment order
+
+The client always bundles starter airport, airline, and booking-vendor data so Add Event is usable before a published configuration is downloaded. Database-backed catalog publication is separate because it needs a trusted administrator audit actor.
+
+For an existing project, apply every missing migration in filename order. A database current through `202609130004` runs `202609130005_booking_vendor_catalog_additions.sql`, then `202609130006_trip_storage_cleanup_queue.sql`, then the smoke test. `202609130005` requires an active `app_admins` row and the regional release from `202609130002`; establish those prerequisites instead of bypassing its guard. A database already current through `202609130005` runs only `202609130006` before the smoke test.
+
+For a fresh project:
+
+1. Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`, which already includes the `202609130006` schema contract.
+2. Bootstrap an active `app_admins` row through the trusted SQL procedure.
+3. Run `202609130002_regional_travel_catalog.sql`.
+4. Run `202609130005_booking_vendor_catalog_additions.sql` to create a new immutable published release containing Airbnb and Trip.com.
+5. Run `supabase/tests/001_schema_smoke.sql`.
+
+The additions migration is idempotent by its release note and must not be run before the regional catalog. It changes only global booking-vendor metadata; it does not change private trips or booking snapshots.
+
 ## 10. Security and Privacy Boundaries
 
 | Concern | Implemented or accepted control |
@@ -340,7 +379,7 @@ Custom end-to-end encryption is deferred. Browser/OS profile isolation, private 
 - Browser storage remains device-local and can still be removed by the user, PWA uninstall, site-data clearing, quota pressure, or device loss; it is a working travel copy rather than the only permanent archive.
 - The app requests persistent storage, checks quota, bundles its app-shell assets, and verifies downloaded files. The structured-data proof needed for a strict **Ready offline** guarantee remains HLD-042.
 - An always-on paid tier is optional and is needed only if the owner later decides manual pre-trip activation is inconvenient.
-- Trip and document removal normally use recoverable archive/soft-delete flows. During testing only, the owner also has an explicitly labeled online-only permanent trip purge that requires typing the exact trip title and removes cloud files before cascading database deletion.
+- Trip and document removal normally use recoverable archive/soft-delete flows. During testing only, the owner also has an explicitly labeled online-only permanent trip purge that requires typing the exact trip title. One database transaction records every legacy `trip-documents` object in the owner's cleanup queue and deletes the trip; the queue rows deliberately survive the cascade. After commit, the client removes each queued object and acknowledges its queue row only after Storage succeeds. Failed legacy cleanup therefore remains retryable on later online trip-list reads without resurrecting the trip, and the server refuses cleanup when a live document version still references that path. Associated `account-documents` objects are cleaned after the transaction has cleared their association; the client removes the now-unassociated receipt only after its bytes are removed. A failure in this second path leaves the account upload receipt visible in Profile, while a legacy-file failure remains in the separate cleanup queue. If the deletion RPC reports an error after the server may have committed, the client probes whether the trip still exists before deciding that deletion failed; a confirmed absence proceeds into the normal queued cleanup.
 
 ## 12. Scale Assumptions
 
@@ -375,7 +414,7 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 | HLD-012 | Login and onboarding | Email-only Supabase authentication; onboarding has no separate confirmation gate for now | Accepted |
 | HLD-013 | Free-tier availability | Pausing is acceptable with pre-trip resume, sync, and offline verification | Accepted |
 | HLD-014 | Backend isolation | Trip Vault receives its own Supabase project rather than another database in an existing project | Accepted |
-| HLD-015 | Current-trip context | Each user has at most one focused current trip; current mode begins one calendar day before departure using the captured trip-time-zone fallback | Accepted |
+| HLD-015 | Current-trip context | Each user has at most one focused current trip; current mode begins one calendar day before departure, fresh launch opens the saved eligible focus or deterministic overlap fallback, and explicit `/home` remains Home | Accepted |
 | HLD-016 | Flight operations | Flight status, delays, gates, terminals, and baggage details are maintained manually; airline and public tracker links are supporting actions | Accepted |
 | HLD-017 | Reminder delivery | MVP reminders are recomputed on app load and shown in an in-app Alerts page; web push is optional later | Accepted |
 | HLD-018 | Map integration | MVP opens keyless Google Maps URLs; embedded map images, paid geocoding, route optimization, and offline map downloads are excluded | Accepted |
@@ -407,6 +446,16 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 | HLD-044 | Travel metadata entry | Use searchable airline, airport, and booking-vendor catalogs; derive airport code/country/time zone atomically and route explicit Other values to online administrator review | Accepted |
 | HLD-045 | Post-creation flight connection | Allow an owner/editor to append a validated leg to an existing flight booking and extend its timeline end without rebuilding the booking | Accepted |
 | HLD-046 | Account document inbox | Persist each original under the signed-in account before trip association; make association atomic and retain interrupted uploads in Profile for retry, completion, or deletion | Accepted |
+| HLD-047 | Journey form structure | Ask Direct or Connecting first; derive the answer from one versus several persisted ordered legs rather than storing another field | Accepted |
+| HLD-048 | Time-zone form boundary | Persist strict endpoint zones, derive known airport zones automatically, hide domestic/local-event zone controls, and request manual zones only for an International Other airport or International non-flight endpoint without a catalog | Accepted |
+| HLD-049 | Schedule calculation | Treat both departure and arrival as provider-local ticket values, convert each with its endpoint zone, and calculate elapsed duration from the resulting instants | Accepted |
+| HLD-050 | Expense entry point | Show compact per-currency totals on Home and the trip header and open one itemized Trip expenses section from either surface | Accepted |
+| HLD-051 | Trip creation defaults | Suggest a start 15 days from today and an end seven days later while preserving any deliberate user-entered dates | Accepted |
+| HLD-052 | Route scroll ownership | Keep active-trip timeline restoration local to that trip/view and reset unrelated route content to the top | Accepted |
+| HLD-053 | Connected-route continuity | Require every later journey leg to start where its predecessor ends, comparing normalized codes when possible and normalized names otherwise | Accepted |
+| HLD-054 | Activity booking enrichment boundary | Add booking details only to an exact-time Activity while online; flexible activities must first be changed with Set exact time | Accepted |
+| HLD-055 | Account-original immutability | Permit pending INSERT and unassociated DELETE, expose no Storage UPDATE, and make associated inbox originals immutable; reconcile successful association into the cache and let the associated server receipt suppress stale local inbox copies | Accepted |
+| HLD-056 | Permanent-purge cleanup queue | Atomically enqueue legacy object paths with trip deletion, acknowledge each row only after Storage cleanup, clean account-inbox bytes after association clears, and retain the appropriate queue row or account receipt on failure | Accepted for testing |
 
 ## 14. Risks Requiring Explicit Discussion
 
@@ -414,7 +463,7 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 |---|---|---|
 | Browser storage eviction | A traveler may assume a file is present when it is not | Persistent-storage request, readiness verification, and export fallback |
 | Provisional offline manifest | The current badge verifies document versions but not every structured entity or generic journey leg | Treat airplane-mode acceptance as mandatory and implement HLD-042 before relying on the badge alone |
-| Schema/client mismatch | A deployed client can reference tables, functions, triggers, or policies missing from an older Supabase project | Run every pending migration through `202609130003_account_document_inbox.sql`, then execute the schema smoke test before client testing |
+| Schema/client mismatch | A deployed client can reference tables, functions, triggers, policies, or catalog releases missing from an older Supabase project | Run every pending migration in filename order through `202609130006_trip_storage_cleanup_queue.sql`, then execute the schema smoke test before client testing |
 | Silent cache fallback | A failed online request can display older cached data | Keep sync state visible and show freshness/failure rather than implying the cache is current |
 | Stale service worker | An installed phone can continue running an older application bundle | Preserve update prompts and verify an update/reload during deployment acceptance |
 | Sensitive travel documents | Passports and visas have higher impact than ordinary attachments | Private defaults, least-privilege access, optional local storage, audit trail |
@@ -430,13 +479,14 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 
 ## 15. Post-Implementation Validation Order
 
-1. Apply the current consolidated database migration and rerun the schema smoke test.
+1. Apply every pending existing-project migration in filename order through `202609130006_trip_storage_cleanup_queue.sql` (or use the fresh-project schema and catalog sequence in 9.3), then rerun the schema smoke test.
 2. Create a fresh three-member trip and verify owner, editor, viewer, managed traveler, and collaborator behavior.
-3. Exercise the complete timeline on phone and desktop, including current-event scrolling and connected journeys.
-4. Upload, assign, open, retry, and unlink each important document purpose.
-5. Prepare the trip and repeat the defined flows in airplane mode; treat failures as HLD-042 blockers.
-6. Validate Cloudflare installation, update prompting, and phone launch from the installed PWA.
-7. After the trip application is stable, redesign the Admin console and only then verify its catalog, suggestion, theme, publish, and rollback behavior.
+3. Exercise Direct and Connecting domestic/international journeys, including endpoint-continuity rejection, hidden/derived zones, International Other fallbacks, domestic Flight edit controls, complete route summaries, destination-zone arrival/end display, and elapsed time across different endpoint zones.
+4. Exercise fresh-launch current-trip routing, deterministic overlap fallback, explicit Home navigation, and the complete timeline on phone and desktop, including current-event scrolling, unrelated-route scroll isolation, date-only/relative/unscheduled entries, exact-time activity booking enrichment, compact cost links, and itemized expenses.
+5. Upload, assign, open, retry, and unlink each important document purpose; verify stale-cache suppression after association, the unassociated/associated deletion boundary, the legacy cleanup queue, and the post-association account-object cleanup path during permanent purge.
+6. Prepare the trip and repeat the defined flows in airplane mode; treat failures as HLD-042 blockers.
+7. Validate Cloudflare installation, update prompting, and phone launch from the installed PWA.
+8. After the trip application is stable, redesign the Admin console and only then verify its catalog, suggestion, theme, publish, and rollback behavior.
 
 ## Source File Index
 
@@ -449,6 +499,8 @@ The implementation is organized by application shell, product feature, local per
 | Feature catalog | `docs/FEATURES.md` | Product scope and acceptance conditions |
 | Redesign checklist | `docs/REDESIGN_CHECKLIST.md` | Active timeline-first decisions, schema impact, and preview slices |
 | Database migrations | `supabase/migrations/` | Post-baseline deltas for existing deployments |
+| Latest catalog addition | `supabase/migrations/202609130005_booking_vendor_catalog_additions.sql` | Publishes Airbnb and Trip.com after the regional catalog |
+| Trip Storage cleanup queue | `supabase/migrations/202609130006_trip_storage_cleanup_queue.sql` | Atomically records legacy object cleanup with permanent trip deletion and hardens appended flight connections |
 | Consolidated database setup | `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` | Full current setup for a fresh project |
 | Application source | `src/` | React PWA, feature workflows, offline storage, and tests |
 | Documentation conventions | `docs/doc-conventions.md` | Status and writing rules |

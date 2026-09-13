@@ -24,6 +24,42 @@ const costSelect = "id,trip_id,booking_id,itinerary_item_id,title,category,amoun
 
 type CostResponse = TripCost & { trip_cost_participants?: Array<{ traveler_id: string; share_amount_minor: number | null }> };
 
+export type TripStorageCleanupRow = { id: string; storage_path: string };
+
+type CleanupCallResult = { error: unknown | null };
+
+/**
+ * Removes queued legacy trip objects before acknowledging their queue rows.
+ * A Storage failure deliberately leaves every row available for a later retry.
+ */
+export async function cleanupQueuedTripDocuments(
+  rows: TripStorageCleanupRow[],
+  removeObjects: (paths: string[]) => PromiseLike<CleanupCallResult>,
+  removeQueueRows: (ids: string[]) => PromiseLike<CleanupCallResult>,
+  warn: (message: string, error: unknown) => void = (message, error) => console.warn(message, error)
+) {
+  if (!rows.length) return;
+  const paths = [...new Set(rows.map((row) => row.storage_path))];
+  let storageError: unknown | null;
+  try {
+    ({ error: storageError } = await removeObjects(paths));
+  } catch (error) {
+    storageError = error;
+  }
+  if (storageError) {
+    warn("Trip deleted, but legacy document Storage cleanup will be retried later.", storageError);
+    return;
+  }
+  const ids = [...new Set(rows.map((row) => row.id))];
+  let queueError: unknown | null;
+  try {
+    ({ error: queueError } = await removeQueueRows(ids));
+  } catch (error) {
+    queueError = error;
+  }
+  if (queueError) warn("Trip documents were removed, but their cleanup receipts still need acknowledgement.", queueError);
+}
+
 function normalizeCost(raw: CostResponse): TripCost {
   const { trip_cost_participants, ...cost } = raw;
   return { ...cost, participants: trip_cost_participants ?? cost.participants ?? [] };
@@ -40,6 +76,41 @@ async function currentUserId() {
   return profileId;
 }
 
+async function retryQueuedTripDocumentCleanup(ownerId: string, tripId?: string) {
+  let request = client().from("trip_storage_cleanup_queue")
+    .select("id,storage_path")
+    .eq("owner_id", ownerId)
+    .eq("storage_bucket", "trip-documents");
+  if (tripId) request = request.eq("trip_id", tripId);
+  let response;
+  try {
+    response = await request;
+  } catch (error) {
+    console.warn("Trip document cleanup queue could not be checked; stored files remain untouched.", error);
+    return;
+  }
+  const { data, error } = response;
+  if (error) {
+    console.warn("Trip document cleanup queue could not be checked; stored files remain untouched.", error);
+    return;
+  }
+  const rows = (data ?? []) as TripStorageCleanupRow[];
+  await cleanupQueuedTripDocuments(
+    rows,
+    async (paths) => {
+      const { error: storageError } = await client().storage.from("trip-documents").remove(paths);
+      return { error: storageError };
+    },
+    async (ids) => {
+      const { error: queueError } = await client().from("trip_storage_cleanup_queue")
+        .delete()
+        .eq("owner_id", ownerId)
+        .in("id", ids);
+      return { error: queueError };
+    }
+  );
+}
+
 function statusForDates(startDate: string, endDate: string): TripStatus {
   const today = new Date().toISOString().slice(0, 10);
   if (endDate < today) return "completed";
@@ -53,6 +124,10 @@ function localDateForInstant(value: string, timeZone: string) {
 }
 
 export async function listTrips(includeArchived = false): Promise<Trip[]> {
+  if (navigator.onLine) {
+    const profileId = await currentUserId();
+    await retryQueuedTripDocumentCleanup(profileId);
+  }
   const trips = await networkWithCache("trips", async () => {
     let query = client().from("trips").select("id,title,destination_summary,start_date,end_date,primary_timezone,base_currency,status,version,created_at,updated_at,deleted_at").is("deleted_at", null);
     if (!includeArchived) query = query.neq("status", "archived");
@@ -189,25 +264,36 @@ export async function deleteTripPermanently(trip: Trip) {
     .select("id,storage_bucket,storage_path,source_upload_id,documents!inner(trip_id)")
     .eq("documents.trip_id", trip.id);
   if (versionError) throw versionError;
-  const legacyPaths = (versions ?? [])
-    .filter((version) => !version.storage_bucket || version.storage_bucket === "trip-documents")
-    .map((version) => String(version.storage_path));
   const ownedInboxVersions = (versions ?? []).filter((version) =>
     version.storage_bucket === "account-documents"
       && String(version.storage_path).startsWith(`${profileId}/`)
   );
-  const ownedInboxPaths = ownedInboxVersions.map((version) => String(version.storage_path));
-  for (const [bucket, paths] of [["trip-documents", legacyPaths], ["account-documents", ownedInboxPaths]] as const) {
-    if (!paths.length) continue;
-    const { error: storageError } = await client().storage.from(bucket).remove(paths);
-    if (storageError) throw new Error(`The trip was not deleted because its stored documents could not be removed: ${storageError.message}`);
+  const ownedInboxPaths = [...new Set(ownedInboxVersions.map((version) => String(version.storage_path)))];
+  const { error: deleteError } = await client().rpc("delete_trip_permanently", { requested_trip_id: trip.id });
+  if (deleteError) {
+    // If the server committed but its response was lost, a successful
+    // follow-up read proves the trip is gone before any client cleanup runs.
+    const { data: remainingTrip, error: probeError } = await client().from("trips")
+      .select("id")
+      .eq("id", trip.id)
+      .maybeSingle();
+    if (probeError || remainingTrip) throw deleteError;
   }
-  const { error } = await client().rpc("delete_trip_permanently", { requested_trip_id: trip.id });
-  if (error) throw error;
-  const ownedUploadIds = ownedInboxVersions.flatMap((version) => version.source_upload_id ? [String(version.source_upload_id)] : []);
-  if (ownedUploadIds.length) {
-    const { error: uploadRowsError } = await client().from("account_document_uploads").delete().in("id", ownedUploadIds).is("associated_document_id", null);
-    if (uploadRowsError) throw uploadRowsError;
+  await retryQueuedTripDocumentCleanup(profileId, trip.id);
+  const ownedUploadIds = [...new Set(ownedInboxVersions.flatMap((version) => version.source_upload_id ? [String(version.source_upload_id)] : []))];
+  if (ownedInboxPaths.length) {
+    // The RPC deletes the associated document rows first. Their foreign key
+    // clears associated_document_id, after which the owner may remove the now
+    // unassociated private object. If cleanup fails, retain the upload receipt
+    // so Profile can surface it for a later retry instead of claiming the trip
+    // itself was not deleted.
+    const { error: storageError } = await client().storage.from("account-documents").remove(ownedInboxPaths);
+    if (!storageError && ownedUploadIds.length) {
+      const { error: uploadRowsError } = await client().from("account_document_uploads").delete().in("id", ownedUploadIds).is("associated_document_id", null);
+      if (uploadRowsError) console.warn("Trip deleted, but a private upload receipt still needs cleanup.", uploadRowsError);
+    } else if (storageError) {
+      console.warn("Trip deleted, but a private document remains in the account inbox for cleanup.", storageError);
+    }
   }
   const { database } = await import("../../lib/local-db/database");
   const pendingUploads = await database.outbox.where("profileId").equals(profileId).filter((operation) => {
@@ -340,6 +426,34 @@ export async function updateItineraryItem(input: UpdateItineraryInput): Promise<
   const { error: removeError } = await client().from("itinerary_participants").delete().eq("itinerary_item_id", input.id); if (removeError) throw removeError;
   if (input.travelerIds?.length) { const { error: participantError } = await client().from("itinerary_participants").insert(input.travelerIds.map((travelerId) => ({ itinerary_item_id: input.id, traveler_id: travelerId }))); if (participantError) throw participantError; }
   await cacheEntity(`itinerary:${input.tripId}`, data as ItineraryItem);
+  return data as ItineraryItem;
+}
+
+/**
+ * Attaches an existing booking without rewriting the event's timing, location,
+ * status, or participant rows. This deliberately stays online-only until the
+ * booking creation exposes its outbox operation and a booking-link operation
+ * can be ordered behind it.
+ */
+export async function linkBookingToItineraryItem(item: ItineraryItem, bookingId: string): Promise<ItineraryItem> {
+  if (!navigator.onLine) throw new Error("Adding booking details requires a connection.");
+  let request = client()
+    .from("itinerary_items")
+    .update({ booking_id: bookingId })
+    .eq("id", item.id)
+    .eq("trip_id", item.trip_id);
+  if (item.version !== undefined) request = request.eq("version", item.version);
+  const { data, error } = await request.select(itinerarySelect).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("This activity changed on another device. Refresh before adding its booking.");
+  // The server link is already committed at this point. A local IndexedDB
+  // failure must not look like a failed link to the caller, because its
+  // compensation path would archive a booking that the itinerary now uses.
+  try {
+    await cacheEntity(`itinerary:${item.trip_id}`, data as ItineraryItem);
+  } catch (cacheError) {
+    console.warn("Booking was attached, but the local itinerary cache could not be refreshed.", cacheError);
+  }
   return data as ItineraryItem;
 }
 

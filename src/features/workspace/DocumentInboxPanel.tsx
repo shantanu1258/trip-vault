@@ -17,8 +17,12 @@ export function DocumentInboxPanel() {
   const [message, setMessage] = useState("");
   const stage = useMutation({
     mutationFn: stageAccountDocument,
-    onSuccess: async () => {
-      setMessage("File saved to your private inbox. Attach it now or return later.");
+    onSuccess: async (upload) => {
+      setMessage(upload.stored_at
+        ? "File saved to your private inbox. Attach it now or return later."
+        : upload.sync_error
+          ? "File saved on this device, but its cloud upload needs attention. Use Retry cloud below."
+          : "File saved on this device. Its cloud upload is queued and will finish when you are connected.");
       await queryClient.invalidateQueries({ queryKey: ["account-document-uploads"] });
     }
   });
@@ -48,16 +52,29 @@ export function DocumentInboxPanel() {
     <h2 className="mt-1 font-display text-xl font-black">Upload first, organize later</h2>
     <p className="mt-3 text-sm leading-6 text-muted">The file is saved under this login before any trip association is attempted. Unfinished files stay here until you attach or delete them.</p>
     <form className="mt-5 space-y-3" onSubmit={submitUpload}>
-      <label className="form-label">PDF or image under 5 MB<input className="form-input file:mr-3 file:rounded-lg file:border-0 file:bg-brand-soft file:px-3 file:py-2 file:font-bold file:text-brand" type="file" name="inboxFile" accept="application/pdf,image/jpeg,image/png,image/webp" /></label>
+      <label className="form-label min-w-0">PDF or image under 5 MB<input className="form-input overflow-hidden file:mr-3 file:max-w-full file:rounded-lg file:border-0 file:bg-brand-soft file:px-3 file:py-2 file:font-bold file:text-brand" type="file" name="inboxFile" accept="application/pdf,image/jpeg,image/png,image/webp" /></label>
       <button className="primary-button w-full" disabled={stage.isPending}>{stage.isPending ? <Loader2 className="size-4 animate-spin" /> : <CloudUpload className="size-4" />} Save privately</button>
     </form>
     {(message || stage.error || remove.error || retry.error) && <p role="status" className={`mt-3 rounded-xl p-3 text-sm font-bold ${stage.error || remove.error || retry.error ? "bg-danger/10 text-danger" : "bg-success/10 text-success"}`}>{stage.error || remove.error || retry.error ? getErrorMessage(stage.error || remove.error || retry.error) : message}</p>}
     <div className="mt-5 border-t border-line pt-4">
       <p className="eyebrow">Waiting for association</p>
-      <div className="mt-3 space-y-2">{uploads.data?.map((upload) => <div className="rounded-2xl bg-elevated p-4" key={upload.id}>
-        <div className="flex items-start gap-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-extrabold">{upload.original_filename}</p><p className="mt-1 text-xs text-muted">{(upload.byte_size / 1_000_000).toFixed(2)} MB · {upload.sync_state === "queued" ? upload.sync_error ? "cloud action required" : "cloud upload pending" : "stored privately"}</p></div><button type="button" className="tap-target grid size-9 place-items-center text-danger" disabled={remove.isPending} onClick={() => window.confirm(`Delete ${upload.original_filename} permanently?`) && remove.mutate(upload)} aria-label={`Delete ${upload.original_filename}`}><Trash2 className="size-4" /></button></div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">{upload.association_pending ? <span className="rounded-full bg-brand-soft px-3 py-2 text-xs font-bold text-brand">Trip details saved</span> : <button type="button" className="secondary-button min-h-9 px-3 py-2 text-xs" onClick={() => openAssociation(upload)}>Attach to trip</button>}{upload.sync_state === "queued" && <button type="button" className="secondary-button min-h-9 px-3 py-2 text-xs" disabled={retry.isPending || !navigator.onLine} onClick={() => retry.mutate(upload.id)}><RefreshCw className="size-3.5" /> {upload.association_pending ? "Finish association" : "Retry cloud"}</button>}</div>
-      </div>)}{uploads.isLoading && <p className="flex items-center gap-2 text-sm text-muted"><Loader2 className="size-4 animate-spin" /> Opening inbox</p>}{uploads.data?.length === 0 && <p className="text-sm text-muted">No unfinished uploads.</p>}</div>
+      <div className="mt-3 space-y-2">{uploads.data?.map((upload) => {
+        const needsOriginalFile = !upload.stored_at && !upload.can_retry;
+        const canCheckCloud = !upload.stored_at && !upload.can_retry && upload.can_verify;
+        const cloudStatus = upload.stored_at
+          ? "stored privately"
+          : upload.sync_error === "storage_missing"
+            ? "cloud file missing"
+            : canCheckCloud
+              ? "cloud verification needed"
+              : upload.sync_error
+                ? "cloud action required"
+                : "cloud upload pending";
+        return <div className="rounded-2xl bg-elevated p-4" key={upload.id}>
+          <div className="flex items-start gap-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-extrabold">{upload.original_filename}</p><p className="mt-1 text-xs text-muted">{(upload.byte_size / 1_000_000).toFixed(2)} MB · {cloudStatus}</p>{needsOriginalFile && <p className="mt-2 text-xs font-bold leading-5 text-warning">This device does not have the original file. Delete this unfinished entry and select the file again here, or retry on the device where it was added.</p>}</div><button type="button" className="tap-target grid size-9 place-items-center text-danger" disabled={remove.isPending} onClick={() => window.confirm(`Delete ${upload.original_filename} permanently?`) && remove.mutate(upload)} aria-label={`Delete ${upload.original_filename}`}><Trash2 className="size-4" /></button></div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">{upload.association_pending ? <span className="rounded-full bg-brand-soft px-3 py-2 text-xs font-bold text-brand">Trip details saved</span> : upload.stored_at && <button type="button" className="secondary-button min-h-9 px-3 py-2 text-xs" onClick={() => openAssociation(upload)}>Attach to trip</button>}{upload.sync_state === "queued" && (upload.can_retry || canCheckCloud) && <button type="button" className="secondary-button min-h-9 px-3 py-2 text-xs" disabled={retry.isPending || !navigator.onLine} onClick={() => retry.mutate(upload.id)}><RefreshCw className="size-3.5" /> {upload.association_pending ? "Finish association" : upload.can_retry ? "Retry cloud" : "Check cloud"}</button>}</div>
+        </div>;
+      })}{uploads.isLoading && <p className="flex items-center gap-2 text-sm text-muted"><Loader2 className="size-4 animate-spin" /> Opening inbox</p>}{uploads.data?.length === 0 && <p className="text-sm text-muted">No unfinished uploads.</p>}</div>
     </div>
     {selected && <AssociateInboxDocumentSheet upload={selected} tripId={selectedTripId} onTripChange={setSelectedTripId} trips={trips.data ?? []} onClose={() => setSelected(null)} onAssociated={async () => { setSelected(null); await Promise.all([queryClient.invalidateQueries({ queryKey: ["account-document-uploads"] }), queryClient.invalidateQueries({ queryKey: ["documents"] }), queryClient.invalidateQueries({ queryKey: ["documents", selectedTripId] })]); }} />}
   </section>;

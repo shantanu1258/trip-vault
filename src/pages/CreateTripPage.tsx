@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, MapPinned } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { CurrencySelect } from "../components/CurrencySelect";
@@ -9,8 +9,10 @@ import { getErrorMessage } from "../features/trips/presentation";
 import { firstValidationMessage, tripFormSchema } from "../features/trips/validation";
 import { useFormDraft } from "../lib/forms/useFormDraft";
 
-function dateInput(offsetDays: number) {
-  const date = new Date();
+export const CREATE_TRIP_DRAFT_KEY = "trip:new:v2";
+
+export function dateInput(offsetDays: number, from = new Date()) {
+  const date = new Date(from);
   date.setDate(date.getDate() + offsetDays);
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -18,11 +20,20 @@ function dateInput(offsetDays: number) {
   return `${year}-${month}-${day}`;
 }
 
+export function suggestedTripEndDate(startDate: string) {
+  const [year, month, day] = startDate.split("-").map(Number);
+  if (!year || !month || !day) return "";
+  return dateInput(7, new Date(year, month - 1, day, 12));
+}
+
 export function CreateTripPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
-  const draft = useFormDraft("trip:new");
+  const startDateRef = useRef<HTMLInputElement>(null);
+  const endDateRef = useRef<HTMLInputElement>(null);
+  const endDateWasEdited = useRef(false);
+  const draft = useFormDraft(CREATE_TRIP_DRAFT_KEY);
   const mutation = useMutation({
     mutationFn: createTrip,
     onSuccess: async (trip) => {
@@ -32,12 +43,22 @@ export function CreateTripPage() {
     }
   });
 
+  useEffect(() => {
+    if (!startDateRef.current || !endDateRef.current) return;
+    endDateWasEdited.current = endDateRef.current.value !== suggestedTripEndDate(startDateRef.current.value);
+  }, []);
+
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage("");
     const parsed = tripFormSchema.safeParse(Object.fromEntries(new FormData(event.currentTarget)));
     if (!parsed.success) { setMessage(firstValidationMessage(parsed.error)); return; }
     mutation.mutate(parsed.data);
+  };
+
+  const updateSuggestedEndDate = (startDate: string) => {
+    if (endDateWasEdited.current || !endDateRef.current) return;
+    endDateRef.current.value = suggestedTripEndDate(startDate);
   };
 
   return (
@@ -54,7 +75,7 @@ export function CreateTripPage() {
           <form ref={draft.formRef} className="space-y-5 p-6 sm:p-8" onSubmit={submit}>
             <label className="form-label">Trip name<input className="form-input" name="title" placeholder="Give this trip a name everyone will recognize" autoFocus /></label>
             <label className="form-label">Destination<input className="form-input" name="destination" placeholder="List the cities, regions, or countries on this trip" /></label>
-            <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Start date<input className="form-input" name="startDate" type="date" defaultValue={dateInput(30)} /></label><label className="form-label">End date<input className="form-input" name="endDate" type="date" defaultValue={dateInput(37)} /></label></div>
+            <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Start date<input ref={startDateRef} className="form-input" name="startDate" type="date" defaultValue={dateInput(15)} onChange={(event) => updateSuggestedEndDate(event.currentTarget.value)} /></label><label className="form-label">End date<input ref={endDateRef} className="form-input" name="endDate" type="date" defaultValue={dateInput(22)} onChange={() => { endDateWasEdited.current = true; }} /></label></div>
             <input type="hidden" name="timezone" value={Intl.DateTimeFormat().resolvedOptions().timeZone} />
             <label className="form-label sm:max-w-64">Currency<CurrencySelect name="baseCurrency" defaultValue="INR" /></label>
             <p className="-mt-2 text-xs leading-5 text-muted">Departure and arrival time zones are recorded on each journey, just as they appear on the ticket.</p>

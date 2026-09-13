@@ -8,8 +8,14 @@ import { VendorPicker } from "./VendorPicker";
 
 vi.mock("./publishedConfig", () => ({
   listAvailableAirlines: vi.fn().mockResolvedValue([{ stableKey: "air-india", name: "Air India", iataCode: "AI", icaoCode: "AIC", sourceVersion: 1 }]),
-  listAvailableAirports: vi.fn().mockResolvedValue([{ stableKey: "del", name: "Indira Gandhi International Airport", city: "Delhi", countryCode: "IN", timezone: "Asia/Kolkata", iataCode: "DEL", icaoCode: null, sourceVersion: 1 }]),
-  listAvailableVendors: vi.fn().mockResolvedValue([{ stableKey: "cleartrip", name: "Cleartrip", websiteUrl: "https://www.cleartrip.com", sourceVersion: 1 }])
+  listAvailableAirports: vi.fn().mockResolvedValue([
+    { stableKey: "del", name: "Indira Gandhi International Airport", city: "Delhi", countryCode: "IN", timezone: "Asia/Kolkata", iataCode: "DEL", icaoCode: null, sourceVersion: 1 },
+    { stableKey: "dxb", name: "Dubai International Airport", city: "Dubai", countryCode: "AE", timezone: "Asia/Dubai", iataCode: "DXB", icaoCode: null, sourceVersion: 1 }
+  ]),
+  listAvailableVendors: vi.fn().mockResolvedValue([
+    { stableKey: "cleartrip", name: "Cleartrip", websiteUrl: "https://www.cleartrip.com", sourceVersion: 1 },
+    { stableKey: "local-agent", name: "Local agent", websiteUrl: null, sourceVersion: 1 }
+  ])
 }));
 
 function renderPicker(content: React.ReactNode) {
@@ -48,7 +54,23 @@ describe("travel metadata pickers", () => {
     await user.click(screen.getByRole("option", { name: /Other from airport/i }));
     expect(screen.getByPlaceholderText("Enter the full airport name printed on the ticket")).toBeRequired();
     expect(screen.getByPlaceholderText("Enter the 3-letter IATA code")).toHaveAttribute("maxlength", "3");
+    expect(screen.getByPlaceholderText("Enter the 2-letter country code")).toBeRequired();
+    expect(screen.getAllByLabelText("From airport time zone")).not.toHaveLength(0);
     expect(container.querySelector<HTMLInputElement>('input[name="departureNameSource"]')?.value).toBe("other");
+  });
+
+  it("filters a domestic destination to the origin country and keeps its fallback time zone hidden", async () => {
+    const { user, container } = renderPicker(<AirportPicker name="arrivalName" codeName="arrivalCode" countryName="arrivalCountry" timezoneName="arrivalTimezone" label="To airport" defaultTimezone="Asia/Kolkata" countryFilter="IN" showManualTimezone={false} />);
+    await user.click(screen.getByRole("button", { name: "Choose to airport" }));
+
+    expect(await screen.findByRole("option", { name: /DEL · Indira Gandhi International Airport/i })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /DXB · Dubai International Airport/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: /Other to airport/i }));
+
+    expect(screen.queryByLabelText("To airport time zone")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Enter the 2-letter country code")).not.toBeInTheDocument();
+    expect(container.querySelector<HTMLInputElement>('input[name="arrivalCountry"]')?.value).toBe("IN");
+    expect(container.querySelector<HTMLInputElement>('input[name="arrivalTimezone"]')?.value).toBe("Asia/Kolkata");
   });
 
   it("fills the known booking website and supports an admin-reviewable Other source", async () => {
@@ -62,7 +84,19 @@ describe("travel metadata pickers", () => {
 
     await user.click(screen.getByRole("button", { name: "Choose booked via" }));
     await user.click(screen.getByRole("option", { name: /Other booking source/i }));
+    expect(website).toHaveBeenLastCalledWith("");
     await user.type(screen.getByPlaceholderText("Enter the website, agent, or business that sold the booking"), "Local agent");
     await waitFor(() => expect(container.querySelector<HTMLInputElement>('input[name="bookedViaNameSource"]')?.value).toBe("other"));
+
+    expect(screen.getByRole("button", { name: "Choose booked via" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Choose booked via" }));
+    await user.click(await screen.findByRole("option", { name: /Cleartrip/i }));
+    expect(screen.queryByPlaceholderText("Enter the website, agent, or business that sold the booking")).not.toBeInTheDocument();
+    expect(container.querySelector<HTMLInputElement>('input[name="bookedViaName"]')?.value).toBe("Cleartrip");
+    expect(container.querySelector<HTMLInputElement>('input[name="bookedViaNameSource"]')?.value).toBe("catalog");
+
+    await user.click(screen.getByRole("button", { name: "Choose booked via" }));
+    await user.click(await screen.findByRole("option", { name: /Local agent/i }));
+    expect(website).toHaveBeenLastCalledWith("");
   });
 });

@@ -15,16 +15,18 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 
 **Catalog status:** Personal MVP 1.0
 
-**Implementation status:** Implemented locally; the configured Supabase project still requires the completion migration and remote acceptance run
+**Implementation status:** Implemented locally; existing Supabase projects still need every pending migration through `202609130006_trip_storage_cleanup_queue.sql` in filename order and the remote smoke/manual acceptance run
 
 ### Timeline-first release additions
 
 - Open a trip directly into one chronological timeline and position it at the single current/next event.
+- On a fresh authenticated launch, open the eligible current trip using saved focus or a deterministic overlap fallback; an explicit move to Home remains on Home.
 - Keep one derived readiness card above the timeline; represent other dated pre-trip work as `preparation` events.
-- Create Flight, Train, Bus, Ferry/Boat, Cab, Hotel, Meal, Activity, Transport, Preparation, and Custom events from one Add Event flow.
-- Store connected journeys as one booking with ordered legs, using explicit origin/destination IANA time zones and provider-local ticket display.
+- Create Flight, Hotel, Activity, Bus, Train, Ferry/Boat, Cab, Meal, Preparation, Other transport, and Custom events from one Add Event flow, in that order.
+- Ask Direct or Connecting first, store one or several ordered legs, and show every stop in the route summary.
+- Keep strict endpoint IANA time zones in storage while deriving known airport zones automatically, hiding controls for Domestic journeys and local events, and asking for manual zones only for an International Other airport or an International non-flight endpoint without a catalog.
 - Require flight PNR, support domestic/international classification, boarding lead or exact time, and manual operational updates.
-- Store booked-via vendor/website and optional phone; expose phone handlers through Call and WhatsApp actions.
+- Store booked-via vendor/website and optional phone; reconcile the website when the vendor changes in create or edit, and expose phone handlers through Call and WhatsApp actions.
 - Search authorized cached trip metadata locally and jump to the matching event or detail.
 - Generate a QR invitation from the existing one-time code without storing a QR image or sending the code to a QR-generation service.
 - Keep Reservations, Costs, People, Readiness, Documents, Offline, Travel metadata, Notes, and Settings in a sectioned Trip details workspace.
@@ -56,19 +58,19 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 |---|---:|---:|---:|
 | Onboarding | 5 | 4 | 1 |
 | Account and security | 1 | 8 | 4 |
-| Trips | 2 | 7 | 3 |
-| Dashboard and itinerary | 7 | 18 | 1 |
-| Bookings | 3 | 6 | 4 |
-| Flight assistance | 2 | 8 | 0 |
+| Trips | 2 | 9 | 3 |
+| Dashboard and itinerary | 7 | 24 | 1 |
+| Bookings | 3 | 11 | 4 |
+| Flight assistance | 2 | 10 | 0 |
 | Airline metadata | 1 | 5 | 0 |
 | Administration and metadata | 2 | 8 | 0 |
 | Travel readiness | 3 | 9 | 1 |
-| Documents | 4 | 16 | 5 |
+| Documents | 4 | 22 | 5 |
 | Offline and sync | 3 | 14 | 4 |
 | Collaboration | 4 | 14 | 3 |
 | Search and organization | 2 | 3 | 6 |
 | Notifications and automation | 0 | 7 | 8 |
-| Profile and settings | 1 | 4 | 2 |
+| Profile and settings | 1 | 5 | 2 |
 
 Counts are planning aids, exclude `Not planned` items, and should be updated when features are split or combined.
 
@@ -111,17 +113,19 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 |---|---|---:|---|---|
 | TRP-001 | Trip card | P0 | Prototype | Shows title, date range, progress, document count, traveler avatars, and offline state |
 | TRP-002 | Trip detail mockup | P0 | Prototype | Demonstrates overview, itinerary, bookings, documents, notes, and members |
-| TRP-003 | Trip creation | P0 | MVP | User can create a trip with title, destination, dates, and currency; the hidden compatibility timezone is taken from the device while each journey records its own endpoint timezones |
+| TRP-003 | Trip creation | P0 | MVP | User can create a trip with title, destination, dates, and currency; defaults suggest a start 15 days from today and an end seven days later, while deliberate edits are preserved and the hidden compatibility timezone is taken from the device |
 | TRP-004 | Trip editing | P0 | MVP | Authorized users can update trip details with version-conflict protection |
 | TRP-005 | Trip lifecycle | P0 | MVP | Trips are grouped as draft, upcoming, active, completed, or archived using agreed rules |
 | TRP-006 | Trip progress | P1 | MVP | Progress is based on an explicit checklist definition rather than an unexplained percentage |
 | TRP-007 | Archive trip | P1 | MVP | Owner can archive and restore a trip without deleting its records |
 | TRP-008 | Recoverable deletion | P1 | MVP | Owner can delete a trip into a retention window and restore it before final removal |
-| TRP-008A | Temporary test-trip purge | P0 | Testing | Owner can type the exact trip name to permanently remove stale trip data and cloud documents while the product is being retested; remove or redesign this before normal use |
+| TRP-008A | Temporary test-trip purge | P0 | Testing | Owner can type the exact trip name to permanently remove stale trip data online; one database transaction queues legacy object paths and deletes the trip, the client then removes and acknowledges queued objects, and account-inbox bytes are cleaned after association clears; a failure retains its queue row or account receipt for retry; remove or redesign this before normal use |
 | TRP-009 | Duplicate trip | P2 | Later | User can copy structure without copying sensitive documents by default |
 | TRP-010 | Trip templates | P2 | Later | Reusable packing, booking, and document checklists can seed new trips |
 | TRP-011 | Multiple destinations | P1 | MVP | Itinerary supports multiple stops without forcing the trip summary into one city |
 | TRP-012 | Cover image | P2 | Later | User can choose a safe stock, generated, or uploaded trip image |
+| TRP-013 | Trip expense summary | P0 | MVP | Home and the trip header show compact readable per-currency totals; activating either opens the itemized Trip expenses section, while missing cost and explicit Free remain different states |
+| TRP-014 | Trip-scoped equal splitting | P0 | MVP | A cost records one traveler payer and selected traveler participants, conserves every minor unit in an equal split, and derives balances separately per currency |
 
 ## 6. Home Dashboard and Itinerary
 
@@ -136,7 +140,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DSH-007 | Day-by-day itinerary | P0 | MVP | Items are grouped using their stored timezone and remain readable offline |
 | DSH-008 | Add custom itinerary item | P0 | MVP | Authorized user can add a timed or date-only item without requiring a booking |
 | DSH-009 | Reorder equal-time items | P1 | MVP | Stable manual ordering is preserved across clients |
-| DSH-010 | Timezone clarity | P0 | MVP | Ambiguous times display the relevant timezone and never silently shift date |
+| DSH-010 | Timezone clarity | P0 | MVP | Stored times retain a strict IANA zone and never silently shift date; Domestic journeys and local events hide zone controls, known airports derive them, and International Other/non-flight endpoints request them. Domestic manual endpoints use one hidden fallback zone, so a same-country route crossing time-zone regions must be entered as International |
 | DSH-011 | Preparation checklist | P1 | MVP | Trip owners can track agreed readiness items with explicit completion rules |
 | DSH-012 | Calendar view | P1 | Later | Month or week presentation complements, but does not replace, the timeline |
 | DSH-013 | Calendar export | P1 | MVP | User can export selected itinerary items and preparation deadlines without exposing private documents |
@@ -155,6 +159,11 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DSH-026 | Contextual-focus motion mockup | P0 | Prototype | Demonstrates a restrained zoom/elevation treatment for the current trip and current timeline item, scroll-settled carousel focus, route continuity, and a reduced-motion variant |
 | DSH-027 | Contextual-focus motion system | P0 | MVP | Current content receives a label, accent, and small transform without relying on motion or color alone; animations use approved properties/timings and become static when reduced motion is requested |
 | DSH-028 | Traveler-focused trip presentation | P0 | MVP | Everyone shows the complete trip; selecting one traveler shows shared plus that person's timeline, reservations, costs, readiness, seats, and documents and hides records assigned only to another traveler |
+| DSH-029 | Flexible event placement | P0 | MVP | Timeline accepts exact time, date-only, all-day, before/after another dated event, and unscheduled entries while preserving stable manual order; a relative event may omit both a separate start time and duration |
+| DSH-030 | Event status and archive | P0 | MVP | Planned, Done, Skipped, and Cancelled remain visible lifecycle states; Archive removes an event or booking group from the timeline and Restore returns it from one archived-items section |
+| DSH-031 | Route-scoped scroll | P0 | MVP | A trip may restore its own timeline position, while Home, Profile, Vault, another trip, and unrelated routes open at their own top position |
+| DSH-032 | Human-readable duration | P1 | MVP | Elapsed time uses compact minute/hour units through exactly 24 hours, adds days above 24 hours, and adds weeks above seven days while preserving non-zero remainder units |
+| DSH-033 | Fresh-launch current trip | P0 | MVP | Authenticated root launch waits for trips and saved focus, opens the saved eligible current trip or the earliest-end/earliest-start/stable-ID overlap fallback, and does not redirect a later explicit `/home` visit |
 
 ## 7. Bookings
 
@@ -175,6 +184,11 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | BKG-013 | Duplicate detection | P2 | Later | Likely duplicate bookings are suggested using explainable matching |
 | BKG-014 | Provider change tracking | P2 | Later | The app records changes without claiming live provider truth when none exists |
 | BKG-015 | Boarding-pass wallet integration | Explore | Later | Platform feasibility and native requirements are assessed first |
+| BKG-016 | Direct/Connecting-first journey entry | P0 | MVP | Every journey asks Direct or Connecting before leg details; Direct has one leg and Connecting starts with two and supports more, each later origin must match the prior destination, and ordered-leg count remains the source of truth; appending a flight later fixes its origin to the prior arrival and the server revalidates continuity |
+| BKG-017 | Complete journey route | P0 | MVP | Cards and details derive the route from all ordered legs, such as `BLR → DEL → DXB`, and do not ask for a generic journey location |
+| BKG-018 | Type-specific booking fields | P0 | MVP | Flights and trains omit contact name, hotels use property name plus Booked via without service-provider or clock-repeat controls, and local/domestic entries do not ask for time zones |
+| BKG-019 | Add booking to planned activity | P1 | MVP | While online, an editor can add provider, reference, Booked via, website, contact, and participant booking details to an exact-time unbooked Activity and link the new booking without creating a second timeline event; date-only, all-day, relative, and unscheduled activities must first use Set exact time |
+| BKG-020 | Booking-vendor website reconciliation | P0 | MVP | In create and edit, a saved Booked via choice fills its catalog URL or clears an outdated value when none exists; Other clears the catalog URL before manual entry while leaving the picker available |
 
 ## 8. Documents and Vault
 
@@ -208,7 +222,11 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DOC-026 | Travel-specific document types | P0 | MVP | Upload offers flight ticket, boarding pass, baggage tag, visa, passport, stay confirmation, journey ticket, activity confirmation/admission, meal voucher, receipt, insurance, and Other with sensible assignment defaults |
 | DOC-027 | Assignment/access separation | P0 | MVP | The upload form explains that who uses a document is independent from Only me, signed-in trip, or selected-member access |
 | DOC-028 | Context-derived document name | P0 | MVP | Default name combines document type, who it is for, and linked event; a custom name is allowed while the derived context remains visible below it |
-| DOC-029 | Private upload inbox | P0 | MVP | Every new original is first retained under the signed-in account; a failed, cancelled, or interrupted trip association remains in Profile for retry, later association, or deletion |
+| DOC-029 | Private upload inbox | P0 | MVP | Every new original is first retained under the signed-in account; a failed, cancelled, or interrupted trip association remains in Profile for retry, later association, or deletion while unassociated |
+| DOC-030 | Server-verified upload completion | P0 | MVP | A receipt is marked stored only after its private Storage object exists; association rejects missing objects, and a different device never reports a receipt-only upload as complete |
+| DOC-031 | Append-only inbox original | P0 | MVP | Private Storage permits INSERT only for an owned pending unassociated receipt, exposes no UPDATE, and permits DELETE only while unassociated; an associated original is immutable through the inbox |
+| DOC-032 | Safe inbox deletion boundary | P0 | MVP | Only a never-attempted pending local upload can be discarded offline; attempted or cloud-backed unassociated uploads require an online object-and-receipt delete so they cannot reappear after synchronization |
+| DOC-033 | Association cache reconciliation | P0 | MVP | A successful association clears pending/error state and removes its outbox item; an associated server receipt suppresses any stale unassociated device copy so the upload does not return to Profile |
 
 ## 9. Offline and Synchronization
 
@@ -314,7 +332,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | PRF-005 | Data export request | P1 | Later | User can request a portable export of their authorized account data |
 | PRF-006 | Account deletion | P1 | Later | Flow explains ownership transfer, shared records, retention, and irreversible effects |
 | PRF-007 | Privacy controls | P1 | MVP | User can review offline behavior, remove one file or trip pack, and sign out while either keeping or clearing all local copies |
-| PRF-008 | Unfinished document manager | P0 | MVP | Profile lists unassociated account uploads and lets the owner attach each to a trip, retry its cloud work, or permanently delete it |
+| PRF-008 | Unfinished document manager | P0 | MVP | Profile lists unassociated account uploads and lets the owner attach each to a trip, retry its cloud work, or permanently delete it within the online/offline lifecycle boundary; associated originals leave this inbox |
 
 ## 14. Research-Informed Product Review
 
@@ -407,7 +425,8 @@ When no trip is current, the Home page emphasizes the next upcoming trip and its
 | FLT-011 | Ticket-to-boarding-pass transition | P0 | MVP | Before a boarding pass exists the flight card prioritizes the ticket; after one is attached it prioritizes the boarding pass with seat, boarding time, terminal, and gate |
 | FLT-012 | Baggage tag attachments | P0 | MVP | User can attach one or more baggage-tag documents to a flight and label each for the relevant traveler or bag |
 | FLT-013 | Delay-aware countdown | P0 | MVP | Countdown uses the latest user-entered estimated departure when delayed and otherwise uses the scheduled departure, with source and update time visible |
-| FLT-014 | Add a missing connection later | P0 | MVP | An owner/editor can append a chronological leg from Flight details; the leg inherits booking travelers and extends the grouped booking and timeline event |
+| FLT-014 | Add a missing connection later | P0 | MVP | An owner/editor can append a chronological leg from Flight details whose origin matches the previous destination; the leg inherits booking travelers and extends the grouped booking and timeline event |
+| FLT-015 | Endpoint-zone presentation | P0 | MVP | Departure uses the origin zone, arrival and journey end use the destination zone, and Domestic Flight editing hides daylight-saving occurrence controls while International editing retains them |
 
 ### 16.1 Flight-data conclusion
 
@@ -426,6 +445,15 @@ The MVP therefore treats the stored flight record as user-maintained information
 | AIR-005 | Editable action templates | P0 | MVP | Check-in, manage-booking, status, and tracker URL templates support documented placeholders and can be disabled when stale |
 | AIR-006 | Safe asset policy | P0 | MVP | The app never scrapes or hotlinks airline logos; it uses bundled, licensed, or user-supplied assets with a fallback |
 | AIR-007 | Automatically synchronized airline catalog | Explore | Not planned | Personal scope does not need a remote catalog service or automated brand-data ingestion |
+
+### 17.1 Airport and Booking-vendor Metadata
+
+| ID | Feature | Priority | Release | Acceptance condition |
+|---|---|---:|---|---|
+| CAT-001 | Regional starter airport catalog | P0 | MVP | A bundled and published starter set covers prominent India, Singapore, Malaysia, and Indonesia airports and remains searchable offline by code, name, city, and alias |
+| CAT-002 | Booking-vendor catalog | P0 | MVP | Common booking websites—including Airbnb and Trip.com—are searchable separately from the airline/operator and preserve their name, website, and safe visual metadata as a booking snapshot; migration `202609130005` publishes the two additions without mutating the prior release |
+| CAT-003 | Explicit Other path | P0 | MVP | If no airline, airport, or booking vendor matches, Other exposes validated manual fields while keeping the saved-list picker visible so the user can switch back immediately |
+| CAT-004 | Privacy-safe suggestion queue | P1 | MVP | An unmatched catalog value may be proposed for Admin review without trip title, traveler, PNR, date, document, or other private context |
 
 ## 18. Administration and Metadata
 
@@ -455,7 +483,7 @@ The following do not belong in the first real-data release unless the catalog is
 - OCR, PDF field extraction, or AI extraction
 - Public unauthenticated file sharing
 - Full-text search inside uploaded documents
-- Expense splitting and payments
+- Standalone expense groups, unequal/custom splits, reimbursements, settlements, and payment rails; the trip-scoped equal split is included
 - Route optimization, embedded map images, or offline map downloads
 - Automated visa eligibility decisions
 - Inbound-aircraft automation
@@ -483,7 +511,7 @@ The MVP is ready for private travel use only when:
 13. Home and Trip Home compute the correct next action and essential shortcuts for planning, pre-departure, travel-day, and in-trip test scenarios.
 14. Flight tracking and check-in shortcuts clearly identify external data and continue to expose stored itinerary details offline.
 15. Travel-readiness warnings can be resolved through a linked document or checklist action.
-16. Home switches into the correct single current trip at D-1 in the trip timezone and handles overlaps deterministically.
+16. Fresh root launch opens the correct single current trip at D-1, honors an eligible saved focus, handles overlaps by earliest end then start then stable ID, and leaves an explicit `/home` visit on Home.
 17. A flight progresses from ticket-first to boarding-pass-first presentation and supports manual delay, gate, cancellation, and baggage updates offline.
 18. The Alerts page and unread count are reproducible from the same cached data after an offline reload.
 19. Every map action works without an API key when online and has an understandable unavailable state when offline.
@@ -506,7 +534,18 @@ The MVP is ready for private travel use only when:
 36. Selecting one traveler consistently hides another traveler's assigned events, bookings, readiness, costs, seats, and documents while retaining records shared with everyone.
 37. An owner can offer a later trip to a previously associated account, and no membership exists until that account accepts from Home.
 38. An owner/editor can add a missing flight connection after creation and see the complete route and seats at the top of Flight details.
-39. If a document's cloud upload or trip association is interrupted, the file remains visible only to its signed-in owner in Profile and can be retried, associated without reselecting the bytes, or deleted.
+39. If a document's cloud upload or trip association is interrupted, the file remains visible only to its signed-in owner in Profile and can be retried or associated without reselecting the bytes. Only a never-attempted pending upload can be discarded offline; attempted/cloud-backed unassociated files require an online delete, and associated originals use the Vault lifecycle.
+40. A new-trip form initially suggests a start 15 days from today and an end seven days later without overwriting a user-adjusted end date.
+41. Direct starts with one journey leg, Connecting starts with two and permits more, every later leg starts where the previous leg ends, and every summary shows all ordered stops without a generic journey Location field. A later-added flight connection fixes its origin to the previous arrival, country-filters Domestic destinations, and is rejected server-side if endpoint/zone continuity, positive layover, scope, or Domestic country is invalid.
+42. Domestic journeys, hotels, activities, meals, and local events show no timezone chooser; known international airports derive zones, while an International Other airport and every International non-flight endpoint require strict IANA selections. Domestic Flight editing also hides repeated-clock controls.
+43. Cross-zone elapsed time is calculated from both printed local endpoint times and their endpoint zones, including an overnight or offset-changing trip; departure renders in the origin zone and arrival/overall end in the destination zone.
+44. Compact cost totals on Home and the trip header open the same itemized Trip expenses section.
+45. An unrelated route never inherits the trip timeline's scroll position, and returning to that trip still resolves or restores its intended active position.
+46. Add Event lists Flight, Hotel, Activity, and Bus first; a journey omits generic Place/Location and a hotel omits service-provider, time-zone, and repeated-clock controls.
+47. Choosing Other for Booked via leaves the catalog picker available and clears a prior catalog URL; selecting a saved value exits Other and fills its URL or clears a stale value when none is defined. The same rule works in create and edit, and Airbnb and Trip.com work from both the bundled fallback and published catalog.
+48. An exact-time planned Activity without a booking can gain booking details online while retaining its original timeline-item identity and without creating a duplicate event; a flexible Activity first directs the editor to Set exact time.
+49. The account document bucket accepts a new object only for an owned pending unassociated receipt, offers no in-place update, and prevents inbox deletion after association. Association immediately reconciles local pending state, and an associated server receipt suppresses a stale unassociated cached copy.
+50. Permanent trip purge queues legacy trip-document paths and deletes the trip in one database transaction, then removes Storage objects and acknowledges only successful cleanup; later online trip reads retry retained queue rows. Owner-held account-inbox objects are removed after association clears, with a failed cleanup retaining its account receipt rather than claiming every byte was removed.
 
 ## 21. Product Decisions and Open Reviews
 
@@ -521,7 +560,7 @@ The MVP is ready for private travel use only when:
 | 7 | Flight tracking source | Accepted | Manual operational fields plus editable airline/public tracker links; no automated provider |
 | 8 | Reminder boundary | Accepted | On-load/in-app Alerts page for MVP; Web Push remains a later experiment |
 | 9 | Map boundary | Accepted | Keyless Google Maps URLs only; no embedded images, geocoding dependency, optimization, or downloads |
-| 10 | Current-trip boundary | Accepted | One focused current trip per user, beginning one calendar day before departure in the trip timezone |
+| 10 | Current-trip boundary | Accepted | One focused current trip per user beginning one calendar day before departure; fresh root launch honors eligible saved focus or a deterministic overlap fallback, while explicit Home navigation stays on Home |
 | 11 | Visa-assistance boundary | Accepted | Manual input and official links only; no automated eligibility determination |
 | 12 | Recoverable deletion period | Accepted | Trips and documents remain recoverable for 30 days |
 | 13 | Invitation mechanism | Accepted | Signed-in recipients redeem unique, expiring, single-use codes targeted to one traveler or non-traveling collaborator |
@@ -544,12 +583,23 @@ The MVP is ready for private travel use only when:
 | 30 | Exact duplicate handling | Accepted | Same-trip SHA-256 matches reuse the existing Vault record and bytes |
 | 31 | Traveler-focused presentation | Accepted | Everyone shows all authorized trip data; one traveler shows only shared and person-relevant planning records |
 | 32 | Reuse associated accounts | Accepted | Prior shared-trip history enables a consent-required direct offer; first-time sharing still uses a private code/QR |
-| 33 | Late flight connections | Accepted | Editors may append a validated connection later without recreating the flight booking |
+| 33 | Late flight connections | Accepted | Editors may append a chronological endpoint-continuous connection later without recreating the flight booking |
 | 34 | Flexible timeline placement | Accepted | Exact, date-only, all-day, relative, and unscheduled events remain accessible on one timeline |
 | 35 | Event lifecycle | Accepted | Planned, Done, Skipped, Cancelled, Archive, and Restore have separate meanings |
 | 36 | Trip expense companion | Accepted | Record payer and participants, split equally, and show derived balances per currency inside the trip |
 | 37 | Independent expense product | Deferred | Revisit a full Splitwise-style experience only after trip-scoped expenses are proven |
 | 38 | Admin experience redesign | Deferred | Finish and retest the trip application before rebuilding the responsive administrator experience |
+| 39 | Journey structure prompt | Accepted | Ask Direct or Connecting before leg details; leg count remains authoritative and no schema field is added |
+| 40 | Visible timezone boundary | Accepted | Keep strict zones in storage but hide the control for Domestic and local entries, including Domestic Flight editing; manual zone entry is required for an International Other airport or International non-flight endpoint without a catalog |
+| 41 | Provider-local schedule math | Accepted | Enter both printed local times, convert each with its endpoint zone, derive elapsed time from the two instants, and display arrival/end in the destination zone |
+| 42 | Expense presentation | Accepted | Keep Home/header totals compact and route both to one itemized trip-expense view |
+| 43 | Trip date defaults | Accepted | Suggest +15 days and seven nights later without replacing deliberate edits |
+| 44 | Route scroll isolation | Accepted | Restore scroll only inside the relevant trip/view and open unrelated routes at their own top |
+| 45 | Planned activity enrichment | Accepted | Add and link booking details later only for an exact-time Activity as an online action; flexible items must first Set exact time and the original timeline item remains |
+| 46 | Booking-vendor rollout | Accepted | Bundle Airbnb/Trip.com for immediate fallback, reconcile the selected vendor's URL in create/edit, and publish the catalog additions through migration `202609130005` |
+| 47 | Connected-route continuity | Accepted | Reject a connecting leg whose normalized origin does not match the prior destination; lock later-added origin in the UI and re-enforce continuity, layover, scope, and Domestic country on the server |
+| 48 | Account-original lifecycle | Accepted | Use pending-only INSERT, no UPDATE, unassociated-only DELETE, online cleanup after a cloud attempt, and associated-server receipt reconciliation to suppress stale local inbox rows |
+| 49 | Permanent-purge cleanup queue | Accepted for testing | Queue legacy paths and delete the trip atomically, clean and acknowledge after commit, retry retained queue rows, then clean account-inbox bytes after association clears |
 
 ## 22. Research Sources
 
@@ -592,5 +642,8 @@ Feature behavior is implemented under `src/features/` and exposed through `src/p
 | Low-level design | `docs/LOW_LEVEL_DESIGN.md` | Detailed behavior and implemented contract |
 | Application source | `src/` | Routes, feature logic, local-first persistence, and co-located tests |
 | Supabase schema | `supabase/migrations/` | Database, authorization, object Storage, and server functions |
+| Account document hardening | `supabase/migrations/202609130004_account_document_storage_state.sql` | Server-verified completion and append-only unassociated Storage lifecycle |
+| Latest catalog migration | `supabase/migrations/202609130005_booking_vendor_catalog_additions.sql` | Publishes Airbnb and Trip.com after the regional catalog |
+| Trip Storage cleanup migration | `supabase/migrations/202609130006_trip_storage_cleanup_queue.sql` | Persistent cleanup queue, owner-only permanent purge, guarded legacy Storage deletion, and hardened appended-flight continuity |
 | Redesign checklist | `docs/REDESIGN_CHECKLIST.md` | Proposed decisions, schema impact, and small preview slices |
 | Documentation conventions | `docs/doc-conventions.md` | Decision and maintenance rules |

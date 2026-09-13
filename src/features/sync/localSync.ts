@@ -94,16 +94,14 @@ export function orderOutbox(operations: OutboxOperation[]) {
 }
 
 export function classifySyncError(error: unknown) {
-  const candidate = error && typeof error === "object" ? error as { code?: unknown; message?: unknown; details?: unknown; hint?: unknown } : null;
-  const message = error instanceof Error
-    ? error.message
-    : candidate
-      ? [candidate.code, candidate.message, candidate.details, candidate.hint].filter(Boolean).join(" ")
-      : String(error);
+  const candidate = error && typeof error === "object" ? error as { code?: unknown; error?: unknown; message?: unknown; details?: unknown; hint?: unknown; status?: unknown; statusCode?: unknown } : null;
+  const message = candidate
+    ? [candidate.code, candidate.error, candidate.status, candidate.statusCode, candidate.message, candidate.details, candidate.hint].filter(Boolean).join(" ")
+    : String(error);
   if (/version_conflict|changed on another device/i.test(message)) return "conflict" as const;
   if (/quota|space/i.test(message)) return "quota" as const;
   if (/auth|sign in|session/i.test(message)) return "authentication" as const;
-  if (/permission|row.level.security|forbidden|not authorized|42501/i.test(message)) return "permission" as const;
+  if (/permission|row.level.security|forbidden|not authorized|blocked|zscaler|dlp.denied|42501|\b403\b/i.test(message)) return "permission" as const;
   if (/schema cache|column .* does not exist|relation .* does not exist|42703|42P01/i.test(message)) return "schema" as const;
   if (/network|fetch|timeout|temporar|unavailable/i.test(message)) return "retryable" as const;
   return "failed" as const;
@@ -113,6 +111,62 @@ export function isDuplicateKeyError(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const candidate = error as { code?: unknown; message?: unknown };
   return candidate.code === "23505" || /duplicate key|already exists/i.test(String(candidate.message ?? ""));
+}
+
+export function isDuplicateStorageObjectError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; error?: unknown; message?: unknown; status?: unknown; statusCode?: unknown };
+  const status = String(candidate.statusCode ?? candidate.status ?? "");
+  const code = String(candidate.code ?? candidate.error ?? "");
+  const message = String(candidate.message ?? "");
+  return status === "409" || /^duplicate$/i.test(code) || /\balready exists\b|\bduplicate\b/i.test(message);
+}
+
+export function isMissingAccountDocumentObjectError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { message?: unknown; details?: unknown; hint?: unknown };
+  return [candidate.message, candidate.details, candidate.hint]
+    .some((value) => /document file is not stored yet/i.test(String(value ?? "")));
+}
+
+type AccountDocumentStorageStep = {
+  finalize: () => PromiseLike<{ data: unknown; error: unknown }>;
+  upload: () => PromiseLike<{ error: unknown }>;
+};
+
+/**
+ * Reconciles an account upload before sending its bytes again. The first
+ * finalization call recovers the common case where Storage and the database
+ * committed but the browser lost the response. Only the RPC's explicit
+ * missing-object result permits a new, non-upsert Storage upload.
+ */
+export async function ensureAccountDocumentStored(step: AccountDocumentStorageStep) {
+  const preflight = await step.finalize();
+  if (!preflight.error) {
+    if (typeof preflight.data !== "string") throw new Error("Supabase did not confirm the stored document file.");
+    return preflight.data;
+  }
+  if (!isMissingAccountDocumentObjectError(preflight.error)) throw preflight.error;
+
+  const { error: uploadError } = await step.upload();
+  if (uploadError && !isDuplicateStorageObjectError(uploadError)) throw uploadError;
+
+  const finalized = await step.finalize();
+  if (finalized.error) throw finalized.error;
+  if (typeof finalized.data !== "string") throw new Error("Supabase did not confirm the stored document file.");
+  return finalized.data;
+}
+
+export function associatedAccountDocumentUpload(upload: Record<string, unknown>, documentId: string, updatedAt: string) {
+  return {
+    ...upload,
+    associated_document_id: documentId,
+    updated_at: updatedAt,
+    sync_state: "synced",
+    association_pending: false,
+    sync_error: undefined,
+    can_retry: false
+  };
 }
 
 export type SyncIssue = OutboxOperation & { localValue: unknown; serverValue?: unknown };
@@ -184,7 +238,7 @@ async function pushDocument(operation: OutboxOperation) {
     .upsert({ ...payload.document, current_version_id: null }, { onConflict: "id", ignoreDuplicates: true });
   if (docError) throw docError;
   const { error: uploadError } = await supabase.storage.from("trip-documents").upload(payload.storagePath, blob, { contentType: String(payload.version.mime_type), upsert: false });
-  if (uploadError && !/exist|duplicate/i.test(uploadError.message)) throw uploadError;
+  if (uploadError && !isDuplicateStorageObjectError(uploadError)) throw uploadError;
   const { error: versionError } = await supabase
     .from("document_versions")
     .upsert(payload.version, { onConflict: "id", ignoreDuplicates: true });
@@ -193,20 +247,45 @@ async function pushDocument(operation: OutboxOperation) {
 }
 
 async function pushAccountDocument(operation: OutboxOperation) {
-  if (!supabase) throw new Error("Supabase is not connected.");
+  const api = supabase;
+  if (!api) throw new Error("Supabase is not connected.");
   const payload = operation.payload as { upload: Record<string, unknown> & { id: string }; storagePath: string };
-  const blob = await readOfflineFile(operation.profileId, payload.upload.id); if (!blob) throw new Error("Local document bytes are missing.");
-  const { error: rowError } = await supabase.from("account_document_uploads").upsert(payload.upload, { onConflict: "id", ignoreDuplicates: true });
+  const { error: rowError } = await api.from("account_document_uploads").upsert(payload.upload, { onConflict: "id", ignoreDuplicates: true });
   if (rowError) throw rowError;
-  const { error: uploadError } = await supabase.storage.from("account-documents").upload(payload.storagePath, blob, { contentType: String(payload.upload.mime_type), upsert: false });
-  if (uploadError && !/exist|duplicate/i.test(uploadError.message)) throw uploadError;
+  const storedAt = await ensureAccountDocumentStored({
+    finalize: () => api.rpc("finalize_account_document_upload", { requested_upload_id: payload.upload.id }),
+    upload: async () => {
+      // Read bytes only when the preflight proves Storage still needs them. A
+      // completed server upload can therefore reconcile even if this device's
+      // temporary blob was cleared after the response was lost.
+      const blob = await readOfflineFile(operation.profileId, payload.upload.id);
+      if (!blob) throw new Error("Local document bytes are missing.");
+      return api.storage.from("account-documents").upload(payload.storagePath, blob, { contentType: String(payload.upload.mime_type), upsert: false });
+    }
+  });
+
+  const cached = await database.entities.get([operation.profileId, "account-document-uploads", payload.upload.id]);
+  if (cached && cached.data && typeof cached.data === "object") {
+    const { sync_error: _syncError, can_retry: _canRetry, ...upload } = cached.data as Record<string, unknown>;
+    await database.entities.put({ ...cached, data: { ...upload, stored_at: storedAt, sync_state: "synced" }, updatedAt: storedAt });
+  }
 }
 
 async function pushDocumentAssociation(operation: OutboxOperation) {
   if (!supabase) throw new Error("Supabase is not connected.");
-  const payload = operation.payload as { rpc: Record<string, unknown> };
-  const { error } = await supabase.rpc("associate_account_document", payload.rpc);
+  const payload = operation.payload as { uploadId?: string; rpc: Record<string, unknown> & { requested_document_id?: string } };
+  const { data, error } = await supabase.rpc("associate_account_document", payload.rpc);
   if (error) throw error;
+  const uploadId = payload.uploadId ?? "";
+  const documentId = typeof data === "string" ? data : (payload.rpc.requested_document_id ?? operation.entityId);
+  if (uploadId && documentId) {
+    const key: [string, string, string] = [operation.profileId, "account-document-uploads", uploadId];
+    const cached = await database.entities.get(key);
+    if (cached?.data && typeof cached.data === "object") {
+      const updatedAt = new Date().toISOString();
+      await database.entities.put({ ...cached, data: associatedAccountDocumentUpload(cached.data as Record<string, unknown>, documentId, updatedAt), updatedAt });
+    }
+  }
 }
 
 export async function syncOutbox() {

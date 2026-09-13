@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { TimeZoneAutocomplete } from "../../components/TimeZoneAutocomplete";
 import type { EventTimingMode, ItineraryItem, Trip } from "../trips/types";
 import { isoToLocalDateTime, localDateTimeToIso } from "../trips/validation";
 
@@ -48,7 +47,7 @@ export function TimingFields({ trip, itinerary, item }: { trip: Trip; itinerary:
     {(mode === "date_only" || mode === "all_day") && <label className="form-label mt-4">Date<input className="form-input" name="scheduledDate" type="date" min={trip.start_date} max={trip.end_date} defaultValue={item?.scheduled_date ?? localStart.slice(0, 10)} required /></label>}
     {mode === "relative" && <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Position<select className="form-input" name="relativePosition" defaultValue={item?.relative_position ?? "after"}><option value="before">Before</option><option value="after">After</option></select></label><label className="form-label">Event<select className="form-input" name="anchorItineraryItemId" defaultValue={item?.anchor_itinerary_item_id ?? ""} required><option value="">Choose a dated event</option>{itinerary.filter((candidate) => candidate.id !== item?.id && !["relative", "unscheduled"].includes(candidate.timing_mode ?? "exact")).map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title}</option>)}</select></label></div>}
     {mode === "unscheduled" && <p className="mt-3 text-xs leading-5 text-muted">This stays in the Unscheduled section until you edit it and choose a date or position.</p>}
-    {!['relative', 'unscheduled'].includes(mode) && <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Place time zone<TimeZoneAutocomplete name="timezone" defaultValue={item?.timezone ?? trip.primary_timezone} required /></label>{mode === "exact" && <label className="form-label">Repeated clock time<select className="form-input" name="occurrence" defaultValue="automatic"><option value="automatic">Automatic (usual)</option><option value="earlier">Earlier occurrence</option><option value="later">Later occurrence</option></select></label>}</div>}
-    {['relative', 'unscheduled'].includes(mode) && <input type="hidden" name="timezone" value={trip.primary_timezone} />}
+    <input type="hidden" name="timezone" value={item?.timezone ?? trip.primary_timezone} />
+    <input type="hidden" name="occurrence" value="earlier" />
   </fieldset>;
 }

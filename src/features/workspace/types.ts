@@ -284,11 +284,14 @@ export type AccountDocumentUpload = {
   byte_size: number;
   sha256: string;
   associated_document_id: string | null;
+  stored_at: string | null;
   created_at: string;
   updated_at: string;
   sync_state?: "queued" | "synced";
   sync_error?: string;
   association_pending?: boolean;
+  can_retry?: boolean;
+  can_verify?: boolean;
 };
 
 export type VaultDocument = {

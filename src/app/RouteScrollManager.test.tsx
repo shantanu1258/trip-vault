@@ -1,0 +1,50 @@
+import { fireEvent, render } from "@testing-library/react";
+import { MemoryRouter, useNavigate } from "react-router-dom";
+import { describe, expect, it, vi } from "vitest";
+import { RouteScrollManager } from "./RouteScrollManager";
+
+function NavigationHarness() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <RouteScrollManager />
+      <button onClick={() => navigate("/trips/example?view=details")}>Trip</button>
+      <button onClick={() => navigate("/trips/example?view=timeline")}>Trip view</button>
+      <button onClick={() => navigate("/profile")}>Profile</button>
+    </>
+  );
+}
+
+describe("route scroll isolation", () => {
+  it("starts real pages at the top without resetting query-only TripPage views", () => {
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    const view = render(
+      <MemoryRouter initialEntries={["/home"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <NavigationHarness />
+      </MemoryRouter>
+    );
+
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    fireEvent.click(view.getByRole("button", { name: "Trip" }));
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+    fireEvent.click(view.getByRole("button", { name: "Trip view" }));
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+    fireEvent.click(view.getByRole("button", { name: "Profile" }));
+    expect(scrollTo).toHaveBeenCalledTimes(3);
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, left: 0, behavior: "auto" });
+  });
+
+  it("restores the browser scroll-restoration setting when it unmounts", () => {
+    vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    Object.defineProperty(window.history, "scrollRestoration", { value: "auto", writable: true, configurable: true });
+    const view = render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <RouteScrollManager />
+      </MemoryRouter>
+    );
+
+    expect(window.history.scrollRestoration).toBe("manual");
+    view.unmount();
+    expect(window.history.scrollRestoration).toBe("auto");
+  });
+});

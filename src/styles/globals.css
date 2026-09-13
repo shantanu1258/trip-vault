@@ -83,7 +83,7 @@ textarea:focus-visible {
 
 @layer components {
   .surface-card {
-    @apply rounded-[1.65rem] border border-line bg-surface shadow-soft;
+    @apply min-w-0 rounded-[1.65rem] border border-line bg-surface shadow-soft;
   }
 
   .eyebrow {
@@ -99,7 +99,7 @@ textarea:focus-visible {
   }
 
   .form-input {
-    @apply mt-2 min-h-11 w-full rounded-xl border border-line bg-elevated px-3.5 py-2.5 text-sm font-medium text-ink placeholder:text-muted/70 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply mt-2 block min-h-11 w-full min-w-0 max-w-full rounded-xl border border-line bg-elevated px-3.5 py-2.5 text-sm font-medium text-ink placeholder:text-muted/70 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .primary-button {

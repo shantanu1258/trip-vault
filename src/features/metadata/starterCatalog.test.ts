@@ -3,6 +3,7 @@ import { isValidTimeZone } from "../trips/validation";
 import { validateActionUrl } from "../admin/validation";
 import airports from "./starter-airports.json";
 import airlines from "./starter-airlines.json";
+import vendors from "./starter-vendors.json";
 
 describe("bundled travel catalogues", () => {
   it("keeps airport identifiers unique and every time zone valid", () => {
@@ -34,5 +35,12 @@ describe("bundled travel catalogues", () => {
     expect(["SQ", "TR"].every((code) => codes.has(code))).toBe(true);
     expect(["MH", "AK", "D7", "OD", "FY"].every((code) => codes.has(code))).toBe(true);
     expect(["GA", "QG", "JT", "ID", "QZ", "IU", "IW", "IP", "8B"].every((code) => codes.has(code))).toBe(true);
+  });
+
+  it("includes the common accommodation booking vendors", () => {
+    const keys = new Set(vendors.map((vendor) => vendor.stableKey));
+    expect(vendors).toHaveLength(9);
+    expect(["booking-com", "agoda", "airbnb", "trip-com"].every((key) => keys.has(key))).toBe(true);
+    expect(vendors.every((vendor) => vendor.websiteUrl === null || validateActionUrl(vendor.websiteUrl))).toBe(true);
   });
 });

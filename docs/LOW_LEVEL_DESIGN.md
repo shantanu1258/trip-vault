@@ -13,7 +13,7 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 
 **Document status:** Implemented personal MVP 1.0
 
-**Implementation status:** Timeline-first implementation complete locally. Existing Supabase projects apply every pending migration through `supabase/migrations/202609130003_account_document_inbox.sql`; fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once. Remote and airplane-mode acceptance remain pending.
+**Implementation status:** Timeline-first implementation complete locally. Existing Supabase projects apply every pending migration in filename order through `supabase/migrations/202609130006_trip_storage_cleanup_queue.sql`. Fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` for the current schema, bootstrap an active administrator, and then publish the regional and booking-vendor catalog releases as described in 16.6. Remote and airplane-mode acceptance remain pending.
 
 ## 1. Technology Set
 
@@ -38,7 +38,7 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 | Motion | Property-specific Tailwind transitions plus CSS scroll snap and Intersection Observer | Implemented | Restrained focus changes and reduced-motion fallback |
 | Map hand-off | Google Maps URLs | Accepted | Search and directions links need no API key; no embedded maps, geocoding, or downloads in MVP |
 | Flight status | Manual records plus external links | Accepted | No live-data provider, scraping, or background polling |
-| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | The executable local baseline is 30 files and 135 tests; type-check and production PWA build pass |
+| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | The executable local baseline is 44 files and 209 tests; type-check and production PWA build pass |
 
 ## 2. Implemented Repository Layout
 
@@ -59,7 +59,8 @@ trip-vault/
 ├── src/
 │   ├── app/
 │   │   ├── App.tsx
-│   │   └── AppProviders.tsx
+│   │   ├── AppProviders.tsx
+│   │   └── RouteScrollManager.tsx
 │   ├── components/
 │   ├── demo/
 │   ├── features/
@@ -148,6 +149,7 @@ The wide-screen layout may render several routes as side panels, but URL identit
 | `timeline_event_type` | `flight`, `train`, `bus`, `ferry`, `cab`, `hotel_check_in`, `hotel_check_out`, `transport`, `meal`, `activity`, `preparation`, `custom` |
 | `journey_mode` | `train`, `bus`, `ferry`, `cab` |
 | `journey_scope` | `domestic`, `international` |
+| `journey_structure` | Transient form choice only: `direct`, `connecting`; persisted ordered-leg count is authoritative |
 | `cost_category` | `flight`, `hotel`, `transport`, `activity`, `food`, `visa`, `insurance`, `other` |
 | `payment_status` | `planned`, `paid`, `refunded` |
 | `document_category` | `flight`, `hotel`, `activity`, `visa`, `passport`, `insurance`, `ticket`, `transport`, `receipt`, `other` |
@@ -172,7 +174,7 @@ Location data is context-specific rather than one shared database type:
 | Itinerary item | `label`, `address`, and optional HTTPS `map_url` | At least one useful location value is supplied when a map action is expected |
 | Journey endpoint | Name/code/country plus a strict IANA time zone on each leg | Origin and destination are independent snapshots |
 
-The app uses an explicit `map_url` when present; otherwise it builds a keyless Google Maps search from the stored label or address.
+The app uses an explicit `map_url` when present; otherwise it builds a keyless Google Maps search from the stored label or address. Flight, train, bus, ferry, and cab forms do not ask for this generic location: their complete route is derived from ordered endpoints. Local stays, meals, activities, preparation, other transport, and custom events may use the shared place/address shape.
 
 ### 4.3 Database Tables
 
@@ -462,7 +464,7 @@ Primary key: `(booking_id, traveler_id)`.
 | `trip_id` | UUID | Parent trip |
 | `type` | `booking_type` | Display and form behavior |
 | `title` | Text | Human-readable label |
-| `provider` | Text, nullable | Airline, property, or operator |
+| `provider` | Text, nullable | Airline/operator snapshot for a journey, property name for a hotel, or service provider for another reservation |
 | `reference_code` | Text, nullable | Confirmation or reservation code; mandatory for flights |
 | `start_at` | Timestamp, nullable | Chronological placement |
 | `end_at` | Timestamp, nullable | Duration or checkout |
@@ -572,7 +574,7 @@ Primary key: `(flight_leg_id, traveler_id)`.
 
 Train, Bus, Ferry/Boat, and Cab bookings share one ordered-leg model. Each leg stores mode, operator/service, origin and destination names/codes/countries, separate strict IANA time zones, scheduled instants, optional boarding lead/exact time, platforms or bays, coach/cabin, seat, status note, and optimistic version fields. The booking type must match the leg mode, arrival must be after departure, and `(booking_id, segment_order)` is unique.
 
-The UI enters departure in origin local time and arrival in destination local time, converts both to instants, rejects DST gaps/ambiguous times unless the user chooses an occurrence, and computes elapsed duration from the instants.
+The UI enters departure in origin local time and arrival in destination local time, converts both to instants, rejects DST gaps/ambiguous times unless the user chooses an occurrence, and computes elapsed duration from the instants. Domestic journeys hide the zone and repeated-clock controls and persist the strict compatibility fallback. International non-flight journeys show strict endpoint-zone controls because there is no station/port catalog from which to derive them. Every later leg must begin at the previous leg's destination. Initial multi-leg entry validates this in the client; the post-creation flight-connection RPC locks the booking and prior leg and enforces matching endpoint, time zone, chronological order, and Domestic country before inserting.
 
 #### `itinerary_items`
 
@@ -587,6 +589,12 @@ The UI enters departure in origin local time and arrival in destination local ti
 | `starts_at` | Timestamp | Ordering time |
 | `ends_at` | Timestamp, nullable | Optional duration |
 | `timezone` | Text | Display time zone |
+| `is_all_day` | Boolean | Compatibility flag for date-only/all-day presentation |
+| `timing_mode` | `exact`, `date_only`, `all_day`, `relative`, or `unscheduled` | Controls placement without requiring every event to have a user-entered clock time |
+| `scheduled_date` | Date, nullable | User-facing date for date-only/all-day and dated ordering; null for Unscheduled |
+| `anchor_itinerary_item_id` | UUID, nullable | Dated same-trip anchor for a relative item |
+| `relative_position` | `before` / `after`, nullable | Places a relative item beside its anchor |
+| `event_status` | `planned`, `done`, `skipped`, or `cancelled` | Visible lifecycle state independent from archive |
 | `location` | JSON, nullable | Structured place |
 | `notes` | Text, nullable | Shared contextual note |
 | `applies_to_all_travelers` | Boolean | Uses the whole active traveler roster instead of selected participant rows |
@@ -663,9 +671,27 @@ This is the private, account-owned staging record created before any trip associ
 | `byte_size` | Big integer | Must remain below 5,000,000 bytes |
 | `sha256` | Text | Integrity proof shared with the eventual document version |
 | `associated_document_id` | UUID, nullable | Set only by the atomic association function |
+| `stored_at` | Timestamp, nullable | Set by the server only after the matching private Storage object is verified |
 | `created_at`, `updated_at` | Timestamp | Recovery ordering and synchronization state |
 
-Unassociated rows appear in Profile. Deleting one removes its private object and local copy; associated rows are managed through the Vault document lifecycle instead.
+Unassociated rows appear in Profile. The browser may INSERT a receipt only for the current owner with `associated_document_id` and `stored_at` still null; it has no direct UPDATE grant. The finalization and association functions alone record server-verified storage and association. Storage follows the same append-only boundary: an object INSERT requires an owned pending unassociated receipt, no object UPDATE policy exists, and object DELETE requires the receipt to remain unassociated. Deleting an unassociated inbox entry removes its private object and local copy. Once associated, its receipt and object are immutable through the inbox and are managed through the Vault document/version lifecycle instead.
+
+After the association function returns, the sync layer updates the cached receipt with `associated_document_id`, clears `association_pending`, errors, and retry state, marks it synchronized, and removes the outbox operation. Inbox refresh intentionally reads both associated and unassociated server receipts before merging. An associated server receipt suppresses a stale unassociated device row; only pending local work or a local row absent from the server may overlay the cloud copy, and the final visible list filters every associated receipt. This prevents a completed upload from reappearing as unfinished after reconnect or cross-device synchronization.
+
+#### `trip_storage_cleanup_queue`
+
+This owner-scoped database queue preserves legacy `trip-documents` object paths across permanent trip deletion. It is separate from the Profile document inbox and deliberately has no trip foreign key.
+
+| Field | Type | Purpose |
+|---|---|---|
+| `id` | UUID, primary key | Cleanup-work identity |
+| `owner_id` | UUID | Trip owner authorized to inspect and acknowledge the row |
+| `trip_id` | UUID | Deleted trip identity retained for grouping; no foreign key |
+| `storage_bucket` | Text | Restricted to `trip-documents` |
+| `storage_path` | Text | Exact immutable legacy object path |
+| `created_at` | Timestamp | Queue age and recovery ordering |
+
+The authenticated client can read and delete only its own rows and cannot insert them directly. `delete_trip_permanently` inserts the complete distinct path set and deletes the trip in one database transaction. `can_cleanup_trip_storage_object` authorizes Storage deletion only for an owned queued `trip-documents` path that is no longer referenced by a live `document_versions` row. The client acknowledges a queue row only after its Storage deletion succeeds.
 
 #### `document_travelers`
 
@@ -860,6 +886,7 @@ Primary key: `(user_id, alert_key)`.
 - Every itinerary-document link references an event and document from the same trip; deleting or unlinking the event relationship never deletes the document.
 - Every `document_versions.byte_size` is smaller than `5_000_000`; the same bound is checked before local queuing and enforced by the private bucket.
 - An account upload path starts with its `owner_id`; trip metadata is created only by `associate_account_document` after the dependent account-object upload succeeds.
+- A permanent purge cleanup row can be inserted only by the owner-only database function, survives trip deletion, names only the `trip-documents` bucket, and cannot authorize object deletion while any live document version still references its path.
 - `traveler_and_managers` visibility requires `documents.traveler_id`; trip-level documents use `trip` or `selected_members` visibility.
 - Booking, flight-leg, itinerary, and requirement assignments always reference traveler profiles rather than account IDs.
 - `validity_buffer_days` is non-negative; visa and passport warnings are advisory calculations only.
@@ -1048,11 +1075,12 @@ If an elderly parent uses their own phone, the organizer helps create that paren
 
 ### 7.1 Bucket
 
-Two Supabase Storage buckets are configured by the schema:
+Three Supabase Storage buckets are configured by the schema:
 
 | Bucket | Read policy | Write policy | Contents |
 |---|---|---|---|
 | `trip-documents` | Authorized document predicate | Authorized trip uploader | Private travel documents and immutable versions |
+| `account-documents` | Upload owner or authorized associated-document reader | Signed-in owner folder only | Private originals retained before trip association |
 | `catalog-assets` | Public, non-sensitive read | Active application administrator only | Immutable approved airline logos and banners |
 
 No personal trip data, booking reference, traveler image, or uploaded travel document may enter `catalog-assets`.
@@ -1061,6 +1089,7 @@ No personal trip data, booking reference, traveler image, or uploaded travel doc
 
 ```text
 trips/{trip_id}/documents/{document_id}/versions/{version_id}/{sanitized_filename}
+{account_id}/{upload_id}/{sanitized_filename}
 catalog/releases/{config_release_id}/{asset_id}/{sanitized_filename}
 ```
 
@@ -1081,22 +1110,41 @@ sequenceDiagram
       L-->>UI: Offer existing Vault document
     else New file
       UI->>L: Persist original in OPFS or IndexedDB fallback
-      UI->>L: Cache metadata and enqueue document upload
-      UI->>L: Enqueue assignment, access, and event-link dependencies
+      UI->>L: Cache account upload receipt and enqueue original
       alt Online and authenticated
-        UI->>DB: Start foreground outbox sync
-        DB->>DB: Insert document idempotently
-        UI->>S: Upload immutable object
-        UI->>DB: Insert version and set current version
-        UI->>DB: Apply dependent relationships
-        UI->>L: Mark accepted operations synchronized
+        UI->>DB: Insert account upload receipt idempotently
+        UI->>S: Upload immutable object into owner folder
+        UI->>DB: Mark receipt stored after server verifies the matching object exists
+        UI->>L: Mark original upload synchronized
       else Offline or request fails
-        L-->>UI: Keep local viewer copy and queued state
+        L-->>UI: Keep local original and queued state in Profile
+      end
+      UI->>L: Enqueue trip association after upload
+      alt Stored object exists and user is authorized
+        UI->>DB: Atomic association RPC creates document, version, usage, and access
+        DB-->>UI: Associated document ID
+      else Missing object, offline, or association fails
+        L-->>UI: Keep unfinished account upload for retry, association, or deletion
       end
     end
 ```
 
-Because every accepted file is smaller than 5 MB, MVP retries the individual immutable file from its verified local copy rather than implementing chunk-level resume. A failed cloud upload remains immediately viewable from its local copy and its outbox operation exposes a safe failure class such as permission or authentication until a foreground retry finalizes it. Raw server details and document content are not logged.
+Because every accepted file is smaller than 5 MB, MVP retries the individual immutable file from its verified local copy rather than implementing chunk-level resume. A database receipt is not treated as synchronized until the object exists and the server records `stored_at`; the association RPC independently rejects receipts without a matching Storage object. A failed cloud upload remains immediately available on its originating device and its outbox operation exposes a safe failure class such as permission or authentication until a foreground retry finalizes it. A different device calls the finalization check first, which recovers an object whose upload succeeded before the original response was interrupted. If the server confirms that no object exists, that device reports that the original device or a reselected file is required instead of claiming a false retry. Raw server details and document content are not logged.
+
+Successful association also reconciles the device cache immediately: the returned document ID replaces the pending association state, retry/error flags are cleared, and the outbox entry is removed. A later server refresh reads associated receipts as reconciliation evidence before filtering them from the visible inbox. The merge permits local overlay only for genuinely pending work or a receipt absent from the server, so an associated cloud row suppresses a stale unassociated local row instead of letting it reappear.
+
+Inbox deletion distinguishes local cancellation from cloud cleanup. Offline, the app may discard only a pending upload whose queued first attempt still has `attemptCount = 0`. If an attempt has started, a receipt may already exist remotely even when the client saw a failure, so deleting only the local copy could make the item reappear. Any attempted, finalized, or otherwise cloud-backed upload therefore requires an online Storage-and-receipt delete. Association blocks inbox deletion entirely; the user must use the Vault document lifecycle.
+
+### 7.3.1 Permanent trip purge
+
+Permanent purge is an owner-only, online testing action. It is split at the Postgres/Storage transaction boundary:
+
+1. The client first records the owner's associated `account-documents` paths and source upload IDs because those records will be removed by the trip cascade.
+2. The `delete_trip_permanently` security-definer function locks the trip and its documents, inserts every distinct legacy `trip-documents` path into `trip_storage_cleanup_queue`, and deletes the trip in the same database transaction. Queue rows have no trip foreign key and survive commit.
+3. If the RPC returns an error after the server may have committed, the client probes the trip. A confirmed absence is treated as committed deletion; a still-present trip preserves the original failure.
+4. After commit, the client reads its queue rows, removes those exact legacy Storage objects, and deletes only queue rows whose Storage removal succeeded. Queue authorization is path-specific and additionally rejects any path reused by a live document version.
+5. The client then removes the remembered owner-held `account-documents` bytes, whose receipts are now unassociated, and deletes each receipt only after its object is gone.
+6. Failed legacy cleanup leaves a queue row and is retried during later online `listTrips` calls. Failed account-inbox cleanup leaves its now-unassociated receipt in Profile. Neither cleanup failure restores the deleted trip or claims that all bytes were removed.
 
 ### 7.4 Validation
 
@@ -1131,7 +1179,7 @@ The app never stores a permanent public file address. A verified local file need
 
 ### 7.6 File-size and optimization boundary
 
-`MAX_DOCUMENT_BYTES` is exactly `5_000_000`; an accepted file must satisfy `file.size < MAX_DOCUMENT_BYTES`. The UI describes this as **smaller than 5 MB** and shows the measured size when a file is rejected. Shared validation checks the limit before an offline file is copied into OPFS or added to the outbox and checks it again during upload finalization. The `trip-documents` bucket limit is `4_999_999` bytes so a modified client cannot bypass the strict inequality. Supabase supports restrictions at both the project and [bucket level](https://supabase.com/docs/guides/storage/uploads/file-limits).
+`MAX_DOCUMENT_BYTES` is exactly `5_000_000`; an accepted file must satisfy `file.size < MAX_DOCUMENT_BYTES`. The UI describes this as **smaller than 5 MB** and shows the measured size when a file is rejected. Shared validation checks the limit before an offline file is copied into OPFS or added to the outbox and checks it again during upload finalization. Both private document buckets use a `4_999_999`-byte limit so a modified client cannot bypass the strict inequality. Supabase supports restrictions at both the project and [bucket level](https://supabase.com/docs/guides/storage/uploads/file-limits).
 
 The MVP does not automatically compress, resize, recompress, rasterize, or rewrite an uploaded document:
 
@@ -1345,15 +1393,16 @@ Today, readiness becomes `stale` automatically when the authorized document-vers
 | Component | Responsibility |
 |---|---|
 | `AppShell` | Responsive header, desktop side navigation, phone bottom navigation, alert count, theme, and sync placement |
+| `RouteScrollManager` | Resets document scroll on pathname changes while leaving same-trip query-string Timeline/Details navigation to `TripPage` |
 | `TripUi` exports | Shared `PageHeader`, `TripCard`, badges, empty states, and trip-facing visual primitives |
 | `ModalSheet` | Accessible modal/sheet container with an explicit Back action and Escape dismissal for mobile-friendly creation and management flows |
 | `FocusSurface` | Current/active label, accent, elevation, and reduced-motion-safe emphasis |
 | `TripPage` timeline composition | Complete timeline, phase jumps, active-event scroll, event detail sheet, people/sharing sheet, and Details switch |
-| `AddEventForm` | Unified creation for flight, connected journeys, hotel milestones, meals, activities, preparation, transport, and custom events |
+| `AddEventForm` | Unified creation ordered Flight, Hotel, Activity, Bus, then remaining types; simplifies journeys through transient Direct/Connecting and Domestic/International choices |
 | `CatalogPicker` | Shared searchable desktop popover/mobile dialog that stays inside the visual viewport when the phone keyboard opens and always exposes an explicit Other path |
 | `TimeZoneAutocomplete` | Strict searchable IANA-zone chooser with compact desktop list and a keyboard-aware mobile dialog |
-| `AirlinePicker`, `AirportPicker`, `VendorPicker` | Published/bundled catalog selectors with manual Other inputs and privacy-safe administrator suggestions; airport selection atomically supplies name, code, country, and time zone |
-| `AddFlightConnectionForm` | Appends a validated airline/airport leg to an existing flight and extends the booking and timeline end |
+| `AirlinePicker`, `AirportPicker`, `VendorPicker` | Published/bundled catalog selectors with manual Other inputs and privacy-safe administrator suggestions; airport selection atomically supplies name, code, country, and time zone; vendor selection fills or clears the controlled website snapshot |
+| `AddFlightConnectionForm` | Locks the new origin to the previous arrival, country-filters Domestic destinations, and calls the server-validated append that extends the booking and timeline end |
 | `ParticipantSelector`, `TravelerSwitcher` | Everyone/selected-traveler assignment and persistent management context without impersonation |
 | `EventDocuments` | Complete event document list, multi-select existing attachment, one-at-a-time classified upload, ordering, and unlink |
 | `UploadDocumentForm` and `documentModel` | Travel-purpose presets, assignment/access separation, size validation, duplicate recovery, and queued local copy |
@@ -1386,17 +1435,23 @@ No gradients should be used. Decorative elements must not compete with urgent tr
 
 - The timeline always renders the complete authorized itinerary from oldest to newest; Past, Current/Next, and Upcoming shortcuts scroll rather than filter.
 - `resolveCurrentTimelineItem` selects the event containing the current time, otherwise the next event, otherwise the most recent past event.
-- After the first data-backed render, two animation frames allow layout to settle before the active card scrolls near the viewport center. Returning from Details restores the saved timeline scroll unless the user explicitly requests a jump.
+- After the first data-backed render, two animation frames allow layout to settle before the active card scrolls near the viewport center. Returning from Details restores the saved timeline scroll unless the user explicitly requests a jump. `RouteScrollManager` resets Home, Profile, Vault, another trip, and every other pathname to the top without interfering with these same-trip query-string transitions.
 - The current/next card is the only card with the contextual accent and label. Every card remains clickable and keyboard-operable and opens the event-detail sheet.
 - Event icons sit inside the card corner on phone layouts to preserve width; on desktop they align centrally with the vertical connector.
 - Everyone shows the complete trip. Traveler focus retains shared events and the selected person's assigned events, reservations, linked costs, readiness, seats, and documents while hiding records assigned only to someone else.
 - The floating control group opens Add Event, People & sharing/current member, or the active-event jump. Creation controls are hidden from Viewers.
 - Search matches timeline titles, booking/provider data, PNRs, airport codes/names, documents, travelers, readiness items, and related metadata after two characters, returning at most 40 results.
-- Details view keeps the existing sectioned experience: Overview, Reservations, Costs, People, Readiness, Documents, Offline, Travel data, and Notes.
+- Details view keeps the existing sectioned experience: Overview, Reservations, Costs, People, Readiness, Documents, Archived, Offline, Travel data, and Notes. Home and the trip header show one compact per-currency cost line; either cost line deep-links to this itemized Costs section.
 
-The floating Add Event sheet exposes Flight, Train, Bus, Ferry/Boat, Cab, Hotel, Meal, Activity, Preparation, Other transport, and Custom. Flight, train, bus, ferry, and cab bookings can contain ordered connecting legs. An editor who omitted a flight connection can later append it from Flight details; the new leg inherits booking travelers and extends the booking/timeline end. Airline means the carrier operating a flight; service provider means the hotel, restaurant, tour company, or other business delivering a non-flight service; booked via means the website, seller, or agent used to purchase the reservation. Flight creation therefore does not show a redundant service-provider input.
+The floating Add Event sheet presents Flight, Hotel, Activity, and Bus first, followed by Train, Ferry/Boat, Cab, Meal, Preparation, Other transport, and Custom. Every flight, train, bus, ferry, or cab asks **Direct** or **Connecting** before leg entry. Direct renders exactly one leg. Connecting starts with two ordered legs and permits more. On submit, each later leg must depart from the endpoint where the previous leg arrived. When both endpoint codes exist, comparison uses trimmed, uppercased alphanumeric codes; otherwise it uses equivalently normalized endpoint names. The choice itself is not stored; the saved leg count is authoritative. An editor who omitted a flight connection can later append it from Flight details. That form renders the prior arrival as a fixed, non-editable origin; a Domestic connection filters its destination catalog to the same country. The RPC locks the booking and last leg, revalidates endpoint code/name and departure time zone, requires a positive layover and later arrival, preserves journey scope, and rejects a Domestic country change before inheriting travelers and extending the booking/timeline end. Every trip, booking, flight, and event summary builds the full route from those ordered legs, such as `BLR → DEL → DXB`, rather than collecting a generic journey location.
 
-Each journey is explicitly Domestic or International. A flight airport is selected by code or name and fills the name, passenger code, country, and strict IANA time zone together; its derived code is disabled. **Other airport** unlocks manual name/code/country/time-zone entry so a bad or missing catalog row can be submitted for administrator review. Airline and booked-via inputs follow the same saved-list/Other interaction. The app converts provider-local departure/arrival values to instants while validating DST ambiguity, duration, and connection order. Flight PNR/reference is mandatory. Boarding lead or exact boarding time is journey-only; without an exact time, the display derives boarding by subtracting the lead from scheduled departure. Hotel creation produces separate check-in and checkout timeline milestones.
+Each journey is explicitly Domestic or International. Domestic hides all time-zone and repeated-clock controls; a non-flight Domestic journey asks for one two-letter journey-country value once for the booking rather than on each leg, and a Domestic flight filters destination airports to the chosen origin country. For a known flight airport, selecting by code or name atomically fills name, passenger code, country, and strict IANA time zone and keeps the derived code disabled. An International **Other airport** unlocks manual name, code, country, and strict IANA zone entry. International train, bus, ferry, and cab endpoints also expose strict zones because no station/port catalog supplies them. Known domestic airports retain their catalog zones; every other Domestic endpoint uses the trip's hidden strict compatibility fallback. This is an accepted form simplification, not a claim that a multi-zone country's local offset was inferred from its place name. A same-country route that crosses time-zone regions must be entered as International so separate origin and destination zones are available.
+
+Travelers enter both departure and arrival exactly as printed in their respective local endpoint times. The client converts each independently with its endpoint zone, rejects invalid or overlapping instants, validates chronological order and endpoint continuity, and derives elapsed time from the converted instants. Departure fields display in the origin zone; per-leg arrivals and the booking/timeline end display in the applicable destination or final-destination zone. Duration labels preserve useful remainders and use minutes/hours through exactly 24 hours, days above 24 hours through exactly seven days, and weeks above seven days. Time zones never calculate a missing printed arrival time. Domestic Flight editing hides every repeated-clock/daylight-saving selector and submits the deterministic hidden `earlier` occurrence; International Flight editing retains the explicit occurrence controls.
+
+Airline means the carrier operating a flight; operator means the train, bus, ferry, or cab service; hotel/property name is the primary stay name; **Booked via** is the website, seller, or agent used to purchase the reservation. Flights and trains omit contact name. Hotel creation does not expose a separate service-provider, time-zone, or repeated-clock field: it stores the property title as `bookings.provider` and the hidden compatibility zone internally. The booking-vendor picker remains visible after **Other** is selected so the user can return to a saved value. In both create and edit, selecting a saved vendor replaces the controlled booking-website field with that catalog URL, or clears a stale value if the entry has no URL; selecting **Other** clears the prior catalog URL before allowing manual website entry. Its bundled fallback contains Airbnb and Trip.com; the optional published catalog receives them through migration `202609130005_booking_vendor_catalog_additions.sql`.
+
+Flight PNR/reference is mandatory. Boarding lead or exact boarding time is journey-only; without an exact time, the display derives boarding by subtracting the lead from scheduled departure. Hotel creation produces separate check-in and checkout timeline milestones. An unbooked Activity remains a standalone itinerary item. When it uses **Exact date & time**, an owner/editor may add reservation details online: the client creates the booking, links only `booking_id` with an optimistic version check, and preserves the event, plan, and participants. If linking fails, it archives the newly created booking; if cleanup also fails, it reports the booking ID rather than hiding the partial state. Date-only, all-day, relative, and unscheduled activities instead offer **Set exact time** because their synthetic ordering instants are not valid booking times. Activity enrichment is not queued for offline synchronization.
 
 All event types may include an optional linked cost. Bookings may also retain provider/operator, booking vendor, HTTPS website, contact name, and phone number. A valid 7–15 digit phone normalization enables direct `tel:` and `https://wa.me/` actions. Location-bearing entries expose an explicit map URL or a keyless Google Maps search.
 
@@ -1426,6 +1481,8 @@ For a trip with captured compatibility time zone `T`:
 - Upcoming Home uses the nearest future trip as its hero and may list later trips below it.
 - Current Home uses the focused trip for Now/Next, shortcuts, alerts, accommodation, and today's itinerary.
 - A manual switch persists only among currently eligible overlapping trips. Editing dates remains a separate action.
+- The authenticated root route waits for both trips and saved focus. On a fresh launch it opens the eligible saved focus, or the deterministic earliest-end/earliest-start/stable-ID fallback when current windows overlap; with no current trip it opens Home.
+- Automatic launch resolution belongs only to `/`. A traveler who explicitly navigates from the opened trip to `/home` stays on Home for that session rather than being redirected back.
 
 This calendar-day rule avoids treating “one day early” as exactly 24 hours, which would fail around timezone offset changes.
 
@@ -1658,17 +1715,28 @@ Rules:
 ## 12. Form and Validation Behavior
 
 - Create-trip and legacy itinerary/cost forms use `useFormDraft`; the unified Add Event sheet currently persists only after a valid submission and does not promise an incomplete draft.
-- Convert journey endpoint-local date/time values to instants while retaining each endpoint's strict IANA time zone.
-- Keep trip dates and readiness due/expiry dates date-only; unified timeline events require a local date and time.
+- Initialize a new trip at local today + 15 calendar days and suggest an end seven calendar days after that start. Continue moving the suggestion when the untouched start changes, but never overwrite an end date the user deliberately edited. The versioned form-draft key prevents an older saved default from masquerading as the new suggestion.
+- Ask Direct or Connecting before a journey's detailed fields. Render one leg for Direct and at least two for Connecting, but persist only the ordered legs.
+- Convert both printed journey endpoint-local date/time values to instants while retaining each endpoint's strict IANA time zone; never derive one printed time from the other.
+- Hide zone and repeated-clock controls for Domestic journeys and every local event, including the Domestic Flight edit sheet. Derive zones from known airports; require strict manual origin and destination zones for International Other airports and international non-flight endpoints.
+- Keep trip dates and readiness due/expiry dates date-only. Exact timeline events use a local date/time; date-only, all-day, relative, and unscheduled modes do not require a separate user-entered clock time.
 - Validate trip end date is not before start date.
 - Preserve provider-issued confirmation codes exactly as entered while allowing normalized search.
 - Require a booking reference/PNR for flights.
-- Validate each flight, train, bus, ferry, and cab leg has an origin zone, destination zone, arrival after departure, and chronological connection order; ask which occurrence to use for an ambiguous DST time and reject nonexistent local times.
+- Do not collect generic journey location; derive the visible route from every ordered origin and destination.
+- Hide contact name for flights and trains. Treat hotel title as the property/provider snapshot and collect only Booked via/booking website as the purchase source.
+- Keep Airline and Booked via catalog selectors available after Other is chosen so the user can return to a saved value without restarting the form.
+- Reconcile booking website whenever Booked via changes in create or edit: use the selected catalog URL, clear a stale value when the catalog entry has none, and clear it on Other before accepting a manual HTTPS value.
+- Validate each flight, train, bus, ferry, and cab leg has an origin zone, destination zone, arrival after departure, chronological connection order, and endpoint continuity. Compare normalized endpoint codes when both are present and normalized names otherwise; ask which occurrence to use for an ambiguous DST time only when the International controls are exposed, and reject nonexistent local times.
+- When appending a flight connection, keep its origin equal to the displayed prior arrival in the client and revalidate endpoint/time-zone continuity, positive layover, journey scope, and Domestic country in the locked database function.
 - Keep trip time zone captured from the device and hidden from normal trip forms; do not present it as a free-text field.
 - Present base and cost currency as a native dropdown. Common travel currencies appear first, followed by the runtime's supported ISO currency codes; Zod still validates the submitted three-letter code.
 - Keep scheduled flight times immutable during a manual delay update; estimated and actual times are separate fields.
 - Require an update timestamp and authenticated actor whenever manual operational flight fields change.
 - Validate flight legs in chronological segment order without assuming departure and arrival share a timezone.
+- Format every journey departure with the origin zone and every arrival/overall end with the corresponding destination or final-destination zone.
+- Permit planned-Activity booking enrichment only when the event is exact-time and online; require every flexible Activity to use Set exact time first.
+- Render elapsed durations as compact week/day/hour/minute units, preserving non-zero remainder units.
 - Require `https` for airline actions and official-guidance links; never execute arbitrary URL schemes.
 - Require a destination and affected traveler for a visa requirement, while allowing `not_required` as an explicit manual status.
 - Validate boarding-pass and baggage-tag documents against the related flight leg and traveler when supplied.
@@ -1729,10 +1797,10 @@ Rules:
 
 | Check | Last verified | Result |
 |---|---|---|
-| `npm run typecheck` | 2026-09-12 | Pass |
-| `npm test -- --run` | 2026-09-12 | Pass: 30 files, 135 tests |
-| `npm run build` | 2026-09-12 | Pass; only the standard Vite chunk-sharing advisory remains |
-| `supabase/tests/001_schema_smoke.sql` | Existing remote schema before the traveler-focus migration | Rerun after applying `202609120001_traveler_focus_and_known_accounts.sql` |
+| `npm run typecheck` | 2026-09-13 | Pass |
+| `npm test -- --run` | 2026-09-13 | Pass: 44 files, 209 tests |
+| `npm run build` | 2026-09-13 | Pass; only the standard Vite chunk-sharing advisory remains |
+| `supabase/tests/001_schema_smoke.sql` | Current local SQL includes the booking-vendor and trip-cleanup-queue assertions | Rerun remotely after every pending migration through `202609130006_trip_storage_cleanup_queue.sql` |
 | Phone, desktop, sharing, upload, Cloudflare, and airplane mode | Current release | Manual acceptance pending in `docs/FEATURE_TEST_CHECKLIST.md` |
 
 The lists below are the release coverage contract. They do not imply that every bullet already has a dedicated automated test; remote RLS, Storage, PWA installation, and true airplane-mode behavior require the named manual or SQL acceptance step.
@@ -1740,6 +1808,11 @@ The lists below are the release coverage contract. They do not imply that every 
 ### 16.2 Unit-test coverage
 
 - Date and timezone formatting
+- New-trip +15-day start and seven-day end suggestions, including preservation of a deliberately edited end date
+- Direct versus Connecting leg initialization and persisted ordered-leg behavior
+- Connecting-leg endpoint continuity by normalized code, with normalized-name fallback
+- Complete route reduction across every ordered stop and week/day/hour/minute duration formatting
+- Pathname scroll reset without intercepting same-trip query-string Timeline/Details transitions
 - D-1 current-window calculation across timezones and daylight-saving boundaries
 - Deterministic focus selection for overlapping trips
 - Ticket, boarding-pass, delay-countdown, and landed baggage presentation rules
@@ -1754,6 +1827,7 @@ The lists below are the release coverage contract. They do not imply that every 
 - Role and visibility predicates
 - Manifest and quota calculations
 - Outbox dependency ordering
+- Offline Document Inbox deletion allowed only before the first cloud attempt, with attempted/cloud-backed entries retained until an online delete
 - Version-conflict classification
 - File-path sanitization and checksum handling
 - Administrator-role checks without trip-permission bypass
@@ -1770,10 +1844,14 @@ The lists below are the release coverage contract. They do not imply that every 
 
 - Dashboard states
 - Upcoming versus current Home and overlap switcher
+- Fresh root launch waits for saved focus, applies the deterministic overlap fallback, and does not redirect an explicit `/home` visit
 - Flight card manual states and document-priority changes
 - Alerts groups, badge count, and empty state
 - Airline picker, missing-logo fallback, and URL warning
 - Airline, airport, and booking-vendor saved-list selection, derived airport metadata, explicit Other entry, and keyboard-aware mobile result dialogs
+- Conditional journey fields: hidden Domestic/local zones, derived known-airport zones, International Other/manual zones, no journey location, and hidden flight/train contact names
+- Domestic Flight edit hides repeated-clock controls; International Flight edit retains them
+- Booking-vendor Other remains reversible, with Airbnb and Trip.com present in the bundled fallback
 - Manual visa input and readiness warnings
 - Join-code entry without pre-redemption trip disclosure
 - Traveler roster and managed-traveler context picker
@@ -1811,7 +1889,7 @@ The lists below are the release coverage contract. They do not imply that every 
 - Itinerary-document links cannot cross trips, expose an unreadable document, or duplicate an active event/document pair.
 - Unlinking or deleting an itinerary event leaves the linked document and every immutable version intact.
 - Flight legs cannot reference another trip's airline, traveler, or document.
-- A post-creation connection must follow the previous leg, inherit booking travelers, and extend the flight booking and timeline event.
+- Every saved connection must start where the previous leg ends; a post-creation flight connection fixes its origin to the previous arrival and the server independently enforces endpoint/time-zone continuity, positive layover, journey scope, and Domestic country before inheriting travelers and extending the flight booking and timeline event.
 - Only owners and editors can change shared flight operations or airline metadata.
 - Alert read state and manual reminders remain user-scoped.
 - Ordinary users cannot read drafts, mutate configuration, publish releases, or add themselves to `app_admins`.
@@ -1819,20 +1897,30 @@ The lists below are the release coverage contract. They do not imply that every 
 - Exactly one complete configuration release is published and readable by traveler clients at a time.
 - Catalog assets are public-only, browser-safe, and writable only through administrator policies.
 - Storage rejects document objects of `5_000_000` bytes or larger even when the client-side check is bypassed.
+- `account-documents` accepts INSERT only for an owned pending unassociated receipt, exposes no UPDATE policy, and permits owner DELETE only while that receipt is unassociated; association makes the inbox original immutable.
+- A successful account-document association clears cached pending/error state, and an associated server receipt suppresses a stale unassociated local inbox row during reconciliation.
+- Permanent trip purge atomically queues legacy `trip-documents` paths with database deletion, removes and acknowledges those paths after commit, and retries retained queue rows during later online trip reads. Owner-held `account-documents` are removed only after their cascade-cleared association permits it; a failure retains the separate queue row or visible account receipt appropriate to that path.
 - Removed members lose future database and storage access.
 - Privileged service credentials are never required by the client.
 
 ### 16.5 Browser and end-to-end acceptance
 
 - Onboarding through first trip creation
+- Fresh authenticated root launch opens the saved eligible current trip or deterministic overlap fallback, while an explicit `/home` navigation remains on Home
 - Trip cards open the trip timeline directly; all past/current/future events remain present and connected, and first open scrolls to the resolved active event
 - Switching to one traveler leaves shared and selected-traveler records visible across the trip while hiding records assigned only to another traveler
 - Phone event icons remain inside the card corner while desktop icons stay centered on the connector
-- Flight, train, bus, ferry, and cab creation supports connected legs, strict endpoint time zones, domestic/international scope, and correct elapsed duration
+- Flight, train, bus, ferry, and cab creation asks Direct or Connecting first, rejects a later leg whose origin differs from the prior destination, shows every stop, stores strict endpoint zones, hides Domestic controls, and calculates elapsed duration from both printed local times
+- Known international airports fill code/country/time zone atomically; an International Other airport and every International non-flight endpoint require explicit strict zones, while a Domestic journey never shows a zone chooser and a Domestic Flight update never shows repeated-clock controls
+- Departure displays use the origin zone and each arrival or overall journey end uses the corresponding destination or final-destination zone
+- Hotel creation uses property name and Booked via without service-provider, time-zone, or repeated-clock controls
+- An exact-time standalone Activity can receive online booking details later without creating a duplicate timeline event; every flexible timing mode directs the editor to Set exact time first
 - Event detail exposes optional cost, missing-cost recovery, map, Call/WhatsApp, booking-vendor, and all linked documents
+- Compact cost summaries on Home and the trip header open the same itemized expense section
+- Home, Profile, Vault, another trip, and other pathnames open at the top rather than inheriting timeline scroll
 - Share-code text and locally generated QR redeem the same one-time traveler or collaborator invitation only after sign-in
 - A previously associated account can receive a later trip offer on Home and must accept before joining
-- An existing flight can receive a missing connection from Flight details without recreating the booking
+- An existing flight can receive a missing connection from Flight details without recreating the booking; its origin is the fixed prior arrival, a Domestic destination is country-filtered, and a forged discontinuous request is rejected by the server
 - Invite acceptance and role enforcement
 - Sign-up followed by successful one-time code redemption
 - Invalid, expired, revoked, reused, brute-force-limited, and concurrent code redemption
@@ -1843,6 +1931,8 @@ The lists below are the release coverage contract. They do not imply that every 
 - Complete prepared-trip browsing, alert calculation, local flight update, and pinned document preview
 - Offline edit followed by reconnect and synchronization
 - Interrupted upload followed by a safe whole-file retry from the verified local copy
+- Offline deletion of a never-attempted pending inbox upload, plus online-only deletion of attempted or cloud-backed unassociated uploads and rejection of associated-upload deletion
+- Permanent purge with legacy paths queued atomically with the database cascade, successful legacy cleanup acknowledged afterward, failed legacy cleanup retained for a later online trip-list retry, and account-inbox bytes/receipts cleaned only after association clearing
 - Concurrent edit conflict
 - Storage quota failure
 - PWA upgrade with existing local data
@@ -1864,6 +1954,29 @@ The lists below are the release coverage contract. They do not imply that every 
 - Offline and online rejection of a `5_000_000`-byte file without adding it to OPFS, outbox, database metadata, or Storage
 - Verified local document opens with no permission request, while another account on the same browser cannot discover or open it
 - Attach several existing documents and successive one-at-a-time classified uploads to one itinerary event, retain a failed upload locally for retry, synchronize offline-created links, and unlink one without deleting any Vault document
+
+### 16.6 Supabase rollout order
+
+For an existing Trip Vault database, apply every not-yet-run migration in filename order. The current tail is:
+
+1. `202609130004_account_document_storage_state.sql` if it has not already been applied.
+2. `202609130005_booking_vendor_catalog_additions.sql`.
+3. `202609130006_trip_storage_cleanup_queue.sql`.
+4. `supabase/tests/001_schema_smoke.sql`.
+
+Migration `202609130005` requires both an active `app_admins` row and the published release created by `202609130002_regional_travel_catalog.sql`; if either is absent, install/bootstrap it first instead of bypassing the guard.
+
+Migration `202609130006` must follow `202609130005` in filename order. It installs the persistent legacy-object cleanup queue, owner-only permanent-delete RPC, guarded Storage-delete path, and hardened appended-flight connection function. A project already current through `202609130005` runs only `202609130006` before the smoke test.
+
+For a fresh Supabase project:
+
+1. Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once to install the current schema and Storage policies, including the `202609130006` cleanup-queue contract.
+2. Create the dedicated Auth administrator and bootstrap its active `app_admins` row through trusted SQL.
+3. Run `202609130002_regional_travel_catalog.sql` to publish the regional airports, airlines, and initial vendors.
+4. Run `202609130005_booking_vendor_catalog_additions.sql` to publish Airbnb and Trip.com in a new immutable release.
+5. Run the schema smoke test.
+
+The React bundle already contains fallback catalog JSON, so form entry does not depend on a successful remote catalog read. The SQL steps make the same metadata available through the versioned published configuration; they do not rewrite existing booking snapshots.
 
 ## 17. Configuration Boundaries
 
@@ -1898,7 +2011,7 @@ The lists below are the release coverage contract. They do not imply that every 
 | LLD-008 | Authentication method | Email-only Supabase authentication; onboarding has no separate confirmation gate for now | Accepted |
 | LLD-009 | Offline session behavior | Previously enrolled, locally signed-in device supports reads and queued edits; reauthentication is required before synchronization | Accepted |
 | LLD-010 | Conflict resolution depth | Record-level keep-local or use-cloud choice with both versions shown | Accepted |
-| LLD-011 | Current trip selection | One focused trip per user; D-1 through trip end using the hidden captured trip-time-zone fallback; deterministic overlap fallback with manual switch | Accepted |
+| LLD-011 | Current trip selection | One focused trip per user; D-1 through trip end using the hidden captured trip-time-zone fallback; root fresh launch uses saved eligible focus or deterministic overlap fallback, while explicit `/home` remains Home | Accepted |
 | LLD-012 | Flight status source | Traveler-maintained operational fields with visible actor/freshness and external links; no provider feed | Accepted |
 | LLD-013 | Flight document priority | Ticket first until a boarding pass exists; boarding pass first afterward; baggage tags remain leg/traveler attachments | Accepted |
 | LLD-014 | Visa assistance | Manual requirements, dates, status, document, and official link only; no eligibility automation | Accepted |
@@ -1943,9 +2056,22 @@ The lists below are the release coverage contract. They do not imply that every 
 | LLD-053 | Trip date boundary | Dated events and their ends must stay within the trip start/end dates; the form constrains input and a database trigger is authoritative | Accepted |
 | LLD-054 | Modal browser history | Device/browser Back closes the top sheet; nested edit/cost/upload returns to the underlying event sheet before navigating away | Accepted |
 | LLD-055 | Trip-scoped expense sharing | Paid costs may name a traveler payer and participants; equal shares use integer minor units, balances are derived, and currencies are never silently combined | Accepted |
-| LLD-056 | Testing deletion | The owner-only permanent-delete action is visibly temporary, requires the exact trip title, removes Storage objects before cascading database deletion, and is online-only | Accepted for testing |
+| LLD-056 | Testing deletion | The owner-only permanent-delete action is visibly temporary, requires the exact trip title, atomically queues legacy paths with database deletion, cleans queued and account-inbox objects after commit, retains the correct retry record on failure, and is online-only | Accepted for testing |
 | LLD-057 | Admin redesign | Do not extend the current console until the trip application stabilizes; later rebuild it responsively with plain language and guided draft/publish/review flows | Deferred |
 | LLD-058 | Account document staging | Cache and upload the original under the signed-in account first, then atomically associate it with trip metadata; retain incomplete work in the Profile inbox | Accepted |
+| LLD-059 | Journey structure prompt | Ask Direct or Connecting first, create one or at least two editable legs respectively, and persist only ordered legs | Accepted |
+| LLD-060 | Visible time-zone boundary | Hide zones for Domestic journeys and local events; derive known flight-airport zones and request strict manual zones only where international metadata is not available | Accepted |
+| LLD-061 | Provider-local schedule math | Require both printed local endpoint times, convert them independently with their endpoint zones, and derive elapsed duration from the resulting instants | Accepted |
+| LLD-062 | Journey presentation | Derive a complete ordered route on cards/details, omit generic journey location, and format elapsed time with week/day/hour/minute units | Accepted |
+| LLD-063 | Booking terminology | Airline/operator performs travel, hotel title is the property, and Booked via is the purchase channel; flight/train contact names and hotel clock/time-zone controls are omitted | Accepted |
+| LLD-064 | Booking-vendor fallback | Keep the picker available after Other, reconcile its catalog URL or clear stale website state in create/edit, bundle Airbnb/Trip.com, and publish them through forward migration `202609130005` without rewriting booking snapshots | Accepted |
+| LLD-065 | Expense entry point | Keep Home/trip-header totals compact and make both open the itemized Costs section | Accepted |
+| LLD-066 | Route scroll ownership | Reset scroll for each pathname; preserve TripPage's own Timeline/Details query transition and per-trip active-position handling | Accepted |
+| LLD-067 | Planned activity enrichment | Permit an owner/editor to add booking details only to an exact-time unbooked Activity while online; flexible activities must first Set exact time, and linking preserves the existing timeline item | Accepted |
+| LLD-068 | Connected endpoint continuity | Validate every later journey origin against the previous destination; fix a post-creation connection's origin in the UI and re-enforce its endpoint, zone, layover, scope, and Domestic country under database locks | Accepted |
+| LLD-069 | Journey display zones | Render departure in its origin zone and arrival/overall end in its destination zone; hide repeated-clock choices throughout Domestic Flight editing | Accepted |
+| LLD-070 | Account document lifecycle | Limit private-object INSERT to pending unassociated receipts, expose no UPDATE, allow DELETE only while unassociated, require online deletion after any cloud attempt, and use associated cloud receipts to suppress stale local inbox state | Accepted |
+| LLD-071 | Permanent-purge Storage queue | Enqueue legacy paths and delete the trip atomically, acknowledge only successful post-commit object cleanup, retry retained queue rows on later online trip reads, and retain an account receipt when post-association account cleanup fails | Accepted for testing |
 
 ## Source File Index
 
@@ -1954,18 +2080,27 @@ These paths are the implemented ownership map. Tests are co-located with their m
 | Component | Path | Responsibility |
 |---|---|---|
 | App shell | `src/app/` | Providers, router, and top-level layout |
+| Fresh-launch router | `src/components/RootRoute.tsx` | Waits for trips and saved focus, opens the eligible current trip deterministically, and leaves explicit Home navigation alone |
+| Route scroll ownership | `src/app/RouteScrollManager.tsx` | Pathname reset while preserving TripPage query-string navigation |
 | Product features | `src/features/` | Domain-specific UI and behavior |
 | Administrator console | `src/features/admin/` | Protected online-only metadata, theme, validation, publication, and audit views |
 | Demonstration trip | `src/demo/` | Synthetic fixtures, demo clock, reset behavior, and bundled sample documents |
 | Starter travel catalogs | `src/features/metadata/starter-airlines.json`, `src/features/metadata/starter-airports.json`, `src/features/metadata/starter-vendors.json` | Versioned autocomplete seeds with user-entered fallback and optional suggestions |
 | Timeline feature | `src/features/timeline/`, `src/pages/TripPage.tsx` | Event creation, chronological model, active-item scrolling, event details, and trip details switch |
+| Journey and booking detail | `src/pages/FlightPage.tsx`, `src/pages/BookingPage.tsx` | Endpoint-zone display, Domestic/International update controls, full route, seats, and booking detail |
+| Activity booking enrichment | `src/features/workspace/AddActivityBookingForm.tsx`, `src/features/trips/api.ts` | Exact-time/online guard, booking creation, versioned event link, and compensating archive |
 | Theme definitions | `src/lib/theme/`, `src/styles/globals.css` | Bundled semantic light/dark fallbacks, local preference, and published-token application |
 | Local database | `src/lib/local-db/` | IndexedDB schema, migrations, and repositories |
 | Offline device context | `src/lib/auth/` | Last enrolled profile, explicit local sign-out, and expired-session airplane-mode fallback without storing new credentials |
 | Offline file storage | `src/lib/storage/` | OPFS operations, manifests, and integrity |
 | Document semantics | `src/features/workspace/documentModel.ts` | Travel-specific type presets, assignment labels/filtering, and exact duplicate detection |
+| Account document inbox | `src/features/workspace/DocumentInboxPanel.tsx`, `src/features/workspace/api.ts`, `src/features/sync/localSync.ts` | Account-first staging, retry/verification, association cache reconciliation, stale-cloud suppression, and safe online/offline deletion boundary |
+| Trip lifecycle | `src/features/trips/api.ts` | Archive, recoverable deletion, restore, and owner-only permanent purge with post-commit queued Storage cleanup |
 | Backend client | `src/lib/supabase/` | Supabase client and typed repositories |
 | Database deltas | `supabase/migrations/` | Post-baseline schema, function, grant, and RLS changes for existing projects |
+| Account-document Storage hardening | `supabase/migrations/202609130004_account_document_storage_state.sql` | Verified completion, append-only Storage policies, association immutability, and unassociated cleanup boundary |
+| Booking-vendor catalog addition | `supabase/migrations/202609130005_booking_vendor_catalog_additions.sql` | Copies the published release and adds Airbnb and Trip.com |
+| Trip Storage cleanup queue | `supabase/migrations/202609130006_trip_storage_cleanup_queue.sql` | Persistent owner cleanup work, guarded legacy-object deletion, permanent-delete RPC, and server-hardened flight connection append |
 | Consolidated database setup | `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` | Full current setup for a fresh project |
 | Co-located automated tests | `src/**/*.test.ts`, `src/**/*.test.tsx` | Domain, local database, sync, alert, presentation, and route behavior |
 | Schema smoke test | `supabase/tests/001_schema_smoke.sql` | Tables, policies, functions, and Storage limit assertions |

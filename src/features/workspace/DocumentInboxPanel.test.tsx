@@ -52,9 +52,11 @@ const upload: AccountDocumentUpload = {
   byte_size: 42,
   sha256: "a".repeat(64),
   associated_document_id: null,
+  stored_at: "2026-09-13T10:01:00Z",
   created_at: "2026-09-13T10:00:00Z",
   updated_at: "2026-09-13T10:00:00Z",
-  sync_state: "synced"
+  sync_state: "synced",
+  can_retry: false
 };
 
 const traveler: Traveler = {
@@ -111,5 +113,35 @@ describe("private document inbox", () => {
       travelerIds: [traveler.id],
       visibility: "private"
     })));
+  });
+
+  it("does not offer association for a metadata row whose cloud file is missing", async () => {
+    mocks.listAccountDocumentUploads.mockResolvedValue([{
+      ...upload,
+      stored_at: null,
+      sync_state: "queued",
+      sync_error: "storage_missing",
+      can_retry: false,
+      can_verify: true
+    }]);
+    renderPanel();
+
+    expect(await screen.findByText(/cloud file missing/i)).toBeInTheDocument();
+    expect(screen.getByText(/delete this unfinished entry and select the file again here/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /attach to trip/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /retry cloud/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /check cloud/i })).toBeInTheDocument();
+  });
+
+  it("reports a queued device copy without claiming it reached the cloud", async () => {
+    mocks.stageAccountDocument.mockResolvedValue({ ...upload, stored_at: null, sync_state: "queued", sync_error: "permission", can_retry: true });
+    const user = userEvent.setup();
+    renderPanel();
+    const file = new File(["%PDF-test"], "boarding-pass.pdf", { type: "application/pdf" });
+
+    await user.upload(screen.getByLabelText("PDF or image under 5 MB"), file);
+    await user.click(screen.getByRole("button", { name: /save privately/i }));
+
+    expect(await screen.findByText(/saved on this device, but its cloud upload needs attention/i)).toBeInTheDocument();
   });
 });

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Trip } from "../trips/types";
-import type { Traveler } from "./types";
+import type { Booking, Traveler } from "./types";
 
 const mocks = vi.hoisted(() => ({
   uploadDocument: vi.fn(),
@@ -13,11 +13,19 @@ const mocks = vi.hoisted(() => ({
   listAssociatedAccounts: vi.fn(),
   createTripMembershipOffer: vi.fn(),
   createInvitation: vi.fn(),
-  revokeInvitation: vi.fn()
+  revokeInvitation: vi.fn(),
+  updateBooking: vi.fn()
 }));
 
 vi.mock("../../components/ModalSheet", () => ({ ModalSheet: ({ children, title }: { children: React.ReactNode; title: string }) => <section aria-label={title}>{children}</section> }));
 vi.mock("../../lib/forms/useFormDraft", () => ({ useFormDraft: () => ({ formRef: { current: null }, clearDraft: mocks.clearDraft }) }));
+vi.mock("../metadata/VendorPicker", () => ({
+  VendorPicker: ({ defaultValue, onWebsite }: { defaultValue?: string; onWebsite?: (url: string) => void }) => <div>
+    <input name="bookedViaName" defaultValue={defaultValue} />
+    <button type="button" onClick={() => onWebsite?.("")}>Choose other booking source</button>
+    <button type="button" onClick={() => onWebsite?.("https://www.cleartrip.com")}>Choose Cleartrip</button>
+  </div>
+}));
 vi.mock("./api", () => ({
   DuplicateDocumentError: class DuplicateDocumentError extends Error { existingDocumentId = "existing"; },
   uploadDocument: mocks.uploadDocument,
@@ -25,10 +33,11 @@ vi.mock("./api", () => ({
   listAssociatedAccounts: mocks.listAssociatedAccounts,
   createTripMembershipOffer: mocks.createTripMembershipOffer,
   createInvitation: mocks.createInvitation,
-  revokeInvitation: mocks.revokeInvitation
+  revokeInvitation: mocks.revokeInvitation,
+  updateBooking: mocks.updateBooking
 }));
 
-import { ShareTripForm, UploadDocumentForm } from "./WorkspaceForms";
+import { EditBookingForm, ShareTripForm, UploadDocumentForm } from "./WorkspaceForms";
 
 const trip: Trip = {
   id: "trip-1",
@@ -48,6 +57,29 @@ const travelers: Traveler[] = [
   { id: "ravi", trip_id: trip.id, display_name: "Ravi", is_minor: false, created_at: "" }
 ];
 
+function booking(type: Booking["type"]): Booking {
+  return {
+    id: `booking-${type}`,
+    trip_id: trip.id,
+    type,
+    title: type === "hotel" ? "Harbour Hotel" : "Flight to Dubai",
+    provider: type === "hotel" ? "Harbour Hotel" : "Air India",
+    reference_code: "ABC123",
+    start_at: "2026-09-26T04:30:00.000Z",
+    end_at: "2026-09-26T08:00:00.000Z",
+    source_timezone: "Asia/Kolkata",
+    location: { label: "Marina" },
+    details: {},
+    journey_scope: type === "flight" ? "international" : null,
+    booked_via_name: "Direct",
+    booked_via_url: null,
+    contact_name: "Front desk",
+    contact_phone: "+919999999999",
+    created_at: "2026-09-01T00:00:00.000Z",
+    updated_at: "2026-09-01T00:00:00.000Z"
+  };
+}
+
 describe("Upload document flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -55,6 +87,7 @@ describe("Upload document flow", () => {
     mocks.listInvitations.mockResolvedValue([]);
     mocks.listAssociatedAccounts.mockResolvedValue([{ user_id: "account-ravi", display_name: "Ravi Singh" }]);
     mocks.createTripMembershipOffer.mockResolvedValue("offer-1");
+    mocks.updateBooking.mockImplementation(async (input) => ({ ...booking(input.type), id: input.id }));
   });
 
   it("offers a later trip to a known account without creating a new code", async () => {
@@ -108,5 +141,66 @@ describe("Upload document flow", () => {
     await user.type(screen.getByLabelText("Document name (optional)"), "Asha mobile boarding pass");
     expect(screen.getByText("Asha mobile boarding pass")).toBeInTheDocument();
     expect(screen.getByText(/Trip context: Flight ticket · Asha · Flight to Dubai/)).toBeInTheDocument();
+  });
+
+  it("keeps journey endpoints authoritative when editing a flight booking", () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><EditBookingForm trip={trip} booking={booking("flight")} travelers={travelers} selectedTravelerIds={[]} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    expect(screen.getByText(/international journey/i)).toBeInTheDocument();
+    expect(screen.getByText(/Edit route times, airports, stations, and connections/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Starts")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Ends")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Location")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Contact name")).not.toBeInTheDocument();
+    expect(screen.queryByText("Booking time zone")).not.toBeInTheDocument();
+  });
+
+  it("does not let a flight edit remove its required PNR", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><EditBookingForm trip={trip} booking={booking("flight")} travelers={travelers} selectedTravelerIds={[]} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    await user.clear(screen.getByLabelText("Booking reference / PNR"));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Add the flight booking reference / PNR.");
+    expect(mocks.updateBooking).not.toHaveBeenCalled();
+  });
+
+  it("reconciles the booking website when the booked-via choice changes", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const user = userEvent.setup();
+    const existing = { ...booking("flight"), booked_via_url: "https://old.example/confirmation" };
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><EditBookingForm trip={trip} booking={existing} travelers={travelers} selectedTravelerIds={[]} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    const website = screen.getByLabelText("Booking website");
+    expect(website).toHaveValue("https://old.example/confirmation");
+    await user.click(screen.getByRole("button", { name: "Choose other booking source" }));
+    expect(website).toHaveValue("");
+
+    await user.type(website, "https://manual.example/booking");
+    await user.click(screen.getByRole("button", { name: "Choose Cleartrip" }));
+    expect(website).toHaveValue("https://www.cleartrip.com");
+  });
+
+  it("uses the hotel name as the property provider without exposing a timezone control", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><EditBookingForm trip={trip} booking={booking("hotel")} travelers={travelers} selectedTravelerIds={[]} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    const property = screen.getByLabelText("Hotel / property name");
+    await user.clear(property);
+    await user.type(property, "Marina Bay Hotel");
+    expect(screen.queryByText("Service provider")).not.toBeInTheDocument();
+    expect(screen.queryByText("Booking time zone")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(mocks.updateBooking).toHaveBeenCalledWith(expect.objectContaining({
+      id: "booking-hotel",
+      title: "Marina Bay Hotel",
+      provider: "Marina Bay Hotel",
+      timezone: "Asia/Kolkata"
+    })));
   });
 });

@@ -10,7 +10,7 @@ declare
     'profiles', 'app_admins', 'trips', 'trip_members', 'travelers', 'traveler_accounts',
     'traveler_managers', 'trip_invitations', 'bookings', 'booking_travelers', 'trip_airlines',
     'flight_legs', 'flight_leg_travelers', 'itinerary_items', 'itinerary_participants',
-    'itinerary_item_documents', 'documents', 'document_versions', 'account_document_uploads', 'document_access', 'document_travelers', 'notes',
+    'itinerary_item_documents', 'documents', 'document_versions', 'account_document_uploads', 'trip_storage_cleanup_queue', 'document_access', 'document_travelers', 'notes',
     'trip_requirements', 'requirement_assignees', 'trip_costs', 'trip_cost_participants', 'reminders', 'alert_states',
     'activity_events', 'config_releases', 'airline_catalog_entries', 'airport_catalog_entries',
     'booking_vendor_catalog_entries', 'catalog_suggestions', 'journey_legs',
@@ -21,6 +21,8 @@ declare
   expected_airport_code text;
   expected_airline_code text;
   published_release_id uuid;
+  permanent_delete_definition text;
+  flight_connection_definition text;
 begin
   foreach expected_table_name in array expected_tables loop
     if to_regclass('public.' || expected_table_name) is null then
@@ -37,8 +39,14 @@ begin
   if not exists (select 1 from storage.buckets where id = 'trip-documents' and not public and file_size_limit = 4999999) then
     raise exception 'The private trip-documents bucket is missing or has the wrong size limit';
   end if;
-  if not exists (select 1 from storage.buckets where id = 'account-documents' and not public and file_size_limit = 4999999) then
-    raise exception 'The private account-documents inbox bucket is missing or has the wrong size limit';
+  if not exists (
+    select 1 from storage.buckets
+    where id = 'account-documents'
+      and not public
+      and file_size_limit = 4999999
+      and coalesce(allowed_mime_types, '{}'::text[]) @> array['application/pdf', 'image/jpeg', 'image/png', 'image/webp']::text[]
+  ) then
+    raise exception 'The private account-documents inbox bucket is missing or has the wrong restrictions';
   end if;
   if (select count(*) from public.config_releases where status = 'published') <> 1 then
     raise exception 'Exactly one configuration release must be published';
@@ -52,8 +60,17 @@ begin
   if (select count(*) from public.airline_catalog_entries where config_release_id = published_release_id) < 27 then
     raise exception 'Published catalogue contains fewer than 27 airlines';
   end if;
-  if (select count(*) from public.booking_vendor_catalog_entries where config_release_id = published_release_id) < 7 then
-    raise exception 'Published catalogue contains fewer than 7 booking vendors';
+  if (select count(*) from public.booking_vendor_catalog_entries where config_release_id = published_release_id) < 9 then
+    raise exception 'Published catalogue contains fewer than 9 booking vendors';
+  end if;
+  if not exists (
+    select 1 from public.booking_vendor_catalog_entries
+    where config_release_id = published_release_id and stable_key = 'airbnb' and is_enabled
+  ) or not exists (
+    select 1 from public.booking_vendor_catalog_entries
+    where config_release_id = published_release_id and stable_key = 'trip-com' and is_enabled
+  ) then
+    raise exception 'Published catalogue is missing Airbnb or Trip.com';
   end if;
   if not exists (select 1 from public.theme_palettes where config_release_id = published_release_id) then
     raise exception 'Published catalogue theme palette is missing';
@@ -118,8 +135,14 @@ begin
   if to_regprocedure('public.delete_trip_permanently(uuid)') is null then
     raise exception 'Owner-only permanent trip deletion RPC is missing';
   end if;
+  if to_regprocedure('public.can_cleanup_trip_storage_object(text,text)') is null then
+    raise exception 'Queued trip Storage cleanup authorization is missing';
+  end if;
   if to_regprocedure('public.associate_account_document(uuid,uuid,uuid,uuid,text,public.document_category,public.document_purpose,public.document_assignment_mode,public.document_visibility,uuid,uuid,uuid,text,uuid[],uuid[])') is null then
     raise exception 'Account document association RPC is missing';
+  end if;
+  if to_regprocedure('public.finalize_account_document_upload(uuid)') is null then
+    raise exception 'Account document Storage finalization RPC is missing';
   end if;
   if to_regprocedure('public.can_edit_traveler_profile(uuid,uuid)') is null then
     raise exception 'Delegated traveler profile authorization is missing';
@@ -130,6 +153,75 @@ begin
       and policyname = 'trips_create' and cmd = 'INSERT'
   ) then
     raise exception 'Authenticated trip creation policy is missing';
+  end if;
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'account_document_uploads'
+      and policyname = 'account_document_uploads_create' and cmd = 'INSERT'
+      and with_check ilike '%stored_at is null%'
+  ) then
+    raise exception 'Account document receipts may bypass server Storage verification';
+  end if;
+  if exists (
+    select 1
+    from pg_constraint fk
+    join pg_class relation on relation.oid = fk.conrelid
+    join pg_namespace namespace on namespace.oid = relation.relnamespace
+    join unnest(fk.conkey) as key_column(attnum) on true
+    join pg_attribute attribute on attribute.attrelid = relation.oid and attribute.attnum = key_column.attnum
+    where namespace.nspname = 'public'
+      and relation.relname = 'trip_storage_cleanup_queue'
+      and fk.contype = 'f'
+      and attribute.attname = 'trip_id'
+  ) then
+    raise exception 'Trip Storage cleanup rows must survive trip deletion';
+  end if;
+  if not exists (
+    select 1 from pg_policies policy
+    where policy.schemaname = 'public'
+      and policy.tablename = 'trip_storage_cleanup_queue'
+      and policy.policyname = 'trip_storage_cleanup_read_own'
+      and policy.cmd = 'SELECT'
+      and coalesce(policy.qual, '') ilike '%owner_id = auth.uid()%'
+  ) or not exists (
+    select 1 from pg_policies policy
+    where policy.schemaname = 'public'
+      and policy.tablename = 'trip_storage_cleanup_queue'
+      and policy.policyname = 'trip_storage_cleanup_delete_own'
+      and policy.cmd = 'DELETE'
+      and coalesce(policy.qual, '') ilike '%owner_id = auth.uid()%'
+  ) then
+    raise exception 'Trip Storage cleanup queue owner policies are missing';
+  end if;
+  if not exists (
+    select 1 from pg_policies policy
+    where policy.schemaname = 'storage'
+      and policy.tablename = 'objects'
+      and policy.policyname = 'trip_documents_delete'
+      and policy.cmd = 'DELETE'
+      and coalesce(policy.qual, '') ilike '%can_cleanup_trip_storage_object%'
+  ) then
+    raise exception 'Legacy trip document cleanup is not authorized by exact queued paths';
+  end if;
+  permanent_delete_definition := lower(pg_get_functiondef('public.delete_trip_permanently(uuid)'::regprocedure));
+  if strpos(permanent_delete_definition, 'insert into public.trip_storage_cleanup_queue') = 0
+    or strpos(permanent_delete_definition, 'delete from public.trips') = 0
+    or strpos(permanent_delete_definition, 'perform 1 from public.trips where id = requested_trip_id for update') = 0
+    or strpos(permanent_delete_definition, 'perform 1 from public.documents where trip_id = requested_trip_id for update') = 0
+    or strpos(permanent_delete_definition, 'insert into public.trip_storage_cleanup_queue')
+      > strpos(permanent_delete_definition, 'delete from public.trips') then
+    raise exception 'Permanent trip deletion does not lock children and queue Storage paths before deleting the trip';
+  end if;
+  if pg_get_functiondef('public.can_cleanup_trip_storage_object(text,text)'::regprocedure) not ilike '%not exists%public.document_versions%' then
+    raise exception 'Queued Storage cleanup does not protect paths reused by live documents';
+  end if;
+  flight_connection_definition := lower(pg_get_functiondef('public.add_flight_connection(uuid,jsonb)'::regprocedure));
+  if strpos(flight_connection_definition, 'connection departure must match the previous arrival airport') = 0
+    or strpos(flight_connection_definition, 'connection departure timezone must match the previous arrival airport') = 0
+    or strpos(flight_connection_definition, 'connection scope must match the existing flight journey') = 0
+    or strpos(flight_connection_definition, 'domestic connection countries must match the previous arrival country') = 0
+    or strpos(flight_connection_definition, 'departure_at <= previous_leg.scheduled_arrival_at') = 0 then
+    raise exception 'Flight connection endpoint, time-zone, scope, country, or strict layover validation is missing';
   end if;
   if not exists (
     select 1 from information_schema.columns
@@ -223,10 +315,67 @@ begin
     raise exception 'Account document version provenance is missing';
   end if;
   if not exists (
-    select 1 from pg_policies
-    where schemaname = 'storage' and tablename = 'objects' and policyname = 'account_documents_create'
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'account_document_uploads' and column_name = 'stored_at'
   ) then
-    raise exception 'Account document storage write policy is missing';
+    raise exception 'Server-verified account document Storage state is missing';
+  end if;
+  if exists (
+    select required.policyname, required.command
+    from (values
+      ('account_documents_read', 'SELECT'),
+      ('account_documents_create', 'INSERT'),
+      ('account_documents_delete', 'DELETE')
+    ) as required(policyname, command)
+    where not exists (
+      select 1 from pg_policies policy
+      where policy.schemaname = 'storage'
+        and policy.tablename = 'objects'
+        and policy.policyname = required.policyname
+        and policy.cmd = required.command
+    )
+  ) then
+    raise exception 'One or more account document Storage policies are missing';
+  end if;
+  if not exists (
+    select 1 from pg_policies policy
+    where policy.schemaname = 'storage'
+      and policy.tablename = 'objects'
+      and policy.policyname = 'account_documents_create'
+      and policy.cmd = 'INSERT'
+      and coalesce(policy.with_check, '') ilike '%associated_document_id IS NULL%'
+      and coalesce(policy.with_check, '') ilike '%stored_at IS NULL%'
+  ) then
+    raise exception 'Account document Storage creation is not limited to pending uploads';
+  end if;
+  if exists (
+    select 1 from pg_policies policy
+    where policy.schemaname = 'storage'
+      and policy.tablename = 'objects'
+      and policy.policyname = 'account_documents_update'
+      and policy.cmd = 'UPDATE'
+  ) then
+    raise exception 'Account document Storage objects must never be updated in place';
+  end if;
+  if not exists (
+    select 1 from pg_policies policy
+    where policy.schemaname = 'storage'
+      and policy.tablename = 'objects'
+      and policy.policyname = 'account_documents_delete'
+      and policy.cmd = 'DELETE'
+      and coalesce(policy.qual, '') ilike '%associated_document_id IS NULL%'
+      and coalesce(policy.qual, '') not ilike '%stored_at IS NULL%'
+  ) then
+    raise exception 'Account document deletion does not preserve the unassociated inbox cleanup boundary';
+  end if;
+  if pg_get_functiondef('public.finalize_account_document_upload(uuid)'::regprocedure) not ilike '%from storage.objects%'
+    or pg_get_functiondef('public.finalize_account_document_upload(uuid)'::regprocedure) not ilike '%Document file is not stored yet%' then
+    raise exception 'Account document finalization does not verify the Storage object';
+  end if;
+  if pg_get_functiondef('public.associate_account_document(uuid,uuid,uuid,uuid,text,public.document_category,public.document_purpose,public.document_assignment_mode,public.document_visibility,uuid,uuid,uuid,text,uuid[],uuid[])'::regprocedure) not ilike '%upload.stored_at is null%'
+    or pg_get_functiondef('public.associate_account_document(uuid,uuid,uuid,uuid,text,public.document_category,public.document_purpose,public.document_assignment_mode,public.document_visibility,uuid,uuid,uuid,text,uuid[],uuid[])'::regprocedure) not ilike '%from storage.objects%'
+  then
+    raise exception 'Account document association does not verify stored bytes';
   end if;
   if not exists (select 1 from pg_trigger where tgname = 'document_traveler_same_trip' and not tgisinternal) then
     raise exception 'Document traveler same-trip validation trigger is missing';

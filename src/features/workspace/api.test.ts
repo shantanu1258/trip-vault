@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { googleMapsDirectionsUrl, googleMapsSearchUrl, mergeAccountDocumentUploads, mergeCloudAndPendingDocuments, normalizeJoinCode, sanitizeFilename, validateDocumentFile } from "./api";
+import { googleMapsDirectionsUrl, googleMapsSearchUrl, isMissingAccountDocumentObject, mergeAccountDocumentUploads, mergeCloudAndPendingDocuments, normalizeJoinCode, sanitizeFilename, validateDocumentFile } from "./api";
 import type { AccountDocumentUpload, VaultDocument } from "./types";
 
 function document(id: string, title: string, updatedAt: string, withFile = true): VaultDocument {
@@ -46,12 +46,39 @@ describe("workspace boundaries", () => {
       byte_size: 42,
       sha256: "a".repeat(64),
       associated_document_id: null,
+      stored_at: null,
       created_at: "2026-09-13T10:00:00Z",
       updated_at: "2026-09-13T10:00:00Z"
     };
     expect(mergeAccountDocumentUploads([], [upload], [upload.id])).toEqual([
       { ...upload, sync_state: "queued" }
     ]);
-    expect(mergeAccountDocumentUploads([{ ...upload, associated_document_id: "document-1" }], [], [])).toEqual([]);
+    expect(mergeAccountDocumentUploads(
+      [{ ...upload, associated_document_id: "document-1" }],
+      [upload],
+      [upload.id]
+    )).toEqual([]);
+  });
+  it("does not report a cloud metadata row as stored until the server verified its object", () => {
+    const upload: AccountDocumentUpload = {
+      id: "upload-2",
+      owner_id: "account-1",
+      storage_path: "account-1/upload-2/ticket.pdf",
+      original_filename: "ticket.pdf",
+      mime_type: "application/pdf",
+      byte_size: 42,
+      sha256: "b".repeat(64),
+      associated_document_id: null,
+      stored_at: null,
+      created_at: "2026-09-13T11:00:00Z",
+      updated_at: "2026-09-13T11:00:00Z"
+    };
+    expect(mergeAccountDocumentUploads([upload], [], [])[0]).toMatchObject({ stored_at: null, sync_state: "queued" });
+    expect(mergeAccountDocumentUploads([{ ...upload, stored_at: "2026-09-13T11:01:00Z" }], [], [])[0]).toMatchObject({ sync_state: "synced" });
+  });
+  it("distinguishes a server-confirmed missing object from unrelated verification failures", () => {
+    expect(isMissingAccountDocumentObject({ message: "Document file is not stored yet" })).toBe(true);
+    expect(isMissingAccountDocumentObject({ message: "Failed to fetch" })).toBe(false);
+    expect(isMissingAccountDocumentObject(new Error("network timeout"))).toBe(false);
   });
 });

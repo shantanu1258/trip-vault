@@ -1,4 +1,4 @@
-import { clearProfileLocalData, database, type LocalDocumentRecord } from "../local-db/database";
+import { clearProfileLocalData, database, type LocalDocumentRecord, type OutboxOperation } from "../local-db/database";
 
 type StorageManagerWithDirectory = StorageManager & { getDirectory?: () => Promise<any> };
 
@@ -61,12 +61,20 @@ export async function removeOfflineFile(profileId: string, versionId: string) {
   await Promise.all([database.localDocuments.delete([profileId, versionId]), database.localFileBlobs.delete([profileId, versionId])]);
 }
 
-export async function removeDocumentOfflineCopy(profileId: string, versionId: string) {
-  const pendingUpload = await database.outbox.where("profileId").equals(profileId).filter((operation) => {
-    if (operation.operation !== "upload_document") return false;
+export function outboxOperationNeedsOfflineFile(operation: Pick<OutboxOperation, "entityId" | "operation" | "payload">, versionId: string) {
+  if (operation.operation === "upload_document") {
     const payload = operation.payload as { version?: { id?: string } };
     return payload.version?.id === versionId;
-  }).first();
+  }
+  if (operation.operation === "upload_account_document") {
+    const payload = operation.payload as { upload?: { id?: string } };
+    return operation.entityId === versionId || payload.upload?.id === versionId;
+  }
+  return false;
+}
+
+export async function removeDocumentOfflineCopy(profileId: string, versionId: string) {
+  const pendingUpload = await database.outbox.where("profileId").equals(profileId).filter((operation) => outboxOperationNeedsOfflineFile(operation, versionId)).first();
   if (pendingUpload) throw new Error("Keep this device copy until its upload has synchronized.");
 
   await removeOfflineFile(profileId, versionId);

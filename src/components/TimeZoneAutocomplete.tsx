@@ -49,13 +49,14 @@ type TimeZoneAutocompleteProps = {
   defaultValue?: string;
   className?: string;
   required?: boolean;
+  requireSelection?: boolean;
   disabled?: boolean;
   "aria-label"?: string;
 };
 
-export function TimeZoneAutocomplete({ name, defaultValue, className = "form-input", required, disabled, "aria-label": ariaLabel }: TimeZoneAutocompleteProps) {
+export function TimeZoneAutocomplete({ name, defaultValue, className = "form-input", required, requireSelection = false, disabled, "aria-label": ariaLabel }: TimeZoneAutocompleteProps) {
   const deviceTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  const initialValue = defaultValue && isSupportedTimeZone(defaultValue) ? defaultValue : deviceTimeZone;
+  const initialValue = defaultValue && isSupportedTimeZone(defaultValue) ? defaultValue : requireSelection ? "" : deviceTimeZone;
   const [selected, setSelected] = useState(initialValue);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -68,7 +69,7 @@ export function TimeZoneAutocomplete({ name, defaultValue, className = "form-inp
   const listId = useId();
 
   const options = useMemo(() => {
-    const available = allTimeZones.includes(selected) ? allTimeZones : [selected, ...allTimeZones];
+    const available = !selected || allTimeZones.includes(selected) ? allTimeZones : [selected, ...allTimeZones];
     const normalized = query.trim().toLocaleLowerCase();
     const matches = available.filter((timeZone) => {
       if (!normalized) return true;
@@ -76,7 +77,7 @@ export function TimeZoneAutocomplete({ name, defaultValue, className = "form-inp
       return `${timeZone} ${details.city} ${details.region} ${details.offset}`.toLocaleLowerCase().includes(normalized);
     });
     if (!normalized) {
-      const preferred = [...new Set([selected, deviceTimeZone, ...commonTimeZones])];
+      const preferred = [...new Set([selected, deviceTimeZone, ...commonTimeZones].filter(Boolean))];
       matches.sort((a, b) => {
         const aIndex = preferred.indexOf(a); const bIndex = preferred.indexOf(b);
         if (aIndex >= 0 || bIndex >= 0) return (aIndex < 0 ? 999 : aIndex) - (bIndex < 0 ? 999 : bIndex);
@@ -149,14 +150,14 @@ export function TimeZoneAutocomplete({ name, defaultValue, className = "form-inp
     setOpen(true);
   };
 
-  const selectedDetails = zoneDetails(selected);
+  const selectedDetails = selected ? zoneDetails(selected) : null;
 
   return (
     <div className="relative">
       <input ref={inputRef} type="hidden" name={name} value={selected} readOnly required={required} onInput={(event) => { const value = event.currentTarget.value; if (isSupportedTimeZone(value)) setSelected(value); }} />
       <button ref={triggerRef} type="button" disabled={disabled} onClick={show} className={`${className} flex items-center gap-3 text-left`} aria-label={ariaLabel} aria-haspopup="dialog" aria-expanded={open}>
         <Globe2 className="size-4 shrink-0 text-brand" />
-        <span className="min-w-0 flex-1"><strong className="block truncate text-sm">{selectedDetails.city}</strong><span className="block truncate text-[.68rem] font-medium text-muted">{selected} · {selectedDetails.offset}</span></span>
+        <span className="min-w-0 flex-1"><strong className="block truncate text-sm">{selectedDetails?.city ?? "Choose time zone"}</strong><span className="block truncate text-[.68rem] font-medium text-muted">{selectedDetails ? `${selected} · ${selectedDetails.offset}` : "Required for this international airport"}</span></span>
         <ChevronDown className="size-4 shrink-0 text-muted" />
       </button>
       {open && createPortal(

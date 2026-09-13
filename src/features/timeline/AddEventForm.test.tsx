@@ -26,7 +26,7 @@ vi.mock("../workspace/api", () => ({
   suggestCatalogValue: mocks.suggestCatalogValue
 }));
 
-import { AddEventForm } from "./AddEventForm";
+import { AddEventForm, assertSequentialConnectionTimes } from "./AddEventForm";
 
 const trip: Trip = {
   id: "trip-1",
@@ -68,6 +68,10 @@ describe("Add Event hotel stay", () => {
     const { user } = renderAddEvent();
     const { checkIn, checkout } = await openHotel(user);
 
+    expect(screen.getByLabelText("Hotel / property name")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Hotel time zone")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Service provider/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/clock repeats/i)).not.toBeInTheDocument();
     expect(checkIn).toHaveValue("2026-09-26T15:00");
     expect(checkout).toHaveValue("2026-09-27T11:00");
 
@@ -90,7 +94,7 @@ describe("Add Event hotel stay", () => {
     const { onClose, user } = renderAddEvent();
     const { checkIn, checkout } = await openHotel(user);
 
-    await user.type(screen.getByLabelText("Event title"), "Marina hotel");
+    await user.type(screen.getByLabelText("Hotel / property name"), "Marina hotel");
     fireEvent.change(checkIn, { target: { value: "2026-10-11T15:00" } });
     fireEvent.change(checkout, { target: { value: invalidCheckout } });
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
@@ -117,12 +121,11 @@ describe("Add Event hotel stay", () => {
     fireEvent.change(checkIn, { target: { value: "2026-10-11T15:00" } });
     expect(checkout).toHaveValue("2026-10-12T11:00");
     fireEvent.change(checkout, { target: { value: "2026-10-12T18:00" } });
-    await user.type(screen.getByLabelText("Event title"), "Marina hotel");
+    await user.type(screen.getByLabelText("Hotel / property name"), "Marina hotel");
     await user.type(screen.getByLabelText("Place / address"), "Marina Bay, Singapore");
     await user.type(screen.getByLabelText("Google Maps link"), "https://maps.google.com/hotel");
     await user.type(screen.getByLabelText("Notes"), "Late arrival");
-    await user.type(screen.getByLabelText(/^Service provider/), "Harbour Hotel");
-    await user.type(screen.getByLabelText(/Booking reference \/ PNR/), "STAY123");
+    await user.type(screen.getByLabelText(/^Booking reference$/), "STAY123");
     await user.type(screen.getByLabelText(/^Booked via/), "Booking.example");
     await user.type(screen.getByLabelText("Booking website"), "https://booking.example/stay");
     await user.type(screen.getByLabelText("Contact name"), "Front desk");
@@ -145,7 +148,7 @@ describe("Add Event hotel stay", () => {
       location: "Marina Bay, Singapore",
       mapUrl: "https://maps.google.com/hotel",
       notes: "Late arrival",
-      provider: "Harbour Hotel",
+      provider: "Marina hotel",
       referenceCode: "STAY123",
       bookedViaName: "Booking.example",
       bookedViaUrl: "https://booking.example/stay",
@@ -174,7 +177,15 @@ describe("Add Event flight flow", () => {
   it("uses airline and airport choices, omits a redundant provider, and calculates boarding from the lead", async () => {
     const { user } = renderAddEvent();
     await user.click(screen.getByRole("button", { name: /Flight One or more connected legs/i }));
+    expect(screen.getByRole("radio", { name: "Direct" })).toBeChecked();
+    expect(screen.queryByRole("button", { name: "Add connecting flight" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/^Service provider/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Contact name")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Place / address")).not.toBeInTheDocument();
+    expect(screen.queryByText(/clock repeats/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "International" }));
+    expect(screen.getAllByLabelText("Repeated clock time choice")).toHaveLength(3);
 
     await user.type(screen.getByLabelText("Event title"), "Flight to Dubai");
     await user.type(screen.getByLabelText(/Booking reference \/ PNR/), "PNR123");
@@ -204,5 +215,85 @@ describe("Add Event flight flow", () => {
       })]
     })));
     expect(mocks.suggestCatalogValue).not.toHaveBeenCalled();
+  });
+
+  it("asks whether a route is direct or connecting and keeps at least two connecting legs", async () => {
+    const { user } = renderAddEvent();
+    await user.click(screen.getByRole("button", { name: /Flight One or more connected legs/i }));
+
+    expect(screen.getAllByLabelText("Flight number")).toHaveLength(1);
+    await user.click(screen.getByRole("radio", { name: "Connecting" }));
+    expect(screen.getAllByLabelText("Flight number")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /Remove flight leg/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Add connecting flight" }));
+    expect(screen.getAllByLabelText("Flight number")).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: /Remove flight leg/i })).toHaveLength(3);
+
+    await user.click(screen.getByRole("radio", { name: "Direct" }));
+    expect(screen.getAllByLabelText("Flight number")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Add connecting flight" })).not.toBeInTheDocument();
+  });
+
+  it("requires every connection to leave strictly after the prior arrival", () => {
+    expect(() => assertSequentialConnectionTimes([
+      { departureAt: "2026-09-26T02:00:00.000Z", arrivalAt: "2026-09-26T05:00:00.000Z" },
+      { departureAt: "2026-09-26T05:00:00.000Z", arrivalAt: "2026-09-26T08:00:00.000Z" }
+    ], "flight")).toThrow("Connection 2 must depart after the previous flight arrives.");
+  });
+
+  it("rejects a connecting flight whose next leg starts at a different airport", async () => {
+    const { user } = renderAddEvent();
+    await user.click(screen.getByRole("button", { name: /Flight One or more connected legs/i }));
+    await user.click(screen.getByRole("radio", { name: "International" }));
+    await user.click(screen.getByRole("radio", { name: "Connecting" }));
+    await user.type(screen.getByLabelText("Event title"), "Flight to Dubai");
+    await user.type(screen.getByLabelText(/Booking reference \/ PNR/), "PNR123");
+    for (const airline of screen.getAllByLabelText(/^Airline/)) await user.type(airline, "Air India");
+    for (const number of screen.getAllByLabelText("Flight number")) await user.type(number, "AI 909");
+    for (const airport of screen.getAllByLabelText("From airport")) await user.type(airport, "Bengaluru");
+    for (const airport of screen.getAllByLabelText("To airport")) await user.type(airport, "Dubai");
+
+    await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Connection 2 must depart from where the previous flight arrives.");
+    expect(mocks.addFlightBooking).not.toHaveBeenCalled();
+  });
+
+  it("puts the most-used event types first and hides local-only time-zone controls", async () => {
+    const { user } = renderAddEvent();
+    const labels = screen.getAllByRole("button").map((button) => button.textContent?.replace(/\s+/g, " ").trim());
+    expect(labels.slice(0, 4)).toEqual([
+      "FlightOne or more connected legs",
+      "HotelCreates check-in and checkout",
+      "ActivityVisit, tour, or free time",
+      "BusCoach or local bus"
+    ]);
+
+    await user.click(screen.getByRole("button", { name: /Activity Visit, tour, or free time/i }));
+    expect(screen.queryByLabelText("Place time zone")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Repeated clock time")).not.toBeInTheDocument();
+  });
+
+  it("hides contact names and time zones for domestic trains while preserving booking phone support", async () => {
+    const { user } = renderAddEvent();
+    await user.click(screen.getByRole("button", { name: /Train Rail ticket or connection/i }));
+
+    expect(screen.queryByLabelText("Contact name")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Phone number")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Origin time zone")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Destination time zone")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Journey country")).toBeRequired();
+    expect(screen.queryByLabelText("Origin country")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Destination country")).not.toBeInTheDocument();
+    expect(screen.queryByText(/clock repeats/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Place / address")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "International" }));
+    expect(screen.queryByLabelText("Journey country")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Origin country")).toBeRequired();
+    expect(screen.getByLabelText("Destination country")).toBeRequired();
+    expect(screen.getByRole("button", { name: "Origin time zone" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Destination time zone" })).toBeInTheDocument();
   });
 });
