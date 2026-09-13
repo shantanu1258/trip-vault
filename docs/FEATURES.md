@@ -15,11 +15,12 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 
 **Catalog status:** Personal MVP 1.0
 
-**Implementation status:** Implemented locally; existing Supabase projects still need every pending migration through `202609130006_trip_storage_cleanup_queue.sql` in filename order and the remote smoke/manual acceptance run
+**Implementation status:** Implemented locally; existing Supabase projects still need every pending migration through `202609130007_relative_event_timing.sql` in filename order and the remote smoke/manual acceptance run
 
 ### Timeline-first release additions
 
 - Open a trip directly into one chronological timeline and position it at the single current/next event.
+- Keep Before/After placement independent from optional schedule detail: a relative event may have no time, a duration only, or a real start/end added later without losing its anchor.
 - On a fresh authenticated launch, open the eligible current trip using saved focus or a deterministic overlap fallback; an explicit move to Home remains on Home.
 - Keep one derived readiness card above the timeline; represent other dated pre-trip work as `preparation` events.
 - Create Flight, Hotel, Activity, Bus, Train, Ferry/Boat, Cab, Meal, Preparation, Other transport, and Custom events from one Add Event flow, in that order.
@@ -35,6 +36,8 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 - Use Everyone or one traveler as a trip-wide presentation filter so timeline, reservations, costs, readiness, seats, and documents stay relevant without changing access rights.
 - Reuse accounts from previously shared trips through a consent-required Home offer, while retaining private code/QR sharing for first-time recipients.
 - Add an omitted connecting flight later from Flight details and keep the grouped journey, travelers, and timeline end in sync.
+- Add generic booking details later to an unbooked activity, meal, transport, preparation, or custom event while preserving its timeline identity and leaving booking times empty until a real event start exists.
+- Treat cards as primary interactions: rich records open read-first details, shallow editable facts open their editor directly, and independent or destructive quick actions remain separate.
 
 ## 1. Priority and Release Definitions
 
@@ -59,7 +62,7 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 | Onboarding | 5 | 4 | 1 |
 | Account and security | 1 | 8 | 4 |
 | Trips | 2 | 9 | 3 |
-| Dashboard and itinerary | 7 | 24 | 1 |
+| Dashboard and itinerary | 7 | 25 | 1 |
 | Bookings | 3 | 11 | 4 |
 | Flight assistance | 2 | 10 | 0 |
 | Airline metadata | 1 | 5 | 0 |
@@ -114,7 +117,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | TRP-001 | Trip card | P0 | Prototype | Shows title, date range, progress, document count, traveler avatars, and offline state |
 | TRP-002 | Trip detail mockup | P0 | Prototype | Demonstrates overview, itinerary, bookings, documents, notes, and members |
 | TRP-003 | Trip creation | P0 | MVP | User can create a trip with title, destination, dates, and currency; defaults suggest a start 15 days from today and an end seven days later, while deliberate edits are preserved and the hidden compatibility timezone is taken from the device |
-| TRP-004 | Trip editing | P0 | MVP | Authorized users can update trip details with version-conflict protection |
+| TRP-004 | Trip editing | P0 | MVP | Owner can activate either the complete Trip information overview card or its independent Settings action to update trip details with version-conflict protection; Editor and Viewer overview cards remain static |
 | TRP-005 | Trip lifecycle | P0 | MVP | Trips are grouped as draft, upcoming, active, completed, or archived using agreed rules |
 | TRP-006 | Trip progress | P1 | MVP | Progress is based on an explicit checklist definition rather than an unexplained percentage |
 | TRP-007 | Archive trip | P1 | MVP | Owner can archive and restore a trip without deleting its records |
@@ -124,8 +127,8 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | TRP-010 | Trip templates | P2 | Later | Reusable packing, booking, and document checklists can seed new trips |
 | TRP-011 | Multiple destinations | P1 | MVP | Itinerary supports multiple stops without forcing the trip summary into one city |
 | TRP-012 | Cover image | P2 | Later | User can choose a safe stock, generated, or uploaded trip image |
-| TRP-013 | Trip expense summary | P0 | MVP | Home and the trip header show compact readable per-currency totals; activating either opens the itemized Trip expenses section, while missing cost and explicit Free remain different states |
-| TRP-014 | Trip-scoped equal splitting | P0 | MVP | A cost records one traveler payer and selected traveler participants, conserves every minor unit in an equal split, and derives balances separately per currency |
+| TRP-013 | Trip expense summary | P0 | MVP | Home and the trip header show compact readable per-currency totals; activating either opens the itemized Trip expenses section, whose whole expense rows open one read-first detail sheet for every trip role with amount, status, category, payer, event/booking linkage, participant shares, and notes; missing cost and explicit Free remain different states |
+| TRP-014 | Trip-scoped equal splitting | P0 | MVP | A cost records one traveler payer and selected traveler participants, conserves every minor unit in an equal split, and derives balances separately per currency; Balances by currency stays hidden until the member enables Show balances |
 
 ## 6. Home Dashboard and Itinerary
 
@@ -159,18 +162,19 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DSH-026 | Contextual-focus motion mockup | P0 | Prototype | Demonstrates a restrained zoom/elevation treatment for the current trip and current timeline item, scroll-settled carousel focus, route continuity, and a reduced-motion variant |
 | DSH-027 | Contextual-focus motion system | P0 | MVP | Current content receives a label, accent, and small transform without relying on motion or color alone; animations use approved properties/timings and become static when reduced motion is requested |
 | DSH-028 | Traveler-focused trip presentation | P0 | MVP | Everyone shows the complete trip; selecting one traveler shows shared plus that person's timeline, reservations, costs, readiness, seats, and documents and hides records assigned only to another traveler |
-| DSH-029 | Flexible event placement | P0 | MVP | Timeline accepts exact time, date-only, all-day, before/after another dated event, and unscheduled entries while preserving stable manual order; a relative event may omit both a separate start time and duration |
+| DSH-029 | Flexible event placement | P0 | MVP | Timeline accepts exact time, date-only, all-day, before/after another dated event, and unscheduled entries. A relative event keeps a named anchor and stable before/after group while independently allowing relation-only, duration-only, or a later real start/end; its ordering fallback never creates a Current state, calendar entry, or booking time |
 | DSH-030 | Event status and archive | P0 | MVP | Planned, Done, Skipped, and Cancelled remain visible lifecycle states; Archive removes an event or booking group from the timeline and Restore returns it from one archived-items section |
 | DSH-031 | Route-scoped scroll | P0 | MVP | A trip may restore its own timeline position, while Home, Profile, Vault, another trip, and unrelated routes open at their own top position |
 | DSH-032 | Human-readable duration | P1 | MVP | Elapsed time uses compact minute/hour units through exactly 24 hours, adds days above 24 hours, and adds weeks above seven days while preserving non-zero remainder units |
 | DSH-033 | Fresh-launch current trip | P0 | MVP | Authenticated root launch waits for trips and saved focus, opens the saved eligible current trip or the earliest-end/earliest-start/stable-ID overlap fallback, and does not redirect a later explicit `/home` visit |
+| DSH-034 | Primary card interaction hierarchy | P0 | MVP | Mouse, keyboard, and touch activate one predictable card target: rich timeline events and costs open read-first details before role-gated Edit/Archive; shallow flight facts, notes, airline snapshots, and readiness requirements open edit directly for Owner/Editor and remain static for Viewer; the Trip information overview opens settings only for Owner; navigation, status, guidance, phone, document, and destructive quick actions stay independent. Only Admin catalog cards remain excluded pending their redesign |
 
 ## 7. Bookings
 
 | ID | Feature | Priority | Release | Acceptance condition |
 |---|---|---:|---|---|
-| BKG-001 | Booking cards | P0 | Prototype | Flight, hotel, and activity examples show type-appropriate summary fields |
-| BKG-002 | Booking detail | P0 | Prototype | Demonstrates provider, reference, timing, location, notes, and attachments |
+| BKG-001 | Booking cards | P0 | Prototype | Flight, hotel, and activity examples show type-appropriate summary fields; the complete card is the details target while Call and WhatsApp remain independent actions |
+| BKG-002 | Booking detail | P0 | Prototype | Demonstrates provider, reference, timing, location, notes, and attachments as the read-first destination for a reservation-card activation |
 | BKG-003 | Add-booking form | P0 | Prototype | Demonstrates validation and type-specific fields |
 | BKG-004 | Manual booking creation | P0 | MVP | Editor can create flight, hotel, transport, activity, restaurant, or other booking |
 | BKG-005 | Manual booking editing | P0 | MVP | Authorized edits are version-checked and update related itinerary information predictably |
@@ -187,7 +191,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | BKG-016 | Direct/Connecting-first journey entry | P0 | MVP | Every journey asks Direct or Connecting before leg details; Direct has one leg and Connecting starts with two and supports more, each later origin must match the prior destination, and ordered-leg count remains the source of truth; appending a flight later fixes its origin to the prior arrival and the server revalidates continuity |
 | BKG-017 | Complete journey route | P0 | MVP | Cards and details derive the route from all ordered legs, such as `BLR → DEL → DXB`, and do not ask for a generic journey location |
 | BKG-018 | Type-specific booking fields | P0 | MVP | Flights and trains omit contact name, hotels use property name plus Booked via without service-provider or clock-repeat controls, and local/domestic entries do not ask for time zones |
-| BKG-019 | Add booking to planned activity | P1 | MVP | While online, an editor can add provider, reference, Booked via, website, contact, and participant booking details to an exact-time unbooked Activity and link the new booking without creating a second timeline event; date-only, all-day, relative, and unscheduled activities must first use Set exact time |
+| BKG-019 | Add booking to planned event | P1 | MVP | While online, an editor can add provider, reference, Booked via, website, contact, and participant details to an unbooked Activity, Meal, Transport, Preparation, or Custom event without creating a second timeline event. Exact or explicitly timed relative events copy their schedule; every other timing mode keeps nullable booking times, and the event editor retains the existing-booking link option |
 | BKG-020 | Booking-vendor website reconciliation | P0 | MVP | In create and edit, a saved Booked via choice fills its catalog URL or clears an outdated value when none exists; Other clears the catalog URL before manual entry while leaving the picker available |
 
 ## 8. Documents and Vault
@@ -396,7 +400,7 @@ When no trip is current, the Home page emphasizes the next upcoming trip and its
 | RDY-001 | Readiness summary mockup | P0 | Prototype | Shows Ready, Action required, and Missing states for documents and preparation work |
 | RDY-002 | Essential shortcut mockup | P0 | Prototype | Demonstrates context-sensitive visa, passport, ticket, hotel, insurance, and transfer bubbles |
 | RDY-003 | Missing-item warning mockup | P0 | Prototype | Demonstrates a prominent but calm warning with a direct resolution action |
-| RDY-004 | Trip requirements checklist | P0 | MVP | User can create visa, passport, insurance, check-in, payment, packing, or custom requirements |
+| RDY-004 | Trip requirements checklist | P0 | MVP | User can create visa, passport, insurance, check-in, payment, packing, or custom requirements; Owner/Editor can activate a requirement card to edit it while status, guidance, document, and Archive controls remain independent, and Viewer cards remain static |
 | RDY-005 | Assign requirement to traveler | P1 | MVP | A requirement applies to the whole trip or selected traveler profiles, including those managed without accounts |
 | RDY-006 | Link requirement to document | P0 | MVP | Requirement can open its current authorized document version in one action |
 | RDY-007 | Need-by date | P0 | MVP | Requirement supports a due date, completion state, notes, and contextual urgency |
@@ -420,7 +424,7 @@ When no trip is current, the Home page emphasizes the next upcoming trip and its
 | FLT-006 | Status freshness and manual verification | P1 | MVP | Every operational value is labeled user-entered and shows who updated it and when |
 | FLT-007 | OpenSky aircraft-position experiment | Explore | Not planned | Aircraft position does not supply the passenger-facing delay, gate, cancellation, or baggage facts this app needs |
 | FLT-008 | Paid flight-status API | Explore | Not planned | Personal-use scope relies on manual updates and external trackers without a recurring flight-data cost |
-| FLT-009 | Manual operational update | P0 | MVP | User can set on-time, delayed, boarding, departed, landed, or cancelled status plus revised times, terminals, gates, baggage claim, and a note |
+| FLT-009 | Manual operational update | P0 | MVP | User can set on-time, delayed, boarding, departed, landed, or cancelled status plus revised times, terminals, gates, baggage claim, and a note; for Owner/Editor, activating a complete Departure, Arrival, Boarding, or Arrival details fact card opens this editor directly, while Viewer sees a static card |
 | FLT-010 | Connection and inbound-aircraft assistant | P2 | Not planned | Connection readiness is covered by stored itinerary times and manual flight updates; inbound-aircraft automation is excluded |
 | FLT-011 | Ticket-to-boarding-pass transition | P0 | MVP | Before a boarding pass exists the flight card prioritizes the ticket; after one is attached it prioritizes the boarding pass with seat, boarding time, terminal, and gate |
 | FLT-012 | Baggage tag attachments | P0 | MVP | User can attach one or more baggage-tag documents to a flight and label each for the relevant traveler or bag |
@@ -440,7 +444,7 @@ The MVP therefore treats the stored flight record as user-maintained information
 |---|---|---:|---|---|
 | AIR-001 | Airline picker mockup | P0 | Prototype | Searchable dropdown demonstrates airline name, IATA code, safe logo fallback, and selected-card treatment |
 | AIR-002 | Starter airline catalog | P0 | MVP | A small curated list of commonly used airlines is available without network access and does not claim global completeness |
-| AIR-003 | Editable airline metadata | P0 | MVP | Owner can correct a trip airline snapshot's name, codes, links, and color without changing existing flight history unexpectedly |
+| AIR-003 | Editable airline metadata | P0 | MVP | Owner or Editor can activate the visible trip-airline snapshot card to edit its name, codes, links, and color without changing existing flight history unexpectedly; Viewer sees the snapshot without an edit target |
 | AIR-004 | Airline-branded flight card | P1 | MVP | Cards may use an approved logo, banner, and accessible brand color, with a neutral monogram fallback |
 | AIR-005 | Editable action templates | P0 | MVP | Check-in, manage-booking, status, and tracker URL templates support documented placeholders and can be disabled when stale |
 | AIR-006 | Safe asset policy | P0 | MVP | The app never scrapes or hotlinks airline logos; it uses bundled, licensed, or user-supplied assets with a fallback |
@@ -543,9 +547,11 @@ The MVP is ready for private travel use only when:
 45. An unrelated route never inherits the trip timeline's scroll position, and returning to that trip still resolves or restores its intended active position.
 46. Add Event lists Flight, Hotel, Activity, and Bus first; a journey omits generic Place/Location and a hotel omits service-provider, time-zone, and repeated-clock controls.
 47. Choosing Other for Booked via leaves the catalog picker available and clears a prior catalog URL; selecting a saved value exits Other and fills its URL or clears a stale value when none is defined. The same rule works in create and edit, and Airbnb and Trip.com work from both the bundled fallback and published catalog.
-48. An exact-time planned Activity without a booking can gain booking details online while retaining its original timeline-item identity and without creating a duplicate event; a flexible Activity first directs the editor to Set exact time.
+48. An unbooked Activity, Meal, Transport, Preparation, or Custom event can gain booking details online while retaining its original timeline-item identity and without creating a duplicate event. Untimed events create nullable booking schedules, and the editor can still link an existing booking instead.
 49. The account document bucket accepts a new object only for an owned pending unassociated receipt, offers no in-place update, and prevents inbox deletion after association. Association immediately reconciles local pending state, and an associated server receipt suppresses a stale unassociated cached copy.
 50. Permanent trip purge queues legacy trip-document paths and deletes the trip in one database transaction, then removes Storage objects and acknowledges only successful cleanup; later online trip reads retry retained queue rows. Owner-held account-inbox objects are removed after association clears, with a failed cleanup retaining its account receipt rather than claiming every byte was removed.
+51. A relative event can remain relation-only, store only a duration, or receive a real start/end later. Start plus duration and start plus end derive the missing value, all three must agree, and invalid or out-of-trip schedules are blocked; the timeline/detail names its anchor and keeps stable before/after groups without inventing current, calendar, or booking time.
+52. On mouse, keyboard, and phone, whole reservation cards navigate to details; timeline events open read-first event details; event-linked and main expense rows open the same read-first expense sheet for Viewers and Editors; flight fact, note, airline snapshot, and readiness requirement cards open edit directly only when permitted; readiness status/guidance/document/archive actions remain independent; the Trip information overview opens settings only for Owner without absorbing its explicit Settings action; phone/map/archive actions remain independent; and Balances by currency stays hidden until Show balances is enabled.
 
 ## 21. Product Decisions and Open Reviews
 
@@ -584,7 +590,7 @@ The MVP is ready for private travel use only when:
 | 31 | Traveler-focused presentation | Accepted | Everyone shows all authorized trip data; one traveler shows only shared and person-relevant planning records |
 | 32 | Reuse associated accounts | Accepted | Prior shared-trip history enables a consent-required direct offer; first-time sharing still uses a private code/QR |
 | 33 | Late flight connections | Accepted | Editors may append a chronological endpoint-continuous connection later without recreating the flight booking |
-| 34 | Flexible timeline placement | Accepted | Exact, date-only, all-day, relative, and unscheduled events remain accessible on one timeline |
+| 34 | Flexible timeline placement | Accepted | Exact, date-only, all-day, relative, and unscheduled events remain accessible on one timeline; relative anchor order is independent from optional duration and real timing detail |
 | 35 | Event lifecycle | Accepted | Planned, Done, Skipped, Cancelled, Archive, and Restore have separate meanings |
 | 36 | Trip expense companion | Accepted | Record payer and participants, split equally, and show derived balances per currency inside the trip |
 | 37 | Independent expense product | Deferred | Revisit a full Splitwise-style experience only after trip-scoped expenses are proven |
@@ -595,11 +601,12 @@ The MVP is ready for private travel use only when:
 | 42 | Expense presentation | Accepted | Keep Home/header totals compact and route both to one itemized trip-expense view |
 | 43 | Trip date defaults | Accepted | Suggest +15 days and seven nights later without replacing deliberate edits |
 | 44 | Route scroll isolation | Accepted | Restore scroll only inside the relevant trip/view and open unrelated routes at their own top |
-| 45 | Planned activity enrichment | Accepted | Add and link booking details later only for an exact-time Activity as an online action; flexible items must first Set exact time and the original timeline item remains |
+| 45 | Generic event booking enrichment | Accepted | Add and link booking details later to an unbooked Activity, Meal, Transport, Preparation, or Custom event as an online action; preserve the event and leave booking times null until its start is real |
 | 46 | Booking-vendor rollout | Accepted | Bundle Airbnb/Trip.com for immediate fallback, reconcile the selected vendor's URL in create/edit, and publish the catalog additions through migration `202609130005` |
 | 47 | Connected-route continuity | Accepted | Reject a connecting leg whose normalized origin does not match the prior destination; lock later-added origin in the UI and re-enforce continuity, layover, scope, and Domestic country on the server |
 | 48 | Account-original lifecycle | Accepted | Use pending-only INSERT, no UPDATE, unassociated-only DELETE, online cleanup after a cloud attempt, and associated-server receipt reconciliation to suppress stale local inbox rows |
 | 49 | Permanent-purge cleanup queue | Accepted for testing | Queue legacy paths and delete the trip atomically, clean and acknowledge after commit, retry retained queue rows, then clean account-inbox bytes after association clears |
+| 50 | Card interaction hierarchy | Accepted | Use one whole-card primary target; open display-first details for rich records; open shallow flight, note, airline, and readiness cards directly for permitted editors; route the Owner trip overview to settings; keep independent/destructive actions separate; and defer only Admin catalog cards |
 
 ## 22. Research Sources
 
@@ -641,9 +648,11 @@ Feature behavior is implemented under `src/features/` and exposed through `src/p
 | High-level design | `docs/HIGH_LEVEL_DESIGN.md` | Architecture and system boundaries |
 | Low-level design | `docs/LOW_LEVEL_DESIGN.md` | Detailed behavior and implemented contract |
 | Application source | `src/` | Routes, feature logic, local-first persistence, and co-located tests |
+| Card interaction hierarchy | `src/pages/TripPage.tsx`, `src/pages/TripPage.test.tsx`, `src/pages/BookingPage.tsx`, `src/pages/FlightPage.tsx`, `src/pages/FlightPage.test.tsx`, `src/pages/ReadinessPage.tsx`, `src/features/workspace/TripAirlinesPanel.tsx`, `src/features/workspace/TripAirlinesPanel.test.tsx` | Whole-card navigation, read-first booking/event/expense details, opt-in balances, Owner trip-overview settings, readiness direct edit with independent controls, and other direct-edit shallow cards |
 | Supabase schema | `supabase/migrations/` | Database, authorization, object Storage, and server functions |
 | Account document hardening | `supabase/migrations/202609130004_account_document_storage_state.sql` | Server-verified completion and append-only unassociated Storage lifecycle |
 | Latest catalog migration | `supabase/migrations/202609130005_booking_vendor_catalog_additions.sql` | Publishes Airbnb and Trip.com after the regional catalog |
 | Trip Storage cleanup migration | `supabase/migrations/202609130006_trip_storage_cleanup_queue.sql` | Persistent cleanup queue, owner-only permanent purge, guarded legacy Storage deletion, and hardened appended-flight continuity |
+| Relative-event timing migration | `supabase/migrations/202609130007_relative_event_timing.sql` | Separates anchor placement from optional duration and real start/end, with authoritative derivation and bounds checks |
 | Redesign checklist | `docs/REDESIGN_CHECKLIST.md` | Proposed decisions, schema impact, and small preview slices |
 | Documentation conventions | `docs/doc-conventions.md` | Decision and maintenance rules |

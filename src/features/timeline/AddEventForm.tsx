@@ -325,7 +325,7 @@ export function AddEventForm({ trip, travelers, preferredTravelerId, onClose }: 
         checkInOccurrence: (text(form, "occurrence") || "automatic") as "automatic" | "earlier" | "later",
         checkoutOccurrence: (text(form, "checkoutOccurrence") || "automatic") as "automatic" | "earlier" | "later"
       }) : null;
-      const timing = stay ? { startsAt: stay.checkInAt, endsAt: stay.checkoutAt, timezone, timingMode: "exact" as const, scheduledDate: text(form, "startsAt").slice(0, 10), isAllDay: false } : readEventTiming(form, trip, itineraryQuery.data ?? []);
+      const timing = stay ? { startsAt: stay.checkInAt, endsAt: stay.checkoutAt, timezone, timingMode: "exact" as const, scheduledDate: text(form, "startsAt").slice(0, 10), isAllDay: false, hasExplicitStartTime: true } : readEventTiming(form, trip, itineraryQuery.data ?? []);
       const startsAt = timing.startsAt;
       const endsAt = timing.endsAt;
       const common = { tripId: trip.id, eventType: type, title, ...timing, location: text(form, "location"), mapUrl: optionalHttps(text(form, "mapUrl"), "Map link"), notes: text(form, "notes"), travelerIds };

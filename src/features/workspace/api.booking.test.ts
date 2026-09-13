@@ -30,7 +30,48 @@ vi.mock("../sync/localSync", () => ({
   syncOutbox: vi.fn()
 }));
 
-import { addBooking } from "./api";
+import { addBooking, bookingInputForTimelineEvent } from "./api";
+
+describe("timeline event booking timing", () => {
+  it("removes a flexible relative event's synthetic anchor time from booking metadata", () => {
+    const bookingInput = bookingInputForTimelineEvent({
+      tripId: "trip-1",
+      type: "activity",
+      eventType: "activity",
+      title: "Museum visit",
+      startsAt: "2026-09-28T09:30:00.000Z",
+      endsAt: "2026-09-28T11:00:00.000Z",
+      timezone: "Asia/Kolkata",
+      timingMode: "relative",
+      anchorItineraryItemId: "anchor-1",
+      relativePosition: "after",
+      hasExplicitStartTime: false,
+      durationMinutes: 90
+    });
+
+    expect(bookingInput).not.toHaveProperty("startsAt");
+    expect(bookingInput).not.toHaveProperty("endsAt");
+    expect(bookingInput).not.toHaveProperty("timezone");
+  });
+
+  it("keeps exact hotel timing even when the explicit flag is absent", () => {
+    const bookingInput = bookingInputForTimelineEvent({
+      tripId: "trip-1",
+      type: "hotel",
+      eventType: "hotel_check_in",
+      title: "Marina hotel",
+      startsAt: "2026-09-28T09:30:00.000Z",
+      endsAt: "2026-09-29T05:30:00.000Z",
+      timezone: "Asia/Kolkata"
+    });
+
+    expect(bookingInput).toEqual(expect.objectContaining({
+      startsAt: "2026-09-28T09:30:00.000Z",
+      endsAt: "2026-09-29T05:30:00.000Z",
+      timezone: "Asia/Kolkata"
+    }));
+  });
+});
 
 describe("booking creation compensation", () => {
   beforeEach(() => {

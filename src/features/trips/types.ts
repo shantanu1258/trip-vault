@@ -47,6 +47,8 @@ export type ItineraryItem = {
   scheduled_date?: string | null;
   anchor_itinerary_item_id?: string | null;
   relative_position?: "before" | "after" | null;
+  has_explicit_start_time?: boolean;
+  duration_minutes?: number | null;
   event_status?: EventStatus;
   sort_key?: string;
   version?: number;
@@ -147,6 +149,8 @@ export type CreateItineraryInput = {
   scheduledDate?: string;
   anchorItineraryItemId?: string;
   relativePosition?: "before" | "after";
+  hasExplicitStartTime?: boolean;
+  durationMinutes?: number;
   eventStatus?: EventStatus;
   sortKey?: string;
   dependsOn?: string[];

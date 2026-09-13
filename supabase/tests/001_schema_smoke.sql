@@ -23,6 +23,9 @@ declare
   published_release_id uuid;
   permanent_delete_definition text;
   flight_connection_definition text;
+  relative_timing_definition text;
+  relative_timing_trigger_definition text;
+  relative_anchor_definition text;
 begin
   foreach expected_table_name in array expected_tables loop
     if to_regclass('public.' || expected_table_name) is null then
@@ -228,6 +231,92 @@ begin
     where table_schema = 'public' and table_name = 'itinerary_items' and column_name = 'timing_mode'
   ) then
     raise exception 'Flexible timeline timing is missing';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'itinerary_items'
+      and column_name = 'has_explicit_start_time'
+      and data_type = 'boolean'
+      and is_nullable = 'NO'
+      and coalesce(column_default, '') ilike '%true%'
+  ) then
+    raise exception 'Relative timeline explicit-start state is missing or has the wrong default';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'itinerary_items'
+      and column_name = 'duration_minutes'
+      and data_type = 'integer'
+      and is_nullable = 'YES'
+  ) then
+    raise exception 'Optional timeline duration is missing';
+  end if;
+  if not exists (
+    select 1
+    from pg_constraint constraint_row
+    join pg_class relation on relation.oid = constraint_row.conrelid
+    join pg_namespace namespace on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'public'
+      and relation.relname = 'itinerary_items'
+      and constraint_row.conname = 'itinerary_duration_minutes_positive'
+      and pg_get_constraintdef(constraint_row.oid) ilike '%duration_minutes > 0%'
+  ) then
+    raise exception 'Timeline duration positivity is not enforced';
+  end if;
+  if not exists (
+    select 1
+    from pg_constraint constraint_row
+    join pg_class relation on relation.oid = constraint_row.conrelid
+    join pg_namespace namespace on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'public'
+      and relation.relname = 'itinerary_items'
+      and constraint_row.conname = 'itinerary_timing_precision_check'
+  ) then
+    raise exception 'Timeline explicit/flexible timing shape is not enforced';
+  end if;
+  if not exists (
+    select 1
+    from pg_constraint constraint_row
+    join pg_class relation on relation.oid = constraint_row.conrelid
+    join pg_namespace namespace on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'public'
+      and relation.relname = 'itinerary_items'
+      and constraint_row.conname = 'itinerary_duration_consistency_check'
+  ) then
+    raise exception 'Timeline end-time and duration consistency is not enforced';
+  end if;
+  relative_timing_definition := lower(pg_get_functiondef('public.enforce_itinerary_trip_dates()'::regprocedure));
+  if strpos(relative_timing_definition, 'new.starts_at := anchor_row.starts_at') = 0
+    or strpos(relative_timing_definition, 'new.timezone := anchor_row.timezone') = 0
+    or strpos(relative_timing_definition, 'new.ends_at := new.starts_at + make_interval') = 0
+    or strpos(relative_timing_definition, 'new.duration_minutes :=') = 0
+    or strpos(relative_timing_definition, 'add a start time before adding an end time') = 0
+    or strpos(relative_timing_definition, 'id <> new.id') = 0 then
+    raise exception 'Relative timing fallback, duration derivation, or self-anchor validation is missing';
+  end if;
+  select lower(pg_get_triggerdef(trigger_row.oid)) into relative_timing_trigger_definition
+  from pg_trigger trigger_row
+  where trigger_row.tgname = 'itinerary_trip_date_bounds'
+    and not trigger_row.tgisinternal;
+  if relative_timing_trigger_definition is null
+    or strpos(relative_timing_trigger_definition, 'has_explicit_start_time') = 0
+    or strpos(relative_timing_trigger_definition, 'duration_minutes') = 0 then
+    raise exception 'Timeline validation trigger does not watch explicit-start and duration changes';
+  end if;
+  if to_regprocedure('public.propagate_relative_anchor_timing()') is null
+    or not exists (
+      select 1 from pg_trigger
+      where tgname = 'itinerary_propagate_relative_anchor_timing' and not tgisinternal
+    ) then
+    raise exception 'Relative timeline anchor propagation is missing';
+  end if;
+  relative_anchor_definition := lower(pg_get_functiondef('public.propagate_relative_anchor_timing()'::regprocedure));
+  if strpos(relative_anchor_definition, 'dependent.anchor_itinerary_item_id = new.id') = 0
+    or strpos(relative_anchor_definition, 'not dependent.has_explicit_start_time') = 0
+    or strpos(relative_anchor_definition, 'dependent.timezone is distinct from new.timezone') = 0 then
+    raise exception 'Relation-only events do not follow anchor date, time, and timezone changes';
   end if;
   if not exists (
     select 1 from information_schema.columns

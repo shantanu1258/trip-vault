@@ -6,6 +6,11 @@ export type TimelineSearchResult = { id: string; group: TimelineSearchGroup; tit
 
 export type TimelinePhase = "past" | "current" | "future" | "unscheduled";
 
+export function hasExplicitEventStart(item: ItineraryItem) {
+  const mode = item.timing_mode ?? (item.is_all_day ? "all_day" : "exact");
+  return mode === "exact" || (mode === "relative" && item.has_explicit_start_time === true);
+}
+
 export function timelinePhase(item: ItineraryItem, now = new Date()): TimelinePhase {
   if (item.timing_mode === "unscheduled") return "unscheduled";
   if (item.is_all_day || item.timing_mode === "date_only" || item.timing_mode === "all_day") {
@@ -16,6 +21,9 @@ export function timelinePhase(item: ItineraryItem, now = new Date()): TimelinePh
   }
   const timestamp = now.getTime();
   const start = new Date(item.starts_at).getTime();
+  // A relation-only item borrows its anchor's instant solely so it can be
+  // stored and grouped. It must never claim to be happening now.
+  if (item.timing_mode === "relative" && !hasExplicitEventStart(item)) return timestamp < start ? "future" : "past";
   const end = new Date(item.ends_at ?? item.starts_at).getTime();
   if (timestamp < start) return "future";
   if (timestamp <= end) return "current";
@@ -40,23 +48,59 @@ export function eventEndTimeZone(item: ItineraryItem, flights: FlightLeg[], jour
   return journey?.destination_timezone ?? item.timezone;
 }
 
-export function eventTimeLabel(item: ItineraryItem) {
+export function eventTimeLabel(item: ItineraryItem, itinerary: ItineraryItem[] = []) {
   if (item.timing_mode === "unscheduled") return "No date yet";
-  if (item.timing_mode === "relative") return `${item.relative_position === "before" ? "Before" : "After"} another event`;
+  if (item.timing_mode === "relative") {
+    const anchor = itinerary.find((candidate) => candidate.id === item.anchor_itinerary_item_id);
+    return `${item.relative_position === "before" ? "Before" : "After"} ${anchor?.title ?? "selected event"}`;
+  }
   if (item.timing_mode === "date_only") return "Date only";
   if (item.timing_mode === "all_day" || item.is_all_day) return "All day";
   return null;
 }
 
 export function sortTimelineItems(items: ItineraryItem[]) {
-  return [...items].sort((left, right) => {
-    if (left.anchor_itinerary_item_id === right.id) return left.relative_position === "before" ? -1 : 1;
-    if (right.anchor_itinerary_item_id === left.id) return right.relative_position === "before" ? 1 : -1;
+  const baseline = [...items].sort((left, right) => {
     const leftUnscheduled = left.timing_mode === "unscheduled";
     const rightUnscheduled = right.timing_mode === "unscheduled";
     if (leftUnscheduled !== rightUnscheduled) return leftUnscheduled ? 1 : -1;
     return left.starts_at.localeCompare(right.starts_at) || (left.sort_key ?? "").localeCompare(right.sort_key ?? "") || left.id.localeCompare(right.id);
   });
+  const byId = new Map(baseline.map((item) => [item.id, item]));
+  const baselineIndex = new Map(baseline.map((item, index) => [item.id, index]));
+  const beforeByAnchor = new Map<string, ItineraryItem[]>();
+  const afterByAnchor = new Map<string, ItineraryItem[]>();
+  const relatedIds = new Set<string>();
+  for (const item of baseline) {
+    const anchorId = item.anchor_itinerary_item_id;
+    if (item.timing_mode !== "relative" || !anchorId || anchorId === item.id || !byId.has(anchorId)) continue;
+    const target = item.relative_position === "before" ? beforeByAnchor : afterByAnchor;
+    target.set(anchorId, [...(target.get(anchorId) ?? []), item]);
+    relatedIds.add(item.id);
+  }
+  const stableChildren = (children: ItineraryItem[] | undefined) => [...(children ?? [])].sort((left, right) =>
+    left.starts_at.localeCompare(right.starts_at)
+      || (left.sort_key ?? "").localeCompare(right.sort_key ?? "")
+      || (baselineIndex.get(left.id) ?? 0) - (baselineIndex.get(right.id) ?? 0));
+  const ordered: ItineraryItem[] = [];
+  const seen = new Set<string>();
+  const visiting = new Set<string>();
+  const visit = (item: ItineraryItem) => {
+    if (seen.has(item.id)) return;
+    if (visiting.has(item.id)) {
+      seen.add(item.id);
+      ordered.push(item);
+      return;
+    }
+    visiting.add(item.id);
+    for (const child of stableChildren(beforeByAnchor.get(item.id))) visit(child);
+    if (!seen.has(item.id)) { seen.add(item.id); ordered.push(item); }
+    for (const child of stableChildren(afterByAnchor.get(item.id))) visit(child);
+    visiting.delete(item.id);
+  };
+  for (const item of baseline) if (!relatedIds.has(item.id)) visit(item);
+  for (const item of baseline) visit(item);
+  return ordered;
 }
 
 export function resolveCurrentTimelineItem(items: ItineraryItem[], now = new Date()) {
@@ -71,17 +115,26 @@ export function resolveCurrentTimelineItem(items: ItineraryItem[], now = new Dat
     ?? null;
 }
 
-export function journeyDuration(start: string, end: string) {
-  const minutes = Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60_000));
-  const showWeeks = minutes > 10_080;
-  const showDays = minutes > 1_440;
-  const weeks = showWeeks ? Math.floor(minutes / 10_080) : 0;
-  const afterWeeks = showWeeks ? minutes % 10_080 : minutes;
+export function durationLabel(minutes: number) {
+  const safeMinutes = Math.max(0, Math.round(minutes));
+  const showWeeks = safeMinutes > 10_080;
+  const showDays = safeMinutes > 1_440;
+  const weeks = showWeeks ? Math.floor(safeMinutes / 10_080) : 0;
+  const afterWeeks = showWeeks ? safeMinutes % 10_080 : safeMinutes;
   const days = showDays ? Math.floor(afterWeeks / 1_440) : 0;
   const afterDays = showDays ? afterWeeks % 1_440 : afterWeeks;
   const hours = Math.floor(afterDays / 60);
-  const remainder = minutes % 60;
+  const remainder = safeMinutes % 60;
   return [weeks ? `${weeks}w` : "", days ? `${days}d` : "", hours ? `${hours}h` : "", remainder ? `${remainder}m` : ""].filter(Boolean).join(" ") || "0m";
+}
+
+export function journeyDuration(start: string, end: string) {
+  return durationLabel((new Date(end).getTime() - new Date(start).getTime()) / 60_000);
+}
+
+export function plannedDurationLabel(item: ItineraryItem) {
+  if (!item.duration_minutes || item.ends_at) return null;
+  return durationLabel(item.duration_minutes);
 }
 
 export function journeyRoute(legs: Array<{ origin?: string | null; destination?: string | null }>) {

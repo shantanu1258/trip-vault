@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrivalDayOffset, eventEndDetails, eventEndTimeZone, eventTimeLabel, journeyDuration, journeyEndDetails, journeyRoute, normalizePhoneNumber, phoneActionUrls, readinessSummary, resolveCurrentTimelineItem, searchTrip, sortTimelineItems, timelinePhase, validateLegOrder } from "./model";
+import { arrivalDayOffset, eventEndDetails, eventEndTimeZone, eventTimeLabel, journeyDuration, journeyEndDetails, journeyRoute, normalizePhoneNumber, phoneActionUrls, plannedDurationLabel, readinessSummary, resolveCurrentTimelineItem, searchTrip, sortTimelineItems, timelinePhase, validateLegOrder } from "./model";
 import type { ItineraryItem } from "../trips/types";
 
 const event = (id: string, start: string, end: string | null = null): ItineraryItem => ({ id, trip_id: "trip", booking_id: null, title: id, event_type: "activity", starts_at: start, ends_at: end, timezone: "UTC", location: null, notes: null, applies_to_all_travelers: true, created_at: "" });
@@ -31,6 +31,20 @@ describe("timeline model", () => {
     expect(sortTimelineItems([unscheduled, anchor, before]).map((item) => item.id)).toEqual(["before", "anchor", "unscheduled"]);
     expect(timelinePhase(unscheduled, new Date("2026-09-11T10:30:00Z"))).toBe("unscheduled");
     expect(eventTimeLabel(unscheduled)).toBe("No date yet");
+  });
+  it("shows the selected anchor and keeps every before/after sibling in stable order", () => {
+    const anchor = { ...event("hotel", "2026-09-11T10:00:00Z"), title: "Shantanu Hotel – Palm Springs", sort_key: "30" };
+    const beforeOne = { ...event("before-1", anchor.starts_at), timing_mode: "relative" as const, anchor_itinerary_item_id: anchor.id, relative_position: "before" as const, sort_key: "10" };
+    const beforeTwo = { ...event("before-2", anchor.starts_at), timing_mode: "relative" as const, anchor_itinerary_item_id: anchor.id, relative_position: "before" as const, sort_key: "20" };
+    const afterOne = { ...event("after-1", anchor.starts_at), timing_mode: "relative" as const, anchor_itinerary_item_id: anchor.id, relative_position: "after" as const, sort_key: "40" };
+    const afterTwo = { ...event("after-2", anchor.starts_at), timing_mode: "relative" as const, anchor_itinerary_item_id: anchor.id, relative_position: "after" as const, sort_key: "50" };
+    expect(sortTimelineItems([afterTwo, beforeTwo, anchor, afterOne, beforeOne]).map((item) => item.id)).toEqual(["before-1", "before-2", "hotel", "after-1", "after-2"]);
+    expect(eventTimeLabel(afterOne, [anchor, afterOne])).toBe("After Shantanu Hotel – Palm Springs");
+  });
+  it("never labels a relation-only event as current and still shows its planned duration", () => {
+    const relative = { ...event("relative", "2026-09-11T10:00:00Z"), timing_mode: "relative" as const, has_explicit_start_time: false, duration_minutes: 90 };
+    expect(timelinePhase(relative, new Date("2026-09-11T10:00:00Z"))).toBe("past");
+    expect(plannedDurationLabel(relative)).toBe("1h 30m");
   });
   it("skips done and cancelled entries when choosing what needs attention", () => {
     const done = { ...event("done", "2026-09-11T10:00:00Z"), event_status: "done" as const };

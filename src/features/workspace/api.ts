@@ -515,8 +515,30 @@ export async function listJourneyLegsForBooking(bookingId: string, tripId: strin
   return rows;
 }
 
-export async function addBookedTimelineEvent(input: CreateBookingInput & { eventType: TimelineEventType; mapUrl?: string; timingMode?: import("../trips/types").EventTimingMode; scheduledDate?: string; anchorItineraryItemId?: string; relativePosition?: "before" | "after"; isAllDay?: boolean; cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid"; paidByTravelerId?: string; participantTravelerIds?: string[] } }) {
-  const booking = await addBooking(input);
+type BookedTimelineEventInput = CreateBookingInput & {
+  eventType: TimelineEventType;
+  mapUrl?: string;
+  timingMode?: import("../trips/types").EventTimingMode;
+  scheduledDate?: string;
+  anchorItineraryItemId?: string;
+  relativePosition?: "before" | "after";
+  isAllDay?: boolean;
+  hasExplicitStartTime?: boolean;
+  durationMinutes?: number;
+  cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid"; paidByTravelerId?: string; participantTravelerIds?: string[] };
+};
+
+export function bookingInputForTimelineEvent(input: BookedTimelineEventInput): CreateBookingInput {
+  if (input.type === "hotel" || input.hasExplicitStartTime !== false) return input;
+  const bookingInput = { ...input };
+  delete bookingInput.startsAt;
+  delete bookingInput.endsAt;
+  delete bookingInput.timezone;
+  return bookingInput;
+}
+
+export async function addBookedTimelineEvent(input: BookedTimelineEventInput) {
+  const booking = await addBooking(bookingInputForTimelineEvent(input));
   const bookingOperation = !navigator.onLine ? await database.outbox.where("entityId").equals(booking.id).filter((operation) => operation.operation === "create").first() : undefined;
   const createMilestone = (eventType: TimelineEventType, title: string, startsAt: string, endsAt?: string) => {
     const isHotelMilestone = input.type === "hotel";
@@ -533,6 +555,8 @@ export async function addBookedTimelineEvent(input: CreateBookingInput & { event
       anchorItineraryItemId: isHotelMilestone ? undefined : input.anchorItineraryItemId,
       relativePosition: isHotelMilestone ? undefined : input.relativePosition,
       isAllDay: isHotelMilestone ? false : input.isAllDay,
+      hasExplicitStartTime: isHotelMilestone ? true : input.hasExplicitStartTime,
+      durationMinutes: isHotelMilestone ? undefined : input.durationMinutes,
       location: input.location,
       mapUrl: input.mapUrl,
       notes: input.notes,

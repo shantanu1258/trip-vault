@@ -13,7 +13,7 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 
 **Document status:** Implemented personal MVP 1.0
 
-**Implementation status:** Timeline-first application complete locally. Existing Supabase projects must apply migrations through `supabase/migrations/202609130006_trip_storage_cleanup_queue.sql`; fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once for the current schema, then publish the regional and booking-vendor catalogs after an administrator is bootstrapped. Remote and airplane-mode acceptance remain pending.
+**Implementation status:** Timeline-first application complete locally. Existing Supabase projects must apply migrations through `supabase/migrations/202609130007_relative_event_timing.sql`; fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once for the current schema, then publish the regional and booking-vendor catalogs after an administrator is bootstrapped. Remote and airplane-mode acceptance remain pending.
 
 **Default decision state:** Accepted unless explicitly marked as deferred or revisit
 
@@ -22,9 +22,9 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 | Area | Current state |
 |---|---|
 | Application | Timeline-first React PWA is implemented on `main` |
-| Automated verification | 44 Vitest files and 209 tests pass; type-check and production build pass |
-| Existing Supabase project | Apply every not-yet-run migration in filename order through `202609130006_trip_storage_cleanup_queue.sql`, then run the schema smoke test |
-| Fresh Supabase project | Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`, which already includes the `202609130006` schema contract; after bootstrapping an active `app_admins` row, run `202609130002_regional_travel_catalog.sql` and then `202609130005_booking_vendor_catalog_additions.sql` before the smoke test |
+| Automated verification | 47 Vitest files and 247 tests pass; type-check and production build pass |
+| Existing Supabase project | Apply every not-yet-run migration in filename order through `202609130007_relative_event_timing.sql`, then run the schema smoke test |
+| Fresh Supabase project | Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`, which already includes the `202609130007` schema contract; after bootstrapping an active `app_admins` row, run `202609130002_regional_travel_catalog.sql` and then `202609130005_booking_vendor_catalog_additions.sql` before the smoke test |
 | Cloudflare | Workers Static Assets configuration exists; the post-push live deployment is not verified here |
 | Acceptance | Phone, desktop, multi-member, upload, and airplane-mode tests remain manual release gates |
 
@@ -147,6 +147,14 @@ The upload flow derives the Vault title from document type, traveler usage, and 
 
 Opening a trip displays the applicable itinerary in chronological order on one connected timeline. The app identifies one current, next, or most-recent event, scrolls it into view on the first open, and distinguishes it with color and an explicit label. Everyone context shows the complete trip. Selecting a traveler becomes a presentation filter across the timeline, reservations, costs, readiness, seats, and documents: shared records plus that traveler's assigned records remain, while another traveler's private planning context is hidden. This filter never changes authentication or database authorization.
 
+Cards are the primary interaction targets, but their destination follows the information depth instead of forcing every card into the same behavior. A timeline event opens an inspection-first event sheet, and a reservation card navigates as one whole card to its flight or booking details; applicable Edit and Archive controls stay inside those detail surfaces. Event-linked expense rows and the main Trip expenses rows open the same `CostDetailsSheet` for Viewers, Editors, and Owners. That sheet shows the amount, status, category, payer, linked event or booking, included travelers and their shares, and notes; only an authorized Editor or Owner sees Edit and Archive. **Balances by currency** is deliberately hidden until the member enables **Show balances**, so settlement math does not displace the expense list.
+
+When a compact card has no separate detail layer, an authorized Editor or Owner may use the card itself as the edit action. Flight fact cards, trip note cards, trip-airline snapshot cards, and readiness requirement cards follow this direct-edit path; their Viewer rendering remains static. A readiness requirement's status selector, official-guidance link, linked-document action, and Archive action remain independent controls and never trigger the card editor. The **Trip information** overview card is an Owner-only direct route to Trip settings, while its explicit Settings action remains a separate target; Editor and Viewer renderings stay static. Independent actions such as Navigate, Call, WhatsApp, or opening a document, and destructive quick actions such as archiving a note or requirement, remain separately named controls and must not accidentally activate the card's primary destination. Only Admin catalog cards remain outside the whole-card convention pending the Admin redesign.
+
+A relative event's **Before/After** relationship controls its place independently from its optional schedule details. It may remain relation-only, carry only a planned duration, or later gain a real start and optional end. The timeline and event detail name the selected anchor and keep stable groups in the order **before events → anchor → after events**. The non-null `starts_at` retained for database ordering is not presented as an actual start when none was entered: such an event cannot become **Now** solely from that fallback, is omitted from calendar export, and gives a later booking no fabricated schedule.
+
+Exact and relative schedules share one calculation rule. Start plus duration derives the end; start plus end derives the duration; and when all three are supplied they must agree. An end without a start, a non-positive or inconsistent interval, or a start/derived end outside the trip dates is rejected. Duration may remain useful without a start on a relative event, so knowing “after hotel check-in, about two hours” never requires inventing a clock time.
+
 Timeline scroll state belongs to one trip and one internal view. Returning from that trip's Details view may restore its prior timeline position, but Home, Profile, Vault, another trip, and other unrelated routes start at their own top position instead of inheriting the previous page's scroll. The trip header shows only a compact, readable per-currency cost summary; activating it opens the itemized Trip expenses section.
 
 ### 6.9 Journey time zones belong to endpoints
@@ -159,7 +167,9 @@ Travelers enter departure and arrival exactly as printed in each endpoint's loca
 
 The unified Add Event flow presents the most-used choices first—Flight, Hotel, Activity, and Bus—then the remaining journey, meal, preparation, and custom types. A journey asks **Direct** or **Connecting** before its detailed fields: Direct owns exactly one leg, while Connecting starts with two ordered legs and may add more. Each later leg must depart from the endpoint where the previous leg arrived; normalized endpoint codes are compared when both exist, otherwise normalized endpoint names are compared. Leg count remains the stored source of truth, so no redundant route-type column is required. When a missing flight connection is appended later, the UI locks its origin to the prior arrival and filters a Domestic destination to that same country; the database function locks the booking and prior leg and independently enforces endpoint/time-zone continuity, positive layover, journey scope, and Domestic country. Journey location is derived from the complete ordered route, such as `BLR → DEL → DXB`; it is never collected as a generic place.
 
-The form keeps three travel concepts explicit: an **airline/operator** performs a journey, a **hotel/property name** identifies a stay, and **booked via** identifies the seller, website, or agent used to purchase it. Airline and booking-vendor pickers remain visible after **Other** is chosen so the traveler can switch back to a catalog value. Selecting a saved vendor reconciles the booking website to that catalog entry—filling its official URL or clearing a stale URL when none is defined—while choosing **Other** clears the prior catalog URL before manual entry. The same rule applies during create and edit. The bundled booking-vendor fallback includes Airbnb and Trip.com; migration `202609130005_booking_vendor_catalog_additions.sql` copies the existing published release and publishes those same additions for database-backed clients. Hotel creation does not ask for a separate service provider, time-zone chooser, or clock-repeat choice. Contact name is omitted for flights and trains, while a phone remains optional where a Call or WhatsApp action is useful. A planned Activity with **Exact date & time** may gain booking details later through an online enrichment action that creates and links a booking while preserving the timeline event. Date-only, all-day, relative, and unscheduled activities must first use **Set exact time**; their synthetic ordering instants are never copied into bookings.
+The form keeps three travel concepts explicit: an **airline/operator** performs a journey, a **hotel/property name** identifies a stay, and **booked via** identifies the seller, website, or agent used to purchase it. Airline and booking-vendor pickers remain visible after **Other** is chosen so the traveler can switch back to a catalog value. Selecting a saved vendor reconciles the booking website to that catalog entry—filling its official URL or clearing a stale URL when none is defined—while choosing **Other** clears the prior catalog URL before manual entry. The same rule applies during create and edit. The bundled booking-vendor fallback includes Airbnb and Trip.com; migration `202609130005_booking_vendor_catalog_additions.sql` copies the existing published release and publishes those same additions for database-backed clients. Hotel creation does not ask for a separate service provider, time-zone chooser, or clock-repeat choice. Contact name is omitted for flights and trains, while a phone remains optional where a Call or WhatsApp action is useful.
+
+An unbooked Activity, Meal, Transport, Preparation, or Custom event may gain generic booking details later through an online action that creates and links a booking while preserving the event's identity, placement, timing details, and participants. The edit flow retains the existing-booking selector alongside the new-booking action. If the event has no explicit start, the linked booking keeps its start, end, and source timezone null instead of copying a date-only, all-day, unscheduled, or relative ordering fallback. A later event edit may add the real schedule without disturbing its before/after relationship.
 
 Add Event may create linked booking details, ordered journey legs, costs, contacts, and map actions; event details then attach one or many classified Vault documents. A cost is optional, but a missing-cost state remains visible so it can be completed later. Durations use compact human units: hours through exactly 24 hours, days above 24 hours through exactly seven days, and weeks above seven days.
 
@@ -336,11 +346,11 @@ The SQL smoke test verifies bucket, policy, function, and schema presence. A rea
 
 The client always bundles starter airport, airline, and booking-vendor data so Add Event is usable before a published configuration is downloaded. Database-backed catalog publication is separate because it needs a trusted administrator audit actor.
 
-For an existing project, apply every missing migration in filename order. A database current through `202609130004` runs `202609130005_booking_vendor_catalog_additions.sql`, then `202609130006_trip_storage_cleanup_queue.sql`, then the smoke test. `202609130005` requires an active `app_admins` row and the regional release from `202609130002`; establish those prerequisites instead of bypassing its guard. A database already current through `202609130005` runs only `202609130006` before the smoke test.
+For an existing project, apply every missing migration in filename order. A database current through `202609130004` runs `202609130005_booking_vendor_catalog_additions.sql`, `202609130006_trip_storage_cleanup_queue.sql`, and `202609130007_relative_event_timing.sql`, then the smoke test. `202609130005` requires an active `app_admins` row and the regional release from `202609130002`; establish those prerequisites instead of bypassing its guard. A database already current through `202609130006` runs only `202609130007` before the smoke test.
 
 For a fresh project:
 
-1. Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`, which already includes the `202609130006` schema contract.
+1. Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`, which already includes the `202609130007` schema contract.
 2. Bootstrap an active `app_admins` row through the trusted SQL procedure.
 3. Run `202609130002_regional_travel_catalog.sql`.
 4. Run `202609130005_booking_vendor_catalog_additions.sql` to create a new immutable published release containing Airbnb and Trip.com.
@@ -453,9 +463,11 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 | HLD-051 | Trip creation defaults | Suggest a start 15 days from today and an end seven days later while preserving any deliberate user-entered dates | Accepted |
 | HLD-052 | Route scroll ownership | Keep active-trip timeline restoration local to that trip/view and reset unrelated route content to the top | Accepted |
 | HLD-053 | Connected-route continuity | Require every later journey leg to start where its predecessor ends, comparing normalized codes when possible and normalized names otherwise | Accepted |
-| HLD-054 | Activity booking enrichment boundary | Add booking details only to an exact-time Activity while online; flexible activities must first be changed with Set exact time | Accepted |
+| HLD-054 | Generic event booking enrichment | Add booking details online to an unbooked Activity, Meal, Transport, Preparation, or Custom event; preserve the event and keep booking times null until the event has a real start | Accepted |
 | HLD-055 | Account-original immutability | Permit pending INSERT and unassociated DELETE, expose no Storage UPDATE, and make associated inbox originals immutable; reconcile successful association into the cache and let the associated server receipt suppress stale local inbox copies | Accepted |
 | HLD-056 | Permanent-purge cleanup queue | Atomically enqueue legacy object paths with trip deletion, acknowledge each row only after Storage cleanup, clean account-inbox bytes after association clears, and retain the appropriate queue row or account receipt on failure | Accepted for testing |
+| HLD-057 | Relative placement and timing | Keep the before/after anchor independent from optional duration and explicit start/end; never treat the storage ordering fallback as a real schedule | Accepted |
+| HLD-058 | Card interaction hierarchy | Make the card the primary target; open read-first details for rich records; edit shallow flight, note, airline, readiness, and Owner trip-overview cards directly; keep quick/destructive actions independent; and defer only Admin catalog cards | Accepted |
 
 ## 14. Risks Requiring Explicit Discussion
 
@@ -463,7 +475,7 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 |---|---|---|
 | Browser storage eviction | A traveler may assume a file is present when it is not | Persistent-storage request, readiness verification, and export fallback |
 | Provisional offline manifest | The current badge verifies document versions but not every structured entity or generic journey leg | Treat airplane-mode acceptance as mandatory and implement HLD-042 before relying on the badge alone |
-| Schema/client mismatch | A deployed client can reference tables, functions, triggers, policies, or catalog releases missing from an older Supabase project | Run every pending migration in filename order through `202609130006_trip_storage_cleanup_queue.sql`, then execute the schema smoke test before client testing |
+| Schema/client mismatch | A deployed client can reference tables, functions, triggers, policies, or catalog releases missing from an older Supabase project | Run every pending migration in filename order through `202609130007_relative_event_timing.sql`, then execute the schema smoke test before client testing |
 | Silent cache fallback | A failed online request can display older cached data | Keep sync state visible and show freshness/failure rather than implying the cache is current |
 | Stale service worker | An installed phone can continue running an older application bundle | Preserve update prompts and verify an update/reload during deployment acceptance |
 | Sensitive travel documents | Passports and visas have higher impact than ordinary attachments | Private defaults, least-privilege access, optional local storage, audit trail |
@@ -479,10 +491,10 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 
 ## 15. Post-Implementation Validation Order
 
-1. Apply every pending existing-project migration in filename order through `202609130006_trip_storage_cleanup_queue.sql` (or use the fresh-project schema and catalog sequence in 9.3), then rerun the schema smoke test.
+1. Apply every pending existing-project migration in filename order through `202609130007_relative_event_timing.sql` (or use the fresh-project schema and catalog sequence in 9.3), then rerun the schema smoke test.
 2. Create a fresh three-member trip and verify owner, editor, viewer, managed traveler, and collaborator behavior.
 3. Exercise Direct and Connecting domestic/international journeys, including endpoint-continuity rejection, hidden/derived zones, International Other fallbacks, domestic Flight edit controls, complete route summaries, destination-zone arrival/end display, and elapsed time across different endpoint zones.
-4. Exercise fresh-launch current-trip routing, deterministic overlap fallback, explicit Home navigation, and the complete timeline on phone and desktop, including current-event scrolling, unrelated-route scroll isolation, date-only/relative/unscheduled entries, exact-time activity booking enrichment, compact cost links, and itemized expenses.
+4. Exercise fresh-launch current-trip routing, deterministic overlap fallback, explicit Home navigation, and the complete timeline on phone and desktop, including current-event scrolling, unrelated-route scroll isolation, stable named before/after groups, relation-only/duration-only/later-timed entries, generic booking enrichment without fabricated times, and the card interaction hierarchy with mouse, keyboard, and touch. Verify reservation whole-card navigation, independent phone/map actions, event and expense detail sheets for Viewers and Editors, direct-edit flight/note/airline/readiness cards, the Owner-only Trip information route to settings, and opt-in balances.
 5. Upload, assign, open, retry, and unlink each important document purpose; verify stale-cache suppression after association, the unassociated/associated deletion boundary, the legacy cleanup queue, and the post-association account-object cleanup path during permanent purge.
 6. Prepare the trip and repeat the defined flows in airplane mode; treat failures as HLD-042 blockers.
 7. Validate Cloudflare installation, update prompting, and phone launch from the installed PWA.
@@ -501,6 +513,7 @@ The implementation is organized by application shell, product feature, local per
 | Database migrations | `supabase/migrations/` | Post-baseline deltas for existing deployments |
 | Latest catalog addition | `supabase/migrations/202609130005_booking_vendor_catalog_additions.sql` | Publishes Airbnb and Trip.com after the regional catalog |
 | Trip Storage cleanup queue | `supabase/migrations/202609130006_trip_storage_cleanup_queue.sql` | Atomically records legacy object cleanup with permanent trip deletion and hardens appended flight connections |
+| Relative-event timing migration | `supabase/migrations/202609130007_relative_event_timing.sql` | Separates relative placement from real start/end precision and stores an optional planned duration |
 | Consolidated database setup | `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` | Full current setup for a fresh project |
 | Application source | `src/` | React PWA, feature workflows, offline storage, and tests |
 | Documentation conventions | `docs/doc-conventions.md` | Status and writing rules |

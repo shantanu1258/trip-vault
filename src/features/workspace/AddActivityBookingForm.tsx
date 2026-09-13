@@ -9,30 +9,54 @@ import { formatEventTime, getErrorMessage } from "../trips/presentation";
 import type { ItineraryItem, Trip } from "../trips/types";
 import { ParticipantSelector } from "./ParticipantSelector";
 import { addBooking, archiveBooking } from "./api";
-import type { CreateBookingInput, Traveler } from "./types";
+import type { BookingType, CreateBookingInput, Traveler } from "./types";
 
 type ActivityBookingFormProps = {
   trip: Trip;
   item: ItineraryItem;
+  itinerary?: ItineraryItem[];
   travelers: Traveler[];
   eventTravelerIds: string[];
   onClose: () => void;
 };
 
-export function canAddActivityBooking(item: ItineraryItem) {
-  return item.event_type === "activity"
-    && !item.is_all_day
-    && (item.timing_mode ?? "exact") === "exact";
+const bookingTypeByEvent: Partial<Record<NonNullable<ItineraryItem["event_type"]>, BookingType>> = {
+  activity: "activity",
+  meal: "restaurant",
+  transport: "transport",
+  preparation: "other",
+  custom: "other"
+};
+
+const providerCopyByEvent: Partial<Record<NonNullable<ItineraryItem["event_type"]>, { label: string; placeholder: string }>> = {
+  activity: { label: "Activity provider (optional)", placeholder: "Enter the attraction, tour company, venue, or organizer" },
+  meal: { label: "Restaurant or venue (optional)", placeholder: "Enter the restaurant, café, venue, or organizer" },
+  transport: { label: "Transport provider (optional)", placeholder: "Enter the transport company, rental service, or operator" },
+  preparation: { label: "Service provider (optional)", placeholder: "Enter the agency, appointment provider, or organizer" },
+  custom: { label: "Service provider (optional)", placeholder: "Enter the business or organizer providing this booking" }
+};
+
+export function canAddEventBooking(item: ItineraryItem) {
+  return !item.booking_id && Boolean(bookingTypeByEvent[item.event_type ?? "custom"]);
 }
 
-export function AddActivityBookingForm({ trip, item, travelers, eventTravelerIds, onClose }: ActivityBookingFormProps) {
+// Retained while existing callers move to the event-wide name.
+export const canAddActivityBooking = canAddEventBooking;
+
+export function AddActivityBookingForm({ trip, item, itinerary = [], travelers, eventTravelerIds, onClose }: ActivityBookingFormProps) {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const [bookedViaUrl, setBookedViaUrl] = useState("");
   const online = navigator.onLine;
+  const eventType = item.event_type ?? "custom";
+  const bookingType = bookingTypeByEvent[eventType] ?? "other";
+  const providerCopy = providerCopyByEvent[eventType] ?? providerCopyByEvent.custom!;
+  const explicitRelativeStart = item.has_explicit_start_time === true;
+  const hasExplicitStart = (item.timing_mode ?? "exact") === "exact"
+    || (item.timing_mode === "relative" && explicitRelativeStart);
   const mutation = useMutation({
     mutationFn: async (input: CreateBookingInput) => {
-      if (!canAddActivityBooking(item)) throw new Error("Set an exact activity time before adding booking details.");
+      if (!canAddEventBooking(item)) throw new Error("This event already has a booking or does not support generic booking details.");
       if (!navigator.onLine) throw new Error("Adding booking details requires a connection.");
       const booking = await addBooking(input);
       try {
@@ -68,13 +92,13 @@ export function AddActivityBookingForm({ trip, item, travelers, eventTravelerIds
     }
     mutation.mutate({
       tripId: trip.id,
-      type: "activity",
+      type: bookingType,
       title: item.title,
       provider: String(form.get("provider") ?? "").trim() || undefined,
       referenceCode: String(form.get("referenceCode") ?? "").trim() || undefined,
-      startsAt: item.starts_at,
-      endsAt: item.ends_at ?? undefined,
-      timezone: item.timezone,
+      startsAt: hasExplicitStart ? item.starts_at : undefined,
+      endsAt: hasExplicitStart ? item.ends_at ?? undefined : undefined,
+      timezone: hasExplicitStart ? item.timezone : undefined,
       location: item.location?.label ?? item.location?.address,
       notes: String(form.get("notes") ?? "").trim() || undefined,
       bookedViaName: String(form.get("bookedViaName") ?? "").trim() || undefined,
@@ -86,22 +110,23 @@ export function AddActivityBookingForm({ trip, item, travelers, eventTravelerIds
   };
 
   const defaultTravelerIds = item.applies_to_all_travelers ? undefined : eventTravelerIds;
-  if (!canAddActivityBooking(item)) return <ModalSheet eyebrow={item.title} title="Add booking details" onClose={onClose}>
+  if (!canAddEventBooking(item)) return <ModalSheet eyebrow={item.title} title="Add booking details" onClose={onClose}>
     <div className="mt-6 rounded-2xl bg-warning/10 p-4 text-sm leading-6 text-warning">
-      <p className="font-extrabold">Set an exact activity time first</p>
-      <p className="mt-1">Date-only, all-day, relative, and unscheduled activities do not have a reliable instant to copy into a booking. Edit the activity, choose Exact date &amp; time, then return here.</p>
+      <p className="font-extrabold">A new booking cannot be added here</p>
+      <p className="mt-1">This event already has a booking or uses specialized travel booking details.</p>
     </div>
   </ModalSheet>;
-  const timingLabel = eventTimeLabel(item) ?? formatEventTime(item.starts_at, item.timezone);
+  const timingLabel = eventTimeLabel(item, itinerary) ?? formatEventTime(item.starts_at, item.timezone);
   const locationLabel = item.location?.label ?? item.location?.address;
   return <ModalSheet eyebrow={item.title} title="Add booking details" onClose={onClose}>
     <form className="mt-6 space-y-4" onSubmit={submit}>
       <div className="rounded-2xl bg-elevated p-4 text-sm">
-        <p className="font-extrabold">Uses this activity's plan</p>
-        <p className="mt-1 text-xs leading-5 text-muted">{timingLabel}{locationLabel ? ` · ${locationLabel}` : ""}. Change the activity itself if its time or place needs updating.</p>
+        <p className="font-extrabold">Uses this event's plan</p>
+        <p className="mt-1 text-xs leading-5 text-muted">{timingLabel}{locationLabel ? ` · ${locationLabel}` : ""}. Change the event itself if its timing, order, or place needs updating.</p>
+        {!hasExplicitStart && <p className="mt-2 text-xs leading-5 text-muted">The booking will stay untimed while this event has no explicit start time.</p>}
       </div>
-      <p className="rounded-2xl bg-warning/10 p-3 text-xs leading-5 text-warning">Adding booking details needs a connection for now. If attaching the booking fails, the new booking is archived and this activity stays unchanged.</p>
-      <label className="form-label">Activity provider (optional)<input autoFocus className="form-input" name="provider" placeholder="Enter the attraction, tour company, venue, or organizer" /></label>
+      <p className="rounded-2xl bg-warning/10 p-3 text-xs leading-5 text-warning">Adding booking details needs a connection for now. If attaching the booking fails, the new booking is archived and this event stays unchanged.</p>
+      <label className="form-label">{providerCopy.label}<input autoFocus className="form-input" name="provider" placeholder={providerCopy.placeholder} /></label>
       <label className="form-label">Booking reference (optional)<input className="form-input" name="referenceCode" placeholder="Enter the confirmation number or reservation reference" /></label>
       <div className="form-label"><span>Booked via (optional)</span><VendorPicker onWebsite={setBookedViaUrl} /></div>
       <label className="form-label">Booking website (optional)<input className="form-input" name="bookedViaUrl" type="url" value={bookedViaUrl} onChange={(event) => setBookedViaUrl(event.target.value)} placeholder="Paste the page used to view or manage this booking" /></label>

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, CalendarPlus, Loader2, ReceiptIndianRupee, Save, Trash2 } from "lucide-react";
+import { Archive, CalendarPlus, Loader2, ReceiptIndianRupee, Save, TicketCheck, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { CurrencySelect } from "../../components/CurrencySelect";
 import { ModalSheet } from "../../components/ModalSheet";
@@ -14,7 +14,7 @@ import { listItinerary } from "./api";
 import { useFormDraft } from "../../lib/forms/useFormDraft";
 import { readEventTiming, TimingFields } from "../timeline/TimingFields";
 
-export function AddItineraryForm({ trip, travelers, bookings = [], item, preferredTravelerId, onClose }: { trip: Trip; travelers: Traveler[]; bookings?: Booking[]; item?: ItineraryItem; preferredTravelerId?: string; onClose: () => void }) {
+export function AddItineraryForm({ trip, travelers, bookings = [], item, preferredTravelerId, onAddBooking, onClose }: { trip: Trip; travelers: Traveler[]; bookings?: Booking[]; item?: ItineraryItem; preferredTravelerId?: string; onAddBooking?: () => void; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const draft = useFormDraft(`itinerary:${item?.id ?? "new"}:${trip.id}`);
@@ -64,7 +64,8 @@ export function AddItineraryForm({ trip, travelers, bookings = [], item, preferr
         <TimingFields trip={trip} itinerary={itinerary.data ?? []} item={item} />
         <label className="form-label">Location (optional)<input className="form-input" name="location" placeholder="Enter the place name or full address" defaultValue={item?.location?.label ?? ""} /></label>
         <label className="form-label">Google Maps link (optional)<input className="form-input" name="mapUrl" type="url" placeholder="Paste a Google Maps place or directions link" defaultValue={item?.location?.map_url ?? ""} /></label>
-        {bookings.length > 0 && <label className="form-label">Related booking (optional)<select className="form-input" name="bookingId" defaultValue={item?.booking_id ?? ""}><option value="">No related booking</option>{bookings.map((booking) => <option key={booking.id} value={booking.id}>{booking.title}</option>)}</select></label>}
+        {bookings.length > 0 && <label className="form-label">Link an existing booking (optional)<select className="form-input" name="bookingId" defaultValue={item?.booking_id ?? ""}><option value="">No related booking</option>{bookings.map((booking) => <option key={booking.id} value={booking.id}>{booking.type.replaceAll("_", " ")} · {booking.title}</option>)}</select></label>}
+        {onAddBooking && <div className="rounded-2xl border border-line bg-elevated p-4"><p className="text-sm font-extrabold">No booking yet?</p><p className="mt-1 text-xs leading-5 text-muted">Create booking details later without changing this event's place in the timeline.</p><button className="secondary-button mt-3" type="button" onClick={onAddBooking}><TicketCheck className="size-4" /> Add new booking</button></div>}
         <label className="form-label">Notes (optional)<textarea className="form-input min-h-24 resize-y" name="notes" placeholder="Add information you may need at this point in the trip" defaultValue={item?.notes ?? ""} /></label>
         <ParticipantSelector travelers={travelers} selectedTravelerIds={item ? participants.data ?? [] : preferredTravelerId ? [preferredTravelerId] : undefined} />
         {(message || mutation.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{message || getErrorMessage(mutation.error)}</p>}

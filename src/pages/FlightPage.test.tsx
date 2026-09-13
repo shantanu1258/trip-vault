@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -107,7 +107,7 @@ function flight(scope: JourneyScope): FlightLeg {
   };
 }
 
-async function renderEditor(scope: JourneyScope) {
+async function renderFlight(scope: JourneyScope) {
   const currentFlight = flight(scope);
   mocks.getBooking.mockResolvedValue(booking(scope));
   mocks.getFlightLeg.mockResolvedValue(currentFlight);
@@ -125,9 +125,15 @@ async function renderEditor(scope: JourneyScope) {
   );
 
   const user = userEvent.setup();
+  await screen.findByRole("button", { name: "Update flight" });
+  return { container: view.container, user };
+}
+
+async function renderEditor(scope: JourneyScope) {
+  const { container, user } = await renderFlight(scope);
   await user.click(await screen.findByRole("button", { name: "Update flight" }));
   await screen.findByRole("region", { name: "Manual flight update" });
-  return view.container;
+  return container;
 }
 
 describe("flight edit time-zone controls", () => {
@@ -149,5 +155,14 @@ describe("flight edit time-zone controls", () => {
     expect(screen.getAllByText(/if this clock time occurs twice/i)).toHaveLength(7);
     const occurrence = container.querySelector<HTMLSelectElement>('select[name="scheduledDepartureOccurrence"]');
     expect(occurrence).toHaveValue("automatic");
+  });
+
+  it("opens the editor from the whole departure information card", async () => {
+    const { user } = await renderFlight("domestic");
+
+    await user.click(screen.getByRole("button", { name: /Departure.*Bengaluru/i }));
+
+    expect(await screen.findByRole("region", { name: "Manual flight update" })).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('[name="scheduledDeparture"]')).toHaveFocus());
   });
 });

@@ -19,7 +19,7 @@ import type {
 } from "./types";
 import { moveEqualTimeItem } from "./presentation";
 
-const itinerarySelect = "id,trip_id,booking_id,title,event_type,starts_at,ends_at,timezone,location,notes,applies_to_all_travelers,is_all_day,completed_at,timing_mode,scheduled_date,anchor_itinerary_item_id,relative_position,event_status,sort_key,version,created_at,updated_at,deleted_at";
+const itinerarySelect = "id,trip_id,booking_id,title,event_type,starts_at,ends_at,timezone,location,notes,applies_to_all_travelers,is_all_day,completed_at,timing_mode,scheduled_date,anchor_itinerary_item_id,relative_position,has_explicit_start_time,duration_minutes,event_status,sort_key,version,created_at,updated_at,deleted_at";
 const costSelect = "id,trip_id,booking_id,itinerary_item_id,title,category,amount_minor,currency_code,payment_status,paid_by_traveler_id,notes,version,created_at,updated_at,deleted_at,trip_cost_participants(traveler_id,share_amount_minor)";
 
 type CostResponse = TripCost & { trip_cost_participants?: Array<{ traveler_id: string; share_amount_minor: number | null }> };
@@ -364,8 +364,10 @@ export async function addItineraryItem(input: CreateItineraryInput): Promise<Iti
   const userId = await currentUserId();
   const id = crypto.randomUUID(); const now = new Date().toISOString();
   const appliesToAll = !input.travelerIds?.length;
+  const timingMode = input.timingMode ?? (input.isAllDay ? "all_day" : "exact");
+  const hasExplicitStartTime = input.hasExplicitStartTime ?? (timingMode === "exact");
   const location = input.location || input.mapUrl ? { label: input.location || undefined, address: input.location || undefined, map_url: input.mapUrl || undefined } : null;
-  const item: ItineraryItem = { id, trip_id: input.tripId, booking_id: input.bookingId || null, title: input.title, event_type: input.eventType ?? "custom", starts_at: input.startsAt, ends_at: input.endsAt || null, timezone: input.timezone, location, notes: input.notes || null, applies_to_all_travelers: appliesToAll, is_all_day: Boolean(input.isAllDay), completed_at: input.completedAt ?? null, timing_mode: input.timingMode ?? (input.isAllDay ? "all_day" : "exact"), scheduled_date: input.scheduledDate ?? null, anchor_itinerary_item_id: input.anchorItineraryItemId ?? null, relative_position: input.relativePosition ?? null, event_status: input.eventStatus ?? "planned", sort_key: input.sortKey ?? `${input.startsAt}:${id}`, created_at: now, updated_at: now };
+  const item: ItineraryItem = { id, trip_id: input.tripId, booking_id: input.bookingId || null, title: input.title, event_type: input.eventType ?? "custom", starts_at: input.startsAt, ends_at: input.endsAt || null, timezone: input.timezone, location, notes: input.notes || null, applies_to_all_travelers: appliesToAll, is_all_day: Boolean(input.isAllDay), completed_at: input.completedAt ?? null, timing_mode: timingMode, scheduled_date: input.scheduledDate ?? null, anchor_itinerary_item_id: input.anchorItineraryItemId ?? null, relative_position: input.relativePosition ?? null, has_explicit_start_time: hasExplicitStartTime, duration_minutes: input.durationMinutes ?? null, event_status: input.eventStatus ?? "planned", sort_key: input.sortKey ?? `${input.startsAt}:${id}`, created_at: now, updated_at: now };
   const row = { ...item, created_by: userId };
   if (!navigator.onLine) {
     const parentOperation = await queueCreate({ entityType: `itinerary:${input.tripId}`, table: "itinerary_items", row, dependsOn: input.dependsOn });
@@ -386,10 +388,12 @@ export async function addItineraryItem(input: CreateItineraryInput): Promise<Iti
       applies_to_all_travelers: appliesToAll,
       is_all_day: Boolean(input.isAllDay),
       completed_at: input.completedAt ?? null,
-      timing_mode: input.timingMode ?? (input.isAllDay ? "all_day" : "exact"),
+      timing_mode: timingMode,
       scheduled_date: input.scheduledDate ?? null,
       anchor_itinerary_item_id: input.anchorItineraryItemId ?? null,
       relative_position: input.relativePosition ?? null,
+      has_explicit_start_time: hasExplicitStartTime,
+      duration_minutes: input.durationMinutes ?? null,
       event_status: input.eventStatus ?? "planned",
       sort_key: input.sortKey ?? `${input.startsAt}:${id}`,
       created_by: userId
@@ -406,7 +410,9 @@ export async function updateItineraryItem(input: UpdateItineraryInput): Promise<
   const existing = (await readEntityList<ItineraryItem>(`itinerary:${input.tripId}`)).find((item) => item.id === input.id);
   if (!existing) throw new Error("Refresh the itinerary before editing this item.");
   const appliesToAll = !input.travelerIds?.length;
-  const patch = { booking_id: input.bookingId || null, title: input.title, event_type: input.eventType ?? existing.event_type ?? "custom", starts_at: input.startsAt, ends_at: input.endsAt || null, timezone: input.timezone, location: input.location || input.mapUrl ? { label: input.location || undefined, address: input.location || undefined, map_url: input.mapUrl || undefined } : null, notes: input.notes || null, applies_to_all_travelers: appliesToAll, is_all_day: Boolean(input.isAllDay), completed_at: input.completedAt ?? existing.completed_at ?? null, timing_mode: input.timingMode ?? existing.timing_mode ?? (input.isAllDay ? "all_day" : "exact"), scheduled_date: input.scheduledDate ?? null, anchor_itinerary_item_id: input.anchorItineraryItemId ?? null, relative_position: input.relativePosition ?? null, event_status: input.eventStatus ?? existing.event_status ?? "planned", sort_key: input.sortKey ?? existing.sort_key ?? `${input.startsAt}:${input.id}` };
+  const timingMode = input.timingMode ?? existing.timing_mode ?? (input.isAllDay ? "all_day" : "exact");
+  const hasExplicitStartTime = input.hasExplicitStartTime ?? (timingMode === "exact");
+  const patch = { booking_id: input.bookingId || null, title: input.title, event_type: input.eventType ?? existing.event_type ?? "custom", starts_at: input.startsAt, ends_at: input.endsAt || null, timezone: input.timezone, location: input.location || input.mapUrl ? { label: input.location || undefined, address: input.location || undefined, map_url: input.mapUrl || undefined } : null, notes: input.notes || null, applies_to_all_travelers: appliesToAll, is_all_day: Boolean(input.isAllDay), completed_at: input.completedAt ?? existing.completed_at ?? null, timing_mode: timingMode, scheduled_date: input.scheduledDate ?? null, anchor_itinerary_item_id: input.anchorItineraryItemId ?? null, relative_position: input.relativePosition ?? null, has_explicit_start_time: hasExplicitStartTime, duration_minutes: input.durationMinutes ?? null, event_status: input.eventStatus ?? existing.event_status ?? "planned", sort_key: input.sortKey ?? existing.sort_key ?? `${input.startsAt}:${input.id}` };
   if (!navigator.onLine) {
     const updated = { ...existing, ...patch, version: (existing.version ?? 1) + 1, updated_at: new Date().toISOString() };
     const parent = await queueUpdate({ entityType: `itinerary:${input.tripId}`, table: "itinerary_items", row: updated, patch, baseVersion: existing.version });
@@ -445,7 +451,7 @@ export async function linkBookingToItineraryItem(item: ItineraryItem, bookingId:
   if (item.version !== undefined) request = request.eq("version", item.version);
   const { data, error } = await request.select(itinerarySelect).maybeSingle();
   if (error) throw error;
-  if (!data) throw new Error("This activity changed on another device. Refresh before adding its booking.");
+  if (!data) throw new Error("This event changed on another device. Refresh before adding its booking.");
   // The server link is already committed at this point. A local IndexedDB
   // failure must not look like a failed link to the caller, because its
   // compensation path would archive a booking that the itinerary now uses.

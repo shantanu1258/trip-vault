@@ -17,7 +17,7 @@ vi.mock("../metadata/VendorPicker", () => ({ VendorPicker: ({ name = "bookedViaN
 vi.mock("../trips/api", () => ({ linkBookingToItineraryItem: mocks.linkBookingToItineraryItem }));
 vi.mock("./api", () => ({ addBooking: mocks.addBooking, archiveBooking: mocks.archiveBooking }));
 
-import { AddActivityBookingForm } from "./AddActivityBookingForm";
+import { AddActivityBookingForm, canAddEventBooking } from "./AddActivityBookingForm";
 
 const trip: Trip = {
   id: "trip-1",
@@ -77,7 +77,7 @@ function renderForm(onClose = vi.fn(), activity = item) {
   return onClose;
 }
 
-describe("Add activity booking details", () => {
+describe("Add booking details to an existing event", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
@@ -125,11 +125,47 @@ describe("Add activity booking details", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("does not create a booking from a flexible activity's synthetic instant", () => {
-    renderForm(vi.fn(), { ...item, timing_mode: "date_only" });
+  it("creates an untimed restaurant booking for a relative meal and links only the existing event", async () => {
+    const user = userEvent.setup();
+    const relativeMeal = {
+      ...item,
+      id: "meal-1",
+      title: "Dinner at the marina",
+      event_type: "meal" as const,
+      timing_mode: "relative" as const,
+      anchor_itinerary_item_id: "hotel-1",
+      relative_position: "after" as const,
+      has_explicit_start_time: false
+    };
+    mocks.linkBookingToItineraryItem.mockResolvedValueOnce({ ...relativeMeal, booking_id: booking.id });
+    renderForm(vi.fn(), relativeMeal);
 
-    expect(screen.getByText("Set an exact activity time first")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Save booking details" })).not.toBeInTheDocument();
-    expect(mocks.addBooking).not.toHaveBeenCalled();
+    await user.type(screen.getByLabelText("Restaurant or venue (optional)"), "Marina Kitchen");
+    await user.click(screen.getByRole("button", { name: "Save booking details" }));
+
+    await waitFor(() => expect(mocks.addBooking).toHaveBeenCalledWith(expect.objectContaining({
+      tripId: trip.id,
+      type: "restaurant",
+      title: relativeMeal.title,
+      provider: "Marina Kitchen",
+      startsAt: undefined,
+      endsAt: undefined,
+      timezone: undefined,
+      travelerIds: ["asha"]
+    })));
+    expect(mocks.addBooking).toHaveBeenCalledOnce();
+    expect(mocks.linkBookingToItineraryItem).toHaveBeenCalledOnce();
+    expect(mocks.linkBookingToItineraryItem).toHaveBeenCalledWith(relativeMeal, booking.id);
+    expect(screen.getByText("The booking will stay untimed while this event has no explicit start time.")).toBeInTheDocument();
+  });
+
+  it("supports every flexible timing mode and all generic event types", () => {
+    for (const eventType of ["activity", "meal", "transport", "preparation", "custom"] as const) {
+      for (const timingMode of ["exact", "date_only", "all_day", "relative", "unscheduled"] as const) {
+        expect(canAddEventBooking({ ...item, event_type: eventType, timing_mode: timingMode })).toBe(true);
+      }
+    }
+    expect(canAddEventBooking({ ...item, booking_id: "booking-1" })).toBe(false);
+    expect(canAddEventBooking({ ...item, event_type: "flight" })).toBe(false);
   });
 });

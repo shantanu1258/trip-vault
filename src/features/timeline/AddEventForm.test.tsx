@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Trip } from "../trips/types";
+import type { ItineraryItem, Trip } from "../trips/types";
 
 const mocks = vi.hoisted(() => ({
   addBookedTimelineEvent: vi.fn(),
@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   addItineraryItem: vi.fn(),
   addJourneyBooking: vi.fn(),
   addTripCost: vi.fn(),
+  listItinerary: vi.fn(),
   suggestCatalogValue: vi.fn()
 }));
 
@@ -18,7 +19,7 @@ vi.mock("../metadata/AirlinePicker", () => ({ AirlinePicker: ({ name }: { name: 
 vi.mock("../metadata/AirportPicker", () => ({ AirportPicker: ({ name, codeName, timezoneName, countryName, label }: { name: string; codeName: string; timezoneName: string; countryName: string; label: string }) => <><input aria-label={label} name={name} /><input name={codeName} value={label === "From airport" ? "BLR" : "DXB"} readOnly /><input name={timezoneName} value={label === "From airport" ? "Asia/Kolkata" : "Asia/Dubai"} readOnly /><input name={countryName} value={label === "From airport" ? "IN" : "AE"} readOnly /><input name={`${name}Source`} value="catalog" readOnly /></> }));
 vi.mock("../metadata/VendorPicker", () => ({ VendorPicker: () => <><input name="bookedViaName" /><input name="bookedViaNameSource" value="catalog" readOnly /></> }));
 vi.mock("../workspace/ParticipantSelector", () => ({ ParticipantSelector: () => null }));
-vi.mock("../trips/api", () => ({ addItineraryItem: mocks.addItineraryItem, addTripCost: mocks.addTripCost }));
+vi.mock("../trips/api", () => ({ addItineraryItem: mocks.addItineraryItem, addTripCost: mocks.addTripCost, listItinerary: mocks.listItinerary }));
 vi.mock("../workspace/api", () => ({
   addBookedTimelineEvent: mocks.addBookedTimelineEvent,
   addFlightBooking: mocks.addFlightBooking,
@@ -41,6 +42,26 @@ const trip: Trip = {
   updated_at: "2026-09-01T00:00:00.000Z"
 };
 
+const anchorEvent: ItineraryItem = {
+  id: "anchor-1",
+  trip_id: "trip-1",
+  booking_id: "hotel-booking-1",
+  title: "Marina hotel · Check in",
+  event_type: "hotel_check_in",
+  starts_at: "2026-09-28T09:30:00.000Z",
+  ends_at: null,
+  timezone: "Asia/Kolkata",
+  location: null,
+  notes: null,
+  applies_to_all_travelers: true,
+  is_all_day: false,
+  timing_mode: "exact",
+  scheduled_date: "2026-09-28",
+  has_explicit_start_time: true,
+  event_status: "planned",
+  created_at: "2026-09-01T00:00:00.000Z"
+};
+
 function renderAddEvent() {
   const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
   const onClose = vi.fn();
@@ -60,6 +81,7 @@ async function openHotel(user: ReturnType<typeof userEvent.setup>) {
 describe("Add Event hotel stay", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.listItinerary.mockResolvedValue([]);
     mocks.addBookedTimelineEvent.mockResolvedValue({ booking: { id: "booking-1" }, itinerary: [] });
     mocks.suggestCatalogValue.mockResolvedValue(undefined);
   });
@@ -171,6 +193,7 @@ describe("Add Event hotel stay", () => {
 describe("Add Event flight flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.listItinerary.mockResolvedValue([]);
     mocks.addFlightBooking.mockResolvedValue({ booking: { id: "booking-1" }, flights: [], itinerary: {} });
   });
 
@@ -295,5 +318,42 @@ describe("Add Event flight flow", () => {
     expect(screen.getByLabelText("Destination country")).toBeRequired();
     expect(screen.getByRole("button", { name: "Origin time zone" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Destination time zone" })).toBeInTheDocument();
+  });
+});
+
+describe("Add Event flexible reservation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.listItinerary.mockResolvedValue([anchorEvent]);
+    mocks.addBookedTimelineEvent.mockResolvedValue({ booking: { id: "booking-1" }, itinerary: [{ id: "item-1" }] });
+  });
+
+  it("keeps relative order and duration while using the anchor instant only as the itinerary fallback", async () => {
+    const { user } = renderAddEvent();
+    await user.click(screen.getByRole("button", { name: /Activity Visit, tour, or free time/i }));
+    await user.type(screen.getByLabelText("Event title"), "Museum visit");
+    await user.selectOptions(screen.getByLabelText("Timing"), "relative");
+    await waitFor(() => expect(screen.getByRole("option", { name: anchorEvent.title })).toBeInTheDocument());
+    await user.selectOptions(screen.getByLabelText("Event"), anchorEvent.id);
+    await user.type(screen.getByLabelText("Duration (optional)"), "90");
+    await user.click(screen.getByRole("checkbox", { name: "This has a booking or reservation" }));
+    await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
+
+    await waitFor(() => expect(mocks.addBookedTimelineEvent).toHaveBeenCalledWith(expect.objectContaining({
+      tripId: trip.id,
+      type: "activity",
+      eventType: "activity",
+      title: "Museum visit",
+      timingMode: "relative",
+      anchorItineraryItemId: anchorEvent.id,
+      relativePosition: "after",
+      startsAt: anchorEvent.starts_at,
+      timezone: anchorEvent.timezone,
+      scheduledDate: anchorEvent.scheduled_date,
+      hasExplicitStartTime: false,
+      durationMinutes: 90
+    })));
+    expect(mocks.addBookedTimelineEvent).toHaveBeenCalledOnce();
+    expect(mocks.addItineraryItem).not.toHaveBeenCalled();
   });
 });

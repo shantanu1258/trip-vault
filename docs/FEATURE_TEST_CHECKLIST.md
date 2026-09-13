@@ -9,9 +9,9 @@ last_verified: 2026-09-13
 
 # Trip Vault Feature Test Checklist
 
-For an existing Supabase project, run every not-yet-applied migration in filename order through `supabase/migrations/202609130006_trip_storage_cleanup_queue.sql`. If the database is current through `202609130004_account_document_storage_state.sql`, run `202609130005` and then `202609130006`; if it is already current through `202609130005`, run only `202609130006`. Then run the schema smoke test. The catalog addition requires the published regional release from `202609130002` and an active `app_admins` row.
+For an existing Supabase project, run every not-yet-applied migration in filename order through `supabase/migrations/202609130007_relative_event_timing.sql`. If the database is current through `202609130004_account_document_storage_state.sql`, run `202609130005`, `202609130006`, and `202609130007`; if it is already current through `202609130006`, run only `202609130007`. Then run the schema smoke test. The catalog addition requires the published regional release from `202609130002` and an active `app_admins` row.
 
-For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it already includes the `202609130006` schema contract—bootstrap the dedicated active administrator, run `202609130002_regional_travel_catalog.sql`, run `202609130005_booking_vendor_catalog_additions.sql`, and then run `supabase/tests/001_schema_smoke.sql`. Sign in with three test accounts and use synthetic names and documents smaller than 5 MB.
+For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it already includes the `202609130007` schema contract—bootstrap the dedicated active administrator, run `202609130002_regional_travel_catalog.sql`, run `202609130005_booking_vendor_catalog_additions.sql`, and then run `supabase/tests/001_schema_smoke.sql`. Sign in with three test accounts and use synthetic names and documents smaller than 5 MB.
 
 ## Organizer and Timeline
 
@@ -21,7 +21,12 @@ For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it already i
 - [ ] Add preparation tasks before departure and confirm the separate Trip readiness summary remains above the timeline.
 - [ ] Add a readiness check, complete it, and confirm the readiness count changes.
 - [ ] Add an activity, meal, and custom event; include a map link and attach several documents to one event.
-- [ ] Add exact-time, date-only, all-day, before/after, and unscheduled events. Confirm relative events sit beside their anchor and undated work stays under Unscheduled.
+- [ ] Add exact-time, date-only, all-day, before/after, and unscheduled events. Create two Before and two After events for one anchor and confirm the stable order is every Before item, the named anchor, then every After item; undated work stays under Unscheduled.
+- [ ] Create a relation-only event such as **After Hotel check-in**. Confirm Position and Event remain visible, Start is blank, End is disabled, and timeline plus detail say **After Hotel check-in** rather than showing the anchor's clock as this event's start.
+- [ ] Create a duration-only relative event, choosing minutes, hours, and days in separate edits. Confirm the planned duration appears while Start remains unknown, the item never becomes **Current** solely at the anchor time, calendar export omits it, and adding a booking leaves booking start/end/timezone empty.
+- [ ] Edit the relative event later and add Start plus Duration; confirm End is derived. Then use Start plus End and confirm Duration is derived. Supply all three consistently, then make Duration disagree and confirm saving is blocked without losing the form values.
+- [ ] Try End without Start, End equal to/before Start, zero/negative duration, and a duration whose derived End crosses the trip boundary; confirm each is rejected. Confirm changing the anchor later updates only an untimed relation's placement fallback and does not overwrite a relative event's real start.
+- [ ] At phone width with the keyboard open, confirm Position/Event stay above a separate full-width Optional schedule details block, labels remain readable, duration value/unit remain reachable, and End enables immediately after Start is entered. Repeat at desktop width and confirm the fields use the available two-column layout.
 - [ ] Add an activity end time and confirm it remains current until the end time.
 - [ ] Try an event before the trip starts and after it ends; confirm saving is blocked.
 - [ ] Open Add Hotel and confirm property name is primary; check-in starts at 15:00 on the trip start date and checkout starts at 11:00 the following day. Confirm no service-provider, time-zone, or repeated-clock control appears and Booked via remains available.
@@ -30,10 +35,12 @@ For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it already i
 - [ ] Manually set checkout equal to and earlier than check-in; confirm saving is blocked, no partial reservation appears, and the form remains open for correction.
 - [ ] Correct checkout, save, and confirm one hotel reservation creates separate check-in and checkout timeline milestones using the app's hidden local compatibility zone; no zone choice should be required.
 - [ ] Add a free event cost (`0`), a paid cost in a non-trip currency selected from the dropdown, and leave one event without cost; confirm `Free`, per-currency totals, and `Cost missing` are distinct.
-- [ ] Add costs with different payers and participant combinations. Confirm equal-split balances conserve every minor unit and currencies remain separate.
-- [ ] Confirm Home and the trip header each show the compact readable per-currency total. Activate each and confirm both open the same itemized Trip expenses section with cost rows, payer/participant balances, and actions.
+- [ ] Add costs with different payers and participant combinations. Enable **Show balances** and confirm equal-split balances conserve every minor unit and currencies remain separate.
+- [ ] Confirm Home and the trip header each show the compact readable per-currency total. Activate each and confirm both open the same itemized Trip expenses section with cost rows and the opt-in **Show balances** control.
 - [ ] Edit a prefilled cost name, archive an incorrect cost, and restore it from Archived trip items.
 - [ ] Confirm the timeline has day separators, a vertical line on phone, and only the current/next item is highlighted.
+- [ ] With an Owner/Editor account, click/tap the title, blank padding, and trailing area of a timeline card and confirm each opens the same read-first event sheet rather than the edit form. Tab to the card and activate it with Enter and Space; confirm visible focus and the same result on desktop, then repeat with a phone tap.
+- [ ] Open that event as a Viewer and confirm its timing, travelers, location, booking, costs, and documents remain readable while Edit event, Archive, status mutation, and other editor-only actions are absent. Repeat as Editor and confirm Edit and Archive live inside the event sheet rather than on the timeline card.
 - [ ] Reopen the trip and confirm it scrolls to the current/next item; switch to Trip details and back and confirm the position is restored.
 - [ ] Scroll far down the timeline, then open Home, Profile, Vault, and a different trip. Confirm each unrelated pathname starts at the top and does not inherit the original timeline position.
 - [ ] Fresh-launch the installed app during an active trip and confirm it opens that trip immediately. With overlapping current trips, confirm an eligible saved focus wins; without one, confirm earliest end, then earliest start, then stable ID decides consistently. Navigate explicitly to Home and confirm it stays there instead of reopening the trip.
@@ -43,8 +50,15 @@ For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it already i
 - [ ] As owner, type the exact trip name into the temporary permanent-delete control and remove one stale test trip that has both a legacy trip document and an inbox-originated document. Confirm the database transaction leaves legacy paths in `trip_storage_cleanup_queue` while deleting the trip, successful Storage cleanup removes those queue rows afterward, and the account-inbox bytes/receipt disappear after association clears. Interrupt legacy Storage cleanup and confirm the trip stays deleted while the queue row remains; restore connectivity and load Trips/Home to confirm a later online trip-list read retries and acknowledges it. Separately interrupt account-inbox cleanup and confirm its now-unassociated receipt remains visible in Profile.
 - [ ] Search by title, PNR, airport code, vendor, traveler, document, and readiness item; open or jump to each result.
 - [ ] Open Trip details and review Overview, Reservations, Costs, People, Readiness, Documents, Offline, Travel data, and Notes.
-- [ ] Create an exact-time Activity without a booking, reopen its event details while online, add reservation details, and confirm one linked booking appears without a duplicate timeline event. Confirm the action disables itself offline.
-- [ ] Repeat with date-only, all-day, before/after, and unscheduled Activities. Confirm each offers Set exact time instead of copying its synthetic ordering instant into a booking; set an exact time and then confirm booking details can be added online.
+- [ ] In an event sheet, activate a linked expense row; then activate the same or another row in the main Trip expenses section. Confirm both open `CostDetailsSheet` and show amount, payment state, category, payer, connected event/booking, every participant and equal/explicit share, and notes. As Viewer, confirm the same detail remains available but Edit expense and Archive are absent; as Editor, confirm those actions appear only inside the sheet.
+- [ ] Reload the Trip expenses section and confirm **Balances by currency** is absent by default. Enable **Show balances**, verify each currency remains separate and the expected gets/owes values appear, then disable it and confirm the balances hide without changing costs. Repeat the toggle as Viewer.
+- [ ] As Editor, activate the body of a trip note and a trip-airline snapshot and confirm each opens its edit surface directly because the displayed card already contains its useful detail. Confirm the note's Archive button is a separate target and does not open Edit. As Viewer, confirm both cards are static and no edit/archive controls appear.
+- [ ] On `ReadinessPage.tsx`, as Owner and Editor click/tap the title, blank padding, and trailing area of a requirement card, then activate the card with keyboard Enter and Space; confirm each opens that requirement's edit form. Use the status selector, Official guidance link, Open document action, and Archive action separately and confirm none opens Edit or masks its own phone-sized touch target. As Viewer, confirm the card body is static, mutation controls are absent, and permitted guidance/document links still work.
+- [ ] In Trip details, as Owner click/tap the body of the **Trip information** overview and activate it by keyboard; confirm it opens Trip settings. Close it, use the explicit Settings action, and confirm the same destination opens without a duplicate activation. As Editor and Viewer, confirm the overview body is static and no Owner settings target is exposed.
+- [ ] In the Admin console, confirm catalog cards continue to use their explicit named controls and have no ambiguous whole-card action. Treat this as deliberate until the Admin redesign.
+- [ ] Create unbooked Activity, Meal, Other transport, Preparation, and Custom events. Reopen each while online, add reservation details, and confirm one type-appropriate linked booking appears without a duplicate timeline event or changed before/after placement. Confirm the action disables itself offline.
+- [ ] Repeat booking-later with date-only, all-day, unscheduled, relation-only, and duration-only relative events. Confirm booking start/end/source timezone remain empty instead of copying a synthetic ordering instant. Add a real start to the relative event, add booking details again on a fresh case, and confirm the actual event schedule is used.
+- [ ] Edit an unbooked supported event when the trip already has bookings. Confirm **Link an existing booking** remains available alongside **Add new booking**, and either path preserves the event's identity and participants.
 
 ## Journeys and Bookings
 
@@ -64,11 +78,13 @@ For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it already i
 - [ ] Manually update flight delay, status, terminals, gates, baggage claim, and baggage-tag document.
 - [ ] Open flight and train forms and confirm Contact name is absent. Confirm operator remains present for non-flight journeys and phone remains optional.
 - [ ] Add domestic Train, Bus, Ferry/Boat, and Cab bookings and open each reservation detail.
+- [ ] In Trip details, use a mouse click anywhere in a reservation card, keyboard focus plus Enter, and a phone tap on its body; confirm each opens the correct Flight or Booking details route for Owner, Editor, and Viewer. A focused reservation link should have a visible focus ring.
 - [ ] Add a connected non-flight journey and confirm it is one booking with ordered legs on one grouped timeline event; cards and details must show every stop in order.
 - [ ] Create a one-leg flight, open Flight details, and add a later connection. Confirm its origin is fixed to the prior arrival; for Domestic, confirm destination airports are limited to the same country. Save and confirm the full route appears at the top, seats remain correct, and the timeline ends at the new arrival.
 - [ ] Attempt the same append with a modified/direct request whose origin code/name or departure zone differs from the previous arrival, whose departure is not after arrival, whose scope changes, or whose Domestic destination changes country. Confirm the server rejects it and adds no partial leg.
-- [ ] Tap Call and WhatsApp on a real phone and confirm the correct number is passed to the installed handler.
+- [ ] Tap Call and WhatsApp on a real phone from a reservation card and confirm the correct number is passed to the installed handler without also opening reservation details. Repeat with keyboard activation on desktop and confirm each quick action remains independently named and focused.
 - [ ] Tap Navigate for a hotel, activity, meal, and other location and confirm Google Maps opens without an API key.
+- [ ] As Editor, activate the complete Departure, Arrival, Boarding, and Arrival details fact cards on Flight details and confirm each opens the manual Flight editor directly. As Viewer, confirm the same facts remain readable but static.
 
 ## Sharing, Documents, and Offline
 
@@ -110,3 +126,4 @@ The current Admin console is intentionally not an exit gate for the trip-app ret
 
 - [ ] Complete the checklist at a phone width and a desktop width in both light and dark mode.
 - [ ] Install the PWA on a phone and confirm Add Event/People controls do not overlap browser or app safe areas.
+- [ ] At phone width, verify whole-card taps still leave Navigation, Call, WhatsApp, document, and destructive actions as distinct touch targets; activating one must not trigger the card underneath it.

@@ -7,4 +7,10 @@ const item: ItineraryItem = { id: "event", trip_id: "trip", title: "Train, platf
 
 describe("calendar export", () => {
   it("builds a valid escaped iCalendar event", () => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-01-01T00:00:00Z")); const calendar = buildTripCalendar(trip, [item]); expect(calendar).toContain("BEGIN:VCALENDAR"); expect(calendar).toContain("SUMMARY:Train\\, platform 2"); expect(calendar).toContain("LOCATION:Roma\\; Termini"); expect(calendar).toContain("END:VCALENDAR"); vi.useRealTimers(); });
+  it("does not export a fabricated clock time for relation-only or unscheduled events", () => {
+    const relative = { ...item, id: "relative", timing_mode: "relative" as const, anchor_itinerary_item_id: item.id, relative_position: "after" as const, has_explicit_start_time: false };
+    const unscheduled = { ...item, id: "unscheduled", timing_mode: "unscheduled" as const };
+    const calendar = buildTripCalendar(trip, [relative, unscheduled]);
+    expect(calendar).not.toContain("BEGIN:VEVENT");
+  });
 });
