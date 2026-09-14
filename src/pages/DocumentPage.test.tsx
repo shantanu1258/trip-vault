@@ -80,11 +80,13 @@ describe("DocumentPage", () => {
     render(<MemoryRouter initialEntries={[{ pathname: "/trips/trip-1/documents/document-1", state: tripChildNavigationState(null, "trip-1", "details") }]}><QueryClientProvider client={client}><Routes><Route path="/trips/:tripId/documents/:documentId" element={<DocumentPage />} /></Routes></QueryClientProvider></MemoryRouter>);
 
     expect(await screen.findByTestId("document-preview")).toHaveTextContent("visa.pdf · application/octet-stream");
+    expect(screen.getByLabelText("Visible to all signed-in trip members")).toHaveTextContent("Trip members");
     expect(screen.getByRole("link", { name: "Back to trip" })).toHaveAttribute("href", "/trips/trip-1?view=details");
     expect(screen.getByRole("link", { name: "Open with device viewer" })).toHaveAttribute("href", "blob:ticket");
     const info = screen.getByRole("button", { name: "Document information and actions" });
     expect(info).toHaveClass("size-11", "rounded-full", "place-items-center");
     await user.click(info);
     expect(screen.getByRole("region", { name: "Document information" })).toBeInTheDocument();
+    expect(screen.getByText("Visible to all signed-in trip members")).toBeInTheDocument();
   });
 });

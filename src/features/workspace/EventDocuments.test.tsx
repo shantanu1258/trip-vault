@@ -83,6 +83,8 @@ describe("timeline primary document shortcut", () => {
     const shortcut = await screen.findByRole("link", { name: "Open Visa: Ravi visa" });
     expect(shortcut).toHaveAttribute("href", "/trips/trip-1/documents/ravi-visa");
     expect(shortcut).toHaveTextContent("Open Visa · UAE");
+    expect(shortcut).toContainElement(screen.getByLabelText("Visible to all signed-in trip members"));
+    expect(shortcut).toHaveTextContent("Trip members");
     expect(screen.queryByRole("link", { name: /Asha boarding pass/ })).not.toBeInTheDocument();
   });
 

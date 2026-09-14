@@ -3,11 +3,12 @@ import { CloudUpload, FilePlus2, Loader2, RefreshCw, Trash2 } from "lucide-react
 import { useMemo, useState, type FormEvent } from "react";
 import { ModalSheet } from "../../components/ModalSheet";
 import { FileDropzone } from "../../components/FileDropzone";
+import { localProfileId } from "../sync/localSync";
 import { listTrips } from "../trips/api";
 import { getErrorMessage } from "../trips/presentation";
-import { associateAccountDocument, deleteAccountDocumentUpload, listAccountDocumentUploads, listTravelers, retryAccountDocumentUpload, stageAccountDocument } from "./api";
+import { associateAccountDocument, deleteAccountDocumentUpload, listAccountDocumentUploads, listMembers, listTravelers, retryAccountDocumentUpload, stageAccountDocument } from "./api";
 import { documentKind, documentKinds, suggestedDocumentTitle, type DocumentKind } from "./documentModel";
-import type { AccountDocumentUpload, DocumentAssignmentMode } from "./types";
+import type { AccountDocumentUpload, DocumentAssignmentMode, DocumentVisibility } from "./types";
 
 export function DocumentInboxPanel() {
   const queryClient = useQueryClient();
@@ -85,9 +86,16 @@ function AssociateInboxDocumentSheet({ upload, tripId, onTripChange, trips, onCl
   const [kind, setKind] = useState<DocumentKind>("other");
   const [assignmentMode, setAssignmentMode] = useState<DocumentAssignmentMode>("unassigned");
   const [selectedTravelerIds, setSelectedTravelerIds] = useState<string[]>([]);
+  const [visibility, setVisibility] = useState<DocumentVisibility>("trip");
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [customTitle, setCustomTitle] = useState("");
   const [message, setMessage] = useState("");
   const travelers = useQuery({ queryKey: ["travelers", tripId], queryFn: () => listTravelers(tripId), enabled: Boolean(tripId) });
+  const profileId = useQuery({ queryKey: ["local-profile-id"], queryFn: async () => (await localProfileId()) ?? null });
+  const members = useQuery({ queryKey: ["members", tripId], queryFn: () => listMembers(tripId), enabled: Boolean(tripId) });
+  const currentRole = members.data?.find((member) => member.user_id === profileId.data)?.role;
+  const canShare = currentRole === "owner" || currentRole === "editor";
+  const checkingPermissions = Boolean(tripId) && (profileId.isPending || members.isPending);
   const selectedTrip = trips.find((trip) => trip.id === tripId);
   const defaultTitle = useMemo(() => suggestedDocumentTitle(kind, assignmentMode, selectedTravelerIds, travelers.data ?? [], selectedTrip?.title), [assignmentMode, kind, selectedTravelerIds, selectedTrip?.title, travelers.data]);
   const associate = useMutation({ mutationFn: associateAccountDocument, onSuccess: onAssociated });
@@ -95,20 +103,26 @@ function AssociateInboxDocumentSheet({ upload, tripId, onTripChange, trips, onCl
     event.preventDefault(); setMessage("");
     if (!tripId) { setMessage("Choose a trip."); return; }
     if (assignmentMode === "selected" && !selectedTravelerIds.length) { setMessage("Choose at least one traveler, or select Assign later."); return; }
+    const effectiveVisibility: DocumentVisibility = canShare ? visibility : "private";
+    const memberIds = new Set((members.data ?? []).map((member) => member.user_id));
+    const validSelectedUserIds = effectiveVisibility === "selected_members" ? selectedUserIds.filter((id) => memberIds.has(id)) : [];
+    if (effectiveVisibility === "selected_members" && !validSelectedUserIds.length) { setMessage("Choose at least one signed-in member."); return; }
+    if (effectiveVisibility === "selected_members" && validSelectedUserIds.length !== selectedUserIds.length) { setMessage("Every selected member must belong to this trip."); return; }
     const option = documentKind(kind);
     const form = new FormData(event.currentTarget);
-    associate.mutate({ upload, tripId, title: customTitle.trim() || defaultTitle, category: option.category, purpose: option.purpose, assignmentMode, visibility: "private", travelerIds: selectedTravelerIds, shortLabel: String(form.get("shortLabel") ?? "").trim() || undefined });
+    associate.mutate({ upload, tripId, title: customTitle.trim() || defaultTitle, category: option.category, purpose: option.purpose, assignmentMode, visibility: effectiveVisibility, travelerIds: selectedTravelerIds, selectedUserIds: validSelectedUserIds, shortLabel: String(form.get("shortLabel") ?? "").trim() || undefined });
   };
   return <ModalSheet eyebrow="Private document inbox" title="Attach uploaded file" onClose={onClose}><form className="mt-6 space-y-4" onSubmit={submit}>
     <div className="rounded-2xl bg-elevated p-4"><p className="truncate font-extrabold">{upload.original_filename}</p><p className="mt-1 text-xs text-muted">The private file already exists; this step only adds trip metadata.</p></div>
-    <label className="form-label">Trip<select className="form-input" value={tripId} onChange={(event) => { onTripChange(event.target.value); setSelectedTravelerIds([]); }}><option value="">Choose a trip</option>{trips.map((trip) => <option value={trip.id} key={trip.id}>{trip.title}</option>)}</select></label>
+    <label className="form-label">Trip<select className="form-input" value={tripId} onChange={(event) => { onTripChange(event.target.value); setSelectedTravelerIds([]); setVisibility("trip"); setSelectedUserIds([]); }}><option value="">Choose a trip</option>{trips.map((trip) => <option value={trip.id} key={trip.id}>{trip.title}</option>)}</select></label>
     <label className="form-label">Document type<select className="form-input" value={kind} onChange={(event) => { const next = event.target.value as DocumentKind; setKind(next); setAssignmentMode(documentKind(next).defaultAssignment); setSelectedTravelerIds([]); }}>{documentKinds.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
     <fieldset className="rounded-2xl border border-line p-4"><legend className="px-1 text-sm font-bold">Who is it for?</legend><div className="mt-2 grid gap-2 sm:grid-cols-3">{([{"value":"shared","label":"Everyone"},{"value":"selected","label":"Traveler(s)"},{"value":"unassigned","label":"Assign later"}] as const).map((option) => <label key={option.value} className={`cursor-pointer rounded-xl border p-3 text-sm font-bold ${assignmentMode === option.value ? "border-brand bg-brand-soft" : "border-line"}`}><input className="sr-only" type="radio" checked={assignmentMode === option.value} onChange={() => { setAssignmentMode(option.value); if (option.value !== "selected") setSelectedTravelerIds([]); }} />{option.label}</label>)}</div>{assignmentMode === "selected" && <div className="mt-3 grid gap-2 sm:grid-cols-2">{travelers.data?.map((traveler) => <label className="flex items-center gap-2 rounded-xl bg-elevated p-3 text-sm font-bold" key={traveler.id}><input type="checkbox" checked={selectedTravelerIds.includes(traveler.id)} onChange={(event) => setSelectedTravelerIds((ids) => event.target.checked ? [...ids, traveler.id] : ids.filter((id) => id !== traveler.id))} />{traveler.display_name}</label>)}</div>}</fieldset>
     <label className="form-label">Document name (optional)<input className="form-input" value={customTitle} onChange={(event) => setCustomTitle(event.target.value)} placeholder="Leave empty to use type, traveler, and trip" /></label>
     <div className="rounded-xl bg-brand-soft p-3 text-sm"><span className="text-muted">Saved name:</span> <strong>{customTitle.trim() || defaultTitle}</strong></div>
     <label className="form-label">Short label (optional)<input className="form-input" name="shortLabel" placeholder="Seat, bag, ticket, or reference detail" /></label>
-    <p className="text-xs leading-5 text-muted">This association starts as Only me. You can still attach the resulting Vault document to a timeline event.</p>
+    {checkingPermissions ? <p className="flex items-center gap-2 rounded-2xl bg-elevated p-4 text-sm text-muted"><Loader2 className="size-4 animate-spin" /> Checking your trip access</p> : canShare ? <><label className="form-label">Who can open it?<select className="form-input" name="visibility" value={visibility} onChange={(event) => { const next = event.target.value as DocumentVisibility; setVisibility(next); if (next !== "selected_members") setSelectedUserIds([]); }}><option value="private">Only me</option><option value="trip">Everyone signed in to this trip</option><option value="selected_members">Selected signed-in members</option></select></label>{visibility === "selected_members" && <fieldset className="rounded-2xl border border-line p-4"><legend className="px-1 text-sm font-bold">Selected signed-in members</legend><div className="mt-2 space-y-2">{members.data?.map((member) => <label key={member.user_id} className="flex items-center gap-3 text-sm"><input type="checkbox" name="selectedUserIds" value={member.user_id} checked={selectedUserIds.includes(member.user_id)} onChange={(event) => setSelectedUserIds((ids) => event.target.checked ? [...new Set([...ids, member.user_id])] : ids.filter((id) => id !== member.user_id))} className="size-4" />{member.display_name}</label>)}{members.isSuccess && !members.data.length && <p className="text-xs text-muted">No signed-in trip members are available.</p>}{members.error && <p className="text-xs font-bold text-danger">{getErrorMessage(members.error)}</p>}</div></fieldset>}</> : <><input type="hidden" name="visibility" value="private" /><p className="rounded-2xl bg-brand-soft p-4 text-sm text-muted">Only you can open this document. Your trip role does not allow sharing it with other signed-in members.</p></>}
+    <p className="text-xs leading-5 text-muted">This inbox file stays private until you attach it. The resulting Vault document uses the access choice above and can still be attached to a timeline event.</p>
     {(message || associate.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{message || getErrorMessage(associate.error)}</p>}
-    <button className="primary-button w-full" disabled={associate.isPending || !tripId}>{associate.isPending ? <Loader2 className="size-4 animate-spin" /> : <FilePlus2 className="size-4" />} Attach to trip</button>
+    <button className="primary-button w-full" disabled={associate.isPending || !tripId || checkingPermissions}>{associate.isPending ? <Loader2 className="size-4 animate-spin" /> : <FilePlus2 className="size-4" />} Attach to trip</button>
   </form></ModalSheet>;
 }

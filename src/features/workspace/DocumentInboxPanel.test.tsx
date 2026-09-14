@@ -3,24 +3,28 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Trip } from "../trips/types";
-import type { AccountDocumentUpload, Traveler } from "./types";
+import type { AccountDocumentUpload, Traveler, TripMember } from "./types";
 
 const mocks = vi.hoisted(() => ({
   listTrips: vi.fn(),
   listAccountDocumentUploads: vi.fn(),
+  listMembers: vi.fn(),
   listTravelers: vi.fn(),
   stageAccountDocument: vi.fn(),
   associateAccountDocument: vi.fn(),
   retryAccountDocumentUpload: vi.fn(),
-  deleteAccountDocumentUpload: vi.fn()
+  deleteAccountDocumentUpload: vi.fn(),
+  localProfileId: vi.fn()
 }));
 
 vi.mock("../../components/ModalSheet", () => ({
   ModalSheet: ({ children, title }: { children: React.ReactNode; title: string }) => <section aria-label={title}>{children}</section>
 }));
 vi.mock("../trips/api", () => ({ listTrips: mocks.listTrips }));
+vi.mock("../sync/localSync", () => ({ localProfileId: mocks.localProfileId }));
 vi.mock("./api", () => ({
   listAccountDocumentUploads: mocks.listAccountDocumentUploads,
+  listMembers: mocks.listMembers,
   listTravelers: mocks.listTravelers,
   stageAccountDocument: mocks.stageAccountDocument,
   associateAccountDocument: mocks.associateAccountDocument,
@@ -67,6 +71,22 @@ const traveler: Traveler = {
   created_at: "2026-09-01T00:00:00Z"
 };
 
+const member: TripMember = {
+  user_id: "account-2",
+  role: "editor",
+  participation_type: "traveler",
+  joined_at: "2026-09-01T00:00:00Z",
+  display_name: "Asha"
+};
+
+const owner: TripMember = {
+  user_id: "account-1",
+  role: "owner",
+  participation_type: "traveler",
+  joined_at: "2026-09-01T00:00:00Z",
+  display_name: "Owner"
+};
+
 function renderPanel() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(<QueryClientProvider client={client}><DocumentInboxPanel /></QueryClientProvider>);
@@ -77,9 +97,11 @@ describe("private document inbox", () => {
     vi.clearAllMocks();
     mocks.listTrips.mockResolvedValue([trip]);
     mocks.listAccountDocumentUploads.mockResolvedValue([]);
+    mocks.listMembers.mockResolvedValue([owner, member]);
     mocks.listTravelers.mockResolvedValue([traveler]);
     mocks.stageAccountDocument.mockResolvedValue(upload);
     mocks.associateAccountDocument.mockResolvedValue({ id: "document-1" });
+    mocks.localProfileId.mockResolvedValue(owner.user_id);
   });
 
   it("accepts a file without requiring trip metadata", async () => {
@@ -94,13 +116,14 @@ describe("private document inbox", () => {
     expect(await screen.findByText(/file saved to your private inbox/i)).toBeInTheDocument();
   });
 
-  it("associates an existing inbox file with private trip metadata", async () => {
+  it("defaults an associated inbox file to signed-in trip members", async () => {
     mocks.listAccountDocumentUploads.mockResolvedValue([upload]);
     const user = userEvent.setup();
     renderPanel();
 
     await user.click(await screen.findByRole("button", { name: /attach to trip/i }));
     const sheet = screen.getByLabelText("Attach uploaded file");
+    expect(await within(sheet).findByLabelText("Who can open it?")).toHaveValue("trip");
     await user.selectOptions(within(sheet).getByLabelText("Document type"), "boarding_pass");
     await user.click(await within(sheet).findByText("Ravi"));
     await user.click(within(sheet).getByRole("button", { name: /attach to trip/i }));
@@ -111,7 +134,71 @@ describe("private document inbox", () => {
       purpose: "boarding_pass",
       assignmentMode: "selected",
       travelerIds: [traveler.id],
-      visibility: "private"
+      visibility: "trip",
+      selectedUserIds: []
+    })));
+  });
+
+  it("allows an associated inbox file to remain private", async () => {
+    mocks.listAccountDocumentUploads.mockResolvedValue([upload]);
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: /attach to trip/i }));
+    const sheet = screen.getByLabelText("Attach uploaded file");
+    await user.selectOptions(await within(sheet).findByLabelText("Who can open it?"), "private");
+    await user.click(within(sheet).getByRole("button", { name: /attach to trip/i }));
+
+    await waitFor(() => expect(mocks.associateAccountDocument).toHaveBeenCalledWith(expect.objectContaining({
+      upload,
+      tripId: trip.id,
+      visibility: "private",
+      selectedUserIds: []
+    })));
+  });
+
+  it("validates and associates selected signed-in members", async () => {
+    mocks.listAccountDocumentUploads.mockResolvedValue([upload]);
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: /attach to trip/i }));
+    const sheet = screen.getByLabelText("Attach uploaded file");
+    await user.selectOptions(await within(sheet).findByLabelText("Who can open it?"), "selected_members");
+    const memberCheckbox = await within(sheet).findByRole("checkbox", { name: member.display_name });
+    await user.click(within(sheet).getByRole("button", { name: /attach to trip/i }));
+
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent("Choose at least one signed-in member.");
+    expect(mocks.associateAccountDocument).not.toHaveBeenCalled();
+
+    await user.click(memberCheckbox);
+    await user.click(within(sheet).getByRole("button", { name: /attach to trip/i }));
+
+    await waitFor(() => expect(mocks.associateAccountDocument).toHaveBeenCalledWith(expect.objectContaining({
+      upload,
+      tripId: trip.id,
+      visibility: "selected_members",
+      selectedUserIds: [member.user_id]
+    })));
+  });
+
+  it("forces a viewer association to remain private", async () => {
+    mocks.listAccountDocumentUploads.mockResolvedValue([upload]);
+    mocks.listMembers.mockResolvedValue([{ ...owner, role: "viewer" }, member]);
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: /attach to trip/i }));
+    const sheet = screen.getByLabelText("Attach uploaded file");
+    expect(await within(sheet).findByText(/trip role does not allow sharing/i)).toBeInTheDocument();
+    expect(within(sheet).queryByLabelText("Who can open it?")).not.toBeInTheDocument();
+    await user.click(within(sheet).getByRole("button", { name: /attach to trip/i }));
+
+    await waitFor(() => expect(mocks.associateAccountDocument).toHaveBeenCalledWith(expect.objectContaining({
+      upload,
+      tripId: trip.id,
+      visibility: "private",
+      selectedUserIds: []
     })));
   });
 

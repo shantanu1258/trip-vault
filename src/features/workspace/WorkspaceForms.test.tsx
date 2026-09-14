@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ItineraryItem, Trip } from "../trips/types";
-import type { Booking, Requirement, Traveler } from "./types";
+import type { Booking, Requirement, Traveler, TripMember } from "./types";
 
 const mocks = vi.hoisted(() => ({
   uploadDocument: vi.fn(),
@@ -65,6 +65,11 @@ const trip: Trip = {
 const travelers: Traveler[] = [
   { id: "asha", trip_id: trip.id, display_name: "Asha", is_minor: false, created_at: "" },
   { id: "ravi", trip_id: trip.id, display_name: "Ravi", is_minor: false, created_at: "" }
+];
+
+const members: TripMember[] = [
+  { user_id: "account-asha", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Asha Account" },
+  { user_id: "account-ravi", role: "editor", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Ravi Account" }
 ];
 
 function booking(type: Booking["type"]): Booking {
@@ -276,6 +281,73 @@ describe("Upload document flow", () => {
       file
     })));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("defaults editable trip uploads to everyone signed in to the trip", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><UploadDocumentForm trip={trip} travelers={travelers} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    expect(screen.getByLabelText("Who can open it?")).toHaveValue("trip");
+    const file = new window.File(["%PDF-shared"], "shared-booking.pdf", { type: "application/pdf" });
+    await user.upload(screen.getByLabelText<HTMLInputElement>("File"), file);
+    await user.click(screen.getByRole("button", { name: /Save to Vault/i }));
+
+    await waitFor(() => expect(mocks.uploadDocument).toHaveBeenCalledWith(expect.objectContaining({
+      visibility: "trip",
+      file
+    })));
+  });
+
+  it("lets an editor change an upload from the trip default to private", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><UploadDocumentForm trip={trip} travelers={travelers} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    await user.selectOptions(screen.getByLabelText("Who can open it?"), "private");
+    const file = new window.File(["%PDF-private"], "private-booking.pdf", { type: "application/pdf" });
+    await user.upload(screen.getByLabelText<HTMLInputElement>("File"), file);
+    await user.click(screen.getByRole("button", { name: /Save to Vault/i }));
+
+    await waitFor(() => expect(mocks.uploadDocument).toHaveBeenCalledWith(expect.objectContaining({
+      visibility: "private",
+      file
+    })));
+  });
+
+  it("lets an editor share an upload with selected signed-in members", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><UploadDocumentForm trip={trip} travelers={travelers} members={members} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    await user.selectOptions(screen.getByLabelText("Who can open it?"), "selected_members");
+    await user.click(screen.getByRole("checkbox", { name: "Ravi Account" }));
+    const file = new window.File(["%PDF-selected"], "selected-booking.pdf", { type: "application/pdf" });
+    await user.upload(screen.getByLabelText<HTMLInputElement>("File"), file);
+    await user.click(screen.getByRole("button", { name: /Save to Vault/i }));
+
+    await waitFor(() => expect(mocks.uploadDocument).toHaveBeenCalledWith(expect.objectContaining({
+      visibility: "selected_members",
+      selectedUserIds: ["account-ravi"],
+      file
+    })));
+  });
+
+  it("forces private visibility when trip editing is not allowed", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><UploadDocumentForm trip={trip} travelers={travelers} privateOnly onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    expect(screen.queryByLabelText("Who can open it?")).not.toBeInTheDocument();
+    expect(screen.getByText(/Only you can open this upload/)).toBeInTheDocument();
+    const file = new window.File(["%PDF-private-only"], "viewer-upload.pdf", { type: "application/pdf" });
+    await user.upload(screen.getByLabelText<HTMLInputElement>("File"), file);
+    await user.click(screen.getByRole("button", { name: /Save to Vault/i }));
+
+    await waitFor(() => expect(mocks.uploadDocument).toHaveBeenCalledWith(expect.objectContaining({
+      visibility: "private",
+      file
+    })));
   });
 
   it("continues a newly saved flight with its already selected ticket", async () => {
