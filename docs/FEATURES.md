@@ -4,7 +4,7 @@ description: "Prioritized inventory of Trip Vault capabilities, MVP boundaries, 
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [features, product-scope, mvp, acceptance-criteria, roadmap]
-last_verified: 2026-09-13
+last_verified: 2026-09-14
 ---
 
 # Trip Vault Feature Catalog
@@ -66,7 +66,7 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 | Bookings | 3 | 11 | 4 |
 | Flight assistance | 2 | 10 | 0 |
 | Airline metadata | 1 | 5 | 0 |
-| Administration and metadata | 2 | 8 | 0 |
+| Administration and metadata | 2 | 8 | 1 |
 | Travel readiness | 3 | 9 | 1 |
 | Documents | 4 | 22 | 5 |
 | Offline and sync | 3 | 14 | 4 |
@@ -458,6 +458,7 @@ The MVP therefore treats the stored flight record as user-maintained information
 | CAT-002 | Booking-vendor catalog | P0 | MVP | Common booking websites—including Airbnb and Trip.com—are searchable separately from the airline/operator and preserve their name, website, and safe visual metadata as a booking snapshot; migration `202609130005` publishes the two additions without mutating the prior release |
 | CAT-003 | Explicit Other path | P0 | MVP | If no airline, airport, or booking vendor matches, Other exposes validated manual fields while keeping the saved-list picker visible so the user can switch back immediately |
 | CAT-004 | Privacy-safe suggestion queue | P1 | MVP | An unmatched catalog value may be proposed for Admin review without trip title, traveler, PNR, date, document, or other private context |
+| CAT-005 | Geographic origin and destination suggestions | P2 | Later | A pinned, attributed Countries States Cities Database snapshot may suggest country/city origins and destinations for train, bus, ferry, cab, and other non-flight journeys; the curated airport catalog remains authoritative for flights, Google Maps remains the navigation hand-off, and Other remains available when no place matches |
 
 ## 18. Administration and Metadata
 
@@ -607,6 +608,7 @@ The MVP is ready for private travel use only when:
 | 48 | Account-original lifecycle | Accepted | Use pending-only INSERT, no UPDATE, unassociated-only DELETE, online cleanup after a cloud attempt, and associated-server receipt reconciliation to suppress stale local inbox rows |
 | 49 | Permanent-purge cleanup queue | Accepted for testing | Queue legacy paths and delete the trip atomically, clean and acknowledge after commit, retry retained queue rows, then clean account-inbox bytes after association clears |
 | 50 | Card interaction hierarchy | Accepted | Use one whole-card primary target; open display-first details for rich records; open shallow flight, note, airline, and readiness cards directly for permitted editors; route the Owner trip overview to settings; keep independent/destructive actions separate; and defer only Admin catalog cards |
+| 51 | Geographic origin/destination dataset | Deferred | Consider a pinned ODbL snapshot for non-flight country/city suggestions after MVP testing; do not replace the airport catalog or Google Maps hand-off and do not ship the complete global city export in the PWA |
 
 ## 22. Research Sources
 
@@ -625,6 +627,7 @@ The MVP is ready for private travel use only when:
 | [Google Maps URLs](https://developers.google.com/maps/documentation/urls/get-started) | Cross-platform search, directions, display, and Street View links that require no API key |
 | [Google Maps Static API](https://developers.google.com/maps/documentation/maps-static/start) | Static map images require an API key and billing-enabled project |
 | [Google Maps pricing](https://developers.google.com/maps/billing-and-pricing/pricing) | Current free monthly usage caps and pay-as-you-go billing for map and geocoding services |
+| [Countries States Cities Database](https://github.com/dr5hn/countries-states-cities-database) | ODbL country/city coordinates and IANA zones considered later for non-flight origin/destination suggestions; it is not an airport catalogue or navigation provider |
 | [OpenStreetMap tile policy](https://operations.osmfoundation.org/policies/tiles/) | Attribution, caching, and usage rules; bulk or offline download is prohibited on the standard tile service |
 | [MDN PWA caching](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Caching) | Service workers and Cache Storage can supply application resources without network access |
 | [MDN Origin Private File System](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) | Origin-private document storage, quota behavior, and deletion when site data is cleared |

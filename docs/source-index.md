@@ -4,7 +4,7 @@ description: "Authoritative implementation and verification sources used by the 
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [documentation, sources, traceability]
-last_verified: 2026-09-13
+last_verified: 2026-09-14
 ---
 
 # Trip Vault Documentation Source Index
@@ -33,7 +33,8 @@ last_verified: 2026-09-13
 | Administrator configuration | `src/features/admin/`, `src/pages/AdminPage.tsx` | HLD and LLD |
 | Account-inbox deletion verification | `src/features/workspace/api.document-inbox-delete.test.ts`, `supabase/tests/001_schema_smoke.sql` | Never-attempted offline discard, online-only cloud cleanup, and append-only Storage policy checks |
 | Offline upload MIME restoration | `src/features/sync/localSync.ts`, `src/features/sync/localSync.upload-mime.test.ts`, `src/lib/storage/offlineFiles.ts` | Restores approved receipt/version MIME after extensionless OPFS reads before multipart Storage upload |
-| Automated verification | `src/**/*.test.ts`, `src/**/*.test.tsx`, `supabase/tests/001_schema_smoke.sql` | Release evidence; current local Vitest baseline is 48 files and 249 tests |
+| Deferred geographic origin/destination source | [Countries States Cities Database](https://github.com/dr5hn/countries-states-cities-database) | Future version-pinned and attributed country/city suggestions for non-flight journey endpoints; airport metadata and Google Maps remain separate |
+| Automated verification | `src/**/*.test.ts`, `src/**/*.test.tsx`, `supabase/tests/001_schema_smoke.sql` | Release evidence; current local Vitest baseline is 49 files and 256 tests |
 | Manual acceptance | `docs/FEATURE_TEST_CHECKLIST.md` | Phone, desktop, offline, sharing, and Admin release gate |
 
 External behavior references are deliberately narrow: provider-local travel schedules follow airline ticket conventions; Call uses the platform `tel:` handler; WhatsApp uses its official `wa.me` click-to-chat format; map actions use Google Maps URLs without an embedded Maps API key.

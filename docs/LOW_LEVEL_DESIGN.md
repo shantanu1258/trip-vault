@@ -4,7 +4,7 @@ description: "Implemented routes, modules, data model, authorization, file stora
 scope: [service-wide]
 agents: [coder, reviewer, planner, debugger]
 tags: [implementation, data-model, sync, storage, authorization, testing]
-last_verified: 2026-09-13
+last_verified: 2026-09-14
 ---
 
 # Trip Vault Low-Level Design
@@ -38,7 +38,7 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 | Motion | Property-specific Tailwind transitions plus CSS scroll snap and Intersection Observer | Implemented | Restrained focus changes and reduced-motion fallback |
 | Map hand-off | Google Maps URLs | Accepted | Search and directions links need no API key; no embedded maps, geocoding, or downloads in MVP |
 | Flight status | Manual records plus external links | Accepted | No live-data provider, scraping, or background polling |
-| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | The executable local baseline is 48 files and 249 tests; type-check and production PWA build pass |
+| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | The executable local baseline is 49 files and 256 tests; type-check and production PWA build pass |
 
 ## 2. Implemented Repository Layout
 
@@ -1833,7 +1833,7 @@ Rules:
 | Check | Last verified | Result |
 |---|---|---|
 | `npm run typecheck` | 2026-09-13 | Pass |
-| `npm test -- --run` | 2026-09-13 | Pass: 48 files, 249 tests |
+| `npm test -- --run` | 2026-09-14 | Pass: 49 files, 256 tests |
 | `npm run build` | 2026-09-13 | Pass; only the existing chunk-size and dynamic-import advisories remain |
 | `supabase/tests/001_schema_smoke.sql` | Current local SQL includes booking-vendor, trip-cleanup, and relative-event timing assertions | Rerun remotely after every pending migration through `202609130007_relative_event_timing.sql` |
 | Phone, desktop, sharing, upload, Cloudflare, and airplane mode | Current release | Manual acceptance pending in `docs/FEATURE_TEST_CHECKLIST.md` |
@@ -2124,6 +2124,7 @@ The React bundle already contains fallback catalog JSON, so form entry does not 
 | LLD-071 | Permanent-purge Storage queue | Enqueue legacy paths and delete the trip atomically, acknowledge only successful post-commit object cleanup, retry retained queue rows on later online trip reads, and retain an account receipt when post-association account cleanup fails | Accepted for testing |
 | LLD-072 | Relative schedule precision | Store whether a relative start is real, allow a positive duration without it, derive missing end/duration when possible, and never expose the anchor fallback as current, calendar, or booking time | Accepted |
 | LLD-073 | Card interaction hierarchy | Use one whole-card primary action, show read-first details before editing rich records, send shallow flight/note/airline/readiness cards and the Owner trip overview directly to edit/settings, keep independent/destructive controls separate, and defer only Admin catalog cards | Accepted |
+| LLD-074 | Deferred geographic suggestion source | If adopted later, pin one Countries States Cities Database release, import only the required country/city identifiers, coordinates, and IANA zones behind a local searchable projection, preserve ODbL attribution/provenance, retain Other, and keep airport codes plus Maps links in their existing authoritative paths | Deferred |
 
 ## Source File Index
 

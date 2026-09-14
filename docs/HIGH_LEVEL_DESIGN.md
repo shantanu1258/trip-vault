@@ -4,7 +4,7 @@ description: "Implemented system architecture, responsibilities, major flows, ri
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [architecture, pwa, offline, collaboration, supabase, cloudflare]
-last_verified: 2026-09-13
+last_verified: 2026-09-14
 ---
 
 # Trip Vault High-Level Design
@@ -22,7 +22,7 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 | Area | Current state |
 |---|---|
 | Application | Timeline-first React PWA is implemented on `main` |
-| Automated verification | 48 Vitest files and 249 tests pass; type-check and production build pass |
+| Automated verification | 49 Vitest files and 256 tests pass; type-check and production build pass |
 | Existing Supabase project | Apply every not-yet-run migration in filename order through `202609130007_relative_event_timing.sql`, then run the schema smoke test |
 | Fresh Supabase project | Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`, which already includes the `202609130007` schema contract; after bootstrapping an active `app_admins` row, run `202609130002_regional_travel_catalog.sql` and then `202609130005_booking_vendor_catalog_additions.sql` before the smoke test |
 | Cloudflare | Workers Static Assets configuration exists; the post-push live deployment is not verified here |
@@ -468,6 +468,7 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 | HLD-056 | Permanent-purge cleanup queue | Atomically enqueue legacy object paths with trip deletion, acknowledge each row only after Storage cleanup, clean account-inbox bytes after association clears, and retain the appropriate queue row or account receipt on failure | Accepted for testing |
 | HLD-057 | Relative placement and timing | Keep the before/after anchor independent from optional duration and explicit start/end; never treat the storage ordering fallback as a real schedule | Accepted |
 | HLD-058 | Card interaction hierarchy | Make the card the primary target; open read-first details for rich records; edit shallow flight, note, airline, readiness, and Owner trip-overview cards directly; keep quick/destructive actions independent; and defer only Admin catalog cards | Accepted |
+| HLD-059 | Geographic origin/destination dataset | Consider a version-pinned, attributed ODbL country/city snapshot for later non-flight origin and destination suggestions; keep airport metadata and Google Maps navigation separate and avoid adding the full global export to the offline app shell | Deferred |
 
 ## 14. Risks Requiring Explicit Discussion
 
