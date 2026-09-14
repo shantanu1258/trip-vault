@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -24,7 +24,7 @@ vi.mock("../features/trips/api", () => ({ getTrip: mocks.getTrip }));
 vi.mock("../features/workspace/travelerFocus", () => ({ readTravelerFocus: () => null }));
 vi.mock("../features/workspace/WorkspaceForms", () => ({
   AddRequirementForm: ({ requirement, onClose }: { requirement?: Requirement; onClose: () => void }) => (
-    <section aria-label={requirement ? "Edit readiness item" : "Add readiness item"}>
+    <section aria-label={requirement ? "Edit task" : "Add task"}>
       {requirement?.title}
       <button type="button" onClick={onClose}>Close form</button>
     </section>
@@ -83,7 +83,7 @@ function renderPage(initialEntry: string | { pathname: string; state: unknown } 
   );
 }
 
-describe("readiness card interactions", () => {
+describe("readiness checklist interactions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getTrip.mockResolvedValue(trip);
@@ -95,24 +95,47 @@ describe("readiness card interactions", () => {
     mocks.archiveRequirement.mockResolvedValue(undefined);
   });
 
-  it("opens edit from the card body without stealing status or archive actions", async () => {
+  it("checks a task off without opening edit and keeps edit and archive separate", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
     renderPage();
 
-    const editCard = await screen.findByRole("button", { name: "Edit Passport ready" });
+    const editTask = await screen.findByRole("button", { name: "Edit Passport ready" });
+    expect(screen.getByText("Due Sep 20")).toBeInTheDocument();
+    expect(screen.getByText("Check validity before departure.")).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByRole("combobox", { name: "Status for Passport ready" }), "complete");
+    await user.click(screen.getByRole("checkbox", { name: "Mark as done: Passport ready" }));
     await waitFor(() => expect(mocks.updateRequirementStatus).toHaveBeenCalledWith("requirement-1", "complete", "trip-1"));
-    expect(screen.queryByRole("region", { name: "Edit readiness item" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Edit task" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Archive" }));
+    await user.click(screen.getByRole("button", { name: "Archive Passport ready" }));
     await waitFor(() => expect(mocks.archiveRequirement).toHaveBeenCalledWith(requirement));
     expect(confirm).toHaveBeenCalledWith("Archive Passport ready?");
-    expect(screen.queryByRole("region", { name: "Edit readiness item" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Edit task" })).not.toBeInTheDocument();
 
-    await user.click(editCard);
-    expect(await screen.findByRole("region", { name: "Edit readiness item" })).toHaveTextContent("Passport ready");
+    await user.click(editTask);
+    expect(await screen.findByRole("region", { name: "Edit task" })).toHaveTextContent("Passport ready");
+  });
+
+  it("opens a simple add-task flow from the checklist header", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText("0 of 1 done")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+
+    expect(await screen.findByRole("region", { name: "Add task" })).toBeInTheDocument();
+  });
+
+  it("omits due date and notes when a task does not have them", async () => {
+    mocks.listRequirements.mockResolvedValue([{ ...requirement, id: "requirement-2", title: "Buy adapter", due_date: null, notes: null }]);
+    renderPage();
+
+    const title = await screen.findByText("Buy adapter");
+    const task = title.closest("li");
+    expect(task).not.toBeNull();
+    expect(within(task!).queryByText(/^Due /)).not.toBeInTheDocument();
+    expect(within(task!).getByText("Not done")).toBeInTheDocument();
   });
 
   it("returns to the source Trip details tab", async () => {

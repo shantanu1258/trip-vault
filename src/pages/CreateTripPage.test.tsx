@@ -52,4 +52,24 @@ describe("new trip date defaults", () => {
   it("calculates across month and year boundaries", () => {
     expect(suggestedTripEndDate("2026-12-29")).toBe("2027-01-05");
   });
+
+  it("flushes and restores the latest trip draft when the app is backgrounded", () => {
+    const firstRender = renderPage();
+    const title = screen.getByLabelText("Trip name") as HTMLInputElement;
+    const destination = screen.getByLabelText("Destination") as HTMLInputElement;
+
+    // Mobile browsers can suspend a page before another input event is delivered.
+    title.value = "Singapore family trip";
+    destination.value = "Singapore and Kuala Lumpur";
+    fireEvent(window, new Event("pagehide"));
+
+    expect(JSON.parse(localStorage.getItem(`trip-vault:form-draft:${CREATE_TRIP_DRAFT_KEY}`) ?? "{}"))
+      .toMatchObject({ title: "Singapore family trip", destination: "Singapore and Kuala Lumpur" });
+
+    firstRender.unmount();
+    renderPage();
+    expect(screen.getByLabelText("Trip name")).toHaveValue("Singapore family trip");
+    expect(screen.getByLabelText("Destination")).toHaveValue("Singapore and Kuala Lumpur");
+    expect(screen.getByText(/unfinished trip is saved on this device/i)).toBeInTheDocument();
+  });
 });

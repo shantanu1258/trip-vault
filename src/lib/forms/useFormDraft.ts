@@ -10,8 +10,13 @@ export function clearFormDraft(key: string) {
 
 export function useFormDraft(key: string) {
   const formRef = useRef<HTMLFormElement>(null);
+  const clearedRef = useRef(false);
+
   useEffect(() => {
-    const form = formRef.current; if (!form) return;
+    const form = formRef.current;
+    if (!form) return;
+    clearedRef.current = false;
+
     try {
       const values = JSON.parse(localStorage.getItem(`${PREFIX}${key}`) ?? "{}") as DraftValues;
       for (const [name, raw] of Object.entries(values)) {
@@ -23,18 +28,51 @@ export function useFormDraft(key: string) {
         });
       }
     } catch { clearFormDraft(key); }
+
     const persist = () => {
-      const data = new FormData(form); const values: DraftValues = {};
-      for (const [name, raw] of data.entries()) {
-        if (raw instanceof File) continue;
-        const prior = values[name];
-        if (prior === undefined) values[name] = raw;
-        else values[name] = Array.isArray(prior) ? [...prior, raw] : [prior, raw];
+      if (clearedRef.current) return;
+      try {
+        const data = new FormData(form);
+        const values: DraftValues = {};
+        for (const [name, raw] of data.entries()) {
+          if (raw instanceof File) continue;
+          const prior = values[name];
+          if (prior === undefined) values[name] = raw;
+          else values[name] = Array.isArray(prior) ? [...prior, raw] : [prior, raw];
+        }
+        localStorage.setItem(`${PREFIX}${key}`, JSON.stringify(values));
+      } catch {
+        // A draft is a convenience. Storage restrictions must never block the form.
       }
-      localStorage.setItem(`${PREFIX}${key}`, JSON.stringify(values));
     };
-    form.addEventListener("input", persist); form.addEventListener("change", persist);
-    return () => { form.removeEventListener("input", persist); form.removeEventListener("change", persist); };
+
+    const persistFromForm = () => {
+      clearedRef.current = false;
+      persist();
+    };
+
+    const persistWhenHidden = () => {
+      if (document.visibilityState === "hidden") persist();
+    };
+
+    form.addEventListener("input", persistFromForm);
+    form.addEventListener("change", persistFromForm);
+    window.addEventListener("pagehide", persist);
+    document.addEventListener("visibilitychange", persistWhenHidden);
+
+    return () => {
+      persist();
+      form.removeEventListener("input", persistFromForm);
+      form.removeEventListener("change", persistFromForm);
+      window.removeEventListener("pagehide", persist);
+      document.removeEventListener("visibilitychange", persistWhenHidden);
+    };
   }, [key]);
-  return { formRef, clearDraft: () => clearFormDraft(key) };
+  return {
+    formRef,
+    clearDraft: () => {
+      clearedRef.current = true;
+      clearFormDraft(key);
+    }
+  };
 }

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Clipboard, FileUp, Loader2, NotebookPen, RefreshCw, ShieldCheck, TicketCheck, Trash2, UserPlus, UsersRound } from "lucide-react";
+import { Check, Clipboard, FileUp, Loader2, NotebookPen, RefreshCw, TicketCheck, Trash2, UserPlus, UsersRound } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { z } from "zod";
@@ -18,7 +18,6 @@ import {
   listAssociatedAccounts,
   listInvitations,
   listRequirementAssigneeIds,
-  listVaultDocuments,
   revokeInvitation,
   saveHotelStay,
   updateBooking,
@@ -29,7 +28,7 @@ import {
   uploadDocument
 } from "./api";
 import { addNote } from "./api";
-import { bookingTypes, requirementStatuses, requirementTypes, type Booking, type DocumentAssignmentMode, type DocumentVisibility, type Requirement, type RequirementInput, type ReservationState, type Traveler, type TripMember, type TripNote, type UpdateBookingInput } from "./types";
+import { bookingTypes, type Booking, type DocumentAssignmentMode, type DocumentVisibility, type Requirement, type RequirementInput, type ReservationState, type Traveler, type TripMember, type TripNote, type UpdateBookingInput } from "./types";
 import { documentKind, documentKinds, suggestedDocumentTitle, type DocumentKind } from "./documentModel";
 import { ParticipantSelector } from "./ParticipantSelector";
 import { useFormDraft } from "../../lib/forms/useFormDraft";
@@ -276,11 +275,9 @@ export function ShareTripForm({ trip, travelers, onClose }: { trip: Trip; travel
 
 export function AddRequirementForm({ trip, travelers = [], requirement, preferredTravelerId, onClose }: { trip: Trip; travelers?: Traveler[]; requirement?: Requirement; preferredTravelerId?: string; onClose: () => void }) {
   const queryClient = useQueryClient();
-  const [type, setType] = useState<Requirement["type"]>(requirement?.type ?? "visa");
   const [message, setMessage] = useState("");
   const draft = useFormDraft(`requirement:${requirement?.id ?? "new"}:${trip.id}`);
   const assignees = useQuery({ queryKey: ["requirement-assignee-ids", requirement?.id], queryFn: () => listRequirementAssigneeIds(requirement!.id, trip.id), enabled: Boolean(requirement) });
-  const documents = useQuery({ queryKey: ["documents", trip.id], queryFn: () => listVaultDocuments(trip.id) });
   const mutation = useMutation({
     mutationFn: (input: RequirementInput) => requirement ? updateRequirement({ ...input, id: requirement.id, version: requirement.version }) : addRequirement(input),
     onSuccess: async () => {
@@ -296,52 +293,46 @@ export function AddRequirementForm({ trip, travelers = [], requirement, preferre
     event.preventDefault(); setMessage("");
     const form = new FormData(event.currentTarget);
     const title = String(form.get("title") ?? "").trim();
-    const country = String(form.get("destinationCountryCode") ?? "").trim().toUpperCase();
-    const official = String(form.get("officialGuidanceUrl") ?? "").trim();
-    const travelerIds = form.getAll("travelerIds").map(String);
-    if (!title) { setMessage("Name this readiness item."); return; }
-    if (type === "visa" && !country) { setMessage("A visa item needs a destination country code."); return; }
-    if (type === "visa" && !travelerIds.length) { setMessage("Choose the traveler this visa check affects."); return; }
-    if (official && (!official.startsWith("https://") || (() => { try { new URL(official); return false; } catch { return true; } })())) { setMessage("Official guidance must use a valid https link."); return; }
+    const dueDate = String(form.get("dueDate") ?? "").trim() || undefined;
+    const notes = String(form.get("notes") ?? "").trim() || undefined;
+    if (!title) { setMessage("Enter the task that needs to be done."); return; }
+    if (requirement && !assignees.isSuccess) { setMessage("Wait for this task to finish loading, then try again."); return; }
+    const travelerIds = requirement
+      ? assignees.data
+      : preferredTravelerId
+        ? [preferredTravelerId]
+        : travelers.map((traveler) => traveler.id);
     mutation.mutate({
       tripId: trip.id,
-      type,
+      type: requirement?.type ?? "custom",
       title,
-      status: String(form.get("status")) as Requirement["status"],
-      destinationCountryCode: country || undefined,
-      visaType: String(form.get("visaType") ?? "").trim() || undefined,
-      dueDate: String(form.get("dueDate") ?? "") || undefined,
-      issuedOn: String(form.get("issuedOn") ?? "") || undefined,
-      expiresOn: String(form.get("expiresOn") ?? "") || undefined,
-      validityBufferDays: form.get("validityBufferDays") ? Number(form.get("validityBufferDays")) : undefined,
-      officialGuidanceUrl: official || undefined,
-      linkedDocumentId: String(form.get("linkedDocumentId") ?? "") || undefined,
-      notes: String(form.get("notes") ?? "").trim() || undefined,
+      status: requirement?.status ?? "to_check",
+      destinationCountryCode: requirement?.destination_country_code ?? undefined,
+      visaType: requirement?.visa_type ?? undefined,
+      dueDate,
+      issuedOn: requirement?.issued_on ?? undefined,
+      expiresOn: requirement?.expires_on ?? undefined,
+      validityBufferDays: requirement?.validity_buffer_days ?? undefined,
+      officialGuidanceUrl: requirement?.official_guidance_url ?? undefined,
+      linkedDocumentId: requirement?.linked_document_id ?? undefined,
+      notes,
       travelerIds
     });
   };
-  return <ModalSheet eyebrow={trip.title} title={requirement ? "Edit readiness item" : "Add readiness item"} onClose={onClose}>
+  return <ModalSheet eyebrow={trip.title} title={requirement ? "Edit task" : "Add task"} onClose={onClose}>
     <form ref={draft.formRef} onSubmit={submit} className="mt-6 space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Type<select className="form-input capitalize" name="type" value={type} onChange={(event) => setType(event.target.value as Requirement["type"])}>{requirementTypes.map((item) => <option key={item} value={item}>{item.replace("_", " ")}</option>)}</select></label><label className="form-label">Status<select className="form-input capitalize" name="status" defaultValue={requirement?.status ?? "to_check"}>{requirementStatuses.map((item) => <option key={item} value={item}>{item.replace("_", " ")}</option>)}</select></label></div>
-      <label className="form-label">Title<input className="form-input" name="title" placeholder="Describe what must be ready before the trip" defaultValue={requirement?.title ?? ""} /></label>
-      {type === "visa" && <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Country code<input className="form-input uppercase" maxLength={2} name="destinationCountryCode" placeholder="Enter the 2-letter destination country code" defaultValue={requirement?.destination_country_code ?? ""} /></label><label className="form-label">Visa or permit type<input className="form-input" name="visaType" placeholder="Enter the visa or permit named in your records" defaultValue={requirement?.visa_type ?? ""} /></label></div>}
-      <div className="grid gap-4 sm:grid-cols-3"><label className="form-label">Due date<input className="form-input" type="date" name="dueDate" defaultValue={requirement?.due_date ?? ""} /></label><label className="form-label">Issued on<input className="form-input" type="date" name="issuedOn" defaultValue={requirement?.issued_on ?? ""} /></label><label className="form-label">Expires on<input className="form-input" type="date" name="expiresOn" defaultValue={requirement?.expires_on ?? ""} /></label></div>
-      <label className="form-label">Desired validity after trip (days)<input className="form-input" min="0" type="number" name="validityBufferDays" defaultValue={requirement?.validity_buffer_days ?? ""} /></label>
-      <label className="form-label">Official guidance link<input className="form-input" type="url" name="officialGuidanceUrl" placeholder="Paste the embassy or government guidance link" defaultValue={requirement?.official_guidance_url ?? ""} /></label>
-      <label className="form-label">Linked Vault document (optional)<select className="form-input" name="linkedDocumentId" defaultValue={requirement?.linked_document_id ?? ""}><option value="">No linked document</option>{documents.data?.map((document) => <option value={document.id} key={document.id}>{document.title}</option>)}</select></label>
-      <label className="form-label">Notes<textarea className="form-input min-h-20" name="notes" defaultValue={requirement?.notes ?? ""} /></label>
-      <ParticipantSelector travelers={travelers} selectedTravelerIds={requirement ? assignees.data ?? [] : preferredTravelerId ? [preferredTravelerId] : undefined} explicitAll />
-      {type === "visa" && !travelers.length && <p className="rounded-xl bg-warning/10 p-3 text-sm font-bold text-warning">Add a traveler before creating a visa check.</p>}
-      <p className="text-xs leading-5 text-muted">Trip Vault stores your manual notes and dates. It does not determine legal eligibility; verify with official guidance.</p>
+      <label className="form-label">Task<input autoFocus className="form-input" name="title" placeholder="What needs to be done?" defaultValue={requirement?.title ?? ""} /></label>
+      <label className="form-label">Due date (optional)<input className="form-input" type="date" name="dueDate" defaultValue={requirement?.due_date ?? ""} /></label>
+      <label className="form-label">Notes (optional)<textarea className="form-input min-h-20 resize-y" name="notes" placeholder="Add a useful detail or reminder" defaultValue={requirement?.notes ?? ""} /></label>
       {(message || mutation.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{message || getErrorMessage(mutation.error)}</p>}
-      <button className="primary-button w-full" disabled={mutation.isPending || (type === "visa" && !travelers.length)}>{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />} {requirement ? "Save changes" : "Save readiness item"}</button>
+      <button className="primary-button w-full" disabled={mutation.isPending || Boolean(requirement && !assignees.isSuccess)}>{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />} {requirement ? "Save task" : "Add task"}</button>
     </form>
   </ModalSheet>;
 }
 
-export function UploadDocumentForm({ trip, travelers, preferredTravelerId, onClose, onUploaded, bookingId, flightLegId, journeyLegId, contextTitle, members = [], privateOnly = false }: { trip: Trip; travelers: Traveler[]; preferredTravelerId?: string; onClose: () => void; onUploaded?: (documentId: string) => void | Promise<void>; bookingId?: string; flightLegId?: string; journeyLegId?: string; contextTitle?: string; members?: TripMember[]; privateOnly?: boolean }) {
-  const initialKind: DocumentKind = flightLegId ? "flight_ticket" : journeyLegId ? "journey_ticket" : bookingId ? "booking_confirmation" : "other";
-  const queryClient = useQueryClient(); const [kind, setKind] = useState<DocumentKind>(initialKind); const [assignmentMode, setAssignmentMode] = useState<DocumentAssignmentMode>(documentKind(initialKind).defaultAssignment); const [selectedTravelerIds, setSelectedTravelerIds] = useState<string[]>(preferredTravelerId ? [preferredTravelerId] : []); const [visibility, setVisibility] = useState<DocumentVisibility>("private"); const [selectedFile, setSelectedFile] = useState<File | null>(null); const [customTitle, setCustomTitle] = useState(""); const [message, setMessage] = useState(""); const [queuedMessage, setQueuedMessage] = useState("");
+export function UploadDocumentForm({ trip, travelers, preferredTravelerId, onClose, onUploaded, bookingId, flightLegId, journeyLegId, contextTitle, members = [], privateOnly = false, initialFile = null, initialKind }: { trip: Trip; travelers: Traveler[]; preferredTravelerId?: string; onClose: () => void; onUploaded?: (documentId: string) => void | Promise<void>; bookingId?: string; flightLegId?: string; journeyLegId?: string; contextTitle?: string; members?: TripMember[]; privateOnly?: boolean; initialFile?: File | null; initialKind?: DocumentKind }) {
+  const resolvedInitialKind: DocumentKind = initialKind ?? (flightLegId ? "flight_ticket" : journeyLegId ? "journey_ticket" : bookingId ? "booking_confirmation" : "other");
+  const queryClient = useQueryClient(); const [kind, setKind] = useState<DocumentKind>(resolvedInitialKind); const [assignmentMode, setAssignmentMode] = useState<DocumentAssignmentMode>(documentKind(resolvedInitialKind).defaultAssignment); const [selectedTravelerIds, setSelectedTravelerIds] = useState<string[]>(preferredTravelerId ? [preferredTravelerId] : []); const [visibility, setVisibility] = useState<DocumentVisibility>("private"); const [selectedFile, setSelectedFile] = useState<File | null>(initialFile); const [customTitle, setCustomTitle] = useState(""); const [message, setMessage] = useState(""); const [queuedMessage, setQueuedMessage] = useState("");
   const defaultTitle = suggestedDocumentTitle(kind, assignmentMode, selectedTravelerIds, travelers, contextTitle);
   const title = customTitle.trim() || defaultTitle;
   const draft = useFormDraft(`document:new:${trip.id}:${flightLegId ?? journeyLegId ?? bookingId ?? "trip"}`);
@@ -356,7 +347,8 @@ export function UploadDocumentForm({ trip, travelers, preferredTravelerId, onClo
     mutation.mutate({ tripId: trip.id, title, category: selectedKind.category, purpose: selectedKind.purpose, assignmentMode, visibility, travelerIds, bookingId, flightLegId, journeyLegId, selectedUserIds, shortLabel: String(form.get("shortLabel") ?? "").trim() || undefined, file });
   };
   const duplicate = mutation.error instanceof DuplicateDocumentError ? mutation.error : null;
-  return <ModalSheet eyebrow={trip.title} title="Upload a document" onClose={onClose}><form ref={draft.formRef} className="mt-6 space-y-4" onSubmit={submit}>
+  return <ModalSheet eyebrow={trip.title} title={initialFile ? "Finish attaching flight document" : "Upload a document"} onClose={onClose}><form ref={draft.formRef} className="mt-6 space-y-4" onSubmit={submit}>
+    {initialFile && <p className="rounded-2xl bg-success/10 p-4 text-sm leading-6 text-muted"><strong className="block text-success">Flight saved safely</strong>The flight is already on the timeline. Confirm this file's type and who it belongs to; if cloud upload fails, the attempted upload stays in your private document inbox on this device.</p>}
     <FileDropzone name="file" label="File" prompt="Choose the PDF or image" file={selectedFile} onFileChange={setSelectedFile} disabled={Boolean(queuedMessage)} busy={mutation.isPending} description="PDF, JPEG, PNG, or WebP under 5 MB. The original stays unchanged and is cached offline" />
     <label className="form-label">Document type<select className="form-input" name="kind" value={kind} disabled={Boolean(queuedMessage)} onChange={(event) => { const next = event.target.value as DocumentKind; const mode = documentKind(next).defaultAssignment; setKind(next); setAssignmentMode(mode); setSelectedTravelerIds(mode === "selected" && preferredTravelerId ? [preferredTravelerId] : []); }}>{documentKinds.map((option) => <option key={option.value} value={option.value}>{option.label} — {option.hint}</option>)}</select></label>
     <fieldset className="rounded-2xl border border-line p-4"><legend className="px-1 text-sm font-bold">Who is it for?</legend><div className="mt-2 grid gap-2 sm:grid-cols-3">{([{"value":"shared","label":"Everyone","hint":"One file used together"},{"value":"selected","label":"Traveler(s)","hint":"Choose one or more people"},{"value":"unassigned","label":"Assign later","hint":"Use when the owner is unknown"}] as const).map((option) => <label key={option.value} className={`cursor-pointer rounded-xl border p-3 text-sm ${assignmentMode === option.value ? "border-brand bg-brand-soft" : "border-line"}`}><input className="sr-only" type="radio" name="assignmentMode" value={option.value} checked={assignmentMode === option.value} onChange={() => { setAssignmentMode(option.value); if (option.value !== "selected") setSelectedTravelerIds([]); else if (!selectedTravelerIds.length && preferredTravelerId) setSelectedTravelerIds([preferredTravelerId]); }} /><strong className="block">{option.label}</strong><span className="mt-1 block text-xs text-muted">{option.hint}</span></label>)}</div>{assignmentMode === "selected" && <div className="mt-4 grid gap-2 sm:grid-cols-2">{travelers.map((traveler) => <label key={traveler.id} className="flex items-center gap-3 rounded-xl bg-elevated p-3 text-sm"><input type="checkbox" name="travelerIds" value={traveler.id} checked={selectedTravelerIds.includes(traveler.id)} onChange={(event) => setSelectedTravelerIds((ids) => event.target.checked ? [...new Set([...ids, traveler.id])] : ids.filter((id) => id !== traveler.id))} className="size-4" /><span className="font-bold">{traveler.display_name}</span></label>)}{!travelers.length && <p className="text-xs font-bold text-warning">Add a traveler first, or choose Assign later.</p>}</div>}</fieldset>

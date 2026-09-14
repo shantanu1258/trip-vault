@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ItineraryItem, Trip } from "../trips/types";
-import type { Booking, Traveler } from "./types";
+import type { Booking, Requirement, Traveler } from "./types";
 
 const mocks = vi.hoisted(() => ({
   uploadDocument: vi.fn(),
@@ -16,7 +16,10 @@ const mocks = vi.hoisted(() => ({
   revokeInvitation: vi.fn(),
   listItinerary: vi.fn(),
   saveHotelStay: vi.fn(),
-  updateBooking: vi.fn()
+  updateBooking: vi.fn(),
+  addRequirement: vi.fn(),
+  updateRequirement: vi.fn(),
+  listRequirementAssigneeIds: vi.fn()
 }));
 
 vi.mock("../../components/ModalSheet", () => ({ ModalSheet: ({ children, title }: { children: React.ReactNode; title: string }) => <section aria-label={title}>{children}</section> }));
@@ -38,10 +41,13 @@ vi.mock("./api", () => ({
   createInvitation: mocks.createInvitation,
   revokeInvitation: mocks.revokeInvitation,
   saveHotelStay: mocks.saveHotelStay,
-  updateBooking: mocks.updateBooking
+  updateBooking: mocks.updateBooking,
+  addRequirement: mocks.addRequirement,
+  updateRequirement: mocks.updateRequirement,
+  listRequirementAssigneeIds: mocks.listRequirementAssigneeIds
 }));
 
-import { EditBookingForm, ShareTripForm, UploadDocumentForm } from "./WorkspaceForms";
+import { AddRequirementForm, EditBookingForm, ShareTripForm, UploadDocumentForm } from "./WorkspaceForms";
 
 const trip: Trip = {
   id: "trip-1",
@@ -118,6 +124,115 @@ describe("Upload document flow", () => {
     mocks.listItinerary.mockResolvedValue([hotelMilestone("hotel_check_in"), hotelMilestone("hotel_check_out")]);
     mocks.saveHotelStay.mockImplementation(async (input) => ({ booking: { ...booking("hotel"), id: input.bookingId }, itinerary: [] }));
     mocks.updateBooking.mockImplementation(async (input) => ({ ...booking(input.type), id: input.id }));
+    mocks.addRequirement.mockResolvedValue({});
+    mocks.updateRequirement.mockResolvedValue({});
+    mocks.listRequirementAssigneeIds.mockResolvedValue(["ravi"]);
+  });
+
+  it("requires a task while allowing due date and notes to be omitted", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><AddRequirementForm trip={trip} travelers={travelers} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Enter the task that needs to be done.");
+    expect(mocks.addRequirement).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText("Task"), "Pack phone chargers");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+
+    await waitFor(() => expect(mocks.addRequirement).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Pack phone chargers",
+      dueDate: undefined,
+      notes: undefined
+    })));
+  });
+
+  it("adds readiness as a task with optional due date and notes without exposing legacy fields", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><AddRequirementForm trip={trip} travelers={travelers} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    expect(screen.getByLabelText("Task")).toBeInTheDocument();
+    expect(screen.getByLabelText("Due date (optional)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Notes (optional)")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Type")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Status")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("Task"), "Pack phone chargers");
+    await user.type(screen.getByLabelText("Due date (optional)"), "2026-09-23");
+    await user.type(screen.getByLabelText("Notes (optional)"), "Pack one charger per traveler");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+
+    await waitFor(() => expect(mocks.addRequirement).toHaveBeenCalledWith({
+      tripId: trip.id,
+      type: "custom",
+      title: "Pack phone chargers",
+      status: "to_check",
+      destinationCountryCode: undefined,
+      visaType: undefined,
+      dueDate: "2026-09-23",
+      issuedOn: undefined,
+      expiresOn: undefined,
+      validityBufferDays: undefined,
+      officialGuidanceUrl: undefined,
+      linkedDocumentId: undefined,
+      notes: "Pack one charger per traveler",
+      travelerIds: ["asha", "ravi"]
+    }));
+  });
+
+  it("edits task details without discarding hidden legacy data or assignees", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const user = userEvent.setup();
+    const requirement: Requirement = {
+      id: "requirement-1", trip_id: trip.id, type: "visa", title: "Check visas", status: "in_progress",
+      destination_country_code: "AE", visa_type: "Tourist", due_date: "2026-09-20", issued_on: "2026-09-01",
+      expires_on: "2026-12-01", validity_buffer_days: 30, official_guidance_url: "https://example.gov/visa",
+      guidance_checked_at: "2026-09-01T00:00:00.000Z", linked_document_id: "document-1", notes: "Keep the original details", version: 3
+    };
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><AddRequirementForm trip={trip} travelers={travelers} requirement={requirement} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    const task = screen.getByLabelText("Task");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save task" })).toBeEnabled());
+    await user.clear(task);
+    await user.type(task, "Confirm visas");
+    await user.clear(screen.getByLabelText("Due date (optional)"));
+    await user.type(screen.getByLabelText("Due date (optional)"), "2026-09-22");
+    await user.clear(screen.getByLabelText("Notes (optional)"));
+    await user.type(screen.getByLabelText("Notes (optional)"), "Confirm requirements with the embassy");
+    await user.click(screen.getByRole("button", { name: "Save task" }));
+
+    await waitFor(() => expect(mocks.updateRequirement).toHaveBeenCalledWith(expect.objectContaining({
+      id: "requirement-1", version: 3, title: "Confirm visas", type: "visa", status: "in_progress",
+      destinationCountryCode: "AE", visaType: "Tourist", dueDate: "2026-09-22", issuedOn: "2026-09-01",
+      expiresOn: "2026-12-01", validityBufferDays: 30, officialGuidanceUrl: "https://example.gov/visa",
+      linkedDocumentId: "document-1", notes: "Confirm requirements with the embassy", travelerIds: ["ravi"]
+    })));
+  });
+
+  it("clears optional task details without discarding hidden legacy data or assignees", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const user = userEvent.setup();
+    const requirement: Requirement = {
+      id: "requirement-1", trip_id: trip.id, type: "visa", title: "Check visas", status: "in_progress",
+      destination_country_code: "AE", visa_type: "Tourist", due_date: "2026-09-20", issued_on: "2026-09-01",
+      expires_on: "2026-12-01", validity_buffer_days: 30, official_guidance_url: "https://example.gov/visa",
+      guidance_checked_at: "2026-09-01T00:00:00.000Z", linked_document_id: "document-1", notes: "Keep the original details", version: 3
+    };
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><AddRequirementForm trip={trip} travelers={travelers} requirement={requirement} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save task" })).toBeEnabled());
+    await user.clear(screen.getByLabelText("Due date (optional)"));
+    await user.clear(screen.getByLabelText("Notes (optional)"));
+    await user.click(screen.getByRole("button", { name: "Save task" }));
+
+    await waitFor(() => expect(mocks.updateRequirement).toHaveBeenCalledWith(expect.objectContaining({
+      id: "requirement-1", version: 3, title: "Check visas", type: "visa", status: "in_progress",
+      destinationCountryCode: "AE", visaType: "Tourist", dueDate: undefined, issuedOn: "2026-09-01",
+      expiresOn: "2026-12-01", validityBufferDays: 30, officialGuidanceUrl: "https://example.gov/visa",
+      linkedDocumentId: "document-1", notes: undefined, travelerIds: ["ravi"]
+    })));
   });
 
   it("offers a later trip to a known account without creating a new code", async () => {
@@ -161,6 +276,26 @@ describe("Upload document flow", () => {
       file
     })));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("continues a newly saved flight with its already selected ticket", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const ticket = new window.File(["%PDF-flight-ticket"], "cleartrip-ticket.pdf", { type: "application/pdf" });
+    const user = userEvent.setup();
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><UploadDocumentForm trip={trip} travelers={travelers} bookingId="booking-flight" contextTitle="Flight to Dubai" initialFile={ticket} initialKind="flight_ticket" onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    expect(screen.getByRole("region", { name: "Finish attaching flight document" })).toBeInTheDocument();
+    expect(screen.getByText("Flight saved safely")).toBeInTheDocument();
+    expect(screen.getByText("cleartrip-ticket.pdf")).toBeInTheDocument();
+    expect(screen.getByLabelText("Document type")).toHaveValue("flight_ticket");
+    await user.click(screen.getByRole("button", { name: /Save to Vault/i }));
+
+    await waitFor(() => expect(mocks.uploadDocument).toHaveBeenCalledWith(expect.objectContaining({
+      bookingId: "booking-flight",
+      purpose: "ticket",
+      assignmentMode: "shared",
+      file: ticket
+    })));
   });
 
   it("associates a journey-leg upload with that exact leg and starts as a journey ticket", async () => {

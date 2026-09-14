@@ -70,7 +70,7 @@ export function CreateTripPage() {
             <span className="grid size-12 place-items-center rounded-2xl bg-surface/10"><MapPinned className="size-6" /></span>
             <p className="mt-6 text-xs font-bold uppercase tracking-[0.18em] text-surface/65">New trip</p>
             <h1 className="mt-2 font-display text-3xl font-black tracking-[-0.04em]">Where are you going?</h1>
-            <p className="mt-2 text-sm text-surface/70">Start with the basics. You can add people, bookings, documents, and readiness items next.</p>
+            <p className="mt-2 text-sm text-surface/70">Start with the basics. You can add people, bookings, documents, and readiness tasks next.</p>
           </div>
           <form ref={draft.formRef} className="space-y-5 p-6 sm:p-8" onSubmit={submit}>
             <label className="form-label">Trip name<input className="form-input" name="title" placeholder="Give this trip a name everyone will recognize" autoFocus /></label>
@@ -79,6 +79,7 @@ export function CreateTripPage() {
             <input type="hidden" name="timezone" value={Intl.DateTimeFormat().resolvedOptions().timeZone} />
             <label className="form-label sm:max-w-64">Currency<CurrencySelect name="baseCurrency" defaultValue="INR" /></label>
             <p className="-mt-2 text-xs leading-5 text-muted">Departure and arrival time zones are recorded on each journey, just as they appear on the ticket.</p>
+            <p className="rounded-xl bg-elevated px-4 py-3 text-xs leading-5 text-muted">Your unfinished trip is saved on this device while you type, so you can safely switch apps and return later.</p>
             {(message || mutation.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{message || getErrorMessage(mutation.error)}</p>}
             <button className="primary-button w-full" disabled={mutation.isPending} type="submit">{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <MapPinned className="size-4" />} Create trip</button>
           </form>

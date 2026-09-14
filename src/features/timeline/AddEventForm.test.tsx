@@ -93,10 +93,14 @@ describe("event form architecture", () => {
     await user.click(screen.getByText("Traveler ticket details"));
     await user.type(screen.getByLabelText("Seat"), "14A");
     await user.type(screen.getByLabelText("Boarding group"), "2");
+    const ticket = new window.File(["%PDF-flight-ticket"], "flight-ticket.pdf", { type: "application/pdf" });
+    await user.upload(screen.getByLabelText<HTMLInputElement>("Official flight document"), ticket);
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
     await waitFor(() => expect(mocks.addFlightBooking).toHaveBeenCalledWith(expect.objectContaining({ referenceCode: "PNR123", participantScope: "everyone", travelerIds: [], legs: [expect.objectContaining({ airlineName: "Air India", departureCode: "BLR", arrivalCode: "DXB", boardingLeadMinutes: 45, travelerAllocations: [expect.objectContaining({ travelerId: "traveler-1", seat: "14A", boardingGroup: "2" })] })] })));
-    await user.click(screen.getByRole("button", { name: "Add official document" }));
-    expect(onAddDocument).toHaveBeenCalledWith({ title: "Flight to Dubai", bookingId: "booking-1", itineraryItemId: "item-1" });
+    await waitFor(() => expect(onAddDocument).toHaveBeenCalledWith(
+      { title: "Flight to Dubai", bookingId: "booking-1", itineraryItemId: "item-1" },
+      { file: ticket, kind: "flight_ticket" }
+    ));
   });
 
   it("starts a connecting flight with two legs and validates chronological connections", async () => {
