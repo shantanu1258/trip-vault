@@ -69,6 +69,7 @@ describe("timeline model", () => {
   )).toBe("Asia/Dubai"));
   it("shows ticket-style next-day arrival", () => expect(arrivalDayOffset("2026-09-11T18:00:00Z", "Asia/Dubai", "2026-09-12T06:00:00Z", "Europe/London")).toBe(1));
   it("rejects overlapping connections", () => expect(validateLegOrder([{ departureAt: "2026-09-11T10:00:00Z", arrivalAt: "2026-09-11T12:00:00Z" }, { departureAt: "2026-09-11T11:00:00Z", arrivalAt: "2026-09-11T14:00:00Z" }])).toContain("Leg 2"));
+  it("allows a non-flight journey without a supplied arrival", () => expect(validateLegOrder([{ departureAt: "2026-09-11T10:00:00Z" }])).toBeNull());
   it("builds call and WhatsApp actions from an international number", () => expect(phoneActionUrls("+91 98765-43210")).toEqual({ call: "tel:+919876543210", whatsapp: "https://wa.me/919876543210" }));
   it("rejects unusable numbers", () => expect(normalizePhoneNumber("123")).toBeNull());
   it("derives the readiness card from unresolved requirements", () => expect(readinessSummary([{ status: "complete", due_date: null }, { status: "required", due_date: "2026-09-20" }] as never)).toEqual({ total: 2, resolved: 1, remaining: 1, dueDate: "2026-09-20" }));

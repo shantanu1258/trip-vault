@@ -35,7 +35,7 @@ export type OutboxOperation = {
   profileId: string;
   entityType: string;
   entityId: string;
-  operation: "create" | "update" | "delete" | "upload_document" | "upload_account_document" | "associate_account_document";
+  operation: "create" | "upsert" | "update" | "delete" | "rpc" | "upload_document" | "upload_account_document" | "associate_account_document";
   payload: unknown;
   baseVersion?: number;
   dependsOn: string[];

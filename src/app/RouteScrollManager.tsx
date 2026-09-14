@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { matchPath, useLocation } from "react-router-dom";
+import { readTripEntry, readTripNavigationIntent } from "../features/trips/navigation";
 
 /**
  * Gives each real page navigation a clean starting position without touching
@@ -7,11 +8,15 @@ import { useLocation } from "react-router-dom";
  * views and owns its more specific per-trip restoration behavior.
  */
 export function RouteScrollManager() {
-  const { pathname } = useLocation();
+  const { pathname, state } = useLocation();
 
   useLayoutEffect(() => {
+    const tripRoute = matchPath({ path: "/trips/:tripId", end: true }, pathname);
+    const tripId = tripRoute?.params.tripId;
+    const intent = tripId ? readTripNavigationIntent(state, tripId) : null;
+    if (tripId && (intent?.kind === "restore" || readTripEntry(state, tripId))) return;
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, [pathname]);
+  }, [pathname, state]);
 
   useEffect(() => {
     if (!("scrollRestoration" in window.history)) return;

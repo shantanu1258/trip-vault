@@ -7,6 +7,20 @@ import type { ItineraryItem } from "../trips/types";
 import { attachDocumentsToEvent, listEventDocumentLinks, listVaultDocuments, reorderEventDocuments, unlinkDocumentFromEvent } from "./api";
 import { documentMatchesTraveler, documentPurposeLabel } from "./documentModel";
 
+export function EventDocumentShortcut({ item, travelerId, navigationState }: { item: ItineraryItem; travelerId?: string | null; navigationState?: unknown }) {
+  const linksQuery = useQuery({ queryKey: ["event-documents", item.id], queryFn: () => listEventDocumentLinks(item.id) });
+  const documentsQuery = useQuery({ queryKey: ["documents", item.trip_id], queryFn: () => listVaultDocuments(item.trip_id), enabled: Boolean(item.booking_id) });
+  const matchesFocus = (document: NonNullable<typeof documentsQuery.data>[number]) => !travelerId || documentMatchesTraveler(document, travelerId);
+  const explicitDocument = (linksQuery.data ?? []).find((link) => matchesFocus(link.document))?.document;
+  const bookingDocument = item.booking_id
+    ? (documentsQuery.data ?? []).find((document) => document.booking_id === item.booking_id && matchesFocus(document))
+    : undefined;
+  const primary = explicitDocument ?? bookingDocument;
+  if (!primary) return null;
+  const purpose = documentPurposeLabel(primary.purpose);
+  return <Link className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-brand-soft px-3 text-xs font-extrabold text-brand" to={`/trips/${item.trip_id}/documents/${primary.id}`} state={navigationState} aria-label={`Open ${purpose}: ${primary.title}`}><FileText className="size-4" /> Open {purpose}{primary.short_label ? ` · ${primary.short_label}` : ""}</Link>;
+}
+
 export function EventDocuments({ item, canEdit, onUpload, travelerId }: { item: ItineraryItem; canEdit: boolean; onUpload?: () => void; travelerId?: string | null }) {
   const queryClient = useQueryClient();
   const [picking, setPicking] = useState(false);

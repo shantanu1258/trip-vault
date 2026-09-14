@@ -116,8 +116,18 @@ function ScheduleFields({ startDefault, endDefault, durationMinutes, startRequir
   </div>;
 }
 
-export function TimingFields({ trip, itinerary, item }: { trip: Trip; itinerary: ItineraryItem[]; item?: ItineraryItem }) {
-  const [mode, setMode] = useState<EventTimingMode>(item?.timing_mode ?? (item?.is_all_day ? "all_day" : "exact"));
+const timingModeOptions: Array<{ value: EventTimingMode; label: string }> = [
+  { value: "exact", label: "Exact date and time" },
+  { value: "date_only", label: "Date known, time undecided" },
+  { value: "all_day", label: "All day" },
+  { value: "relative", label: "Before or after another event" },
+  { value: "unscheduled", label: "No date yet" }
+];
+
+export function TimingFields({ trip, itinerary, item, allowedModes }: { trip: Trip; itinerary: ItineraryItem[]; item?: ItineraryItem; allowedModes?: EventTimingMode[] }) {
+  const availableModes = allowedModes?.length ? allowedModes : timingModeOptions.map((option) => option.value);
+  const initialMode = item?.timing_mode ?? (item?.is_all_day ? "all_day" : "exact");
+  const [mode, setMode] = useState<EventTimingMode>(availableModes.includes(initialMode) ? initialMode : availableModes[0]);
   const [relativePosition, setRelativePosition] = useState(item?.relative_position ?? "after");
   const [anchorItineraryItemId, setAnchorItineraryItemId] = useState(item?.anchor_itinerary_item_id ?? "");
   const localStart = item ? isoToLocalDateTime(item.starts_at, item.timezone) : `${trip.start_date}T09:00`;
@@ -126,7 +136,7 @@ export function TimingFields({ trip, itinerary, item }: { trip: Trip; itinerary:
   return <fieldset className="rounded-2xl border border-line p-4">
     <legend className="px-1 text-sm font-extrabold">When does it happen?</legend>
     <label className="form-label mt-2">Timing<select className="form-input" name="timingMode" value={mode} onChange={(event) => setMode(event.target.value as EventTimingMode)}>
-      <option value="exact">Exact date and time</option><option value="date_only">Date known, time undecided</option><option value="all_day">All day</option><option value="relative">Before or after another event</option><option value="unscheduled">No date yet</option>
+      {timingModeOptions.filter((option) => availableModes.includes(option.value)).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
     </select></label>
     {mode === "exact" && <ScheduleFields startDefault={item?.timing_mode === "exact" || !item ? localStart : ""} endDefault={item?.timing_mode === "exact" ? localEnd : ""} durationMinutes={item?.timing_mode === "exact" ? item.duration_minutes : undefined} startRequired trip={trip} />}
     {(mode === "date_only" || mode === "all_day") && <label className="form-label mt-4">Date<input className="form-input" name="scheduledDate" type="date" min={trip.start_date} max={trip.end_date} defaultValue={item?.scheduled_date ?? localStart.slice(0, 10)} required /></label>}

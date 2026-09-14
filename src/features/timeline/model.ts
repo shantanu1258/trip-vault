@@ -128,7 +128,8 @@ export function durationLabel(minutes: number) {
   return [weeks ? `${weeks}w` : "", days ? `${days}d` : "", hours ? `${hours}h` : "", remainder ? `${remainder}m` : ""].filter(Boolean).join(" ") || "0m";
 }
 
-export function journeyDuration(start: string, end: string) {
+export function journeyDuration(start: string, end: string | null | undefined) {
+  if (!end) return "Duration not available";
   return durationLabel((new Date(end).getTime() - new Date(start).getTime()) / 60_000);
 }
 
@@ -153,16 +154,19 @@ function dateKey(value: string, timeZone: string) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-export function arrivalDayOffset(departureAt: string, departureTimezone: string, arrivalAt: string, arrivalTimezone: string) {
+export function arrivalDayOffset(departureAt: string, departureTimezone: string, arrivalAt: string | null | undefined, arrivalTimezone: string) {
+  if (!arrivalAt) return 0;
   const departureDate = new Date(`${dateKey(departureAt, departureTimezone)}T12:00:00Z`);
   const arrivalDate = new Date(`${dateKey(arrivalAt, arrivalTimezone)}T12:00:00Z`);
   return Math.round((arrivalDate.getTime() - departureDate.getTime()) / 86_400_000);
 }
 
-export function validateLegOrder(legs: Array<{ departureAt: string; arrivalAt: string }>) {
+export function validateLegOrder(legs: Array<{ departureAt: string; arrivalAt?: string }>) {
   for (let index = 0; index < legs.length; index += 1) {
-    if (new Date(legs[index].arrivalAt) <= new Date(legs[index].departureAt)) return `Leg ${index + 1} must arrive after it departs.`;
-    if (index > 0 && new Date(legs[index].departureAt) < new Date(legs[index - 1].arrivalAt)) return `Leg ${index + 1} starts before leg ${index} arrives.`;
+    const arrivalAt = legs[index].arrivalAt;
+    if (arrivalAt && new Date(arrivalAt) <= new Date(legs[index].departureAt)) return `Leg ${index + 1} must arrive after it departs.`;
+    const previousArrival = index > 0 ? legs[index - 1].arrivalAt : undefined;
+    if (previousArrival && new Date(legs[index].departureAt) < new Date(previousArrival)) return `Leg ${index + 1} starts before leg ${index} arrives.`;
   }
   return null;
 }

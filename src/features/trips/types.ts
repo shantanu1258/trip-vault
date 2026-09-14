@@ -7,6 +7,7 @@ export const timelineEventTypes = [
 export type TimelineEventType = (typeof timelineEventTypes)[number];
 export type EventTimingMode = "exact" | "date_only" | "all_day" | "relative" | "unscheduled";
 export type EventStatus = "planned" | "done" | "skipped" | "cancelled";
+export type ParticipantScope = "everyone" | "selected";
 
 export const journeyTimelineEventTypes = ["flight", "train", "bus", "ferry", "cab"] as const;
 
@@ -142,6 +143,7 @@ export type CreateItineraryInput = {
   location?: string;
   mapUrl?: string;
   notes?: string;
+  participantScope?: ParticipantScope;
   travelerIds?: string[];
   isAllDay?: boolean;
   completedAt?: string | null;

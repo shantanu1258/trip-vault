@@ -4,6 +4,7 @@ import { validateActionUrl } from "../admin/validation";
 import airports from "./starter-airports.json";
 import airlines from "./starter-airlines.json";
 import vendors from "./starter-vendors.json";
+import journeyOperators from "./starter-journey-operators.json";
 
 describe("bundled travel catalogues", () => {
   it("keeps airport identifiers unique and every time zone valid", () => {
@@ -42,5 +43,13 @@ describe("bundled travel catalogues", () => {
     expect(vendors).toHaveLength(9);
     expect(["booking-com", "agoda", "airbnb", "trip-com"].every((key) => keys.has(key))).toBe(true);
     expect(vendors.every((vendor) => vendor.websiteUrl === null || validateActionUrl(vendor.websiteUrl))).toBe(true);
+  });
+
+  it("keeps a mode-aware regional journey operator starter set", () => {
+    const keys = journeyOperators.map((operator) => `${operator.mode}:${operator.name.toLocaleLowerCase()}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(journeyOperators.every((operator) => ["train", "bus", "ferry", "cab"].includes(operator.mode) && operator.region && operator.aliases)).toBe(true);
+    const names = new Set(journeyOperators.map((operator) => operator.name));
+    expect(["Indian Railways", "Qistna Express", "Causeway Link", "DAMRI", "BatamFast", "Bintan Resort Ferries", "Ola", "Grab", "Bluebird"].every((name) => names.has(name))).toBe(true);
   });
 });

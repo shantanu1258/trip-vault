@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Trip } from "../features/trips/types";
+import { tripChildNavigationState } from "../features/trips/navigation";
 import type { Requirement } from "../features/workspace/types";
 
 const mocks = vi.hoisted(() => ({
@@ -71,11 +72,11 @@ const requirement: Requirement = {
   notes: "Check validity before departure."
 };
 
-function renderPage() {
+function renderPage(initialEntry: string | { pathname: string; state: unknown } = "/trips/trip-1/readiness") {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/trips/trip-1/readiness"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes><Route path="/trips/:tripId/readiness" element={<ReadinessPage />} /></Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -112,5 +113,11 @@ describe("readiness card interactions", () => {
 
     await user.click(editCard);
     expect(await screen.findByRole("region", { name: "Edit readiness item" })).toHaveTextContent("Passport ready");
+  });
+
+  it("returns to the source Trip details tab", async () => {
+    renderPage({ pathname: "/trips/trip-1/readiness", state: tripChildNavigationState(null, "trip-1", "details") });
+
+    expect(await screen.findByRole("link", { name: "Back to trip" })).toHaveAttribute("href", "/trips/trip-1?view=details");
   });
 });

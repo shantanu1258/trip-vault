@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AirlinePicker } from "./AirlinePicker";
 import { AirportPicker } from "./AirportPicker";
+import { JourneyOperatorPicker } from "./JourneyOperatorPicker";
 import { VendorPicker } from "./VendorPicker";
 
 vi.mock("./publishedConfig", () => ({
@@ -98,5 +99,38 @@ describe("travel metadata pickers", () => {
     await user.click(screen.getByRole("button", { name: "Choose booked via" }));
     await user.click(await screen.findByRole("option", { name: /Local agent/i }));
     expect(website).toHaveBeenLastCalledWith("");
+  });
+
+  it("offers mode-specific journey operators and keeps Other reversible", async () => {
+    const { user, container } = renderPicker(<JourneyOperatorPicker mode="bus" name="operator" required />);
+    await user.click(screen.getByRole("button", { name: "Choose bus operator" }));
+    await user.click(screen.getByRole("option", { name: /Qistna Express/i }));
+    expect(container.querySelector<HTMLInputElement>('input[name="operator"]')?.value).toBe("Qistna Express");
+    expect(container.querySelector<HTMLInputElement>('input[name="operatorSource"]')?.value).toBe("catalog");
+
+    await user.click(screen.getByRole("button", { name: "Choose bus operator" }));
+    await user.click(screen.getByRole("option", { name: /Other bus operator/i }));
+    const manual = screen.getByPlaceholderText("Enter the bus operator shown on the ticket");
+    expect(manual).toBeRequired();
+    await user.type(manual, "Local coach");
+    expect(container.querySelector<HTMLInputElement>('input[name="operatorSource"]')?.value).toBe("other");
+
+    await user.click(screen.getByRole("button", { name: "Choose bus operator" }));
+    await user.click(screen.getByRole("option", { name: /Causeway Link/i }));
+    expect(screen.queryByPlaceholderText("Enter the bus operator shown on the ticket")).not.toBeInTheDocument();
+    expect(container.querySelector<HTMLInputElement>('input[name="operator"]')?.value).toBe("Causeway Link");
+  });
+
+  it("offers regional cab providers while preserving a manual local-cab option", async () => {
+    const { user, container } = renderPicker(<JourneyOperatorPicker mode="cab" name="operator" />);
+    await user.click(screen.getByRole("button", { name: "Choose cab operator" }));
+    await user.click(screen.getByRole("option", { name: /Grab/i }));
+    expect(container.querySelector<HTMLInputElement>('input[name="operator"]')?.value).toBe("Grab");
+    expect(container.querySelector<HTMLInputElement>('input[name="operatorSource"]')?.value).toBe("catalog");
+
+    await user.click(screen.getByRole("button", { name: "Choose cab operator" }));
+    await user.click(screen.getByRole("option", { name: /Other cab operator/i }));
+    expect(screen.getByPlaceholderText("Enter the cab operator shown on the ticket")).not.toBeRequired();
+    expect(container.querySelector<HTMLInputElement>('input[name="operatorSource"]')?.value).toBe("other");
   });
 });

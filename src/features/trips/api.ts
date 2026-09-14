@@ -13,11 +13,15 @@ import type {
   TripCost,
   ArchivedTripItem,
   EventStatus,
+  ParticipantScope,
   TripDocument,
   TripStatus
   , UpdateCostInput, UpdateTripInput
 } from "./types";
 import { moveEqualTimeItem } from "./presentation";
+import { normalizeParticipantSelection } from "./participantScope";
+import { cacheParticipantAssignments, queueBookingParticipantSync, syncBookingParticipants } from "./participantSync";
+import type { Booking } from "../workspace/types";
 
 const itinerarySelect = "id,trip_id,booking_id,title,event_type,starts_at,ends_at,timezone,location,notes,applies_to_all_travelers,is_all_day,completed_at,timing_mode,scheduled_date,anchor_itinerary_item_id,relative_position,has_explicit_start_time,duration_minutes,event_status,sort_key,version,created_at,updated_at,deleted_at";
 const costSelect = "id,trip_id,booking_id,itinerary_item_id,title,category,amount_minor,currency_code,payment_status,paid_by_traveler_id,notes,version,created_at,updated_at,deleted_at,trip_cost_participants(traveler_id,share_amount_minor)";
@@ -363,7 +367,8 @@ export async function listItinerary(tripId: string): Promise<ItineraryItem[]> {
 export async function addItineraryItem(input: CreateItineraryInput): Promise<ItineraryItem> {
   const userId = await currentUserId();
   const id = crypto.randomUUID(); const now = new Date().toISOString();
-  const appliesToAll = !input.travelerIds?.length;
+  const participants = normalizeParticipantSelection(input.participantScope, input.travelerIds);
+  const appliesToAll = participants.participantScope === "everyone";
   const timingMode = input.timingMode ?? (input.isAllDay ? "all_day" : "exact");
   const hasExplicitStartTime = input.hasExplicitStartTime ?? (timingMode === "exact");
   const location = input.location || input.mapUrl ? { label: input.location || undefined, address: input.location || undefined, map_url: input.mapUrl || undefined } : null;
@@ -371,7 +376,7 @@ export async function addItineraryItem(input: CreateItineraryInput): Promise<Iti
   const row = { ...item, created_by: userId };
   if (!navigator.onLine) {
     const parentOperation = await queueCreate({ entityType: `itinerary:${input.tripId}`, table: "itinerary_items", row, dependsOn: input.dependsOn });
-    for (const travelerId of input.travelerIds ?? []) await queueCreate({ entityType: `itinerary-participants:${input.tripId}`, table: "itinerary_participants", row: { id: `${id}:${travelerId}`, itinerary_item_id: id, traveler_id: travelerId }, serverRow: { itinerary_item_id: id, traveler_id: travelerId }, dependsOn: [parentOperation] });
+    for (const travelerId of participants.travelerIds) await queueCreate({ entityType: `itinerary-participants:${input.tripId}`, table: "itinerary_participants", row: { id: `${id}:${travelerId}`, itinerary_item_id: id, traveler_id: travelerId }, serverRow: { itinerary_item_id: id, traveler_id: travelerId }, dependsOn: [parentOperation] });
     return item;
   }
   const { data, error } = await client()
@@ -401,7 +406,7 @@ export async function addItineraryItem(input: CreateItineraryInput): Promise<Iti
     .select(itinerarySelect)
     .single();
   if (error) throw error;
-  if (input.travelerIds?.length) { const { error: participantsError } = await client().from("itinerary_participants").insert(input.travelerIds.map((travelerId) => ({ itinerary_item_id: id, traveler_id: travelerId }))); if (participantsError) throw participantsError; }
+  if (participants.travelerIds.length) { const { error: participantsError } = await client().from("itinerary_participants").insert(participants.travelerIds.map((travelerId) => ({ itinerary_item_id: id, traveler_id: travelerId }))); if (participantsError) throw participantsError; }
   await cacheEntity(`itinerary:${input.tripId}`, data as ItineraryItem);
   return data as ItineraryItem;
 }
@@ -409,58 +414,94 @@ export async function addItineraryItem(input: CreateItineraryInput): Promise<Iti
 export async function updateItineraryItem(input: UpdateItineraryInput): Promise<ItineraryItem> {
   const existing = (await readEntityList<ItineraryItem>(`itinerary:${input.tripId}`)).find((item) => item.id === input.id);
   if (!existing) throw new Error("Refresh the itinerary before editing this item.");
-  const appliesToAll = !input.travelerIds?.length;
+  if (existing.booking_id && ["hotel_check_in", "hotel_check_out"].includes(existing.event_type ?? "")) {
+    throw new Error("Edit the hotel booking to change its check-in or checkout milestone.");
+  }
+  const participants = normalizeParticipantSelection(input.participantScope, input.travelerIds);
+  const appliesToAll = participants.participantScope === "everyone";
   const timingMode = input.timingMode ?? existing.timing_mode ?? (input.isAllDay ? "all_day" : "exact");
   const hasExplicitStartTime = input.hasExplicitStartTime ?? (timingMode === "exact");
   const patch = { booking_id: input.bookingId || null, title: input.title, event_type: input.eventType ?? existing.event_type ?? "custom", starts_at: input.startsAt, ends_at: input.endsAt || null, timezone: input.timezone, location: input.location || input.mapUrl ? { label: input.location || undefined, address: input.location || undefined, map_url: input.mapUrl || undefined } : null, notes: input.notes || null, applies_to_all_travelers: appliesToAll, is_all_day: Boolean(input.isAllDay), completed_at: input.completedAt ?? existing.completed_at ?? null, timing_mode: timingMode, scheduled_date: input.scheduledDate ?? null, anchor_itinerary_item_id: input.anchorItineraryItemId ?? null, relative_position: input.relativePosition ?? null, has_explicit_start_time: hasExplicitStartTime, duration_minutes: input.durationMinutes ?? null, event_status: input.eventStatus ?? existing.event_status ?? "planned", sort_key: input.sortKey ?? existing.sort_key ?? `${input.startsAt}:${input.id}` };
+  const targetBookingId = input.bookingId || undefined;
+  const bookingChanged = Boolean(targetBookingId && targetBookingId !== existing.booking_id);
+  const nonParticipantPatch = bookingChanged
+    ? Object.fromEntries(Object.entries(patch).filter(([key]) => key !== "booking_id" && key !== "applies_to_all_travelers"))
+    : Object.fromEntries(Object.entries(patch).filter(([key]) => key !== "applies_to_all_travelers"));
   if (!navigator.onLine) {
-    const updated = { ...existing, ...patch, version: (existing.version ?? 1) + 1, updated_at: new Date().toISOString() };
-    const parent = await queueUpdate({ entityType: `itinerary:${input.tripId}`, table: "itinerary_items", row: updated, patch, baseVersion: existing.version });
+    const scopeUpdateCount = targetBookingId && (bookingChanged || existing.applies_to_all_travelers !== appliesToAll) ? 1 : 0;
+    const updated = { ...existing, ...patch, version: (existing.version ?? 1) + 1 + scopeUpdateCount, updated_at: new Date().toISOString() };
+    const parent = await queueUpdate({ entityType: `itinerary:${input.tripId}`, table: "itinerary_items", row: updated, patch: targetBookingId ? nonParticipantPatch : patch, baseVersion: existing.version });
+    if (targetBookingId) {
+      const linkedItems = (await readEntityList<ItineraryItem>(`itinerary:${input.tripId}`)).filter((item) => item.booking_id === targetBookingId && item.id !== input.id);
+      const cachedBooking = (await readEntityList<Booking>(`bookings:${input.tripId}`)).find((booking) => booking.id === targetBookingId);
+      await Promise.all([
+        ...linkedItems.map((item) => cacheEntity(`itinerary:${input.tripId}`, item.applies_to_all_travelers === appliesToAll ? item : { ...item, applies_to_all_travelers: appliesToAll, version: (item.version ?? 1) + 1, updated_at: new Date().toISOString() })),
+        ...(cachedBooking ? [cacheEntity(`bookings:${input.tripId}`, cachedBooking.participant_scope === participants.participantScope ? cachedBooking : { ...cachedBooking, participant_scope: participants.participantScope, version: (cachedBooking.version ?? 1) + 1, updated_at: new Date().toISOString() })] : [])
+      ]);
+      const itemIds = [input.id, ...linkedItems.map((item) => item.id)];
+      await cacheParticipantAssignments({ tripId: input.tripId, bookingId: targetBookingId, itineraryItemIds: itemIds, participantScope: participants.participantScope, travelerIds: participants.travelerIds });
+      await queueBookingParticipantSync({ bookingId: targetBookingId, participantScope: participants.participantScope, travelerIds: participants.travelerIds, ...(bookingChanged ? { itineraryItemId: input.id, itineraryVersion: (existing.version ?? 1) + 1 } : {}) }, [parent]);
+      return updated;
+    }
     const profileId = await currentUserId();
     const { database } = await import("../../lib/local-db/database");
     const current = (await database.entities.where("profileId").equals(profileId).filter((row) => row.entityType === `itinerary-participants:${input.tripId}` && (row.data as { itinerary_item_id?: string }).itinerary_item_id === input.id).toArray()).map((row) => row.data as { traveler_id: string });
     const removals: string[] = [];
-    for (const row of current.filter((row) => !(input.travelerIds ?? []).includes(row.traveler_id))) removals.push(await queueDelete({ entityType: `itinerary-participants:${input.tripId}`, table: "itinerary_participants", entityId: `${input.id}:${row.traveler_id}`, match: { itinerary_item_id: input.id, traveler_id: row.traveler_id }, hard: true, dependsOn: [parent] }));
-    for (const travelerId of input.travelerIds ?? []) if (!current.some((row) => row.traveler_id === travelerId)) await queueCreate({ entityType: `itinerary-participants:${input.tripId}`, table: "itinerary_participants", row: { id: `${input.id}:${travelerId}`, itinerary_item_id: input.id, traveler_id: travelerId }, serverRow: { itinerary_item_id: input.id, traveler_id: travelerId }, dependsOn: [parent, ...removals] });
+    for (const row of current.filter((row) => !participants.travelerIds.includes(row.traveler_id))) removals.push(await queueDelete({ entityType: `itinerary-participants:${input.tripId}`, table: "itinerary_participants", entityId: `${input.id}:${row.traveler_id}`, match: { itinerary_item_id: input.id, traveler_id: row.traveler_id }, hard: true, dependsOn: [parent] }));
+    for (const travelerId of participants.travelerIds) if (!current.some((row) => row.traveler_id === travelerId)) await queueCreate({ entityType: `itinerary-participants:${input.tripId}`, table: "itinerary_participants", row: { id: `${input.id}:${travelerId}`, itinerary_item_id: input.id, traveler_id: travelerId }, serverRow: { itinerary_item_id: input.id, traveler_id: travelerId }, dependsOn: [parent, ...removals] });
     return updated;
   }
-  let request = client().from("itinerary_items").update(patch).eq("id", input.id);
+  let request = client().from("itinerary_items").update(targetBookingId ? nonParticipantPatch : patch).eq("id", input.id);
   if (input.version !== undefined) request = request.eq("version", input.version);
   const { data, error } = await request.select(itinerarySelect).maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("This itinerary item changed on another device. Refresh before saving.");
+  if (targetBookingId) {
+    const synchronized = await syncBookingParticipants({ bookingId: targetBookingId, participantScope: participants.participantScope, travelerIds: participants.travelerIds, ...(bookingChanged ? { itineraryItemId: input.id, itineraryVersion: (data as ItineraryItem).version } : {}) });
+    const savedItem = synchronized.itinerary_items.find((item) => item.id === input.id);
+    if (!savedItem) throw new Error("The booking participants were saved, but the itinerary item could not be refreshed.");
+    await Promise.all([
+      cacheEntity(`bookings:${input.tripId}`, synchronized.booking),
+      ...synchronized.itinerary_items.map((item) => cacheEntity(`itinerary:${input.tripId}`, item)),
+      cacheParticipantAssignments({ tripId: input.tripId, bookingId: targetBookingId, itineraryItemIds: synchronized.itinerary_items.map((item) => item.id), participantScope: participants.participantScope, travelerIds: participants.travelerIds })
+    ]);
+    return savedItem;
+  }
   const { error: removeError } = await client().from("itinerary_participants").delete().eq("itinerary_item_id", input.id); if (removeError) throw removeError;
-  if (input.travelerIds?.length) { const { error: participantError } = await client().from("itinerary_participants").insert(input.travelerIds.map((travelerId) => ({ itinerary_item_id: input.id, traveler_id: travelerId }))); if (participantError) throw participantError; }
+  if (participants.travelerIds.length) { const { error: participantError } = await client().from("itinerary_participants").insert(participants.travelerIds.map((travelerId) => ({ itinerary_item_id: input.id, traveler_id: travelerId }))); if (participantError) throw participantError; }
   await cacheEntity(`itinerary:${input.tripId}`, data as ItineraryItem);
   return data as ItineraryItem;
 }
 
 /**
  * Attaches an existing booking without rewriting the event's timing, location,
- * status, or participant rows. This deliberately stays online-only until the
- * booking creation exposes its outbox operation and a booking-link operation
- * can be ordered behind it.
+ * or status. Booking and event participant scope are committed together so a
+ * traveler never sees a booking whose timeline event has a different roster.
  */
-export async function linkBookingToItineraryItem(item: ItineraryItem, bookingId: string): Promise<ItineraryItem> {
+export async function linkBookingToItineraryItem(item: ItineraryItem, bookingId: string, selection: { participantScope: ParticipantScope; travelerIds: string[] }): Promise<ItineraryItem> {
   if (!navigator.onLine) throw new Error("Adding booking details requires a connection.");
-  let request = client()
-    .from("itinerary_items")
-    .update({ booking_id: bookingId })
-    .eq("id", item.id)
-    .eq("trip_id", item.trip_id);
-  if (item.version !== undefined) request = request.eq("version", item.version);
-  const { data, error } = await request.select(itinerarySelect).maybeSingle();
-  if (error) throw error;
-  if (!data) throw new Error("This event changed on another device. Refresh before adding its booking.");
+  const synchronized = await syncBookingParticipants({
+    bookingId,
+    participantScope: selection.participantScope,
+    travelerIds: selection.travelerIds,
+    itineraryItemId: item.id,
+    itineraryVersion: item.version
+  });
+  const linked = synchronized.itinerary_items.find((candidate) => candidate.id === item.id);
+  if (!linked) throw new Error("The booking was saved, but the linked event could not be refreshed.");
   // The server link is already committed at this point. A local IndexedDB
   // failure must not look like a failed link to the caller, because its
   // compensation path would archive a booking that the itinerary now uses.
   try {
-    await cacheEntity(`itinerary:${item.trip_id}`, data as ItineraryItem);
+    await Promise.all([
+      cacheEntity(`bookings:${item.trip_id}`, synchronized.booking),
+      ...synchronized.itinerary_items.map((candidate) => cacheEntity(`itinerary:${item.trip_id}`, candidate)),
+      cacheParticipantAssignments({ tripId: item.trip_id, bookingId, itineraryItemIds: synchronized.itinerary_items.map((candidate) => candidate.id), participantScope: selection.participantScope, travelerIds: selection.travelerIds })
+    ]);
   } catch (cacheError) {
     console.warn("Booking was attached, but the local itinerary cache could not be refreshed.", cacheError);
   }
-  return data as ItineraryItem;
+  return linked;
 }
 
 export async function archiveItineraryItem(item: ItineraryItem) {

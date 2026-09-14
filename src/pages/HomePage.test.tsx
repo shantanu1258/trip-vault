@@ -109,6 +109,18 @@ describe("home trip expenses", () => {
 
     render(<QueryClientProvider client={queryClient}><MemoryRouter><HomePage /></MemoryRouter></QueryClientProvider>);
 
+    const featuredCardTarget = await screen.findByRole("link", { name: "Open October escape" });
+    const explicitOpen = screen.getByRole("link", { name: /^Open trip$/ });
+    expect(featuredCardTarget).toHaveAttribute("href", "/trips/trip-1");
+    expect(explicitOpen).toHaveAttribute("href", "/trips/trip-1");
+    expect(featuredCardTarget.contains(explicitOpen)).toBe(false);
+
+    const readinessTarget = screen.getByRole("link", { name: "Open trip readiness" });
+    const readinessCard = readinessTarget.closest(".surface-card");
+    expect(readinessTarget).toHaveAttribute("href", "/trips/trip-1/readiness");
+    expect(within(readinessCard as HTMLElement).getByRole("link", { name: /Continue setup/ })).toHaveAttribute("href", "/trips/trip-1/readiness");
+    expect(readinessCard?.querySelector("a a, a button, button a, button button")).toBeNull();
+
     const openExpenses = await screen.findByRole("button", { name: "Open trip expenses" });
     const card = openExpenses.closest(".surface-card");
     expect(card?.querySelector("button a, a button")).toBeNull();

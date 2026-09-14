@@ -4,10 +4,12 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { z } from "zod";
 import { ModalSheet } from "../../components/ModalSheet";
+import { FileDropzone } from "../../components/FileDropzone";
 import { LocalQrCode } from "../../components/LocalQrCode";
 import { getErrorMessage } from "../trips/presentation";
 import type { Trip } from "../trips/types";
 import { firstValidationMessage, isoToLocalDateTime, localDateTimeToIso } from "../trips/validation";
+import { listItinerary } from "../trips/api";
 import {
   addRequirement,
   addTraveler,
@@ -18,6 +20,7 @@ import {
   listRequirementAssigneeIds,
   listVaultDocuments,
   revokeInvitation,
+  saveHotelStay,
   updateBooking,
   updateNote,
   updateRequirement,
@@ -26,7 +29,7 @@ import {
   uploadDocument
 } from "./api";
 import { addNote } from "./api";
-import { bookingTypes, requirementStatuses, requirementTypes, type Booking, type DocumentAssignmentMode, type DocumentVisibility, type Requirement, type RequirementInput, type Traveler, type TripMember, type TripNote } from "./types";
+import { bookingTypes, requirementStatuses, requirementTypes, type Booking, type DocumentAssignmentMode, type DocumentVisibility, type Requirement, type RequirementInput, type ReservationState, type Traveler, type TripMember, type TripNote, type UpdateBookingInput } from "./types";
 import { documentKind, documentKinds, suggestedDocumentTitle, type DocumentKind } from "./documentModel";
 import { ParticipantSelector } from "./ParticipantSelector";
 import { useFormDraft } from "../../lib/forms/useFormDraft";
@@ -40,11 +43,69 @@ const bookingSchema = z.object({
   referenceCode: z.string().trim().max(160).optional(), startsAt: z.string().optional(), endsAt: z.string().optional(),
   timezone: z.string().trim().optional(), location: z.string().trim().max(220).optional(), notes: z.string().trim().max(2000).optional(),
   journeyScope: z.enum(["domestic", "international"]).optional(), bookedViaName: z.string().trim().max(160).optional(),
-  bookedViaUrl: z.string().trim().url("Use a complete booking website address.").or(z.literal("")).optional(), contactName: z.string().trim().max(160).optional(), contactPhone: z.string().trim().max(40).optional()
+  bookedViaUrl: z.string().trim().url("Use a complete booking website address.").or(z.literal("")).optional(), contactName: z.string().trim().max(160).optional(), contactPhone: z.string().trim().max(40).optional(),
+  reservationState: z.enum(["planned", "walk_up", "booked"]), participantScope: z.enum(["everyone", "selected"])
 }).superRefine((value, context) => {
   if (value.type === "flight" && !value.referenceCode) context.addIssue({ code: "custom", path: ["referenceCode"], message: "Add the flight booking reference / PNR." });
-  if (value.startsAt && value.endsAt && value.endsAt < value.startsAt) context.addIssue({ code: "custom", path: ["endsAt"], message: "End time cannot be before start time." });
+  if (value.startsAt && value.endsAt && (value.endsAt < value.startsAt || (value.type === "hotel" && value.endsAt === value.startsAt))) context.addIssue({ code: "custom", path: ["endsAt"], message: value.type === "hotel" ? "Hotel checkout must be after check-in." : "End time cannot be before start time." });
 });
+
+type BookingEditMutationInput = UpdateBookingInput & {
+  mapUrl?: string;
+  hotelCheckInHasTime?: boolean;
+  hotelCheckoutHasTime?: boolean;
+};
+
+function hasPrintedHotelTime(item: import("../trips/types").ItineraryItem | undefined) {
+  if (!item) return true;
+  return item.has_explicit_start_time ?? item.timing_mode !== "date_only";
+}
+
+function HotelStayEditFields({ trip, booking, milestones, timezone }: { trip: Trip; booking: Booking; milestones: import("../trips/types").ItineraryItem[]; timezone: string }) {
+  const checkIn = milestones.find((item) => item.event_type === "hotel_check_in");
+  const checkout = milestones.find((item) => item.event_type === "hotel_check_out");
+  const checkInLocal = isoToLocalDateTime(checkIn?.starts_at ?? booking.start_at, timezone) || `${trip.start_date}T12:00`;
+  const checkoutLocal = isoToLocalDateTime(checkout?.starts_at ?? booking.end_at, timezone) || `${trip.end_date}T12:00`;
+  const [checkInDate, setCheckInDate] = useState(checkIn?.scheduled_date ?? checkInLocal.slice(0, 10));
+  const [checkInTime, setCheckInTime] = useState(hasPrintedHotelTime(checkIn) ? checkInLocal.slice(11, 16) : "");
+  const [checkoutDate, setCheckoutDate] = useState(checkout?.scheduled_date ?? checkoutLocal.slice(0, 10));
+  const [checkoutTime, setCheckoutTime] = useState(hasPrintedHotelTime(checkout) ? checkoutLocal.slice(11, 16) : "");
+
+  return <fieldset className="rounded-2xl border border-line p-4"><legend className="px-1 text-sm font-extrabold">Stay</legend><div className="mt-2 grid gap-4 sm:grid-cols-2">
+    <label className="form-label">Check-in date<input className="form-input" name="checkInDate" type="date" min={trip.start_date} max={trip.end_date} value={checkInDate} onChange={(event) => { const next = event.target.value; setCheckInDate(next); if (checkoutDate < next) setCheckoutDate(next); }} required /></label>
+    <label className="form-label">Printed check-in time (optional)<input className="form-input" name="checkInTime" type="time" value={checkInTime} onChange={(event) => setCheckInTime(event.target.value)} /></label>
+    <label className="form-label">Checkout date<input className="form-input" name="checkoutDate" type="date" min={checkInDate || trip.start_date} max={trip.end_date} value={checkoutDate} onChange={(event) => setCheckoutDate(event.target.value)} required /></label>
+    <label className="form-label">Printed checkout time (optional)<input className="form-input" name="checkoutTime" type="time" value={checkoutTime} onChange={(event) => setCheckoutTime(event.target.value)} /></label>
+  </div><p className="mt-3 text-xs leading-5 text-muted">Leave a printed time empty when the confirmation only gives a date. Trip Vault keeps a neutral local time for ordering without presenting it as a confirmed time.</p>
+  <input type="hidden" name="startsAt" value={`${checkInDate}T${checkInTime || "12:00"}`} /><input type="hidden" name="endsAt" value={`${checkoutDate}T${checkoutTime || "12:00"}`} /><input type="hidden" name="checkInHasTime" value={checkInTime ? "yes" : "no"} /><input type="hidden" name="checkoutHasTime" value={checkoutTime ? "yes" : "no"} /></fieldset>;
+}
+
+type ReservationStateOption = { value: ReservationState; label: string };
+
+function bookingStatusOptions(type: Booking["type"], current: ReservationState): ReservationStateOption[] {
+  let options: ReservationStateOption[];
+  if (["train", "bus", "ferry"].includes(type)) {
+    options = [
+      { value: "planned", label: "Plan only — ticket not booked" },
+      { value: "walk_up", label: "Buy when needed / walk-up" },
+      { value: "booked", label: "Ticket booked" }
+    ];
+  } else if (type === "cab") {
+    options = [
+      { value: "planned", label: "Need a cab" },
+      { value: "booked", label: "Booked in advance" },
+      { value: "walk_up", label: "Already took this ride" }
+    ];
+  } else {
+    options = type === "hotel"
+      ? [{ value: "planned", label: "Planning only" }, { value: "booked", label: "Hotel booked" }]
+      : type === "restaurant"
+        ? [{ value: "planned", label: "Planning only" }, { value: "booked", label: "Table reserved" }]
+        : [{ value: "planned", label: "Planning only" }, { value: "booked", label: "Booking confirmed" }];
+  }
+  if (!options.some((option) => option.value === current)) options.push({ value: current, label: `Keep current status — ${current.replace("_", " ")}` });
+  return options;
+}
 
 export function AddBookingForm({ trip, travelers, preferredTravelerId, onClose }: { trip: Trip; travelers: Traveler[]; preferredTravelerId?: string; onClose: () => void }) {
   return <AddEventForm trip={trip} travelers={travelers} preferredTravelerId={preferredTravelerId} onClose={onClose} />;
@@ -54,30 +115,50 @@ export function EditBookingForm({ trip, booking, travelers, selectedTravelerIds,
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const [bookedViaUrl, setBookedViaUrl] = useState(booking.booked_via_url ?? "");
+  const isHotel = booking.type === "hotel";
+  const hotelMilestones = useQuery({
+    queryKey: ["hotel-stay-milestones", trip.id, booking.id],
+    queryFn: async () => (await listItinerary(trip.id)).filter((item) => item.booking_id === booking.id && (item.event_type === "hotel_check_in" || item.event_type === "hotel_check_out")),
+    enabled: isHotel
+  });
   const mutation = useMutation({
-    mutationFn: updateBooking,
+    mutationFn: async (input: BookingEditMutationInput) => {
+      if (input.type !== "hotel") return updateBooking(input);
+      const { id, ...stay } = input;
+      return (await saveHotelStay({ ...stay, bookingId: id, eventType: "hotel_check_in" })).booking;
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["booking", booking.id] }),
         queryClient.invalidateQueries({ queryKey: ["bookings", trip.id] }),
-        queryClient.invalidateQueries({ queryKey: ["booking-traveler-ids", booking.id] })
+        queryClient.invalidateQueries({ queryKey: ["booking-traveler-ids", booking.id] }),
+        queryClient.invalidateQueries({ queryKey: ["booking-travelers", trip.id] }),
+        queryClient.invalidateQueries({ queryKey: ["itinerary-participants", trip.id] }),
+        queryClient.invalidateQueries({ queryKey: ["itinerary", trip.id] }),
+        queryClient.invalidateQueries({ queryKey: ["hotel-stay-milestones", trip.id, booking.id] })
       ]);
       onClose();
     }
   });
   const timezone = booking.source_timezone ?? trip.primary_timezone;
   const isJourney = ["flight", "train", "bus", "ferry", "cab"].includes(booking.type);
-  const isHotel = booking.type === "hotel";
   const providerIsDerived = isJourney || isHotel;
   const showContactName = booking.type !== "flight" && booking.type !== "train";
+  const initialReservationState: ReservationState = booking.type === "flight" ? "booked" : booking.reservation_state ?? "booked";
+  const initialParticipantScope = booking.participant_scope ?? (selectedTravelerIds.length === 0 || selectedTravelerIds.length === travelers.length ? "everyone" : "selected");
+  const statusOptions = bookingStatusOptions(booking.type, initialReservationState);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage("");
     const form = new FormData(event.currentTarget);
     const parsed = bookingSchema.safeParse(Object.fromEntries(form));
     if (!parsed.success) { setMessage(firstValidationMessage(parsed.error)); return; }
+    const travelerIds = form.getAll("travelerIds").map(String);
+    if (parsed.data.participantScope === "selected" && !travelerIds.length) { setMessage("Choose at least one traveler, or select Everyone."); return; }
     const zone = parsed.data.timezone || timezone;
     try {
+      const preservedBookingDetails = { ...booking.details };
+      delete preservedBookingDetails.notes;
       mutation.mutate({
         ...parsed.data,
         provider: isHotel ? parsed.data.title : parsed.data.provider,
@@ -87,7 +168,13 @@ export function EditBookingForm({ trip, booking, travelers, selectedTravelerIds,
         startsAt: parsed.data.startsAt ? localDateTimeToIso(parsed.data.startsAt, zone) : undefined,
         endsAt: parsed.data.endsAt ? localDateTimeToIso(parsed.data.endsAt, zone) : undefined,
         timezone: zone,
-        travelerIds: form.getAll("travelerIds").map(String)
+        travelerIds: parsed.data.participantScope === "everyone" ? [] : travelerIds,
+        ...(isHotel ? {
+          bookingDetails: preservedBookingDetails,
+          mapUrl: booking.location?.map_url,
+          hotelCheckInHasTime: form.get("checkInHasTime") === "yes",
+          hotelCheckoutHasTime: form.get("checkoutHasTime") === "yes"
+        } : {})
       });
     } catch (error) { setMessage(getErrorMessage(error)); }
   };
@@ -96,6 +183,7 @@ export function EditBookingForm({ trip, booking, travelers, selectedTravelerIds,
     <form className="mt-6 space-y-4" onSubmit={submit}>
       <input type="hidden" name="type" value={booking.type} />
       <input type="hidden" name="timezone" value={timezone} />
+      {booking.type === "flight" ? <input type="hidden" name="reservationState" value="booked" /> : <label className="form-label">Booking status<select className="form-input" name="reservationState" defaultValue={initialReservationState}>{statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
       <label className="form-label">Type<input className="form-input capitalize opacity-70" value={booking.type} readOnly /></label>
       <label className="form-label">{isHotel ? "Hotel / property name" : "Booking title"}<input autoFocus className="form-input" name="title" defaultValue={booking.title} /></label>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -112,7 +200,12 @@ export function EditBookingForm({ trip, booking, travelers, selectedTravelerIds,
         <input type="hidden" name="journeyScope" value={booking.journey_scope} />
         <div className="rounded-xl bg-elevated p-3 text-sm"><strong className="capitalize">{booking.journey_scope} journey</strong><span className="mt-1 block text-xs text-muted">Edit route times, airports, stations, and connections in the journey details.</span></div>
       </>}
-      {isJourney ? <>
+      {isHotel ? <>
+        {hotelMilestones.isLoading && <p className="rounded-xl bg-elevated p-4 text-sm text-muted">Loading the paired check-in and checkout…</p>}
+        {hotelMilestones.isError && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">The paired hotel timeline items could not be loaded. Refresh before editing this stay.</p>}
+        {hotelMilestones.isSuccess && <HotelStayEditFields key={hotelMilestones.data.map((item) => `${item.id}:${item.version ?? ""}`).join("|")} trip={trip} booking={booking} milestones={hotelMilestones.data} timezone={timezone} />}
+        <label className="form-label">Hotel address<input className="form-input" name="location" defaultValue={booking.location?.address ?? booking.location?.label ?? ""} placeholder="Enter the property name or full address" /></label>
+      </> : isJourney ? <>
         <input type="hidden" name="startsAt" value={isoToLocalDateTime(booking.start_at, timezone)} />
         <input type="hidden" name="endsAt" value={isoToLocalDateTime(booking.end_at, timezone)} />
         <input type="hidden" name="location" value="" />
@@ -131,9 +224,10 @@ export function EditBookingForm({ trip, booking, travelers, selectedTravelerIds,
         <label className="form-label">Phone<input className="form-input" type="tel" name="contactPhone" defaultValue={booking.contact_phone ?? ""} placeholder="Include country code for Call and WhatsApp" /></label>
       </div>
       <label className="form-label">Notes<textarea className="form-input min-h-24" name="notes" defaultValue={typeof booking.details.notes === "string" ? booking.details.notes : ""} /></label>
-      <ParticipantSelector travelers={travelers} selectedTravelerIds={selectedTravelerIds} explicitAll />
+      <ParticipantSelector travelers={travelers} selectedTravelerIds={initialParticipantScope === "everyone" ? undefined : selectedTravelerIds} initialScope={initialParticipantScope} scopeName="participantScope" />
+      {isHotel && <p className="text-xs leading-5 text-muted">Hotel details, traveler scope, check-in, and checkout are saved together. Editing this stay requires a connection so the paired timeline items cannot drift apart.</p>}
       {(message || mutation.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{message || getErrorMessage(mutation.error)}</p>}
-      <button className="primary-button w-full" disabled={mutation.isPending}>{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <TicketCheck className="size-4" />} Save changes</button>
+      <button className="primary-button w-full" disabled={mutation.isPending || (isHotel && (!hotelMilestones.isSuccess || !navigator.onLine))}>{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <TicketCheck className="size-4" />} Save changes</button>
     </form>
   </ModalSheet>;
 }
@@ -245,12 +339,12 @@ export function AddRequirementForm({ trip, travelers = [], requirement, preferre
   </ModalSheet>;
 }
 
-export function UploadDocumentForm({ trip, travelers, preferredTravelerId, onClose, onUploaded, bookingId, flightLegId, contextTitle, members = [], privateOnly = false }: { trip: Trip; travelers: Traveler[]; preferredTravelerId?: string; onClose: () => void; onUploaded?: (documentId: string) => void | Promise<void>; bookingId?: string; flightLegId?: string; contextTitle?: string; members?: TripMember[]; privateOnly?: boolean }) {
-  const initialKind: DocumentKind = flightLegId ? "flight_ticket" : bookingId ? "booking_confirmation" : "other";
+export function UploadDocumentForm({ trip, travelers, preferredTravelerId, onClose, onUploaded, bookingId, flightLegId, journeyLegId, contextTitle, members = [], privateOnly = false }: { trip: Trip; travelers: Traveler[]; preferredTravelerId?: string; onClose: () => void; onUploaded?: (documentId: string) => void | Promise<void>; bookingId?: string; flightLegId?: string; journeyLegId?: string; contextTitle?: string; members?: TripMember[]; privateOnly?: boolean }) {
+  const initialKind: DocumentKind = flightLegId ? "flight_ticket" : journeyLegId ? "journey_ticket" : bookingId ? "booking_confirmation" : "other";
   const queryClient = useQueryClient(); const [kind, setKind] = useState<DocumentKind>(initialKind); const [assignmentMode, setAssignmentMode] = useState<DocumentAssignmentMode>(documentKind(initialKind).defaultAssignment); const [selectedTravelerIds, setSelectedTravelerIds] = useState<string[]>(preferredTravelerId ? [preferredTravelerId] : []); const [visibility, setVisibility] = useState<DocumentVisibility>("private"); const [selectedFile, setSelectedFile] = useState<File | null>(null); const [customTitle, setCustomTitle] = useState(""); const [message, setMessage] = useState(""); const [queuedMessage, setQueuedMessage] = useState("");
   const defaultTitle = suggestedDocumentTitle(kind, assignmentMode, selectedTravelerIds, travelers, contextTitle);
   const title = customTitle.trim() || defaultTitle;
-  const draft = useFormDraft(`document:new:${trip.id}:${flightLegId ?? bookingId ?? "trip"}`);
+  const draft = useFormDraft(`document:new:${trip.id}:${flightLegId ?? journeyLegId ?? bookingId ?? "trip"}`);
   const mutation = useMutation({ mutationFn: uploadDocument, onSuccess: async (document) => { draft.clearDraft(); await Promise.all([queryClient.invalidateQueries({ queryKey: ["documents"] }), queryClient.invalidateQueries({ queryKey: ["documents", trip.id] }), queryClient.invalidateQueries({ queryKey: ["account-document-uploads"] })]); await onUploaded?.(document.id); if (document.sync_state === "queued") setQueuedMessage(document.sync_error === "permission" || document.sync_error === "schema" ? "The file is safe in Profile → Private document inbox, but Supabase refused its cloud action. Run the latest document-inbox migration, then retry it there." : document.sync_error === "authentication" ? "The file is safe in your private inbox on this device. Sign in again, then retry it from Profile." : "The file is safe in Profile → Private document inbox and on this device. Its cloud upload or trip association will retry when synchronization succeeds."); else onClose(); } });
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setMessage(""); setQueuedMessage("");
@@ -259,13 +353,11 @@ export function UploadDocumentForm({ trip, travelers, preferredTravelerId, onClo
     if (assignmentMode === "selected" && !travelerIds.length) { setMessage("Choose at least one traveler, or select Assign later."); return; }
     if (visibility === "selected_members" && !selectedUserIds.length) { setMessage("Choose at least one signed-in member."); return; }
     const selectedKind = documentKind(kind);
-    mutation.mutate({ tripId: trip.id, title, category: selectedKind.category, purpose: selectedKind.purpose, assignmentMode, visibility, travelerIds, bookingId, flightLegId, selectedUserIds, shortLabel: String(form.get("shortLabel") ?? "").trim() || undefined, file });
+    mutation.mutate({ tripId: trip.id, title, category: selectedKind.category, purpose: selectedKind.purpose, assignmentMode, visibility, travelerIds, bookingId, flightLegId, journeyLegId, selectedUserIds, shortLabel: String(form.get("shortLabel") ?? "").trim() || undefined, file });
   };
   const duplicate = mutation.error instanceof DuplicateDocumentError ? mutation.error : null;
   return <ModalSheet eyebrow={trip.title} title="Upload a document" onClose={onClose}><form ref={draft.formRef} className="mt-6 space-y-4" onSubmit={submit}>
-    <label className="form-label">File<input className="form-input file:mr-3 file:rounded-lg file:border-0 file:bg-brand-soft file:px-3 file:py-2 file:font-bold file:text-brand" type="file" name="file" accept="application/pdf,image/jpeg,image/png,image/webp" disabled={Boolean(queuedMessage)} onChange={(event) => setSelectedFile(event.currentTarget.files?.[0] ?? null)} /></label>
-    {selectedFile && <p className="-mt-2 text-xs font-bold text-brand">Selected original: {selectedFile.name} · {(selectedFile.size / 1_000_000).toFixed(2)} MB</p>}
-    <p className="-mt-2 text-xs text-muted">PDF, JPEG, PNG, or WebP under 5 MB. The original is kept unchanged and cached for offline viewing.</p>
+    <FileDropzone name="file" label="File" prompt="Choose the PDF or image" file={selectedFile} onFileChange={setSelectedFile} disabled={Boolean(queuedMessage)} busy={mutation.isPending} description="PDF, JPEG, PNG, or WebP under 5 MB. The original stays unchanged and is cached offline" />
     <label className="form-label">Document type<select className="form-input" name="kind" value={kind} disabled={Boolean(queuedMessage)} onChange={(event) => { const next = event.target.value as DocumentKind; const mode = documentKind(next).defaultAssignment; setKind(next); setAssignmentMode(mode); setSelectedTravelerIds(mode === "selected" && preferredTravelerId ? [preferredTravelerId] : []); }}>{documentKinds.map((option) => <option key={option.value} value={option.value}>{option.label} — {option.hint}</option>)}</select></label>
     <fieldset className="rounded-2xl border border-line p-4"><legend className="px-1 text-sm font-bold">Who is it for?</legend><div className="mt-2 grid gap-2 sm:grid-cols-3">{([{"value":"shared","label":"Everyone","hint":"One file used together"},{"value":"selected","label":"Traveler(s)","hint":"Choose one or more people"},{"value":"unassigned","label":"Assign later","hint":"Use when the owner is unknown"}] as const).map((option) => <label key={option.value} className={`cursor-pointer rounded-xl border p-3 text-sm ${assignmentMode === option.value ? "border-brand bg-brand-soft" : "border-line"}`}><input className="sr-only" type="radio" name="assignmentMode" value={option.value} checked={assignmentMode === option.value} onChange={() => { setAssignmentMode(option.value); if (option.value !== "selected") setSelectedTravelerIds([]); else if (!selectedTravelerIds.length && preferredTravelerId) setSelectedTravelerIds([preferredTravelerId]); }} /><strong className="block">{option.label}</strong><span className="mt-1 block text-xs text-muted">{option.hint}</span></label>)}</div>{assignmentMode === "selected" && <div className="mt-4 grid gap-2 sm:grid-cols-2">{travelers.map((traveler) => <label key={traveler.id} className="flex items-center gap-3 rounded-xl bg-elevated p-3 text-sm"><input type="checkbox" name="travelerIds" value={traveler.id} checked={selectedTravelerIds.includes(traveler.id)} onChange={(event) => setSelectedTravelerIds((ids) => event.target.checked ? [...new Set([...ids, traveler.id])] : ids.filter((id) => id !== traveler.id))} className="size-4" /><span className="font-bold">{traveler.display_name}</span></label>)}{!travelers.length && <p className="text-xs font-bold text-warning">Add a traveler first, or choose Assign later.</p>}</div>}</fieldset>
     <label className="form-label">Document name (optional)<input className="form-input" name="customTitle" value={customTitle} onChange={(event) => setCustomTitle(event.target.value)} placeholder="Leave empty to name it from its type, traveler, and event" disabled={Boolean(queuedMessage)} /></label>

@@ -1,13 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDown, ArrowLeft, ArrowUp, BedDouble, Bus, CalendarClock, CalendarPlus,
-  CarTaxiFront, Check, ChevronRight, CookingPot, Download, Ship, FileText, LocateFixed,
+  CarTaxiFront, Check, ChevronRight, CookingPot, Download, Ship, LocateFixed,
   Info, MapPin, NotebookPen, Pencil, Plane, Plus, ReceiptIndianRupee, Search,
   Settings, ShieldCheck, TicketCheck, TrainFront, Trash2, UserPlus, UsersRound, X,
   ExternalLink, Phone, RotateCcw
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { FocusSurface } from "../components/FocusSurface";
 import { ModalSheet } from "../components/ModalSheet";
@@ -22,10 +22,16 @@ import { formatDateRange, formatEventTime, formatItineraryDate, formatMoney, iti
 import { AddCostForm, AddItineraryForm, TripSettingsForm } from "../features/trips/TripForms";
 import { isJourneyEventType, type EventStatus, type ItineraryItem, type TimelineEventType, type Trip, type TripCost } from "../features/trips/types";
 import { calculateTripBalances } from "../features/trips/expenses";
+import {
+  consumeTripNavigationIntent, isTripNavigationIntentConsumed, readTripEntry,
+  readTripNavigationIntent, tripChildNavigationState, tripEntryNavigationState,
+  tripIntentNavigationState, type TripView
+} from "../features/trips/navigation";
 import { CostDetailsSheet, TripExpensesSheet } from "../features/trips/TripExpenses";
 import { localProfileId } from "../features/sync/localSync";
-import { EventDocuments } from "../features/workspace/EventDocuments";
+import { EventDocuments, EventDocumentShortcut } from "../features/workspace/EventDocuments";
 import { AddActivityBookingForm, canAddEventBooking } from "../features/workspace/AddActivityBookingForm";
+import { JourneyTravelerBadges } from "../features/workspace/JourneyTravelerDetails";
 import { filterTravelerWorkspace, readTravelerFocus, writeTravelerFocus } from "../features/workspace/travelerFocus";
 import { resolveBoardingInstant } from "../features/workspace/flight";
 import { TripAirlinesPanel } from "../features/workspace/TripAirlinesPanel";
@@ -36,12 +42,13 @@ import {
   listTripRequirementAssignees
 } from "../features/workspace/api";
 import {
-  AddNoteForm, AddRequirementForm, AddTravelerForm, EditTravelerForm,
+  AddNoteForm, AddRequirementForm, AddTravelerForm, EditBookingForm, EditTravelerForm,
   ShareTripForm, UploadDocumentForm
 } from "../features/workspace/WorkspaceForms";
 import type { Booking, FlightLeg, JourneyLeg, MemberRole, Traveler, TripMember, TripNote, VaultDocument } from "../features/workspace/types";
 
 type OpenForm = "event" | "cost" | "document" | "people" | "traveler" | "share" | "requirement" | "note" | "settings" | null;
+type DocumentUploadTarget = Pick<ItineraryItem, "id" | "title"> & { booking_id?: string | null };
 
 function openFormFromQuery(value: string | null): OpenForm {
   if (value === "event" || value === "itinerary" || value === "booking") return "event";
@@ -55,12 +62,55 @@ const iconFor: Record<TimelineEventType, typeof Plane> = {
   meal: CookingPot, activity: MapPin, preparation: ShieldCheck, custom: CalendarClock
 };
 
-function saveScroll(tripId: string, view: "timeline" | "details") {
-  try { sessionStorage.setItem(`trip-vault:scroll:${tripId}:${view}`, String(window.scrollY)); } catch { /* Scroll memory is optional. */ }
+type TripScrollSnapshot = { y: number; anchorId?: string; anchorOffset?: number };
+
+function scrollStorageKey(tripId: string, view: TripView) {
+  return `trip-vault:scroll:${tripId}:${view}`;
 }
 
-function readScroll(tripId: string, view: "timeline" | "details") {
-  try { const value = sessionStorage.getItem(`trip-vault:scroll:${tripId}:${view}`); return value === null ? null : Number(value); } catch { return null; }
+function captureScroll(view: TripView): TripScrollSnapshot {
+  const viewportGuide = 104;
+  const anchors = [...document.querySelectorAll<HTMLElement>(`[data-trip-scroll-anchor="${view}"]`)];
+  const anchor = anchors
+    .filter((element) => element.getBoundingClientRect().bottom > viewportGuide)
+    .sort((left, right) => Math.abs(left.getBoundingClientRect().top - viewportGuide) - Math.abs(right.getBoundingClientRect().top - viewportGuide))[0];
+  return anchor?.id
+    ? { y: window.scrollY, anchorId: anchor.id, anchorOffset: anchor.getBoundingClientRect().top }
+    : { y: window.scrollY };
+}
+
+function saveScroll(tripId: string, view: TripView) {
+  try { sessionStorage.setItem(scrollStorageKey(tripId, view), JSON.stringify(captureScroll(view))); } catch { /* Scroll memory is optional. */ }
+}
+
+function readScroll(tripId: string, view: TripView): TripScrollSnapshot | null {
+  try {
+    const value = sessionStorage.getItem(scrollStorageKey(tripId, view));
+    if (value === null) return null;
+    if (!value.trim().startsWith("{")) {
+      const y = Number(value);
+      return Number.isFinite(y) ? { y } : null;
+    }
+    const parsed = JSON.parse(value) as Partial<TripScrollSnapshot>;
+    return typeof parsed.y === "number" && Number.isFinite(parsed.y) ? parsed as TripScrollSnapshot : null;
+  } catch { return null; }
+}
+
+function restoreScroll(tripId: string, view: TripView) {
+  const saved = readScroll(tripId, view);
+  if (!saved) return false;
+  const anchor = saved.anchorId ? document.getElementById(saved.anchorId) : null;
+  const top = anchor && typeof saved.anchorOffset === "number"
+    ? Math.max(0, window.scrollY + anchor.getBoundingClientRect().top - saved.anchorOffset)
+    : Math.max(0, saved.y);
+  window.scrollTo({ top, behavior: "auto" });
+  return true;
+}
+
+function markBrowserTripEntry(state: unknown, tripId: string, view: TripView) {
+  const browserState = window.history.state;
+  if (!browserState || typeof browserState !== "object" || !("usr" in browserState)) return;
+  window.history.replaceState({ ...browserState, usr: tripEntryNavigationState(state, tripId, view) }, "");
 }
 
 function EventCost({ item, costs, editable, onAdd, onView }: { item: ItineraryItem; costs: TripCost[]; editable: boolean; onAdd: () => void; onView: (cost: TripCost) => void }) {
@@ -72,9 +122,9 @@ function EventCost({ item, costs, editable, onAdd, onView }: { item: ItineraryIt
   return <div className="mt-4 rounded-xl border border-success/20 bg-success/5 p-3"><div className="flex items-center justify-between gap-3"><p className="text-xs font-black uppercase tracking-[.1em] text-success">Cost · {summary}</p>{editable && <button type="button" onClick={onAdd} className="text-xs font-extrabold text-brand">+ Add</button>}</div><div className="mt-2 space-y-1.5">{linked.map((cost) => <button key={cost.id} type="button" onClick={() => onView(cost)} className="group flex w-full items-center gap-3 rounded-lg bg-surface/70 px-3 py-2 text-left text-xs transition hover:bg-surface focus-visible:ring-2 focus-visible:ring-brand" aria-label={`View details for ${cost.title}`}><span className="min-w-0 flex-1 truncate font-bold">{cost.title}</span><span className="capitalize text-muted">{cost.payment_status}</span><strong>{cost.amount_minor === 0 ? "Free" : formatMoney(cost.amount_minor, cost.currency_code)}</strong><ChevronRight className="size-3 text-muted transition-transform group-hover:translate-x-0.5" /></button>)}</div></div>;
 }
 
-export function ReservationCard({ booking, href, route }: { booking: Booking; href: string; route?: string }) {
+export function ReservationCard({ booking, href, route, navigationState }: { booking: Booking; href: string; route?: string; navigationState?: unknown }) {
   const phone = booking.contact_phone ? phoneActionUrls(booking.contact_phone) : null;
-  return <article className="group relative rounded-2xl border border-line bg-elevated p-4 transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft"><Link to={href} className="absolute inset-0 z-10 rounded-2xl focus-visible:ring-2 focus-visible:ring-brand" aria-label={`Open details for ${booking.title}`} /><div className="pr-6"><p className="text-xs font-bold uppercase tracking-[.12em] text-muted">{booking.type}{booking.journey_scope ? ` · ${booking.journey_scope}` : ""}</p><p className="mt-2 font-display text-lg font-black text-brand">{booking.title}</p>{route && <p className="mt-1 text-sm font-black text-ink">{route}</p>}<p className="mt-1 text-xs text-muted">{booking.provider}{booking.reference_code ? ` · ${booking.reference_code}` : ""}{booking.booked_via_name ? ` · via ${booking.booked_via_name}` : ""}</p></div>{phone && <div className="relative z-20 mt-3 flex gap-3 pr-6"><a className="text-xs font-extrabold text-brand" href={phone.call}>Call</a><a className="text-xs font-extrabold text-success" href={phone.whatsapp} target="_blank" rel="noreferrer">WhatsApp</a></div>}<ChevronRight aria-hidden="true" className="absolute bottom-4 right-4 size-4 text-muted transition-transform group-hover:translate-x-0.5" /></article>;
+  return <article className="group relative rounded-2xl border border-line bg-elevated p-4 transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft"><Link to={href} state={navigationState} className="absolute inset-0 z-10 rounded-2xl focus-visible:ring-2 focus-visible:ring-brand" aria-label={`Open details for ${booking.title}`} /><div className="pr-6"><p className="text-xs font-bold uppercase tracking-[.12em] text-muted">{booking.type}{booking.journey_scope ? ` · ${booking.journey_scope}` : ""}</p><p className="mt-2 font-display text-lg font-black text-brand">{booking.title}</p>{route && <p className="mt-1 text-sm font-black text-ink">{route}</p>}<p className="mt-1 text-xs text-muted">{booking.provider}{booking.reference_code ? ` · ${booking.reference_code}` : ""}{booking.booked_via_name ? ` · via ${booking.booked_via_name}` : ""}</p></div>{phone && <div className="relative z-20 mt-3 flex gap-3 pr-6"><a className="text-xs font-extrabold text-brand" href={phone.call}>Call</a><a className="text-xs font-extrabold text-success" href={phone.whatsapp} target="_blank" rel="noreferrer">WhatsApp</a></div>}<ChevronRight aria-hidden="true" className="absolute bottom-4 right-4 size-4 text-muted transition-transform group-hover:translate-x-0.5" /></article>;
 }
 
 export function NoteCard({ note, editable, onEdit, onArchive }: { note: TripNote; editable: boolean; onEdit: () => void; onArchive: () => void }) {
@@ -102,7 +152,7 @@ function FlightTravelerSummary({ flightLegId, travelers, focusedTravelerId }: { 
   })}</div>;
 }
 
-function BookingEventDetails({ tripId, booking, flights, journeys, travelers, focusedTravelerId }: { tripId: string; booking: Booking; flights: FlightLeg[]; journeys: JourneyLeg[]; travelers: Traveler[]; focusedTravelerId?: string | null }) {
+function BookingEventDetails({ tripId, booking, flights, journeys, travelers, focusedTravelerId, navigationState }: { tripId: string; booking: Booking; flights: FlightLeg[]; journeys: JourneyLeg[]; travelers: Traveler[]; focusedTravelerId?: string | null; navigationState?: unknown }) {
   const flightLegs = flights.filter((leg) => leg.booking_id === booking.id).sort((a, b) => a.segment_order - b.segment_order);
   const travelLegs = journeys.filter((leg) => leg.booking_id === booking.id).sort((a, b) => a.segment_order - b.segment_order);
   const route = flightLegs.length ? journeyRoute(flightLegs.map((leg) => ({ origin: leg.departure_airport_code || leg.departure_airport_name, destination: leg.arrival_airport_code || leg.arrival_airport_name }))) : journeyRoute(travelLegs.map((leg) => ({ origin: leg.origin_code || leg.origin_name, destination: leg.destination_code || leg.destination_name })));
@@ -111,13 +161,13 @@ function BookingEventDetails({ tripId, booking, flights, journeys, travelers, fo
   const detailsHref = firstFlight ? `/trips/${tripId}/flights/${firstFlight.id}` : `/trips/${tripId}/bookings/${booking.id}`;
 
   const heading = <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[.65rem] font-black uppercase tracking-[.12em] text-muted">{booking.type} booking{booking.journey_scope ? ` · ${booking.journey_scope}` : ""}</p><p className="mt-1 font-bold">{booking.provider || booking.title}</p>{route && <p className="mt-1 font-black text-brand">{route}</p>}{booking.reference_code && <p className="mt-1 text-xs text-muted"><strong className="text-ink">{booking.type === "flight" ? "PNR" : "Reference"}:</strong> {booking.reference_code}</p>}</div><span aria-hidden="true" className="secondary-button min-h-9 px-3 py-2 text-xs">Full details <ExternalLink className="size-3.5" /></span></div>;
-  const detailsLink = <Link to={detailsHref} className="absolute inset-0 z-10 rounded-2xl focus-visible:ring-2 focus-visible:ring-brand" aria-label={`Open booking details for ${booking.title}`} />;
+  const detailsLink = <Link to={detailsHref} state={navigationState} className="absolute inset-0 z-10 rounded-2xl focus-visible:ring-2 focus-visible:ring-brand" aria-label={`Open booking details for ${booking.title}`} />;
 
   if (flightLegs.length) {
-    return <div className="group relative mt-4 rounded-2xl border border-line bg-surface/70 p-3 transition hover:border-brand/40 hover:shadow-soft sm:p-4">{detailsLink}{heading}<div className="relative z-20 mt-3 space-y-2">{flightLegs.map((leg, index) => <Link to={`/trips/${tripId}/flights/${leg.id}`} key={leg.id} className="block rounded-xl bg-elevated p-3 text-xs"><div className="flex items-start justify-between gap-2"><strong>{leg.departure_airport_code || leg.departure_airport_name} → {leg.arrival_airport_code || leg.arrival_airport_name}</strong><span className={`rounded-full px-2 py-1 text-[.6rem] font-black uppercase ${leg.status === "cancelled" ? "bg-danger/10 text-danger" : leg.status === "delayed" ? "bg-warning/10 text-warning" : "bg-brand-soft text-brand"}`}>{flightLegs.length > 1 ? `Leg ${index + 1} · ` : ""}{leg.status.replaceAll("_", " ")}</span></div><p className="mt-1 text-muted">{leg.airline_name} {leg.flight_number} · {journeyDuration(leg.scheduled_departure_at, leg.scheduled_arrival_at)}</p><p className="mt-1 text-muted">Depart {formatEventTime(leg.scheduled_departure_at, leg.departure_timezone)}</p><p className="text-muted">Arrive {formatEventTime(leg.scheduled_arrival_at, leg.arrival_timezone)}</p>{(resolveBoardingInstant(leg.scheduled_departure_at, leg.boarding_at, leg.boarding_lead_minutes) || leg.departure_terminal || leg.departure_gate || leg.arrival_terminal || leg.baggage_claim) && <p className="mt-2 font-bold text-ink">{resolveBoardingInstant(leg.scheduled_departure_at, leg.boarding_at, leg.boarding_lead_minutes) ? `Board ${formatEventTime(resolveBoardingInstant(leg.scheduled_departure_at, leg.boarding_at, leg.boarding_lead_minutes)!, leg.departure_timezone)} · ` : ""}T{leg.departure_terminal || "—"} · Gate {leg.departure_gate || "—"}{leg.arrival_terminal ? ` · Arrive T${leg.arrival_terminal}` : ""}{leg.baggage_claim ? ` · Bag ${leg.baggage_claim}` : ""}</p>}<FlightTravelerSummary flightLegId={leg.id} travelers={travelers} focusedTravelerId={focusedTravelerId} /></Link>)}</div><BookingContact booking={booking} phone={phone} /></div>;
+    return <div className="group relative mt-4 rounded-2xl border border-line bg-surface/70 p-3 transition hover:border-brand/40 hover:shadow-soft sm:p-4">{detailsLink}{heading}<div className="relative z-20 mt-3 space-y-2">{flightLegs.map((leg, index) => <Link to={`/trips/${tripId}/flights/${leg.id}`} state={navigationState} key={leg.id} className="block rounded-xl bg-elevated p-3 text-xs"><div className="flex items-start justify-between gap-2"><strong>{leg.departure_airport_code || leg.departure_airport_name} → {leg.arrival_airport_code || leg.arrival_airport_name}</strong><span className={`rounded-full px-2 py-1 text-[.6rem] font-black uppercase ${leg.status === "cancelled" ? "bg-danger/10 text-danger" : leg.status === "delayed" ? "bg-warning/10 text-warning" : "bg-brand-soft text-brand"}`}>{flightLegs.length > 1 ? `Leg ${index + 1} · ` : ""}{leg.status.replaceAll("_", " ")}</span></div><p className="mt-1 text-muted">{leg.airline_name} {leg.flight_number} · {journeyDuration(leg.scheduled_departure_at, leg.scheduled_arrival_at)}</p><p className="mt-1 text-muted">Depart {formatEventTime(leg.scheduled_departure_at, leg.departure_timezone)}</p><p className="text-muted">Arrive {formatEventTime(leg.scheduled_arrival_at, leg.arrival_timezone)}</p>{(resolveBoardingInstant(leg.scheduled_departure_at, leg.boarding_at, leg.boarding_lead_minutes) || leg.departure_terminal || leg.departure_gate || leg.arrival_terminal || leg.baggage_claim) && <p className="mt-2 font-bold text-ink">{resolveBoardingInstant(leg.scheduled_departure_at, leg.boarding_at, leg.boarding_lead_minutes) ? `Board ${formatEventTime(resolveBoardingInstant(leg.scheduled_departure_at, leg.boarding_at, leg.boarding_lead_minutes)!, leg.departure_timezone)} · ` : ""}T{leg.departure_terminal || "—"} · Gate {leg.departure_gate || "—"}{leg.arrival_terminal ? ` · Arrive T${leg.arrival_terminal}` : ""}{leg.baggage_claim ? ` · Bag ${leg.baggage_claim}` : ""}</p>}<FlightTravelerSummary flightLegId={leg.id} travelers={travelers} focusedTravelerId={focusedTravelerId} /></Link>)}</div><BookingContact booking={booking} phone={phone} /></div>;
   }
   if (travelLegs.length) {
-    return <div className="group relative mt-4 rounded-2xl border border-line bg-surface/70 p-3 transition hover:border-brand/40 hover:shadow-soft sm:p-4">{detailsLink}{heading}<div className="relative z-20 mt-3 space-y-2">{travelLegs.map((leg, index) => <Link to={detailsHref} key={leg.id} className="block rounded-xl bg-elevated p-3 text-xs"><div className="flex items-start justify-between gap-2"><strong>{leg.origin_code || leg.origin_name} → {leg.destination_code || leg.destination_name}</strong>{travelLegs.length > 1 && <span className="rounded-full bg-brand-soft px-2 py-1 text-[.6rem] font-black uppercase text-brand">Leg {index + 1}</span>}</div><p className="mt-1 text-muted">{leg.operator_name}{leg.service_number ? ` ${leg.service_number}` : ""} · {journeyDuration(leg.scheduled_departure_at, leg.scheduled_arrival_at)}</p><p className="mt-1 text-muted">Depart {formatEventTime(leg.scheduled_departure_at, leg.origin_timezone)}</p><p className="text-muted">Arrive {formatEventTime(leg.scheduled_arrival_at, leg.destination_timezone)}</p>{(resolveBoardingInstant(leg.scheduled_departure_at, leg.boarding_at, leg.boarding_lead_minutes) || leg.departure_platform || leg.arrival_platform || leg.coach_or_cabin || leg.seat) && <p className="mt-2 font-bold text-ink">{resolveBoardingInstant(leg.scheduled_departure_at, leg.boarding_at, leg.boarding_lead_minutes) ? `Board ${formatEventTime(resolveBoardingInstant(leg.scheduled_departure_at, leg.boarding_at, leg.boarding_lead_minutes)!, leg.origin_timezone)} · ` : ""}Platform {leg.departure_platform || "—"}{leg.arrival_platform ? ` → ${leg.arrival_platform}` : ""}{leg.coach_or_cabin ? ` · ${leg.coach_or_cabin}` : ""}{leg.seat ? ` · Seat ${leg.seat}` : ""}</p>}</Link>)}</div><BookingContact booking={booking} phone={phone} /></div>;
+    return <div className="group relative mt-4 rounded-2xl border border-line bg-surface/70 p-3 transition hover:border-brand/40 hover:shadow-soft sm:p-4">{detailsLink}{heading}<div className="relative z-20 mt-3 space-y-2">{travelLegs.map((leg, index) => <Link to={detailsHref} state={navigationState} key={leg.id} className="block rounded-xl bg-elevated p-3 text-xs"><div className="flex items-start justify-between gap-2"><strong>{leg.origin_code || leg.origin_name} → {leg.destination_code || leg.destination_name}</strong>{travelLegs.length > 1 && <span className="rounded-full bg-brand-soft px-2 py-1 text-[.6rem] font-black uppercase text-brand">Leg {index + 1}</span>}</div><p className="mt-1 text-muted">{leg.operator_name}{leg.service_number ? ` ${leg.service_number}` : ""}{leg.scheduled_arrival_at ? ` · ${journeyDuration(leg.scheduled_departure_at, leg.scheduled_arrival_at)}` : ""}</p><p className="mt-1 text-muted">Depart {formatEventTime(leg.scheduled_departure_at, leg.origin_timezone)}</p><p className="text-muted">{leg.scheduled_arrival_at ? `Arrive ${formatEventTime(leg.scheduled_arrival_at, leg.destination_timezone)}` : "Arrival not added"}</p>{(resolveBoardingInstant(leg.scheduled_departure_at, leg.boarding_at, leg.boarding_lead_minutes) || leg.departure_platform || leg.arrival_platform) && <p className="mt-2 font-bold text-ink">{resolveBoardingInstant(leg.scheduled_departure_at, leg.boarding_at, leg.boarding_lead_minutes) ? `Board ${formatEventTime(resolveBoardingInstant(leg.scheduled_departure_at, leg.boarding_at, leg.boarding_lead_minutes)!, leg.origin_timezone)} · ` : ""}Platform {leg.departure_platform || "—"}{leg.arrival_platform ? ` → ${leg.arrival_platform}` : ""}</p>}<JourneyTravelerBadges tripId={tripId} leg={leg} travelers={travelers} focusedTravelerId={focusedTravelerId} legIndex={index} legCount={travelLegs.length} /></Link>)}</div><BookingContact booking={booking} phone={phone} /></div>;
   }
   return <div className="group relative mt-4 rounded-2xl border border-line bg-surface/70 p-3 transition hover:border-brand/40 hover:shadow-soft sm:p-4">{detailsLink}{heading}{(booking.start_at || booking.end_at || booking.location?.label) && <div className="mt-3 rounded-xl bg-elevated p-3 text-xs text-muted">{booking.start_at && <p>Starts {formatEventTime(booking.start_at, booking.source_timezone || "UTC")}</p>}{booking.end_at && <p>Ends {formatEventTime(booking.end_at, booking.source_timezone || "UTC")}</p>}{booking.location?.label && <p className="mt-1">{booking.location.label}</p>}</div>}<BookingContact booking={booking} phone={phone} /></div>;
 }
@@ -132,18 +182,19 @@ function EventTravelers({ item, travelerIds, travelers }: { item: ItineraryItem;
   return <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted"><UsersRound className="size-4" /><span className="font-bold text-ink">For:</span>{item.applies_to_all_travelers ? <span>Everyone</span> : names.length ? names.map((name) => <span key={name} className="rounded-full bg-brand-soft px-2 py-1 font-bold text-brand">{name}</span>) : <span>Selected travelers</span>}</div>;
 }
 
-function BookingEventSummary({ booking, flights, journeys }: { booking: Booking; flights: FlightLeg[]; journeys: JourneyLeg[] }) {
+function BookingEventSummary({ tripId, booking, flights, journeys, travelers, focusedTravelerId }: { tripId: string; booking: Booking; flights: FlightLeg[]; journeys: JourneyLeg[]; travelers: Traveler[]; focusedTravelerId?: string | null }) {
   const flightLegs = flights.filter((leg) => leg.booking_id === booking.id).sort((a, b) => a.segment_order - b.segment_order);
   const travelLegs = journeys.filter((leg) => leg.booking_id === booking.id).sort((a, b) => a.segment_order - b.segment_order);
   const legs = flightLegs.length ? flightLegs : travelLegs;
+  const reservationState = booking.type === "flight" ? "booked" : booking.reservation_state;
+  const phone = booking.type === "cab" && booking.contact_phone ? phoneActionUrls(booking.contact_phone) : null;
   const route = journeyRoute(legs.map((leg) => "departure_airport_code" in leg
     ? { origin: leg.departure_airport_code || leg.departure_airport_name, destination: leg.arrival_airport_code || leg.arrival_airport_name }
     : { origin: leg.origin_code || leg.origin_name, destination: leg.destination_code || leg.destination_name }));
-  const seat = travelLegs.map((leg) => leg.seat).filter(Boolean).join(", ");
-  return <div className="mt-3 rounded-xl border border-line/80 bg-surface/60 px-3 py-2.5 text-xs"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><strong>{booking.provider || booking.title}</strong>{booking.reference_code && <span className="text-muted">{booking.type === "flight" ? "PNR" : "Ref"} {booking.reference_code}</span>}</div>{route && <p className="mt-1 font-bold text-brand">{route}{legs.length > 1 ? ` · ${legs.length - 1} connection${legs.length > 2 ? "s" : ""}` : ""}</p>}{seat && <p className="mt-1 font-bold text-ink">Seat {seat}</p>}</div>;
+  return <div className="mt-3 rounded-xl border border-line/80 bg-surface/60 px-3 py-2.5 text-xs"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><strong>{booking.provider || booking.title}</strong>{booking.reference_code && <span className="text-muted">{booking.type === "flight" ? "PNR" : "Ref"} {booking.reference_code}</span>}{reservationState && <span className="rounded-full bg-brand-soft px-2 py-0.5 font-black capitalize text-brand">{reservationState.replaceAll("_", " ")}</span>}</div>{route && <p className="mt-1 font-bold text-brand">{route}{legs.length > 1 ? ` · ${legs.length - 1} connection${legs.length > 2 ? "s" : ""}` : ""}</p>}{flightLegs.map((leg, index) => { const boarding = resolveBoardingInstant(leg.scheduled_departure_at, leg.boarding_at, leg.boarding_lead_minutes); const operations = [boarding ? `Board ${formatEventTime(boarding, leg.departure_timezone)}` : null, leg.departure_terminal ? `T${leg.departure_terminal}` : null, leg.departure_gate ? `Gate ${leg.departure_gate}` : null].filter(Boolean).join(" · "); return <div key={leg.id} className={index ? "mt-2 border-t border-line/70 pt-2" : "mt-2"}>{flightLegs.length > 1 && <p className="font-black text-ink">Leg {index + 1} · {leg.departure_airport_code || leg.departure_airport_name} → {leg.arrival_airport_code || leg.arrival_airport_name}</p>}{operations && <p className="mt-1 font-bold text-ink">{operations}</p>}<FlightTravelerSummary flightLegId={leg.id} travelers={travelers} focusedTravelerId={focusedTravelerId} /></div>; })}{travelLegs.map((leg, index) => <JourneyTravelerBadges key={leg.id} tripId={tripId} leg={leg} travelers={travelers} focusedTravelerId={focusedTravelerId} legIndex={index} legCount={travelLegs.length} />)}{phone && <a className="relative z-20 mt-2 inline-flex min-h-9 items-center gap-1.5 rounded-full bg-brand-soft px-3 font-extrabold text-brand" href={phone.call}><Phone className="size-3.5" /> Call cab contact</a>}</div>;
 }
 
-export function EventDetailsSheet({ item, itinerary = [], tripId, booking, flights, journeys, travelerIds, travelers, costs, focusedTravelerId, editable, canMoveUp, canMoveDown, onClose, onEdit, onArchive, onAddBooking, onAddCost, onViewCost, onUploadDocument, onStatus, onMoveUp, onMoveDown }: { item: ItineraryItem; itinerary?: ItineraryItem[]; tripId: string; booking?: Booking; flights: FlightLeg[]; journeys: JourneyLeg[]; travelerIds: string[]; travelers: Traveler[]; costs: TripCost[]; focusedTravelerId?: string | null; editable: boolean; canMoveUp: boolean; canMoveDown: boolean; onClose: () => void; onEdit: () => void; onArchive: () => void; onAddBooking: () => void; onAddCost: () => void; onViewCost: (cost: TripCost) => void; onUploadDocument: () => void; onStatus: (status: EventStatus) => void; onMoveUp: () => void; onMoveDown: () => void }) {
+export function EventDetailsSheet({ item, itinerary = [], tripId, booking, flights, journeys, travelerIds, travelers, costs, focusedTravelerId, navigationState, editable, canMoveUp, canMoveDown, onClose, onEdit, onArchive, onAddBooking, onAddCost, onViewCost, onUploadDocument, onStatus, onMoveUp, onMoveDown }: { item: ItineraryItem; itinerary?: ItineraryItem[]; tripId: string; booking?: Booking; flights: FlightLeg[]; journeys: JourneyLeg[]; travelerIds: string[]; travelers: Traveler[]; costs: TripCost[]; focusedTravelerId?: string | null; navigationState?: unknown; editable: boolean; canMoveUp: boolean; canMoveDown: boolean; onClose: () => void; onEdit: () => void; onArchive: () => void; onAddBooking: () => void; onAddCost: () => void; onViewCost: (cost: TripCost) => void; onUploadDocument: () => void; onStatus: (status: EventStatus) => void; onMoveUp: () => void; onMoveDown: () => void }) {
   const Icon = iconFor[item.event_type ?? "custom"];
   const map = mapsUrl(item.location); const end = eventEndDetails(item); const endTimeZone = eventEndTimeZone(item, flights, journeys); const timingLabel = eventTimeLabel(item, itinerary); const plannedDuration = plannedDurationLabel(item); const explicitStart = hasExplicitEventStart(item);
   const showTimeZone = isJourneyEventType(item.event_type) && booking?.journey_scope === "international";
@@ -153,7 +204,7 @@ export function EventDetailsSheet({ item, itinerary = [], tripId, booking, fligh
     {item.location?.label && <p className="mt-4 flex items-start gap-2 text-sm text-muted"><MapPin className="mt-0.5 size-4 shrink-0" />{item.location.label}</p>}
     {map && <a href={map} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm font-extrabold text-brand"><LocateFixed className="size-4" /> Navigate</a>}
     {item.notes && <p className="mt-4 whitespace-pre-wrap rounded-xl bg-elevated p-3 text-sm leading-6 text-muted">{item.notes}</p>}
-    {booking && <BookingEventDetails tripId={tripId} booking={booking} flights={flights} journeys={journeys} travelers={travelers} focusedTravelerId={focusedTravelerId} />}
+    {booking && <BookingEventDetails tripId={tripId} booking={booking} flights={flights} journeys={journeys} travelers={travelers} focusedTravelerId={focusedTravelerId} navigationState={navigationState} />}
     {editable && canAddEventBooking(item) && <div className="mt-4 rounded-2xl border border-line bg-surface/70 p-4"><p className="text-sm font-extrabold">Booked this event now?</p><p className="mt-1 text-xs leading-5 text-muted">Add the confirmation and provider without recreating the timeline event or changing its order.</p><button type="button" className="secondary-button mt-3" onClick={onAddBooking}><TicketCheck className="size-4" /> Add booking details</button></div>}
     {editable && <fieldset className="mt-5 rounded-2xl border border-line p-3"><legend className="px-1 text-xs font-black uppercase tracking-[.12em] text-muted">Event status</legend><div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{(["planned", "done", "skipped", "cancelled"] as EventStatus[]).map((status) => <button key={status} type="button" onClick={() => onStatus(status)} className={`rounded-xl px-3 py-2 text-xs font-extrabold capitalize ${(item.event_status ?? "planned") === status ? "bg-brand text-surface" : "bg-elevated text-muted"}`}>{status}</button>)}</div></fieldset>}
     <EventCost item={item} costs={costs} editable={editable} onAdd={onAddCost} onView={onViewCost} />
@@ -174,8 +225,8 @@ function phaseForActive(item: ItineraryItem, active: boolean) {
   return "Most recent event";
 }
 
-function Section({ id, title, eyebrow, action, onActivate, children }: { id: string; title: string; eyebrow: string; action?: ReactNode; onActivate?: () => void; children: ReactNode }) {
-  return <section id={id} className={`surface-card group relative scroll-mt-28 p-5 sm:p-6 ${onActivate ? "transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft" : ""}`}>{onActivate && <button type="button" className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus-visible:ring-2 focus-visible:ring-brand" onClick={onActivate} aria-label={`Edit ${title}`} />}<div className="flex flex-wrap items-center justify-between gap-4"><div><p className="eyebrow">{eyebrow}</p><h2 className="mt-1 font-display text-2xl font-black">{title}</h2></div>{action && <div className={onActivate ? "relative z-20" : ""}>{action}</div>}</div><div className="mt-5">{children}</div></section>;
+function Section({ id, title, eyebrow, action, onActivate, activateLabel, children }: { id: string; title: string; eyebrow: string; action?: ReactNode; onActivate?: (trigger: HTMLButtonElement) => void; activateLabel?: string; children: ReactNode }) {
+  return <section id={id} data-trip-scroll-anchor="details" className={`surface-card group relative scroll-mt-28 p-5 sm:p-6 ${onActivate ? "transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft motion-reduce:hover:translate-y-0" : ""}`}>{onActivate && <button type="button" className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus-visible:ring-2 focus-visible:ring-brand" onClick={(event) => onActivate(event.currentTarget)} aria-label={activateLabel ?? `Edit ${title}`} />}<div className="flex flex-wrap items-center justify-between gap-4"><div><p className="eyebrow">{eyebrow}</p><h2 className="mt-1 font-display text-2xl font-black">{title}</h2></div>{action && <div className={onActivate ? "relative z-20" : ""}>{action}</div>}</div><div className="mt-5">{children}</div></section>;
 }
 
 function PeopleSheet({ trip, travelers, members, selectedId, editable, isOwner, onSelect, onAdd, onShare, onClose, onRefresh }: { trip: Trip; travelers: Traveler[]; members: TripMember[]; selectedId: string | null; editable: boolean; isOwner: boolean; onSelect: (id: string | null) => void; onAdd: () => void; onShare: () => void; onClose: () => void; onRefresh: () => void }) {
@@ -188,25 +239,49 @@ function PeopleSheet({ trip, travelers, members, selectedId, editable, isOwner, 
 }
 
 export function TripPage() {
-  const { tripId = "" } = useParams(); const navigate = useNavigate(); const queryClient = useQueryClient();
-  const [searchParams, setSearchParams] = useSearchParams(); const view: "timeline" | "details" = searchParams.get("view") === "details" ? "details" : "timeline";
+  const { tripId = "" } = useParams(); const navigate = useNavigate(); const location = useLocation(); const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams(); const view: TripView = searchParams.get("view") === "details" ? "details" : "timeline";
   const requestedForm = openFormFromQuery(searchParams.get("add")); const requestedSection = searchParams.get("section");
   const [openForm, setOpenForm] = useState<OpenForm>(requestedForm);
   const [userId, setUserId] = useState(""); const [query, setQuery] = useState("");
-  const [editingItinerary, setEditingItinerary] = useState<ItineraryItem | null>(null); const [editingCost, setEditingCost] = useState<TripCost | null>(null); const [editingTraveler, setEditingTraveler] = useState<Traveler | null>(null); const [editingNote, setEditingNote] = useState<TripNote | null>(null);
+  const [editingItinerary, setEditingItinerary] = useState<ItineraryItem | null>(null); const [editingBooking, setEditingBooking] = useState<Booking | null>(null); const [editingCost, setEditingCost] = useState<TripCost | null>(null); const [editingTraveler, setEditingTraveler] = useState<Traveler | null>(null); const [editingNote, setEditingNote] = useState<TripNote | null>(null);
   const [viewingItineraryId, setViewingItineraryId] = useState<string | null>(null);
   const [showingExpenses, setShowingExpenses] = useState(false);
   const [viewingCost, setViewingCost] = useState<TripCost | null>(null);
   const [costReturnEventId, setCostReturnEventId] = useState<string | null>(null);
   const [costReturnsToExpenses, setCostReturnsToExpenses] = useState(false);
   const [costTargetItem, setCostTargetItem] = useState<ItineraryItem | null>(null);
-  const [documentTargetItem, setDocumentTargetItem] = useState<ItineraryItem | null>(null);
+  const [documentTargetItem, setDocumentTargetItem] = useState<DocumentUploadTarget | null>(null);
   const [eventBookingTarget, setEventBookingTarget] = useState<ItineraryItem | null>(null);
   const [focusedTravelerId, setFocusedTravelerId] = useState<string | null>(() => readTravelerFocus(tripId));
-  const positioned = useRef(false); const restoreTimelineScroll = useRef(false); const requestedTimelineItem = useRef<string | null>(null);
+  const [travelerAnnouncement, setTravelerAnnouncement] = useState("");
+  const positioned = useRef(false); const requestedTimelineItem = useRef<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null); const peopleTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const handledIntentToken = useRef<string | null>(null); const handledSection = useRef<string | null>(null);
+  const navigationIntent = readTripNavigationIntent(location.state, tripId);
+  const activeNavigationIntent = navigationIntent && !isTripNavigationIntentConsumed(navigationIntent) ? navigationIntent : null;
+  const returningToEntry = Boolean(readTripEntry(location.state, tripId)) || Boolean(navigationIntent && isTripNavigationIntentConsumed(navigationIntent));
+  const childNavigationState = tripChildNavigationState(location.state, tripId, view);
   useEffect(() => { void localProfileId().then((id) => setUserId(id ?? "")); }, []);
   useEffect(() => { setFocusedTravelerId(readTravelerFocus(tripId)); positioned.current = false; }, [tripId]);
   useEffect(() => { if (requestedForm) setOpenForm(requestedForm); }, [requestedForm]);
+  useLayoutEffect(() => { positioned.current = false; }, [tripId, view]);
+  useLayoutEffect(() => {
+    if (!requestedSection) { handledSection.current = null; return; }
+    if (handledSection.current === requestedSection) return;
+    handledSection.current = requestedSection;
+    positioned.current = false;
+  }, [requestedSection]);
+  useLayoutEffect(() => {
+    if (!activeNavigationIntent || handledIntentToken.current === activeNavigationIntent.token) return;
+    handledIntentToken.current = activeNavigationIntent.token;
+    positioned.current = false;
+  }, [activeNavigationIntent]);
+  useEffect(() => {
+    if (view !== "details" || !activeNavigationIntent || !["search", "current", "target"].includes(activeNavigationIntent.kind)) return;
+    const next = new URLSearchParams(searchParams); next.delete("view"); next.delete("section");
+    setSearchParams(next, { replace: true, state: location.state });
+  }, [activeNavigationIntent, location.state, searchParams, setSearchParams, view]);
 
   const tripQuery = useQuery({ queryKey: ["trip", tripId], queryFn: () => getTrip(tripId), enabled: Boolean(tripId) });
   const itineraryQuery = useQuery({ queryKey: ["itinerary", tripId], queryFn: () => listItinerary(tripId), enabled: Boolean(tripId) });
@@ -246,34 +321,90 @@ export function TripPage() {
   }, [visibleItinerary]);
 
   useEffect(() => {
-    if (view !== "timeline" || positioned.current || !itineraryQuery.isSuccess || participantsQuery.isLoading || bookingTravelersQuery.isLoading || requirementAssigneesQuery.isLoading) return;
+    if (positioned.current || !tripQuery.isSuccess) return;
+    if (view === "details" && activeNavigationIntent && ["search", "current", "target"].includes(activeNavigationIntent.kind)) return;
+    if (view === "timeline" && (!itineraryQuery.isSuccess || participantsQuery.isLoading || bookingTravelersQuery.isLoading || requirementAssigneesQuery.isLoading)) return;
+    let secondFrame = 0;
     const firstFrame = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        const requestedId = requestedTimelineItem.current;
-        if (requestedId && scrollTimelineEventIntoView(requestedId, preferredScrollBehavior())) {
-          requestedTimelineItem.current = null; restoreTimelineScroll.current = false; positioned.current = true; return;
+      secondFrame = window.requestAnimationFrame(() => {
+        if (view === "details") {
+          const requested = requestedSection ? document.getElementById(requestedSection) : null;
+          if (requested) requested.scrollIntoView({ behavior: preferredScrollBehavior(), block: "start" });
+          else if ((activeNavigationIntent?.kind === "restore" || returningToEntry) && !restoreScroll(tripId, "details")) window.scrollTo({ top: 0, behavior: "auto" });
+        } else if (activeNavigationIntent?.kind === "search") {
+          searchInputRef.current?.scrollIntoView({ behavior: preferredScrollBehavior(), block: "start" });
+          searchInputRef.current?.focus({ preventScroll: true });
+        } else {
+          const requestedId = requestedTimelineItem.current ?? (activeNavigationIntent?.kind === "target" ? activeNavigationIntent.targetId ?? null : null);
+          if (requestedId && scrollTimelineEventIntoView(requestedId, preferredScrollBehavior())) requestedTimelineItem.current = null;
+          else if ((activeNavigationIntent?.kind === "restore" || returningToEntry) && restoreScroll(tripId, "timeline")) {
+            // The saved anchor has priority when returning from a child or switching tabs.
+          } else if (activeItem) scrollTimelineEventIntoView(activeItem.id, preferredScrollBehavior());
         }
-        const saved = restoreTimelineScroll.current ? readScroll(tripId, "timeline") : null;
-        if (saved !== null) window.scrollTo({ top: saved, behavior: "auto" });
-        else if (activeItem) scrollTimelineEventIntoView(activeItem.id, preferredScrollBehavior());
-        restoreTimelineScroll.current = false; positioned.current = true;
+        if (activeNavigationIntent) consumeTripNavigationIntent(activeNavigationIntent);
+        positioned.current = true;
+        markBrowserTripEntry(location.state, tripId, view);
       });
     });
-    return () => window.cancelAnimationFrame(firstFrame);
-  }, [activeItem, itineraryQuery.isSuccess, participantsQuery.isLoading, bookingTravelersQuery.isLoading, requirementAssigneesQuery.isLoading, tripId, view]);
+    return () => { window.cancelAnimationFrame(firstFrame); window.cancelAnimationFrame(secondFrame); };
+  }, [activeItem, activeNavigationIntent, bookingTravelersQuery.isLoading, itineraryQuery.isSuccess, location.state, participantsQuery.isLoading, requestedSection, requirementAssigneesQuery.isLoading, returningToEntry, tripId, tripQuery.isSuccess, view]);
   useEffect(() => {
-    if (view !== "details" || !requestedSection || !tripQuery.isSuccess) return;
-    const frame = window.requestAnimationFrame(() => document.getElementById(requestedSection)?.scrollIntoView({ behavior: preferredScrollBehavior(), block: "start" }));
-    return () => window.cancelAnimationFrame(frame);
-  }, [requestedSection, tripQuery.isSuccess, view]);
+    let frame = 0;
+    const record = () => {
+      if (!positioned.current) return;
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => saveScroll(tripId, view));
+    };
+    window.addEventListener("scroll", record, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", record);
+      window.cancelAnimationFrame(frame);
+      if (positioned.current) saveScroll(tripId, view);
+    };
+  }, [tripId, view]);
   useEffect(() => { if (focusedTravelerId && travelersQuery.data && !travelers.some((traveler) => traveler.id === focusedTravelerId)) setFocusedTravelerId(null); }, [focusedTravelerId, travelersQuery.data, travelers]);
 
-  const chooseTraveler = (id: string | null) => { setFocusedTravelerId(id); writeTravelerFocus(tripId, id); positioned.current = false; setViewingItineraryId(null); setShowingExpenses(false); setViewingCost(null); setCostReturnEventId(null); setCostReturnsToExpenses(false); };
-  const changeView = (next: "timeline" | "details") => { if (next === view) return; saveScroll(tripId, view); if (next === "timeline") { restoreTimelineScroll.current = !requestedTimelineItem.current; positioned.current = false; } const nextParams = new URLSearchParams(searchParams); if (next === "details") nextParams.set("view", "details"); else { nextParams.delete("view"); nextParams.delete("section"); } setSearchParams(nextParams); if (next === "details") window.setTimeout(() => window.scrollTo({ top: readScroll(tripId, next) ?? 0, behavior: "auto" }), 0); };
-  const closeForm = () => { setOpenForm(null); setCostTargetItem(null); setDocumentTargetItem(null); const next = new URLSearchParams(searchParams); next.delete("add"); setSearchParams(next, { replace: true }); };
-  const scrollToItem = (id: string) => { setQuery(""); requestedTimelineItem.current = id; positioned.current = false; if (view === "timeline") { window.requestAnimationFrame(() => { if (scrollTimelineEventIntoView(id, preferredScrollBehavior())) { requestedTimelineItem.current = null; positioned.current = true; } }); } else changeView("timeline"); };
+  const chooseTraveler = (id: string | null) => {
+    saveScroll(tripId, view);
+    setFocusedTravelerId(id); writeTravelerFocus(tripId, id); setViewingItineraryId(null); setShowingExpenses(false); setViewingCost(null); setCostReturnEventId(null); setCostReturnsToExpenses(false);
+    setTravelerAnnouncement(id ? `Showing ${travelers.find((traveler) => traveler.id === id)?.display_name ?? "selected traveler"}` : "Showing everyone");
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => restoreScroll(tripId, view)));
+  };
+  const changeView = (next: TripView) => {
+    if (next === view) return;
+    saveScroll(tripId, view); positioned.current = false;
+    const nextParams = new URLSearchParams(searchParams);
+    if (next === "details") nextParams.set("view", "details");
+    else { nextParams.delete("view"); nextParams.delete("section"); }
+    setSearchParams(nextParams, { state: tripEntryNavigationState(location.state, tripId, next) });
+  };
+  const openCurrentTimeline = () => {
+    if (activeItem) requestedTimelineItem.current = activeItem.id;
+    saveScroll(tripId, view); positioned.current = false;
+    const nextParams = new URLSearchParams(searchParams); nextParams.delete("view"); nextParams.delete("section");
+    setSearchParams(nextParams, { state: tripIntentNavigationState(location.state, tripId, "current", { view: "timeline" }) });
+  };
+  const closeForm = () => {
+    setOpenForm(null); setCostTargetItem(null); setDocumentTargetItem(null);
+    if (!searchParams.has("add")) return;
+    const next = new URLSearchParams(searchParams); next.delete("add");
+    setSearchParams(next, { replace: true, state: tripEntryNavigationState(location.state, tripId, view) });
+  };
+  const openPeople = (trigger: HTMLButtonElement) => { peopleTriggerRef.current = trigger; setOpenForm("people"); };
+  const closePeople = () => { closeForm(); window.requestAnimationFrame(() => peopleTriggerRef.current?.focus()); };
+  const selectTraveler = (id: string | null) => { chooseTraveler(id); closePeople(); };
+  const scrollToItem = (id: string) => { setQuery(""); requestedTimelineItem.current = id; positioned.current = false; if (view === "timeline") { window.requestAnimationFrame(() => { if (scrollTimelineEventIntoView(id, preferredScrollBehavior())) { requestedTimelineItem.current = null; positioned.current = true; markBrowserTripEntry(location.state, tripId, view); } }); } else changeView("timeline"); };
   const openExpenses = () => setShowingExpenses(true);
   const closeCostDetails = () => { const returnEventId = costReturnEventId; const returnToExpenses = costReturnsToExpenses; setViewingCost(null); setCostReturnEventId(null); setCostReturnsToExpenses(false); if (returnEventId) setViewingItineraryId(returnEventId); else if (returnToExpenses) setShowingExpenses(true); };
+  const editTimelineItem = (item: ItineraryItem) => {
+    const linkedBooking = item.booking_id ? bookings.find((booking) => booking.id === item.booking_id) : undefined;
+    if (linkedBooking?.type === "hotel" && (item.event_type === "hotel_check_in" || item.event_type === "hotel_check_out")) {
+      setViewingItineraryId(null);
+      setEditingBooking(linkedBooking);
+      return;
+    }
+    setEditingItinerary(item);
+  };
 
   const archiveItinerary = useMutation({ mutationFn: archiveItineraryItem, onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ["itinerary", tripId] }), queryClient.invalidateQueries({ queryKey: ["bookings", tripId] }), queryClient.invalidateQueries({ queryKey: ["archived-trip-items", tripId] })]); } });
   const reorderItinerary = useMutation({ mutationFn: ({ itemId, direction }: { itemId: string; direction: "up" | "down" }) => reorderItineraryItems(itinerary, itemId, direction), onSuccess: (items) => queryClient.setQueryData(["itinerary", tripId], items) });
@@ -291,10 +422,10 @@ export function TripPage() {
         <div className="mt-5 grid grid-cols-2 rounded-2xl bg-surface/10 p-1"><button type="button" onClick={() => changeView("timeline")} className={`tap-target rounded-xl text-sm font-black ${view === "timeline" ? "bg-surface text-brand shadow-soft" : "text-surface/70"}`}>Timeline</button><button type="button" onClick={() => changeView("details")} className={`tap-target rounded-xl text-sm font-black ${view === "details" ? "bg-surface text-brand shadow-soft" : "text-surface/70"}`}>Trip details</button></div>
         <button type="button" onClick={openExpenses} className="mt-4 inline-flex max-w-full items-center gap-2 rounded-xl bg-surface/10 px-3 py-2 text-left transition hover:bg-surface/15 focus-visible:ring-2 focus-visible:ring-surface motion-reduce:transition-none" aria-label="Open trip expenses"><CompactCostTotal costs={visibleCosts} emptyText="Add your first trip cost" inverse /><ChevronRight className="size-4 shrink-0 text-surface/60" /></button>
       </header>
-      <div className="relative mt-4"><Search className="pointer-events-none absolute left-4 top-3.5 size-5 text-muted" /><input value={query} onChange={(event) => setQuery(event.target.value)} className="form-input mt-0 pl-12 pr-11" placeholder="Search timeline, PNR, airport, document, traveler…" aria-label="Search this trip" />{query && <button type="button" onClick={() => setQuery("")} className="absolute right-2 top-1.5 grid size-9 place-items-center text-muted" aria-label="Clear search"><X className="size-4" /></button>}{query.length >= 2 && <div className="absolute z-40 mt-2 max-h-96 w-full overflow-auto rounded-2xl border border-line bg-surface p-2 shadow-focus">{results.map((result) => result.href ? <Link key={result.id} to={result.href} onClick={() => setQuery("")} className="block rounded-xl px-3 py-3 hover:bg-elevated"><strong className="block text-sm">{result.title}</strong><span className="text-xs text-muted">{result.group} · {result.detail}</span></Link> : <button key={result.id} type="button" onClick={() => { if (result.timelineItemId) scrollToItem(result.timelineItemId); else if (result.group === "Travelers") { chooseTraveler(result.id.replace("traveler:", "")); setQuery(""); } }} className="block w-full rounded-xl px-3 py-3 text-left hover:bg-elevated"><strong className="block text-sm">{result.title}</strong><span className="text-xs text-muted">{result.group} · {result.detail}</span></button>)}{results.length === 0 && <p className="p-4 text-sm text-muted">Nothing in this trip matches.</p>}</div>}</div>
+      <div id="trip-search" className="relative mt-4 scroll-mt-24"><Search className="pointer-events-none absolute left-4 top-3.5 size-5 text-muted" /><input ref={searchInputRef} value={query} onChange={(event) => setQuery(event.target.value)} className="form-input mt-0 pl-12 pr-11" placeholder="Search timeline, PNR, airport, document, traveler…" aria-label="Search this trip" />{query && <button type="button" onClick={() => setQuery("")} className="absolute right-2 top-1.5 grid size-9 place-items-center text-muted" aria-label="Clear search"><X className="size-4" /></button>}{query.length >= 2 && <div className="relative z-40 mt-2 max-h-[42dvh] w-full scroll-mb-[45dvh] overflow-auto rounded-2xl border border-line bg-surface p-2 shadow-focus sm:absolute sm:max-h-96 sm:scroll-mb-0">{results.map((result) => result.href ? <Link key={result.id} to={result.href} state={childNavigationState} onClick={() => setQuery("")} className="block rounded-xl px-3 py-3 hover:bg-elevated"><strong className="block text-sm">{result.title}</strong><span className="text-xs text-muted">{result.group} · {result.detail}</span></Link> : <button key={result.id} type="button" onClick={() => { if (result.timelineItemId) scrollToItem(result.timelineItemId); else if (result.group === "Travelers") { chooseTraveler(result.id.replace("traveler:", "")); setQuery(""); } }} className="block w-full rounded-xl px-3 py-3 text-left hover:bg-elevated"><strong className="block text-sm">{result.title}</strong><span className="text-xs text-muted">{result.group} · {result.detail}</span></button>)}{results.length === 0 && <p className="p-4 text-sm text-muted">Nothing in this trip matches.</p>}</div>}</div>
 
       {view === "timeline" ? <main className="mt-5">
-        <section className="surface-card overflow-hidden p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="eyebrow">Before you go</p><h2 className="mt-1 font-display text-xl font-black">Trip readiness</h2></div><ShieldCheck className={`size-6 ${readiness.remaining ? "text-warning" : "text-success"}`} /></div>{readiness.total ? <><p className="mt-3 text-sm text-muted">{readiness.resolved} of {readiness.total} checks resolved{readiness.dueDate ? ` · next due ${new Date(`${readiness.dueDate}T12:00:00`).toLocaleDateString()}` : ""}</p><div className="mt-3 h-2 overflow-hidden rounded-full bg-elevated"><span className="block h-full rounded-full bg-success transition-all" style={{ width: `${Math.round(readiness.resolved / readiness.total * 100)}%` }} /></div></> : <p className="mt-3 text-sm text-muted">Add visas, passports, insurance, packing, or custom checks. Dated preparation tasks still belong in the timeline below.</p>}<div className="mt-4 flex gap-4"><Link className="text-sm font-extrabold text-brand" to={`/trips/${trip.id}/readiness`}>Open checklist</Link>{editable && <button type="button" className="text-sm font-extrabold text-brand" onClick={() => setOpenForm("requirement")}>+ Add check</button>}</div></section>
+        <section id="timeline-readiness" data-trip-scroll-anchor="timeline" className="surface-card group relative overflow-hidden p-5 transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft sm:p-6 motion-reduce:hover:translate-y-0"><Link className="absolute inset-0 z-10 rounded-[inherit] focus-visible:ring-2 focus-visible:ring-brand" to={`/trips/${trip.id}/readiness`} state={childNavigationState} aria-label="Open trip readiness" /><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="eyebrow">Before you go</p><h2 className="mt-1 font-display text-xl font-black">Trip readiness</h2></div><ShieldCheck className={`size-6 ${readiness.remaining ? "text-warning" : "text-success"}`} /></div>{readiness.total ? <><p className="mt-3 text-sm text-muted">{readiness.resolved} of {readiness.total} checks resolved{readiness.dueDate ? ` · next due ${new Date(`${readiness.dueDate}T12:00:00`).toLocaleDateString()}` : ""}</p><div className="mt-3 h-2 overflow-hidden rounded-full bg-elevated"><span className="block h-full rounded-full bg-success transition-all" style={{ width: `${Math.round(readiness.resolved / readiness.total * 100)}%` }} /></div></> : <p className="mt-3 text-sm text-muted">Add visas, passports, insurance, packing, or custom checks. Dated preparation tasks still belong in the timeline below.</p>}<div className="relative z-20 mt-4 flex gap-4"><Link className="text-sm font-extrabold text-brand" to={`/trips/${trip.id}/readiness`} state={childNavigationState}>Open checklist</Link>{editable && <button type="button" className="text-sm font-extrabold text-brand" onClick={() => setOpenForm("requirement")}>+ Add check</button>}</div></section>
         <section className="surface-card mt-5 p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="eyebrow">Everything in order</p><h2 className="mt-1 font-display text-2xl font-black">{focusedTraveler ? `${focusedTraveler.display_name}'s timeline` : "Complete timeline"}</h2><p className="mt-2 text-sm text-muted">{focusedTraveler ? "Shared events and this traveler's events are shown in time order." : "Past events are above you. Upcoming events continue below."}</p></div>{visibleItinerary.length > 0 && <button type="button" className="secondary-button" onClick={() => downloadTripCalendar(trip, visibleItinerary)}><Download className="size-4" /> Calendar</button>}</div>
           {phaseJumps.length > 0 && <nav aria-label="Timeline sections" className="sticky top-2 z-30 mt-4 flex gap-2 overflow-auto rounded-2xl border border-line bg-surface/95 p-2 shadow-soft backdrop-blur">{phaseJumps.map(({ phase, item }) => <button key={phase} type="button" onClick={() => scrollToItem(item.id)} className={`shrink-0 rounded-xl px-3 py-2 text-xs font-black ${phase === "current" ? "bg-coral text-white" : "bg-elevated text-brand"}`}>{phaseLabels[phase]}</button>)}</nav>}
@@ -318,7 +449,7 @@ export function TripPage() {
               return <Fragment key={item.id}>
                 {phase !== previousPhase && <div id={`timeline-phase-${phase}`} className={`${index ? "pt-7" : ""} relative z-10 pb-3 pl-6 sm:pl-[10.5rem]`}><span className={`inline-flex rounded-full px-3 py-1.5 text-[.65rem] font-black uppercase tracking-[.14em] ${phase === "current" ? "bg-coral text-white" : "border border-line bg-surface text-muted"}`}>{phaseLabels[phase]}</span></div>}
                 {item.timing_mode !== "unscheduled" && (index === 0 || items[index - 1].timing_mode === "unscheduled" || itineraryDateKey(items[index - 1].starts_at, items[index - 1].timezone) !== itineraryDateKey(item.starts_at, item.timezone)) && <h3 className={`${index ? "pt-3" : ""} pb-3 pl-6 text-sm font-black sm:pl-[10.5rem]`}>{formatItineraryDate(item.starts_at, item.timezone)}</h3>}
-                <div id={`timeline-${item.id}`} className="relative mb-4 grid scroll-mt-28 grid-cols-1 pl-5 sm:grid-cols-[6rem_2.5rem_minmax(0,1fr)] sm:gap-4 sm:pl-0">
+                <div id={`timeline-${item.id}`} data-trip-scroll-anchor="timeline" className="relative mb-4 grid scroll-mt-28 grid-cols-1 pl-5 sm:grid-cols-[6rem_2.5rem_minmax(0,1fr)] sm:gap-4 sm:pl-0">
                   <span aria-hidden="true" className={`absolute left-[-0.05rem] top-6 z-10 size-2.5 rounded-full ring-4 ring-surface sm:hidden ${current ? "bg-coral" : phase === "past" ? "bg-line" : "bg-brand"}`} />
                   <time className={`hidden pt-4 text-right text-xs font-black sm:block ${current ? "text-coral" : "text-muted"}`}>{compactTimingLabel}</time>
                   <span className={`z-10 mt-3 hidden size-10 place-items-center rounded-full border-4 border-surface sm:grid ${current ? "bg-coral text-white shadow-focus" : phase === "past" ? "bg-line text-muted" : "bg-brand-soft text-brand"}`}><Icon className="size-4" /></span>
@@ -329,8 +460,8 @@ export function TripPage() {
                     <div className="min-w-0"><span className={`mb-2 inline-flex rounded-full px-2 py-1 text-[.6rem] font-black uppercase tracking-[.12em] ${current ? "bg-coral text-white" : "bg-surface text-muted"}`}>{phaseForActive(item, current)}</span><h3 className="font-display text-lg font-black">{item.title}</h3>{item.timing_mode === "relative" && <p className="mt-1 text-xs font-extrabold text-brand">{timingLabel}</p>}{item.timing_mode === "relative" && explicitStart && <p className="mt-1 text-xs text-muted">Starts {formatEventTime(item.starts_at, item.timezone)}</p>}<p className="mt-1 text-xs capitalize text-muted">{(item.event_type ?? "custom").replaceAll("_", " ")} · {(item.event_status ?? "planned").replaceAll("_", " ")}</p>{end && <p className="mt-1 text-xs text-muted">{end.journey ? "Arrives" : "Ends"} {formatEventTime(end.endsAt, endTimeZone)} · {end.duration}</p>}{plannedDuration && <p className="mt-1 text-xs text-muted">Planned duration · {plannedDuration}</p>}</div>
                     <EventTravelers item={item} travelerIds={travelerIds} travelers={travelers} />
                     {item.location?.label && <p className="mt-3 flex items-start gap-2 text-sm text-muted"><MapPin className="mt-0.5 size-4 shrink-0" />{item.location.label}</p>}
-                    <div className="relative z-20 mt-3 flex flex-wrap gap-3">{map ? <a href={map} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-extrabold text-brand"><LocateFixed className="size-4" /> Navigation</a> : editable && !isJourneyEventType(item.event_type) ? <button type="button" onClick={() => setEditingItinerary(item)} className="inline-flex items-center gap-1.5 text-xs font-extrabold text-warning"><MapPin className="size-4" /> Add location</button> : null}</div>
-                    {booking && <BookingEventSummary booking={booking} flights={flights} journeys={journeys} />}
+                    <div className="relative z-20 mt-3 flex flex-wrap items-center gap-3">{map ? <a href={map} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-extrabold text-brand"><LocateFixed className="size-4" /> Navigation</a> : editable && !isJourneyEventType(item.event_type) ? <button type="button" onClick={() => editTimelineItem(item)} className="inline-flex items-center gap-1.5 text-xs font-extrabold text-warning"><MapPin className="size-4" /> Add location</button> : null}<EventDocumentShortcut item={item} travelerId={focusedTravelerId} navigationState={childNavigationState} /></div>
+                    {booking && <BookingEventSummary tripId={trip.id} booking={booking} flights={flights} journeys={journeys} travelers={travelers} focusedTravelerId={focusedTravelerId} />}
                     <span className="mt-4 flex items-center justify-end gap-1 text-xs font-extrabold text-brand">View details <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" /></span>
                   </FocusSurface>
                 </div>
@@ -342,33 +473,35 @@ export function TripPage() {
       </main> : <main className="mt-5 space-y-5">
         <nav className="flex gap-2 overflow-auto pb-1">{[["overview","Overview"],["reservations","Reservations"],["costs","Costs"],["people","People"],["readiness","Readiness"],["documents","Documents"],["archived","Archived"],["offline","Offline"],["metadata","Travel data"],["notes","Notes"]].map(([id, label]) => <a className="shrink-0 rounded-full border border-line bg-surface px-3 py-2 text-xs font-bold" key={id} href={`#${id}`}>{label}</a>)}</nav>
         <Section id="overview" eyebrow="Overview" title="Trip information" onActivate={isOwner ? () => setOpenForm("settings") : undefined} action={isOwner && <button type="button" onClick={() => setOpenForm("settings")} className="secondary-button"><Settings className="size-4" /> Edit</button>}><dl className="grid gap-4 text-sm sm:grid-cols-2"><div><dt className="text-muted">Destination</dt><dd className="mt-1 font-bold">{trip.destination_summary}</dd></div><div><dt className="text-muted">Dates</dt><dd className="mt-1 font-bold">{formatDateRange(trip.start_date, trip.end_date)}</dd></div><div><dt className="text-muted">Default currency</dt><dd className="mt-1 font-bold">{trip.base_currency}</dd></div><div><dt className="text-muted">Fallback time zone</dt><dd className="mt-1 font-bold">{trip.primary_timezone}</dd></div></dl></Section>
-        <Section id="reservations" eyebrow="Bookings" title={focusedTraveler ? `${focusedTraveler.display_name}'s reservations` : "Reservations"} action={editable && <button type="button" className="secondary-button" onClick={() => setOpenForm("event")}><Plus className="size-4" /> Add</button>}><div className="grid gap-3 sm:grid-cols-2">{visibleBookings.map((booking) => { const flight = flightByBooking.get(booking.id); const href = flight ? `/trips/${trip.id}/flights/${flight.id}` : `/trips/${trip.id}/bookings/${booking.id}`; const bookingFlights = flights.filter((leg) => leg.booking_id === booking.id).sort((a, b) => a.segment_order - b.segment_order); const bookingJourneys = journeys.filter((leg) => leg.booking_id === booking.id).sort((a, b) => a.segment_order - b.segment_order); const route = bookingFlights.length ? journeyRoute(bookingFlights.map((leg) => ({ origin: leg.departure_airport_code || leg.departure_airport_name, destination: leg.arrival_airport_code || leg.arrival_airport_name }))) : journeyRoute(bookingJourneys.map((leg) => ({ origin: leg.origin_code || leg.origin_name, destination: leg.destination_code || leg.destination_name }))); return <ReservationCard booking={booking} href={href} route={route} key={booking.id} />; })}{visibleBookings.length === 0 && <p className="col-span-full text-sm text-muted">No relevant reservations yet.</p>}</div></Section>
-        <Section id="costs" eyebrow="Money" title={focusedTraveler ? `${focusedTraveler.display_name}'s trip costs` : "Trip expenses"} action={editable && <button type="button" className="secondary-button" onClick={() => { setCostTargetItem(null); setOpenForm("cost"); }}><Plus className="size-4" /> Add</button>}><button type="button" onClick={openExpenses} className="group block w-full rounded-2xl text-left outline-none focus-visible:ring-2 focus-visible:ring-brand" aria-label="Open itemized trip expenses"><CostTotals costs={visibleCosts} /><span className="mt-3 flex items-center justify-end gap-1 text-xs font-extrabold text-brand">View itemized expenses <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" /></span></button></Section>
-        <Section id="people" eyebrow="People & sharing" title={focusedTravelerId ? travelers.find((row) => row.id === focusedTravelerId)?.display_name ?? "Selected traveler" : "Everyone"} action={<button type="button" className="secondary-button" onClick={() => setOpenForm("people")}><UsersRound className="size-4" /> Open</button>}><p className="text-sm text-muted">Switch between the complete trip and one person's relevant timeline, reservations, costs, readiness, seats, and documents.</p></Section>
-        <Section id="readiness" eyebrow="Before departure" title="Readiness"><p className="text-sm text-muted">{readiness.resolved} of {readiness.total} checks resolved.</p><Link className="mt-4 inline-flex text-sm font-extrabold text-brand" to={`/trips/${trip.id}/readiness`}>Open readiness checklist →</Link></Section>
-        <Section id="documents" eyebrow="Vault" title="Documents" action={<button type="button" className="secondary-button" onClick={() => setOpenForm("document")}><Plus className="size-4" /> Upload</button>}><p className="text-sm text-muted">{focusedDocuments.length} document{focusedDocuments.length === 1 ? "" : "s"} {focusedTravelerId ? "for the selected traveler" : "in this trip"}</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{focusedDocuments.map((document) => <Link key={document.id} to={`/trips/${trip.id}/documents/${document.id}`} className="rounded-xl bg-elevated p-3 text-sm font-bold text-brand">{document.title}</Link>)}</div></Section>
+        <Section id="reservations" eyebrow="Bookings" title={focusedTraveler ? `${focusedTraveler.display_name}'s reservations` : "Reservations"} action={editable && <button type="button" className="secondary-button" onClick={() => setOpenForm("event")}><Plus className="size-4" /> Add</button>}><div className="grid gap-3 sm:grid-cols-2">{visibleBookings.map((booking) => { const flight = flightByBooking.get(booking.id); const href = flight ? `/trips/${trip.id}/flights/${flight.id}` : `/trips/${trip.id}/bookings/${booking.id}`; const bookingFlights = flights.filter((leg) => leg.booking_id === booking.id).sort((a, b) => a.segment_order - b.segment_order); const bookingJourneys = journeys.filter((leg) => leg.booking_id === booking.id).sort((a, b) => a.segment_order - b.segment_order); const route = bookingFlights.length ? journeyRoute(bookingFlights.map((leg) => ({ origin: leg.departure_airport_code || leg.departure_airport_name, destination: leg.arrival_airport_code || leg.arrival_airport_name }))) : journeyRoute(bookingJourneys.map((leg) => ({ origin: leg.origin_code || leg.origin_name, destination: leg.destination_code || leg.destination_name }))); return <ReservationCard booking={booking} href={href} route={route} navigationState={childNavigationState} key={booking.id} />; })}{visibleBookings.length === 0 && <p className="col-span-full text-sm text-muted">No relevant reservations yet.</p>}</div></Section>
+        <Section id="costs" eyebrow="Money" title={focusedTraveler ? `${focusedTraveler.display_name}'s trip costs` : "Trip expenses"} onActivate={() => openExpenses()} activateLabel="Open itemized trip expenses" action={editable && <button type="button" className="secondary-button" onClick={() => { setCostTargetItem(null); setOpenForm("cost"); }}><Plus className="size-4" /> Add</button>}><CostTotals costs={visibleCosts} /><span className="mt-3 flex items-center justify-end gap-1 text-xs font-extrabold text-brand">View itemized expenses <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" /></span></Section>
+        <Section id="people" eyebrow="People & sharing" title={focusedTravelerId ? travelers.find((row) => row.id === focusedTravelerId)?.display_name ?? "Selected traveler" : "Everyone"} onActivate={openPeople} activateLabel="Open People & sharing" action={<button type="button" className="secondary-button" onClick={(event) => openPeople(event.currentTarget)}><UsersRound className="size-4" /> Open</button>}><p className="text-sm text-muted">Switch between the complete trip and one person's relevant timeline, reservations, costs, readiness, seats, and documents.</p></Section>
+        <Section id="readiness" eyebrow="Before departure" title="Readiness" onActivate={() => navigate(`/trips/${trip.id}/readiness`, { state: childNavigationState })} activateLabel="Open trip readiness" action={<Link className="secondary-button" to={`/trips/${trip.id}/readiness`} state={childNavigationState}>Open</Link>}><p className="text-sm text-muted">{readiness.resolved} of {readiness.total} checks resolved.</p></Section>
+        <Section id="documents" eyebrow="Vault" title="Documents" action={<button type="button" className="secondary-button" onClick={() => setOpenForm("document")}><Plus className="size-4" /> Upload</button>}><p className="text-sm text-muted">{focusedDocuments.length} document{focusedDocuments.length === 1 ? "" : "s"} {focusedTravelerId ? "for the selected traveler" : "in this trip"}</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{focusedDocuments.map((document) => <Link key={document.id} to={`/trips/${trip.id}/documents/${document.id}`} state={childNavigationState} className="rounded-xl bg-elevated p-3 text-sm font-bold text-brand">{document.title}</Link>)}</div></Section>
         <Section id="archived" eyebrow="Recoverable" title="Archived trip items"><p className="text-sm text-muted">Archived events and booking groups leave the timeline, while their documents and costs stay available. Archived costs can also be restored here.</p><div className="mt-4 space-y-2">{archivedItemsQuery.data?.map((item) => <div key={`${item.kind}:${item.id}`} className="flex items-center gap-3 rounded-xl bg-elevated p-3 text-sm"><span className="min-w-0 flex-1"><strong className="block">{item.title}</strong><span className="text-xs capitalize text-muted">{item.kind}</span></span>{editable && <button type="button" className="secondary-button min-h-9 px-3 py-2 text-xs" disabled={restoreArchivedItem.isPending} onClick={() => restoreArchivedItem.mutate({ id: item.id, kind: item.kind })}><RotateCcw className="size-3.5" /> Restore</button>}</div>)}{!navigator.onLine && <p className="rounded-xl bg-warning/10 p-3 text-sm text-warning">Connect to view and restore archived items.</p>}{navigator.onLine && archivedItemsQuery.data?.length === 0 && <p className="text-sm text-muted">Nothing is archived.</p>}</div></Section>
         <Section id="offline" eyebrow="On this device" title="Offline pack"><OfflinePackControl tripId={trip.id} /></Section>
         <Section id="metadata" eyebrow="Travel metadata" title="Airlines"><TripAirlinesPanel tripId={trip.id} canEdit={editable} /></Section>
         <Section id="notes" eyebrow="Useful details" title="Notes" action={editable && <button type="button" className="secondary-button" onClick={() => setOpenForm("note")}><Plus className="size-4" /> Add</button>}><div className="space-y-3">{notesQuery.data?.map((note) => <NoteCard key={note.id} note={note} editable={editable} onEdit={() => setEditingNote(note)} onArchive={() => window.confirm("Archive this note?") && archiveNoteMutation.mutate(note)} />)}{notesQuery.data?.length === 0 && <p className="text-sm text-muted">No notes yet.</p>}</div></Section>
       </main>}
 
-      <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-line bg-surface/95 p-2 shadow-focus backdrop-blur sm:bottom-6">{editable && <button type="button" onClick={() => setOpenForm("event")} className="primary-button min-h-11 whitespace-nowrap px-3 sm:px-4" aria-label="Add event"><CalendarPlus className="size-4" /><span>Add event</span></button>}<button type="button" onClick={() => setOpenForm("people")} className="secondary-button size-11 justify-center px-0 sm:size-auto sm:px-4" aria-label={`People and sharing · ${focusedTraveler?.display_name ?? "Everyone"}`}>{focusedTraveler ? <span className="grid size-6 place-items-center rounded-full bg-brand text-[.55rem] font-black text-surface">{focusedTraveler.display_name.slice(0, 2).toUpperCase()}</span> : <UsersRound className="size-4" />}<span className="hidden max-w-32 truncate sm:inline">{focusedTraveler?.display_name ?? "Everyone"}</span></button><button type="button" onClick={() => view === "details" ? changeView("timeline") : changeView("details")} className="tap-target grid size-11 place-items-center rounded-xl border border-line text-brand" aria-label={view === "details" ? "Open timeline" : "Open trip details"}>{view === "details" ? <CalendarClock className="size-5" /> : <Info className="size-5" />}</button>{view === "timeline" && activeItem && <button type="button" onClick={() => scrollToItem(activeItem.id)} className="tap-target grid size-11 place-items-center rounded-xl border border-line text-brand" aria-label="Jump to now or next"><LocateFixed className="size-5" /></button>}</div>
+      <p className="sr-only" role="status" aria-live="polite">{travelerAnnouncement}</p>
+      <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-line bg-surface/95 p-2 shadow-focus backdrop-blur sm:bottom-6">{editable && <button type="button" onClick={() => setOpenForm("event")} className="primary-button min-h-11 whitespace-nowrap px-3 sm:px-4" aria-label="Add event"><CalendarPlus className="size-4" /><span>Add event</span></button>}<button type="button" onClick={(event) => openPeople(event.currentTarget)} className="secondary-button size-11 justify-center px-0 sm:size-auto sm:px-4" aria-label={`People and sharing · ${focusedTraveler?.display_name ?? "Everyone"}`}>{focusedTraveler ? <span className="grid size-6 place-items-center rounded-full bg-brand text-[.55rem] font-black text-surface">{focusedTraveler.display_name.slice(0, 2).toUpperCase()}</span> : <UsersRound className="size-4" />}<span className="hidden max-w-32 truncate sm:inline">{focusedTraveler?.display_name ?? "Everyone"}</span></button><button type="button" onClick={() => view === "details" ? openCurrentTimeline() : changeView("details")} className="tap-target grid size-11 place-items-center rounded-xl border border-line text-brand" aria-label={view === "details" ? "Jump to current timeline" : "Open trip details"}>{view === "details" ? <CalendarClock className="size-5" /> : <Info className="size-5" />}</button>{view === "timeline" && activeItem && <button type="button" onClick={() => scrollToItem(activeItem.id)} className="tap-target grid size-11 place-items-center rounded-xl border border-line text-brand" aria-label="Jump to now or next"><LocateFixed className="size-5" /></button>}</div>
     </>}
   </div>
   {showingExpenses && <TripExpensesSheet title={focusedTraveler ? `${focusedTraveler.display_name}'s trip expenses` : "Trip expenses"} costs={visibleCosts} balances={balances} travelers={travelers} onClose={() => { setShowingExpenses(false); setViewingCost(null); setCostReturnsToExpenses(false); }} onViewCost={(cost) => { setShowingExpenses(false); setCostReturnsToExpenses(true); setViewingCost(cost); }} />}
-  {trip && viewingItinerary && <EventDetailsSheet item={viewingItinerary} itinerary={visibleItinerary} tripId={trip.id} booking={viewingItinerary.booking_id ? visibleBookings.find((booking) => booking.id === viewingItinerary.booking_id) : undefined} flights={flights} journeys={journeys} travelerIds={participantRows.filter((row) => row.itinerary_item_id === viewingItinerary.id).map((row) => row.traveler_id)} travelers={travelers} costs={visibleCosts} focusedTravelerId={focusedTravelerId} editable={editable} canMoveUp={viewingItinerary.timing_mode !== "relative" && viewingItineraryIndex > 0 && itinerary[viewingItineraryIndex - 1]?.starts_at === viewingItinerary.starts_at} canMoveDown={viewingItinerary.timing_mode !== "relative" && viewingItineraryIndex >= 0 && itinerary[viewingItineraryIndex + 1]?.starts_at === viewingItinerary.starts_at} onClose={() => setViewingItineraryId(null)} onEdit={() => setEditingItinerary(viewingItinerary)} onArchive={() => { if (window.confirm(`Archive ${viewingItinerary.title}? ${viewingItinerary.booking_id ? "Its complete booking group leaves the timeline." : "It leaves the timeline."} Linked documents and costs remain.`)) { setViewingItineraryId(null); archiveItinerary.mutate(viewingItinerary); } }} onAddBooking={() => setEventBookingTarget(viewingItinerary)} onAddCost={() => { setCostTargetItem(viewingItinerary); setOpenForm("cost"); }} onViewCost={(cost) => { setCostReturnEventId(viewingItinerary.id); setCostReturnsToExpenses(false); setViewingItineraryId(null); setViewingCost(cost); }} onUploadDocument={() => { setDocumentTargetItem(viewingItinerary); setOpenForm("document"); }} onStatus={(status) => updateEventStatus.mutate({ item: viewingItinerary, status })} onMoveUp={() => reorderItinerary.mutate({ itemId: viewingItinerary.id, direction: "up" })} onMoveDown={() => reorderItinerary.mutate({ itemId: viewingItinerary.id, direction: "down" })} />}
+  {trip && viewingItinerary && <EventDetailsSheet item={viewingItinerary} itinerary={visibleItinerary} tripId={trip.id} booking={viewingItinerary.booking_id ? visibleBookings.find((booking) => booking.id === viewingItinerary.booking_id) : undefined} flights={flights} journeys={journeys} travelerIds={participantRows.filter((row) => row.itinerary_item_id === viewingItinerary.id).map((row) => row.traveler_id)} travelers={travelers} costs={visibleCosts} focusedTravelerId={focusedTravelerId} navigationState={childNavigationState} editable={editable} canMoveUp={viewingItinerary.timing_mode !== "relative" && viewingItineraryIndex > 0 && itinerary[viewingItineraryIndex - 1]?.starts_at === viewingItinerary.starts_at} canMoveDown={viewingItinerary.timing_mode !== "relative" && viewingItineraryIndex >= 0 && itinerary[viewingItineraryIndex + 1]?.starts_at === viewingItinerary.starts_at} onClose={() => setViewingItineraryId(null)} onEdit={() => editTimelineItem(viewingItinerary)} onArchive={() => { if (window.confirm(`Archive ${viewingItinerary.title}? ${viewingItinerary.booking_id ? "Its complete booking group leaves the timeline." : "It leaves the timeline."} Linked documents and costs remain.`)) { setViewingItineraryId(null); archiveItinerary.mutate(viewingItinerary); } }} onAddBooking={() => setEventBookingTarget(viewingItinerary)} onAddCost={() => { setCostTargetItem(viewingItinerary); setOpenForm("cost"); }} onViewCost={(cost) => { setCostReturnEventId(viewingItinerary.id); setCostReturnsToExpenses(false); setViewingItineraryId(null); setViewingCost(cost); }} onUploadDocument={() => { setDocumentTargetItem(viewingItinerary); setOpenForm("document"); }} onStatus={(status) => updateEventStatus.mutate({ item: viewingItinerary, status })} onMoveUp={() => reorderItinerary.mutate({ itemId: viewingItinerary.id, direction: "up" })} onMoveDown={() => reorderItinerary.mutate({ itemId: viewingItinerary.id, direction: "down" })} />}
   {viewingCost && <CostDetailsSheet cost={viewingCost} travelers={travelers} itinerary={visibleItinerary} bookings={visibleBookings} editable={editable} onClose={closeCostDetails} onEdit={() => { setViewingCost(null); setCostReturnEventId(null); setCostReturnsToExpenses(false); setEditingCost(viewingCost); }} onArchive={() => { if (window.confirm(`Archive ${viewingCost.title}? You can restore it from Archived trip items.`)) { archiveCost.mutate(viewingCost); closeCostDetails(); } }} />}
-  {trip && openForm === "event" && editable && <AddEventForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} onClose={closeForm} />}
-  {trip && openForm === "people" && <PeopleSheet trip={trip} travelers={travelers} members={members} selectedId={focusedTravelerId} editable={editable} isOwner={isOwner} onSelect={chooseTraveler} onAdd={() => setOpenForm("traveler")} onShare={() => setOpenForm("share")} onClose={closeForm} onRefresh={() => void membersQuery.refetch()} />}
+  {trip && openForm === "event" && editable && <AddEventForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} onClose={closeForm} onAddDocument={(saved) => { setDocumentTargetItem({ id: saved.itineraryItemId, booking_id: saved.bookingId, title: saved.title }); setOpenForm("document"); }} />}
+  {trip && openForm === "people" && <PeopleSheet trip={trip} travelers={travelers} members={members} selectedId={focusedTravelerId} editable={editable} isOwner={isOwner} onSelect={selectTraveler} onAdd={() => setOpenForm("traveler")} onShare={() => setOpenForm("share")} onClose={closePeople} onRefresh={() => void membersQuery.refetch()} />}
   {trip && openForm === "cost" && editable && <AddCostForm trip={trip} travelers={travelers} bookingId={costTargetItem?.booking_id ?? undefined} itineraryItemId={costTargetItem?.id} sourceTitle={costTargetItem?.title} onClose={closeForm} />}
-  {trip && openForm === "document" && <UploadDocumentForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} members={members} privateOnly={!editable} bookingId={documentTargetItem?.booking_id ?? undefined} contextTitle={documentTargetItem?.title} onUploaded={documentTargetItem ? async (documentId) => { await attachDocumentsToEvent(documentTargetItem, [documentId]); await queryClient.invalidateQueries({ queryKey: ["event-documents", documentTargetItem.id] }); } : undefined} onClose={closeForm} />}
+  {trip && openForm === "document" && <UploadDocumentForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} members={members} privateOnly={!editable} bookingId={documentTargetItem?.booking_id ?? undefined} contextTitle={documentTargetItem?.title} onUploaded={documentTargetItem ? async (documentId) => { const target = itinerary.find((item) => item.id === documentTargetItem.id) ?? (await listItinerary(trip.id)).find((item) => item.id === documentTargetItem.id); if (!target) throw new Error("The document was saved, but its new timeline event could not be linked. Open the event and attach it from there."); await attachDocumentsToEvent(target, [documentId]); await queryClient.invalidateQueries({ queryKey: ["event-documents", documentTargetItem.id] }); } : undefined} onClose={closeForm} />}
   {trip && openForm === "traveler" && editable && <AddTravelerForm trip={trip} onClose={closeForm} />}
   {trip && openForm === "share" && isOwner && <ShareTripForm trip={trip} travelers={travelers} onClose={closeForm} />}
   {trip && openForm === "requirement" && editable && <AddRequirementForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} onClose={closeForm} />}
   {trip && openForm === "note" && editable && <AddNoteForm trip={trip} onClose={closeForm} />}
   {trip && openForm === "settings" && isOwner && <TripSettingsForm trip={trip} onClose={closeForm} onArchived={() => navigate("/trips")} />}
   {trip && eventBookingTarget && editable && <AddActivityBookingForm trip={trip} item={eventBookingTarget} itinerary={visibleItinerary} travelers={travelers} eventTravelerIds={participantRows.filter((row) => row.itinerary_item_id === eventBookingTarget.id).map((row) => row.traveler_id)} onClose={() => setEventBookingTarget(null)} />}
+  {trip && editingBooking && editable && <EditBookingForm trip={trip} booking={editingBooking} travelers={travelers} selectedTravelerIds={(bookingTravelersQuery.data ?? []).filter((row) => row.booking_id === editingBooking.id).map((row) => row.traveler_id)} onClose={() => setEditingBooking(null)} />}
   {trip && editingItinerary && editable && <AddItineraryForm trip={trip} item={editingItinerary} travelers={travelers} bookings={bookings} onAddBooking={canAddEventBooking(editingItinerary) ? () => { setEditingItinerary(null); setEventBookingTarget(editingItinerary); } : undefined} onClose={() => setEditingItinerary(null)} />}
   {trip && editingCost && editable && <AddCostForm trip={trip} travelers={travelers} cost={editingCost} onClose={() => setEditingCost(null)} />}
   {trip && editingTraveler && editable && <EditTravelerForm trip={trip} traveler={editingTraveler} onClose={() => setEditingTraveler(null)} />}

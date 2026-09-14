@@ -4,21 +4,22 @@ description: "Writing and decision-tracking conventions for Trip Vault planning 
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [documentation, conventions, decisions]
-last_verified: 2026-09-11
+last_verified: 2026-09-14
 ---
 
 # Trip Vault Documentation Conventions
 
-These conventions keep the planning documents readable while the product is still being discussed. They apply to documents under `docs/`.
+These conventions keep the current design contract and future work readable. They apply to documents under `docs/`.
 
 ## Document Roles
 
 | Document | Purpose | Should contain |
 |---|---|---|
 | `HIGH_LEVEL_DESIGN.md` | System boundaries and major architectural choices | Goals, components, ownership, major flows, risks, open decisions |
-| `LOW_LEVEL_DESIGN.md` | Proposed implementation contract | Modules, data model, routes, storage layout, sync behavior, security policies, tests |
+| `LOW_LEVEL_DESIGN.md` | Implementation contract | Modules, data model, routes, storage layout, sync behavior, security policies, tests |
 | `FEATURES.md` | Product scope | User-facing capabilities, priority, release target, and acceptance conditions |
 | `REDESIGN_CHECKLIST.md` | Active redesign decisions | Review checkboxes, priorities, schema impact, implementation slices, and responsive preview gates |
+| `EVENT_FORM_REDESIGN.md` | Accepted event-form contract | Progressive form sequence, mode-specific fields, ticket/document behavior, implemented schema impact, and explicitly deferred refinements |
 | `FEATURE_TEST_CHECKLIST.md` | Manual release acceptance | Small phone, desktop, offline, sharing, journey, and Admin test list |
 | `source-index.md` | Documentation traceability | Authoritative code, schema, design, and verification sources |
 
@@ -70,3 +71,4 @@ Documents should normally be reviewed in this order:
 | Low-level design | `docs/LOW_LEVEL_DESIGN.md` |
 | Feature catalog | `docs/FEATURES.md` |
 | Redesign checklist | `docs/REDESIGN_CHECKLIST.md` |
+| Event form redesign | `docs/EVENT_FORM_REDESIGN.md` |

@@ -1,10 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { supabase } from "../../lib/supabase/client";
 import { database } from "../../lib/local-db/database";
 import { ensureBlobMimeType, removeOfflineFile, storeOfflineFile } from "../../lib/storage/offlineFiles";
-import { cacheEntity, cacheEntityList, discardDocumentUploadOperations, localProfileId, networkWithCache, queueAccountDocumentUpload, queueCreate, queueDelete, queueDocumentAssociation, queueDocumentUpload, queueUpdate, readEntityById, readEntityList, syncOutbox } from "../sync/localSync";
-import type { ItineraryItem, TimelineEventType } from "../trips/types";
+import { cacheEntity, cacheEntityList, discardDocumentUploadOperations, localProfileId, networkWithCache, queueAccountDocumentUpload, queueCreate, queueDelete, queueDocumentAssociation, queueDocumentUpload, queueUpdate, queueUpsert, readEntityById, readEntityList, syncOutbox } from "../sync/localSync";
+import type { CreateCostInput, CreateItineraryInput, ItineraryItem, TimelineEventType } from "../trips/types";
 import { addItineraryItem, addTripCost } from "../trips/api";
+import { normalizeParticipantSelection } from "../trips/participantScope";
+import { cacheParticipantAssignments, queueBookingParticipantSync, syncBookingParticipants } from "../trips/participantSync";
 import { listAvailableAirlines } from "../metadata/publishedConfig";
 import type {
   Booking,
@@ -25,6 +28,8 @@ import type {
   FlightTraveler,
   FlightStatus,
   JourneyLeg,
+  JourneyLegDetails,
+  JourneyLegTraveler,
   MemberRole,
   ParticipationType,
   Requirement,
@@ -41,10 +46,12 @@ import type {
   TripNote,
   UserProfile,
   UpdateBookingInput,
+  UpdateJourneyLegInput,
   UpdateRequirementInput,
   VaultDocument
 } from "./types";
 import { findDuplicateDocument } from "./documentModel";
+import { saveOptionalCreationCost } from "./creationCompletion";
 
 export const MAX_DOCUMENT_BYTES = 5_000_000;
 export const ALLOWED_DOCUMENT_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
@@ -224,9 +231,10 @@ export async function respondToTripOffer(offerId: string, accept: boolean) {
   return data ? String(data) : null;
 }
 
-const bookingSelect = "id,trip_id,type,title,provider,reference_code,start_at,end_at,source_timezone,location,details,journey_scope,booked_via_name,booked_via_url,booking_vendor_catalog_key,contact_name,contact_phone,version,created_at,updated_at";
+const bookingSelect = "id,trip_id,type,title,provider,reference_code,start_at,end_at,source_timezone,location,details,reservation_state,participant_scope,journey_scope,booked_via_name,booked_via_url,booking_vendor_catalog_key,contact_name,contact_phone,version,created_at,updated_at";
 
-function bookingFields(input: CreateBookingInput) {
+export function bookingFields(input: CreateBookingInput & { mapUrl?: string }) {
+  const participants = normalizeParticipantSelection(input.participantScope, input.travelerIds);
   return {
     type: input.type,
     title: input.title,
@@ -235,8 +243,10 @@ function bookingFields(input: CreateBookingInput) {
     start_at: input.startsAt || null,
     end_at: input.endsAt || null,
     source_timezone: input.timezone || null,
-    location: input.location ? { label: input.location, address: input.location } : null,
-    details: input.notes ? { notes: input.notes } : {},
+    location: input.location || input.mapUrl ? { label: input.location || undefined, address: input.location || undefined, map_url: input.mapUrl || undefined } : null,
+    details: { ...(input.bookingDetails ?? {}), ...(input.notes ? { notes: input.notes } : {}) },
+    reservation_state: input.reservationState ?? "booked",
+    participant_scope: participants.participantScope,
     journey_scope: input.journeyScope || null,
     booked_via_name: input.bookedViaName || null,
     booked_via_url: input.bookedViaUrl || null,
@@ -263,16 +273,17 @@ export async function getBooking(bookingId: string): Promise<Booking> {
 
 export async function addBooking(input: CreateBookingInput): Promise<Booking> {
   const actor = await userId();
+  const participants = normalizeParticipantSelection(input.participantScope, input.travelerIds);
   const id = crypto.randomUUID(); const created_at = new Date().toISOString(); const booking: Booking = { id, trip_id: input.tripId, ...bookingFields(input), created_at, updated_at: created_at }; const row = { ...booking, created_by: actor };
   if (!navigator.onLine) {
     const parentOperation = await queueCreate({ entityType: `bookings:${input.tripId}`, table: "bookings", row });
-    for (const travelerId of input.travelerIds ?? []) await queueCreate({ entityType: `booking-travelers:${id}`, table: "booking_travelers", row: { id: `${id}:${travelerId}`, booking_id: id, traveler_id: travelerId }, serverRow: { booking_id: id, traveler_id: travelerId }, dependsOn: [parentOperation] });
+    for (const travelerId of participants.travelerIds) await queueCreate({ entityType: `booking-travelers:${input.tripId}`, table: "booking_travelers", row: { id: `${id}:${travelerId}`, booking_id: id, traveler_id: travelerId }, serverRow: { booking_id: id, traveler_id: travelerId }, dependsOn: [parentOperation] });
     return booking;
   }
   const { data, error } = await client().from("bookings").insert({ id, trip_id: input.tripId, ...bookingFields(input), created_by: actor }).select(bookingSelect).single();
   if (error) throw error;
-  if (input.travelerIds?.length) {
-    const { error: travelersError } = await client().from("booking_travelers").insert(input.travelerIds.map((travelerId) => ({ booking_id: id, traveler_id: travelerId })));
+  if (participants.travelerIds.length) {
+    const { error: travelersError } = await client().from("booking_travelers").insert(participants.travelerIds.map((travelerId) => ({ booking_id: id, traveler_id: travelerId })));
     if (travelersError) {
       const { error: rollbackError } = await client().from("bookings").update({ deleted_at: new Date().toISOString() }).eq("id", id);
       if (rollbackError) throw new Error(`Booking travelers could not be saved, and the unfinished booking could not be archived. Booking ID: ${id}. Refresh the trip before trying again.`);
@@ -342,22 +353,35 @@ export async function listTripRequirementAssignees(tripId: string, requirementId
 
 export async function updateBooking(input: UpdateBookingInput): Promise<Booking> {
   const existing = await getBooking(input.id);
+  const participants = normalizeParticipantSelection(input.participantScope, input.travelerIds);
   const fields = bookingFields(input);
-  const patch = { ...fields, details: input.notes ? { ...existing.details, notes: input.notes } : Object.fromEntries(Object.entries(existing.details).filter(([key]) => key !== "notes")) };
+  const details = { ...existing.details, ...(input.bookingDetails ?? {}) };
+  if (input.notes) details.notes = input.notes;
+  else delete details.notes;
+  const patch = { ...fields, details };
+  const { participant_scope: _participantScope, ...nonParticipantPatch } = patch;
   const currentTravelerIds = await listBookingTravelerIds(input.id, input.tripId);
   if (!navigator.onLine) {
-    const updated = { ...existing, ...patch, version: (existing.version ?? 1) + 1, updated_at: new Date().toISOString() };
-    const parent = await queueUpdate({ entityType: `bookings:${input.tripId}`, table: "bookings", row: updated, patch, baseVersion: existing.version });
-    const removals: string[] = [];
-    for (const travelerId of currentTravelerIds.filter((id) => !(input.travelerIds ?? []).includes(id))) removals.push(await queueDelete({ entityType: `booking-travelers:${input.tripId}`, table: "booking_travelers", entityId: `${input.id}:${travelerId}`, match: { booking_id: input.id, traveler_id: travelerId }, hard: true, dependsOn: [parent] }));
-    for (const travelerId of input.travelerIds ?? []) if (!currentTravelerIds.includes(travelerId)) await queueCreate({ entityType: `booking-travelers:${input.tripId}`, table: "booking_travelers", row: { id: `${input.id}:${travelerId}`, booking_id: input.id, traveler_id: travelerId }, serverRow: { booking_id: input.id, traveler_id: travelerId }, dependsOn: [parent, ...removals] });
+    const previousScope = existing.participant_scope ?? (currentTravelerIds.length ? "selected" : "everyone");
+    const scopeChanged = previousScope !== participants.participantScope;
+    const updated = { ...existing, ...patch, version: (existing.version ?? 1) + 1 + (scopeChanged ? 1 : 0), updated_at: new Date().toISOString() };
+    const parent = await queueUpdate({ entityType: `bookings:${input.tripId}`, table: "bookings", row: updated, patch: nonParticipantPatch, baseVersion: existing.version });
+    const linkedItems = (await readEntityList<ItineraryItem>(`itinerary:${input.tripId}`)).filter((item) => item.booking_id === input.id);
+    const appliesToAll = participants.participantScope === "everyone";
+    await Promise.all(linkedItems.map((item) => cacheEntity(`itinerary:${input.tripId}`, item.applies_to_all_travelers === appliesToAll ? item : { ...item, applies_to_all_travelers: appliesToAll, version: (item.version ?? 1) + 1, updated_at: new Date().toISOString() })));
+    await cacheParticipantAssignments({ tripId: input.tripId, bookingId: input.id, itineraryItemIds: linkedItems.map((item) => item.id), participantScope: participants.participantScope, travelerIds: participants.travelerIds });
+    await queueBookingParticipantSync({ bookingId: input.id, participantScope: participants.participantScope, travelerIds: participants.travelerIds }, [parent]);
     return updated;
   }
-  let request = client().from("bookings").update(patch).eq("id", input.id); if (input.version !== undefined) request = request.eq("version", input.version);
+  let request = client().from("bookings").update(nonParticipantPatch).eq("id", input.id); if (input.version !== undefined) request = request.eq("version", input.version);
   const { data, error } = await request.select(bookingSelect).maybeSingle(); if (error) throw error; if (!data) throw new Error("This booking changed on another device. Refresh before saving.");
-  const { error: clearError } = await client().from("booking_travelers").delete().eq("booking_id", input.id); if (clearError) throw clearError;
-  if (input.travelerIds?.length) { const { error: participantError } = await client().from("booking_travelers").insert(input.travelerIds.map((travelerId) => ({ booking_id: input.id, traveler_id: travelerId }))); if (participantError) throw participantError; }
-  await cacheEntity(`bookings:${input.tripId}`, data as Booking); return data as Booking;
+  const synchronized = await syncBookingParticipants({ bookingId: input.id, participantScope: participants.participantScope, travelerIds: participants.travelerIds });
+  await Promise.all([
+    cacheEntity(`bookings:${input.tripId}`, synchronized.booking),
+    ...synchronized.itinerary_items.map((item) => cacheEntity(`itinerary:${input.tripId}`, item)),
+    cacheParticipantAssignments({ tripId: input.tripId, bookingId: input.id, itineraryItemIds: synchronized.itinerary_items.map((item) => item.id), participantScope: participants.participantScope, travelerIds: participants.travelerIds })
+  ]);
+  return synchronized.booking;
 }
 
 export async function archiveBooking(booking: Booking) {
@@ -379,34 +403,92 @@ async function ensureTripAirline(tripId: string, airlineName: string, actor: str
   return { id, operationId: undefined as string | undefined };
 }
 
-export async function addFlightBooking(input: CreateFlightInput): Promise<{ booking: Booking; flights: FlightLeg[]; itinerary: ItineraryItem }> {
+/**
+ * Saves an optional cost after its event has already been created. Any failure is
+ * returned as a completion warning so callers never encourage a duplicate event
+ * retry. Offline, the cost waits for every booking/itinerary row it references.
+ */
+export async function saveOptionalCostForCreatedEvent(input: CreateCostInput): Promise<string | undefined> {
+  return saveOptionalCreationCost(async () => {
+    const dependsOn = [...(input.dependsOn ?? [])];
+    if (!navigator.onLine) {
+      for (const entityId of [input.bookingId, input.itineraryItemId]) {
+        if (!entityId) continue;
+        const operation = await database.outbox.where("entityId").equals(entityId).filter((row) => row.operation === "create").first();
+        if (operation?.operationId) dependsOn.push(operation.operationId);
+      }
+    }
+    await addTripCost({ ...input, dependsOn: [...new Set(dependsOn)] });
+  });
+}
+
+type JourneyTimelineTiming = Pick<CreateItineraryInput,
+  "startsAt" | "endsAt" | "timezone" | "timingMode" | "scheduledDate" |
+  "anchorItineraryItemId" | "relativePosition" | "isAllDay" |
+  "hasExplicitStartTime" | "durationMinutes"
+>;
+
+export function journeyTimelineFields(
+  timing: JourneyTimelineTiming | undefined,
+  fallback: Pick<CreateItineraryInput, "startsAt" | "endsAt" | "timezone">
+): JourneyTimelineTiming {
+  return timing ?? fallback;
+}
+
+export async function addFlightBooking(input: CreateFlightInput): Promise<{ booking: Booking; flights: FlightLeg[]; itinerary: ItineraryItem; costWarning?: string }> {
   if (!input.referenceCode.trim()) throw new Error("Enter the PNR / booking reference.");
   if (!input.legs.length) throw new Error("Add at least one flight leg.");
+  const participants = normalizeParticipantSelection(input.participantScope, input.travelerIds);
+  const referencedTravelerIds = [...new Set([
+    ...participants.travelerIds,
+    ...input.legs.flatMap((leg) => (leg.travelerAllocations ?? []).map((allocation) => allocation.travelerId))
+  ])];
+  if (referencedTravelerIds.length) {
+    const tripTravelerIds = new Set((await listTravelers(input.tripId)).map((traveler) => traveler.id));
+    if (referencedTravelerIds.some((travelerId) => !tripTravelerIds.has(travelerId))) throw new Error("Every selected flight traveler must belong to this trip.");
+  }
+  for (const leg of input.legs) {
+    const allocatedIds = (leg.travelerAllocations ?? []).map((allocation) => allocation.travelerId);
+    if (new Set(allocatedIds).size !== allocatedIds.length) throw new Error("Each traveler can have only one allocation per flight leg.");
+    if (participants.participantScope === "selected" && allocatedIds.some((id) => !participants.travelerIds.includes(id))) {
+      throw new Error("Flight allocations must belong to a selected traveler.");
+    }
+  }
   const actor = await userId();
   const first = input.legs[0]; const last = input.legs[input.legs.length - 1];
-  const booking = await addBooking({ tripId: input.tripId, type: "flight", title: input.title, provider: [...new Set(input.legs.map((leg) => leg.airlineName))].join(" / "), referenceCode: input.referenceCode, startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.departureTimezone, journeyScope: input.journeyScope, bookedViaName: input.bookedViaName, bookedViaUrl: input.bookedViaUrl, contactName: input.contactName, contactPhone: input.contactPhone, travelerIds: input.travelerIds });
+  const booking = await addBooking({ tripId: input.tripId, type: "flight", title: input.title, provider: [...new Set(input.legs.map((leg) => leg.airlineName))].join(" / "), referenceCode: input.referenceCode, startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.departureTimezone, reservationState: input.reservationState, participantScope: participants.participantScope, journeyScope: input.journeyScope, bookedViaName: input.bookedViaName, bookedViaUrl: input.bookedViaUrl, contactName: input.contactName, contactPhone: input.contactPhone, travelerIds: participants.travelerIds });
   const bookingOperation = !navigator.onLine ? await database.outbox.where("entityId").equals(booking.id).filter((operation) => operation.operation === "create").first() : undefined;
   const airlineRefs = new Map<string, Awaited<ReturnType<typeof ensureTripAirline>>>();
   for (const leg of input.legs) if (!airlineRefs.has(leg.airlineName.toLocaleLowerCase())) airlineRefs.set(leg.airlineName.toLocaleLowerCase(), await ensureTripAirline(input.tripId, leg.airlineName, actor));
   const now = new Date().toISOString();
-  const flights: FlightLeg[] = input.legs.map((leg, segmentOrder) => ({ id: crypto.randomUUID(), booking_id: booking.id, segment_order: segmentOrder, airline_name: leg.airlineName, marketing_airline_id: airlineRefs.get(leg.airlineName.toLocaleLowerCase())?.id ?? null, operating_airline_id: null, flight_number: leg.flightNumber, departure_airport_code: leg.departureCode || null, departure_airport_name: leg.departureName, departure_country_code: leg.departureCountryCode || null, arrival_airport_code: leg.arrivalCode || null, arrival_airport_name: leg.arrivalName, arrival_country_code: leg.arrivalCountryCode || null, scheduled_departure_at: leg.departureAt, scheduled_arrival_at: leg.arrivalAt, estimated_departure_at: null, estimated_arrival_at: null, actual_departure_at: null, actual_arrival_at: null, departure_timezone: leg.departureTimezone, arrival_timezone: leg.arrivalTimezone, boarding_at: leg.boardingAt || null, boarding_lead_minutes: leg.boardingLeadMinutes ?? null, journey_scope: input.journeyScope, departure_terminal: null, departure_gate: null, arrival_terminal: null, arrival_gate: null, baggage_claim: null, status: "scheduled", status_note: null, status_updated_by: actor, status_updated_at: now }));
+  const flights: FlightLeg[] = input.legs.map((leg, segmentOrder) => ({ id: crypto.randomUUID(), booking_id: booking.id, segment_order: segmentOrder, airline_name: leg.airlineName, marketing_airline_id: airlineRefs.get(leg.airlineName.toLocaleLowerCase())?.id ?? null, operating_airline_id: null, flight_number: leg.flightNumber, departure_airport_code: leg.departureCode || null, departure_airport_name: leg.departureName, departure_country_code: leg.departureCountryCode || null, arrival_airport_code: leg.arrivalCode || null, arrival_airport_name: leg.arrivalName, arrival_country_code: leg.arrivalCountryCode || null, scheduled_departure_at: leg.departureAt, scheduled_arrival_at: leg.arrivalAt, estimated_departure_at: null, estimated_arrival_at: null, actual_departure_at: null, actual_arrival_at: null, departure_timezone: leg.departureTimezone, arrival_timezone: leg.arrivalTimezone, boarding_at: leg.boardingAt || null, boarding_lead_minutes: leg.boardingLeadMinutes ?? null, journey_scope: input.journeyScope, departure_terminal: leg.departureTerminal || null, departure_gate: leg.departureGate || null, arrival_terminal: leg.arrivalTerminal || null, arrival_gate: null, baggage_claim: null, status: "scheduled", status_note: null, status_updated_by: actor, status_updated_at: now }));
+  const allocationRowsForLeg = (flight: FlightLeg) => {
+    const supplied = new Map((input.legs[flight.segment_order]?.travelerAllocations ?? []).map((allocation) => [allocation.travelerId, allocation]));
+    const travelerIds = [...new Set([...participants.travelerIds, ...supplied.keys()])];
+    return travelerIds.map((travelerId): FlightTraveler => {
+      const allocation = supplied.get(travelerId);
+      return { id: `${flight.id}:${travelerId}`, flight_leg_id: flight.id, traveler_id: travelerId, seat: allocation?.seat || null, boarding_group: allocation?.boardingGroup || null, ticket_number: allocation?.ticketNumber || null };
+    });
+  };
   const flightOperationIds: string[] = [];
   if (!navigator.onLine) {
     for (const flight of flights) {
       const airlineOperation = airlineRefs.get(flight.airline_name.toLocaleLowerCase())?.operationId;
       const flightOperation = await queueCreate({ entityType: `flights:${input.tripId}`, table: "flight_legs", row: flight, dependsOn: [bookingOperation?.operationId, airlineOperation].filter((id): id is string => Boolean(id)) });
       flightOperationIds.push(flightOperation);
-      for (const travelerId of input.travelerIds ?? []) await queueCreate({ entityType: `flight-travelers:${flight.id}`, table: "flight_leg_travelers", row: { id: `${flight.id}:${travelerId}`, flight_leg_id: flight.id, traveler_id: travelerId, seat: null, boarding_group: null, ticket_number: null }, serverRow: { flight_leg_id: flight.id, traveler_id: travelerId }, dependsOn: [flightOperation] });
+      for (const allocation of allocationRowsForLeg(flight)) await queueCreate({ entityType: `flight-travelers:${flight.id}`, table: "flight_leg_travelers", row: allocation, serverRow: { flight_leg_id: flight.id, traveler_id: allocation.traveler_id, seat: allocation.seat, boarding_group: allocation.boarding_group, ticket_number: allocation.ticket_number }, dependsOn: [flightOperation] });
     }
   } else {
     const { data, error } = await client().from("flight_legs").insert(flights).select("*"); if (error) throw error;
     flights.splice(0, flights.length, ...((data ?? []) as FlightLeg[]));
-    if (input.travelerIds?.length) { const rows = flights.flatMap((flight) => input.travelerIds!.map((travelerId) => ({ flight_leg_id: flight.id, traveler_id: travelerId }))); const { error: travelerError } = await client().from("flight_leg_travelers").insert(rows); if (travelerError) throw travelerError; }
-    await cacheEntityList(`flights:${input.tripId}`, flights);
+    const allocations = flights.flatMap(allocationRowsForLeg);
+    if (allocations.length) { const { error: travelerError } = await client().from("flight_leg_travelers").insert(allocations.map(({ id: _id, ...row }) => row)); if (travelerError) throw travelerError; }
+    await Promise.all(flights.map((flight) => cacheEntity(`flights:${input.tripId}`, flight)));
+    await Promise.all(flights.map((flight) => cacheEntityList(`flight-travelers:${flight.id}`, allocations.filter((row) => row.flight_leg_id === flight.id))));
   }
-  const itinerary = await addItineraryItem({ tripId: input.tripId, bookingId: booking.id, eventType: "flight", title: input.title, startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.departureTimezone, travelerIds: input.travelerIds, dependsOn: [bookingOperation?.operationId, ...flightOperationIds].filter((id): id is string => Boolean(id)) });
-  if (input.cost) await addTripCost({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary.id, title: input.cost.title, category: "flight", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, paidByTravelerId: input.cost.paidByTravelerId, participantTravelerIds: input.cost.participantTravelerIds, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
-  return { booking, flights, itinerary };
+  const itinerary = await addItineraryItem({ tripId: input.tripId, bookingId: booking.id, eventType: "flight", title: input.title, startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.departureTimezone, participantScope: participants.participantScope, travelerIds: participants.travelerIds, dependsOn: [bookingOperation?.operationId, ...flightOperationIds].filter((id): id is string => Boolean(id)) });
+  const costWarning = input.cost ? await saveOptionalCostForCreatedEvent({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary.id, title: input.cost.title, category: "flight", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, paidByTravelerId: input.cost.paidByTravelerId, participantTravelerIds: input.cost.participantTravelerIds }) : undefined;
+  return { booking, flights, itinerary, costWarning };
 }
 
 export async function addFlightConnection(input: AddFlightConnectionInput): Promise<FlightLeg> {
@@ -440,18 +522,134 @@ export async function addFlightConnection(input: AddFlightConnectionInput): Prom
   return created;
 }
 
-export async function addJourneyBooking(input: CreateJourneyInput): Promise<{ booking: Booking; legs: JourneyLeg[]; itinerary: ItineraryItem }> {
+const optionalText = z.string().optional();
+const journeyDetailSchemas = {
+  train: z.object({
+    kind: z.literal("train"), train_name: optionalText, booked_from_name: optionalText,
+    booked_from_code: optionalText, travel_class: optionalText, quota: optionalText,
+    booking_status: optionalText, current_status: optionalText
+  }).strict(),
+  bus: z.object({
+    kind: z.literal("bus"), bus_class_or_layout: optionalText, shared_ticket_number: optionalText,
+    boarding_point_details: optionalText, dropoff_point_details: optionalText
+  }).strict(),
+  ferry: z.object({
+    kind: z.literal("ferry"), direction: z.enum(["one_way", "outbound", "return"]).optional(),
+    ticket_timing: z.enum(["fixed", "open_date", "open_return"]).optional(),
+    seating: z.enum(["free", "assigned", "unknown"]).optional(), seller_reference: optionalText,
+    operator_reference: optionalText, accommodation: optionalText, vessel_name: optionalText,
+    departure_gate: optionalText, baggage_allowance: optionalText, related_sailing_id: optionalText,
+    vehicle: z.object({
+      type: optionalText, registration: optionalText,
+      length_cm: z.number().nonnegative().optional(), height_cm: z.number().nonnegative().optional()
+    }).strict().optional()
+  }).strict(),
+  cab: z.object({
+    kind: z.literal("cab"), ride_type: z.enum(["local", "airport_transfer", "outstation", "hourly"]),
+    cross_border: z.boolean().optional(), linked_flight_leg_id: z.string().uuid().optional(),
+    pickup_buffer_minutes: z.number().nonnegative().optional(), luggage_count: z.number().nonnegative().optional(),
+    pickup_instructions: optionalText, vehicle_class: optionalText, driver_name: optionalText,
+    driver_phone: optionalText, vehicle_registration: optionalText,
+    trip_shape: z.enum(["one_way", "round_trip"]).optional(), return_at: optionalText,
+    package_duration_minutes: z.number().nonnegative().optional(), final_dropoff: optionalText
+  }).strict()
+};
+
+export function normalizeJourneyLegDetails(mode: CreateJourneyInput["mode"], details?: JourneyLegDetails): JourneyLegDetails {
+  const normalized = details ?? (mode === "cab" ? { kind: "cab", ride_type: "local" } : { kind: mode } as JourneyLegDetails);
+  if (normalized.kind !== mode) throw new Error(`Journey details for ${normalized.kind} cannot be used for ${mode}.`);
+  const parsed = journeyDetailSchemas[mode].safeParse(normalized);
+  if (!parsed.success) throw new Error(`Check the ${mode} ticket details: ${parsed.error.issues[0]?.message ?? "invalid details"}.`);
+  return parsed.data as JourneyLegDetails;
+}
+
+export async function addJourneyBooking(input: CreateJourneyInput & { itineraryTiming?: JourneyTimelineTiming }): Promise<{ booking: Booking; legs: JourneyLeg[]; itinerary: ItineraryItem; costWarning?: string }> {
   if (!input.legs.length) throw new Error("Add at least one journey leg.");
+  if (input.mode === "cab" && input.legs.length > 1) throw new Error("Create each cab ride as a separate journey.");
+  const participants = normalizeParticipantSelection(input.participantScope, input.travelerIds);
+  const referencedTravelerIds = [...new Set([
+    ...participants.travelerIds,
+    ...input.legs.flatMap((leg) => (leg.travelerAllocations ?? []).map((allocation) => allocation.travelerId))
+  ])];
+  if (referencedTravelerIds.length) {
+    const tripTravelerIds = new Set((await listTravelers(input.tripId)).map((traveler) => traveler.id));
+    if (referencedTravelerIds.some((travelerId) => !tripTravelerIds.has(travelerId))) throw new Error("Every selected journey traveler must belong to this trip.");
+  }
+  for (const leg of input.legs) {
+    normalizeJourneyLegDetails(input.mode, leg.details);
+    const allocatedIds = (leg.travelerAllocations ?? []).map((allocation) => allocation.travelerId);
+    if (new Set(allocatedIds).size !== allocatedIds.length) throw new Error("Each traveler can have only one allocation per journey leg.");
+    if (participants.participantScope === "selected" && allocatedIds.some((id) => !participants.travelerIds.includes(id))) {
+      throw new Error("Journey allocations must belong to a selected traveler.");
+    }
+  }
   const first = input.legs[0]; const last = input.legs[input.legs.length - 1];
-  const booking = await addBooking({ tripId: input.tripId, type: input.mode, title: input.title, provider: [...new Set(input.legs.map((leg) => leg.operatorName))].join(" / "), referenceCode: input.referenceCode, startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.originTimezone, journeyScope: input.journeyScope, bookedViaName: input.bookedViaName, bookedViaUrl: input.bookedViaUrl, contactName: input.contactName, contactPhone: input.contactPhone, travelerIds: input.travelerIds });
+  const operators = [...new Set(input.legs.flatMap((leg) => leg.operatorName?.trim() ? [leg.operatorName.trim()] : []))];
+  const booking = await addBooking({ tripId: input.tripId, type: input.mode, title: input.title, provider: operators.join(" / ") || undefined, referenceCode: input.referenceCode, startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.originTimezone, reservationState: input.reservationState, participantScope: participants.participantScope, journeyScope: input.journeyScope, bookedViaName: input.bookedViaName, bookedViaUrl: input.bookedViaUrl, contactName: input.contactName, contactPhone: input.contactPhone, bookingDetails: input.bookingDetails, travelerIds: participants.travelerIds });
   const bookingOperation = !navigator.onLine ? await database.outbox.where("entityId").equals(booking.id).filter((operation) => operation.operation === "create").first() : undefined;
-  const legs: JourneyLeg[] = input.legs.map((leg, segmentOrder) => ({ id: crypto.randomUUID(), booking_id: booking.id, segment_order: segmentOrder, mode: input.mode, operator_name: leg.operatorName, service_number: leg.serviceNumber || null, origin_code: leg.originCode || null, origin_name: leg.originName, origin_country_code: leg.originCountryCode || null, origin_timezone: leg.originTimezone, destination_code: leg.destinationCode || null, destination_name: leg.destinationName, destination_country_code: leg.destinationCountryCode || null, destination_timezone: leg.destinationTimezone, scheduled_departure_at: leg.departureAt, scheduled_arrival_at: leg.arrivalAt, boarding_at: leg.boardingAt || null, boarding_lead_minutes: leg.boardingLeadMinutes ?? null, departure_platform: leg.departurePlatform || null, arrival_platform: leg.arrivalPlatform || null, coach_or_cabin: leg.coachOrCabin || null, seat: leg.seat || null, status_note: null }));
+  const legs: JourneyLeg[] = input.legs.map((leg, segmentOrder) => ({ id: crypto.randomUUID(), booking_id: booking.id, segment_order: segmentOrder, mode: input.mode, operator_name: leg.operatorName?.trim() || null, service_number: leg.serviceNumber || null, origin_code: leg.originCode || null, origin_name: leg.originName, origin_country_code: leg.originCountryCode || null, origin_timezone: leg.originTimezone, destination_code: leg.destinationCode || null, destination_name: leg.destinationName, destination_country_code: leg.destinationCountryCode || null, destination_timezone: leg.destinationTimezone, scheduled_departure_at: leg.departureAt, scheduled_arrival_at: leg.arrivalAt || null, boarding_at: leg.boardingAt || null, boarding_lead_minutes: leg.boardingLeadMinutes ?? null, departure_platform: leg.departurePlatform || null, arrival_platform: leg.arrivalPlatform || null, coach_or_cabin: null, seat: null, details: normalizeJourneyLegDetails(input.mode, leg.details), status_note: null }));
+  const allocationRowsForLeg = (journeyLeg: JourneyLeg) => {
+    const supplied = new Map((input.legs[journeyLeg.segment_order]?.travelerAllocations ?? []).map((allocation) => [allocation.travelerId, allocation]));
+    const travelerIds = [...new Set([...participants.travelerIds, ...supplied.keys()])];
+    return travelerIds.map((travelerId): JourneyLegTraveler => {
+      const allocation = supplied.get(travelerId);
+      return { id: `${journeyLeg.id}:${travelerId}`, journey_leg_id: journeyLeg.id, traveler_id: travelerId, seat_or_berth: allocation?.seatOrBerth || null, coach_or_cabin: allocation?.coachOrCabin || null, passenger_reference: allocation?.passengerReference || null };
+    });
+  };
   const operationIds: string[] = [];
-  if (!navigator.onLine) for (const leg of legs) operationIds.push(await queueCreate({ entityType: `journey-legs:${input.tripId}`, table: "journey_legs", row: leg, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) }));
-  else { const { data, error } = await client().from("journey_legs").insert(legs).select("*"); if (error) throw error; legs.splice(0, legs.length, ...((data ?? []) as JourneyLeg[])); await cacheEntityList(`journey-legs:${input.tripId}`, legs); }
-  const itinerary = await addItineraryItem({ tripId: input.tripId, bookingId: booking.id, eventType: input.mode, title: input.title, startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.originTimezone, travelerIds: input.travelerIds, dependsOn: [bookingOperation?.operationId, ...operationIds].filter((id): id is string => Boolean(id)) });
-  if (input.cost) await addTripCost({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary.id, title: input.cost.title, category: "transport", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, paidByTravelerId: input.cost.paidByTravelerId, participantTravelerIds: input.cost.participantTravelerIds, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
-  return { booking, legs, itinerary };
+  if (!navigator.onLine) {
+    for (const leg of legs) {
+      const legOperation = await queueCreate({ entityType: `journey-legs:${input.tripId}`, table: "journey_legs", row: leg, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
+      operationIds.push(legOperation);
+      for (const allocation of allocationRowsForLeg(leg)) await queueCreate({ entityType: `journey-leg-travelers:${input.tripId}`, table: "journey_leg_travelers", row: allocation, serverRow: { journey_leg_id: leg.id, traveler_id: allocation.traveler_id, seat_or_berth: allocation.seat_or_berth, coach_or_cabin: allocation.coach_or_cabin, passenger_reference: allocation.passenger_reference }, dependsOn: [legOperation] });
+    }
+  } else {
+    const { data, error } = await client().from("journey_legs").insert(legs).select("*"); if (error) throw error;
+    legs.splice(0, legs.length, ...((data ?? []) as JourneyLeg[]));
+    const allocations = legs.flatMap(allocationRowsForLeg);
+    if (allocations.length) { const { error: travelerError } = await client().from("journey_leg_travelers").insert(allocations.map(({ id: _id, ...row }) => row)); if (travelerError) throw travelerError; }
+    await Promise.all([
+      ...legs.map((leg) => cacheEntity(`journey-legs:${input.tripId}`, leg)),
+      ...allocations.map((allocation) => cacheEntity(`journey-leg-travelers:${input.tripId}`, allocation))
+    ]);
+  }
+  const itineraryTiming = journeyTimelineFields(input.itineraryTiming, { startsAt: first.departureAt, endsAt: last.arrivalAt, timezone: first.originTimezone });
+  const itinerary = await addItineraryItem({ tripId: input.tripId, bookingId: booking.id, eventType: input.mode, title: input.title, ...itineraryTiming, participantScope: participants.participantScope, travelerIds: participants.travelerIds, dependsOn: [bookingOperation?.operationId, ...operationIds].filter((id): id is string => Boolean(id)) });
+  const costWarning = input.cost ? await saveOptionalCostForCreatedEvent({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary.id, title: input.cost.title, category: "transport", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, paidByTravelerId: input.cost.paidByTravelerId, participantTravelerIds: input.cost.participantTravelerIds }) : undefined;
+  return { booking, legs, itinerary, costWarning };
+}
+
+export async function listJourneyLegTravelers(journeyLegId: string, tripId: string): Promise<JourneyLegTraveler[]> {
+  const key = `journey-leg-travelers:${tripId}`;
+  if (!navigator.onLine) return (await readEntityList<JourneyLegTraveler>(key)).filter((row) => row.journey_leg_id === journeyLegId);
+  const { data, error } = await client().from("journey_leg_travelers").select("journey_leg_id,traveler_id,seat_or_berth,coach_or_cabin,passenger_reference,updated_at").eq("journey_leg_id", journeyLegId);
+  if (error) throw error;
+  const rows = (data ?? []).map((row) => ({ ...row, id: `${row.journey_leg_id}:${row.traveler_id}` })) as JourneyLegTraveler[];
+  const cached = await readEntityList<JourneyLegTraveler>(key);
+  await cacheEntityList(key, [...cached.filter((row) => row.journey_leg_id !== journeyLegId), ...rows]);
+  return rows;
+}
+
+export async function listJourneyLegTravelersForTrip(tripId: string, journeyLegIds: string[]): Promise<JourneyLegTraveler[]> {
+  const key = `journey-leg-travelers:${tripId}`;
+  if (!navigator.onLine) return readEntityList<JourneyLegTraveler>(key);
+  if (!journeyLegIds.length) { await cacheEntityList(key, []); return []; }
+  const { data, error } = await client().from("journey_leg_travelers").select("journey_leg_id,traveler_id,seat_or_berth,coach_or_cabin,passenger_reference,updated_at").in("journey_leg_id", journeyLegIds);
+  if (error) throw error;
+  const rows = (data ?? []).map((row) => ({ ...row, id: `${row.journey_leg_id}:${row.traveler_id}` })) as JourneyLegTraveler[];
+  await cacheEntityList(key, rows);
+  return rows;
+}
+
+export async function setJourneyLegTravelerDetails(input: { tripId: string; journeyLegId: string; travelerId: string; seatOrBerth?: string; coachOrCabin?: string; passengerReference?: string }) {
+  const row: JourneyLegTraveler = { id: `${input.journeyLegId}:${input.travelerId}`, journey_leg_id: input.journeyLegId, traveler_id: input.travelerId, seat_or_berth: input.seatOrBerth || null, coach_or_cabin: input.coachOrCabin || null, passenger_reference: input.passengerReference || null };
+  const serverRow = { journey_leg_id: input.journeyLegId, traveler_id: input.travelerId, seat_or_berth: row.seat_or_berth, coach_or_cabin: row.coach_or_cabin, passenger_reference: row.passenger_reference };
+  if (!navigator.onLine) { await queueUpsert({ entityType: `journey-leg-travelers:${input.tripId}`, table: "journey_leg_travelers", row, serverRow }); return row; }
+  const { data, error } = await client().from("journey_leg_travelers").upsert(serverRow).select("journey_leg_id,traveler_id,seat_or_berth,coach_or_cabin,passenger_reference,updated_at").single();
+  if (error) throw error;
+  const saved = { ...data, id: `${data.journey_leg_id}:${data.traveler_id}` } as JourneyLegTraveler;
+  await cacheEntity(`journey-leg-travelers:${input.tripId}`, saved);
+  return saved;
 }
 
 export async function listFlightTravelers(flightLegId: string): Promise<FlightTraveler[]> {
@@ -465,7 +663,7 @@ export async function listFlightTravelers(flightLegId: string): Promise<FlightTr
 export async function setFlightTravelerDetails(input: { tripId: string; flightLegId: string; travelerId: string; seat?: string; boardingGroup?: string; ticketNumber?: string }) {
   const row: FlightTraveler = { id: `${input.flightLegId}:${input.travelerId}`, flight_leg_id: input.flightLegId, traveler_id: input.travelerId, seat: input.seat || null, boarding_group: input.boardingGroup || null, ticket_number: input.ticketNumber || null };
   const serverRow = { flight_leg_id: input.flightLegId, traveler_id: input.travelerId, seat: row.seat, boarding_group: row.boarding_group, ticket_number: row.ticket_number };
-  if (!navigator.onLine) { await queueCreate({ entityType: `flight-travelers:${input.flightLegId}`, table: "flight_leg_travelers", row, serverRow }); return row; }
+  if (!navigator.onLine) { await queueUpsert({ entityType: `flight-travelers:${input.flightLegId}`, table: "flight_leg_travelers", row, serverRow }); return row; }
   const { data, error } = await client().from("flight_leg_travelers").upsert(serverRow).select("flight_leg_id,traveler_id,seat,boarding_group,ticket_number").single();
   if (error) throw error;
   const result = { ...data, id: `${data.flight_leg_id}:${data.traveler_id}` } as FlightTraveler;
@@ -515,7 +713,45 @@ export async function listJourneyLegsForBooking(bookingId: string, tripId: strin
   return rows;
 }
 
-type BookedTimelineEventInput = CreateBookingInput & {
+export async function updateJourneyLeg(input: UpdateJourneyLegInput): Promise<{ leg: JourneyLeg; booking: Booking; itinerary: ItineraryItem[] }> {
+  if (!navigator.onLine) throw new Error("Reconnect to edit this journey leg. Its route, booking summary, and timeline are saved together.");
+  const details = normalizeJourneyLegDetails(input.details.kind, input.details);
+  const { data, error } = await client().rpc("save_journey_leg", {
+    requested_leg_id: input.legId,
+    requested_leg: {
+      ...(input.version === undefined ? {} : { version: input.version }),
+      operator_name: input.operatorName?.trim() || null,
+      service_number: input.serviceNumber?.trim() || null,
+      origin_code: input.originCode?.trim().toUpperCase() || null,
+      origin_name: input.originName.trim(),
+      origin_country_code: input.originCountryCode?.trim().toUpperCase() || null,
+      origin_timezone: input.originTimezone,
+      destination_code: input.destinationCode?.trim().toUpperCase() || null,
+      destination_name: input.destinationName.trim(),
+      destination_country_code: input.destinationCountryCode?.trim().toUpperCase() || null,
+      destination_timezone: input.destinationTimezone,
+      scheduled_departure_at: input.departureAt,
+      scheduled_arrival_at: input.arrivalAt || null,
+      boarding_at: input.boardingAt || null,
+      boarding_lead_minutes: input.boardingLeadMinutes ?? null,
+      departure_platform: input.departurePlatform?.trim() || null,
+      arrival_platform: input.arrivalPlatform?.trim() || null,
+      details
+    }
+  });
+  if (error) throw error;
+  const result = data as { leg?: JourneyLeg; booking?: Booking; itinerary_items?: ItineraryItem[] } | null;
+  if (!result?.leg || !result.booking) throw new Error("Supabase did not return the saved journey leg.");
+  const itinerary = result.itinerary_items ?? [];
+  await Promise.all([
+    cacheEntity(`journey-legs:${input.tripId}`, result.leg),
+    cacheEntity(`bookings:${input.tripId}`, result.booking),
+    ...itinerary.map((item) => cacheEntity(`itinerary:${input.tripId}`, item))
+  ]);
+  return { leg: result.leg, booking: result.booking, itinerary };
+}
+
+export type BookedTimelineEventInput = CreateBookingInput & {
   eventType: TimelineEventType;
   mapUrl?: string;
   timingMode?: import("../trips/types").EventTimingMode;
@@ -525,6 +761,8 @@ type BookedTimelineEventInput = CreateBookingInput & {
   isAllDay?: boolean;
   hasExplicitStartTime?: boolean;
   durationMinutes?: number;
+  hotelCheckInHasTime?: boolean;
+  hotelCheckoutHasTime?: boolean;
   cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid"; paidByTravelerId?: string; participantTravelerIds?: string[] };
 };
 
@@ -537,11 +775,67 @@ export function bookingInputForTimelineEvent(input: BookedTimelineEventInput): C
   return bookingInput;
 }
 
+function dateInTimeZone(value: string, timeZone: string) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(value)).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+export async function saveHotelStay(input: BookedTimelineEventInput & { bookingId?: string; version?: number }) {
+  if (!navigator.onLine) throw new Error("Saving hotel milestones atomically requires a connection.");
+  if (!input.startsAt || !input.endsAt || !input.timezone) throw new Error("Hotel check-in, checkout, and local timezone are required.");
+  if (new Date(input.endsAt).getTime() <= new Date(input.startsAt).getTime()) throw new Error("Hotel checkout must be after check-in.");
+  const participants = normalizeParticipantSelection(input.participantScope, input.travelerIds);
+  const bookingId = input.bookingId ?? crypto.randomUUID();
+  const checkInId = crypto.randomUUID();
+  const checkOutId = crypto.randomUUID();
+  const fields = bookingFields({ ...input, type: "hotel", participantScope: participants.participantScope, travelerIds: participants.travelerIds });
+  const location = input.location || input.mapUrl ? { label: input.location || undefined, address: input.location || undefined, map_url: input.mapUrl || undefined } : null;
+  const { data, error } = await client().rpc("save_hotel_stay", {
+    requested_booking: { id: bookingId, trip_id: input.tripId, ...fields, location, notes: input.notes ?? null, ...(input.version === undefined ? {} : { version: input.version }) },
+    requested_traveler_ids: participants.travelerIds,
+    requested_milestones: { check_in_id: checkInId, check_out_id: checkOutId, check_in_has_time: input.hotelCheckInHasTime ?? true, check_out_has_time: input.hotelCheckoutHasTime ?? true }
+  });
+  if (error) throw error;
+  const result = data as { booking_id?: string; check_in_id?: string; check_out_id?: string } | null;
+  const savedBookingId = result?.booking_id ?? bookingId;
+  const savedCheckInId = result?.check_in_id ?? checkInId;
+  const savedCheckOutId = result?.check_out_id ?? checkOutId;
+  const [{ data: booking, error: bookingError }, { data: itinerary, error: itineraryError }] = await Promise.all([
+    client().from("bookings").select(bookingSelect).eq("id", savedBookingId).single(),
+    client().from("itinerary_items").select("*").in("id", [savedCheckInId, savedCheckOutId]).order("starts_at")
+  ]);
+  if (bookingError) throw bookingError;
+  if (itineraryError) throw itineraryError;
+  const savedItinerary = (itinerary ?? []) as ItineraryItem[];
+  await Promise.all([
+    cacheEntity(`bookings:${input.tripId}`, booking as Booking),
+    ...savedItinerary.map((item) => cacheEntity(`itinerary:${input.tripId}`, item)),
+    cacheParticipantAssignments({
+      tripId: input.tripId,
+      bookingId: savedBookingId,
+      itineraryItemIds: savedItinerary.map((item) => item.id),
+      participantScope: participants.participantScope,
+      travelerIds: participants.travelerIds
+    })
+  ]);
+  return { booking: booking as Booking, itinerary: savedItinerary };
+}
+
 export async function addBookedTimelineEvent(input: BookedTimelineEventInput) {
+  if (input.type === "hotel") {
+    if (!input.startsAt || !input.endsAt || !input.timezone) throw new Error("Hotel check-in, checkout, and local timezone are required.");
+    if (new Date(input.endsAt).getTime() <= new Date(input.startsAt).getTime()) throw new Error("Hotel checkout must be after check-in.");
+  }
+  if (input.type === "hotel" && navigator.onLine) {
+    const saved = await saveHotelStay(input);
+    const costWarning = input.cost ? await saveOptionalCostForCreatedEvent({ tripId: input.tripId, bookingId: saved.booking.id, itineraryItemId: saved.itinerary[0]?.id, title: input.cost.title, category: "hotel", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, paidByTravelerId: input.cost.paidByTravelerId, participantTravelerIds: input.cost.participantTravelerIds }) : undefined;
+    return { ...saved, costWarning };
+  }
   const booking = await addBooking(bookingInputForTimelineEvent(input));
   const bookingOperation = !navigator.onLine ? await database.outbox.where("entityId").equals(booking.id).filter((operation) => operation.operation === "create").first() : undefined;
   const createMilestone = (eventType: TimelineEventType, title: string, startsAt: string, endsAt?: string) => {
     const isHotelMilestone = input.type === "hotel";
+    const hotelHasTime = eventType === "hotel_check_in" ? input.hotelCheckInHasTime ?? true : input.hotelCheckoutHasTime ?? true;
     return addItineraryItem({
       tripId: input.tripId,
       bookingId: booking.id,
@@ -550,16 +844,19 @@ export async function addBookedTimelineEvent(input: BookedTimelineEventInput) {
       startsAt,
       endsAt,
       timezone: input.timezone!,
-      timingMode: isHotelMilestone ? "exact" : input.timingMode,
-      scheduledDate: isHotelMilestone ? undefined : input.scheduledDate,
+      timingMode: isHotelMilestone ? (hotelHasTime ? "exact" : "date_only") : input.timingMode,
+      scheduledDate: isHotelMilestone && !hotelHasTime ? dateInTimeZone(startsAt, input.timezone!) : input.scheduledDate,
       anchorItineraryItemId: isHotelMilestone ? undefined : input.anchorItineraryItemId,
       relativePosition: isHotelMilestone ? undefined : input.relativePosition,
       isAllDay: isHotelMilestone ? false : input.isAllDay,
-      hasExplicitStartTime: isHotelMilestone ? true : input.hasExplicitStartTime,
+      hasExplicitStartTime: isHotelMilestone
+        ? (eventType === "hotel_check_in" ? input.hotelCheckInHasTime ?? true : input.hotelCheckoutHasTime ?? true)
+        : input.hasExplicitStartTime,
       durationMinutes: isHotelMilestone ? undefined : input.durationMinutes,
       location: input.location,
       mapUrl: input.mapUrl,
       notes: input.notes,
+      participantScope: input.participantScope,
       travelerIds: input.travelerIds,
       dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id))
     });
@@ -567,8 +864,8 @@ export async function addBookedTimelineEvent(input: BookedTimelineEventInput) {
   const itinerary = input.type === "hotel"
     ? [await createMilestone("hotel_check_in", `${input.title} · Check in`, input.startsAt!), await createMilestone("hotel_check_out", `${input.title} · Check out`, input.endsAt!)]
     : [await createMilestone(input.eventType, input.title, input.startsAt!, input.endsAt)];
-  if (input.cost) await addTripCost({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary[0].id, title: input.cost.title, category: input.type === "restaurant" ? "food" : input.type === "hotel" ? "hotel" : input.type === "activity" ? "activity" : "transport", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, paidByTravelerId: input.cost.paidByTravelerId, participantTravelerIds: input.cost.participantTravelerIds, dependsOn: [bookingOperation?.operationId].filter((id): id is string => Boolean(id)) });
-  return { booking, itinerary };
+  const costWarning = input.cost ? await saveOptionalCostForCreatedEvent({ tripId: input.tripId, bookingId: booking.id, itineraryItemId: itinerary[0].id, title: input.cost.title, category: input.type === "restaurant" ? "food" : input.type === "hotel" ? "hotel" : input.type === "activity" ? "activity" : "transport", amountMinor: input.cost.amountMinor, currencyCode: input.cost.currencyCode, paymentStatus: input.cost.paymentStatus, paidByTravelerId: input.cost.paidByTravelerId, participantTravelerIds: input.cost.participantTravelerIds }) : undefined;
+  return { booking, itinerary, costWarning };
 }
 
 export async function listTripAirlines(tripId: string): Promise<TripAirline[]> {

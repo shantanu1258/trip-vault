@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CloudUpload, FilePlus2, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { ModalSheet } from "../../components/ModalSheet";
+import { FileDropzone } from "../../components/FileDropzone";
 import { listTrips } from "../trips/api";
 import { getErrorMessage } from "../trips/presentation";
 import { associateAccountDocument, deleteAccountDocumentUpload, listAccountDocumentUploads, listTravelers, retryAccountDocumentUpload, stageAccountDocument } from "./api";
@@ -14,6 +15,7 @@ export function DocumentInboxPanel() {
   const trips = useQuery({ queryKey: ["trips"], queryFn: () => listTrips() });
   const [selected, setSelected] = useState<AccountDocumentUpload | null>(null);
   const [selectedTripId, setSelectedTripId] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [message, setMessage] = useState("");
   const stage = useMutation({
     mutationFn: stageAccountDocument,
@@ -37,10 +39,9 @@ export function DocumentInboxPanel() {
   const submitUpload = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setMessage("");
     const formElement = event.currentTarget;
-    const fileInput = formElement.elements.namedItem("inboxFile");
-    const file = fileInput instanceof HTMLInputElement ? fileInput.files?.[0] : undefined;
+    const file = selectedFile;
     if (!file?.size) { setMessage("Choose a PDF or image first."); return; }
-    stage.mutate(file, { onSuccess: () => formElement.reset() });
+    stage.mutate(file, { onSuccess: () => { formElement.reset(); setSelectedFile(null); } });
   };
   const openAssociation = (upload: AccountDocumentUpload) => {
     setSelected(upload);
@@ -52,7 +53,7 @@ export function DocumentInboxPanel() {
     <h2 className="mt-1 font-display text-xl font-black">Upload first, organize later</h2>
     <p className="mt-3 text-sm leading-6 text-muted">The file is saved under this login before any trip association is attempted. Unfinished files stay here until you attach or delete them.</p>
     <form className="mt-5 space-y-3" onSubmit={submitUpload}>
-      <label className="form-label min-w-0">PDF or image under 5 MB<input className="form-input overflow-hidden file:mr-3 file:max-w-full file:rounded-lg file:border-0 file:bg-brand-soft file:px-3 file:py-2 file:font-bold file:text-brand" type="file" name="inboxFile" accept="application/pdf,image/jpeg,image/png,image/webp" /></label>
+      <FileDropzone name="inboxFile" label="PDF or image under 5 MB" prompt="Choose a private PDF or image" file={selectedFile} onFileChange={(file) => { setSelectedFile(file); setMessage(""); }} busy={stage.isPending} description="Save it now, then choose its trip and travelers when you are ready" />
       <button className="primary-button w-full" disabled={stage.isPending}>{stage.isPending ? <Loader2 className="size-4 animate-spin" /> : <CloudUpload className="size-4" />} Save privately</button>
     </form>
     {(message || stage.error || remove.error || retry.error) && <p role="status" className={`mt-3 rounded-xl p-3 text-sm font-bold ${stage.error || remove.error || retry.error ? "bg-danger/10 text-danger" : "bg-success/10 text-success"}`}>{stage.error || remove.error || retry.error ? getErrorMessage(stage.error || remove.error || retry.error) : message}</p>}

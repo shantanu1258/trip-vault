@@ -20,6 +20,9 @@ export function AddItineraryForm({ trip, travelers, bookings = [], item, preferr
   const draft = useFormDraft(`itinerary:${item?.id ?? "new"}:${trip.id}`);
   const itinerary = useQuery({ queryKey: ["itinerary", trip.id], queryFn: () => listItinerary(trip.id) });
   const participants = useQuery({ queryKey: ["itinerary-participant-ids", item?.id], queryFn: () => listItineraryParticipantIds(item!.id, trip.id), enabled: Boolean(item) });
+  const initialParticipantScope = item
+    ? item.applies_to_all_travelers ? "everyone" : "selected"
+    : preferredTravelerId ? "selected" : "everyone";
   const mutation = useMutation({
     mutationFn: (input: CreateItineraryInput) => item ? updateItineraryItem({ ...input, id: item.id, version: item.version }) : addItineraryItem(input),
     onSuccess: async () => {
@@ -27,7 +30,9 @@ export function AddItineraryForm({ trip, travelers, bookings = [], item, preferr
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["itinerary", trip.id] }),
         queryClient.invalidateQueries({ queryKey: ["itinerary-participant-ids", item?.id] }),
-        queryClient.invalidateQueries({ queryKey: ["itinerary-participants", trip.id] })
+        queryClient.invalidateQueries({ queryKey: ["itinerary-participants", trip.id] }),
+        queryClient.invalidateQueries({ queryKey: ["bookings", trip.id] }),
+        queryClient.invalidateQueries({ queryKey: ["booking-travelers", trip.id] })
       ]);
       onClose();
     }
@@ -50,11 +55,16 @@ export function AddItineraryForm({ trip, travelers, bookings = [], item, preferr
         location: parsed.data.location,
         mapUrl: String(form.get("mapUrl") ?? "").trim() || undefined,
         notes: parsed.data.notes,
+        participantScope: form.get("participantScope") === "selected" ? "selected" : "everyone",
         travelerIds: form.getAll("travelerIds").map(String),
         isAllDay: timing.isAllDay
       });
     } catch (error) { setMessage(getErrorMessage(error)); }
   };
+
+  if (item?.booking_id && ["hotel_check_in", "hotel_check_out"].includes(item.event_type ?? "")) {
+    return <ModalSheet eyebrow={trip.title} title="Edit hotel stay" onClose={onClose}><p className="mt-6 rounded-2xl bg-warning/10 p-4 text-sm leading-6 text-warning">Check-in and checkout stay together. Open the hotel booking to edit both milestones safely.</p></ModalSheet>;
+  }
 
   return (
     <ModalSheet eyebrow={trip.title} title={item ? "Edit itinerary item" : "Add itinerary item"} onClose={onClose}>
@@ -67,7 +77,7 @@ export function AddItineraryForm({ trip, travelers, bookings = [], item, preferr
         {bookings.length > 0 && <label className="form-label">Link an existing booking (optional)<select className="form-input" name="bookingId" defaultValue={item?.booking_id ?? ""}><option value="">No related booking</option>{bookings.map((booking) => <option key={booking.id} value={booking.id}>{booking.type.replaceAll("_", " ")} · {booking.title}</option>)}</select></label>}
         {onAddBooking && <div className="rounded-2xl border border-line bg-elevated p-4"><p className="text-sm font-extrabold">No booking yet?</p><p className="mt-1 text-xs leading-5 text-muted">Create booking details later without changing this event's place in the timeline.</p><button className="secondary-button mt-3" type="button" onClick={onAddBooking}><TicketCheck className="size-4" /> Add new booking</button></div>}
         <label className="form-label">Notes (optional)<textarea className="form-input min-h-24 resize-y" name="notes" placeholder="Add information you may need at this point in the trip" defaultValue={item?.notes ?? ""} /></label>
-        <ParticipantSelector travelers={travelers} selectedTravelerIds={item ? participants.data ?? [] : preferredTravelerId ? [preferredTravelerId] : undefined} />
+        <ParticipantSelector travelers={travelers} selectedTravelerIds={item ? participants.data ?? [] : preferredTravelerId ? [preferredTravelerId] : undefined} initialScope={initialParticipantScope} scopeName="participantScope" />
         {(message || mutation.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{message || getErrorMessage(mutation.error)}</p>}
         <button disabled={mutation.isPending} className="primary-button w-full" type="submit">{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <CalendarPlus className="size-4" />} {item ? "Save changes" : "Save itinerary item"}</button>
       </form>

@@ -1,5 +1,5 @@
-import { Bell, FolderLock, Home, Map, Plus, UserRound, WifiOff } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { Bell, FolderLock, Home, Map, Plus, Search, UserRound, WifiOff } from "lucide-react";
+import { matchPath, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Brand } from "./Brand";
 import { ThemeToggle } from "./ThemeToggle";
 import { useEffect, useState, type ReactNode } from "react";
@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from "../lib/supabase/client";
 import { loadAlertInputs } from "../features/alerts/load";
 import { deriveAlerts, unreadAlertCount } from "../features/alerts/engine";
 import { SyncStatus } from "../features/sync/SyncStatus";
+import { tripIntentNavigationState } from "../features/trips/navigation";
 
 const nav = [
   { to: "/home", label: "Home", icon: Home },
@@ -19,6 +20,10 @@ const nav = [
 
 export function AppShell({ children, demo = false }: { children: ReactNode; demo?: boolean }) {
   const [online, setOnline] = useState(navigator.onLine);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const tripMatch = matchPath({ path: "/trips/:tripId/*", end: false }, location.pathname);
+  const activeTripId = tripMatch?.params.tripId && tripMatch.params.tripId !== "new" ? tripMatch.params.tripId : null;
   const alertInputs = useQuery({ queryKey: ["alerts"], queryFn: loadAlertInputs, enabled: !demo && isSupabaseConfigured, refetchInterval: 60_000 });
   const visibleAlerts = alertInputs.data ? deriveAlerts(alertInputs.data) : [];
   const alertCount = alertInputs.data ? unreadAlertCount(visibleAlerts, alertInputs.data.states) : 0;
@@ -37,6 +42,15 @@ export function AppShell({ children, demo = false }: { children: ReactNode; demo
             {demo && <span className="hidden rounded-full bg-brand-soft px-3 py-1.5 text-xs font-bold text-brand sm:inline">Safe demo</span>}
             {!online && <span className="hidden items-center gap-1.5 rounded-full bg-warning/10 px-3 py-2 text-xs font-bold text-warning sm:inline-flex"><WifiOff className="size-3.5" /> Offline</span>}
             {!demo && <SyncStatus />}
+            {!demo && activeTripId && <button
+              type="button"
+              aria-label="Search this trip"
+              className="tap-target grid size-11 place-items-center rounded-2xl border border-line bg-surface text-muted transition-colors hover:border-brand/40 hover:text-brand"
+              onClick={() => navigate(`/trips/${activeTripId}`, {
+                replace: location.pathname === `/trips/${activeTripId}` && new URLSearchParams(location.search).get("view") !== "details",
+                state: tripIntentNavigationState(location.state, activeTripId, "search", { view: "timeline" })
+              })}
+            ><Search className="size-5" aria-hidden="true" /></button>}
             <NavLink
               to="/alerts"
               aria-label={alertCount ? `Alerts, ${alertCount} reminder${alertCount === 1 ? "" : "s"}` : "Alerts"}

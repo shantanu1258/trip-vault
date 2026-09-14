@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Trip } from "../features/trips/types";
+import { tripChildNavigationState } from "../features/trips/navigation";
 import type { Booking, FlightLeg, JourneyScope } from "../features/workspace/types";
 
 const mocks = vi.hoisted(() => ({
@@ -107,7 +108,7 @@ function flight(scope: JourneyScope): FlightLeg {
   };
 }
 
-async function renderFlight(scope: JourneyScope) {
+async function renderFlight(scope: JourneyScope, initialEntry: string | { pathname: string; state: unknown } = "/trips/trip-1/flights/flight-1") {
   const currentFlight = flight(scope);
   mocks.getBooking.mockResolvedValue(booking(scope));
   mocks.getFlightLeg.mockResolvedValue(currentFlight);
@@ -118,7 +119,7 @@ async function renderFlight(scope: JourneyScope) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/trips/trip-1/flights/flight-1"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes><Route path="/trips/:tripId/flights/:flightLegId" element={<FlightPage />} /></Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -164,5 +165,14 @@ describe("flight edit time-zone controls", () => {
 
     expect(await screen.findByRole("region", { name: "Manual flight update" })).toBeInTheDocument();
     await waitFor(() => expect(document.querySelector('[name="scheduledDeparture"]')).toHaveFocus());
+  });
+
+  it("returns to the source Trip details tab", async () => {
+    await renderFlight("domestic", {
+      pathname: "/trips/trip-1/flights/flight-1",
+      state: tripChildNavigationState(null, "trip-1", "details")
+    });
+
+    expect(screen.getByRole("link", { name: "Back to trip" })).toHaveAttribute("href", "/trips/trip-1?view=details");
   });
 });

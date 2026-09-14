@@ -4,7 +4,7 @@ description: "Prioritized product, interaction, and database decisions for rebui
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [redesign, timeline, bookings, metadata, database, responsive-ui]
-last_verified: 2026-09-13
+last_verified: 2026-09-14
 ---
 
 # Trip Vault Redesign Checklist
@@ -80,6 +80,7 @@ flowchart TD
 | P0 | Event-first documents and working upload | Travel documents must be reachable when needed |
 | P0 | Trip-local offline search | The larger timeline must remain quickly navigable |
 | P0 | Event cost and missing-cost state | Enables correct trip totals without duplicate counting |
+| P0 | Bus and train passenger allocations | A shared journey can still have a different Train seat/berth, coach and reference or Bus seat and reference for every traveler |
 | P1 | Hotel milestones, trains, maps, and inline edits | Builds richer reservations on the timeline foundation |
 | P1 | QR invitation sharing | Improves an already-supported secure sharing flow |
 | P1 | Airline, airport, and booking-vendor autocomplete | Improves entry speed after the form contract is stable |
@@ -224,14 +225,54 @@ Section rules:
 
 This separation prevents two competing timelines: Trip details may link to **View on timeline**, but it does not render a second full itinerary list.
 
+### D-04C — Whole-card Primary Actions (Implemented; manual review pending)
+
+Use the full visible summary card as the main target while preserving every nested action as an independent control. Do not place buttons inside links or rely on event bubbling that makes destructive actions ambiguous.
+
+- [x] Make the featured/current trip card on Home open the trip from its whole non-action surface; retain the visible **Open trip** control as a clear affordance.
+- [x] Keep offline preparation and every other nested Home-card action separately operable without also opening the trip.
+- [x] Make the complete Trip expenses summary card open the expense-details sheet; keep **Add** separate, and keep individual expense rows independently clickable.
+- [x] Make the complete **People & sharing** summary card open its sheet; retain **Open** and any Add/Share/role actions as separate controls.
+- [x] Close the People sheet immediately after choosing Everyone or one traveler, return focus to the People control, announce the new selection, and preserve the current scroll position.
+- [x] Make readiness summary cards open Readiness from their whole non-action surface in every place they appear, including Home upcoming work, the Timeline summary, and the Trip details section; checkboxes, Add, status, and Archive remain independent.
+- [x] Apply the same mouse, touch, keyboard, visible-focus, and screen-reader behavior to the card surface and its explicit Open control.
+- [x] Use a stretched-link/overlay-action pattern or an equivalent valid structure; never nest interactive HTML elements.
+
+Current implementation note: the Home hero, Trip expenses, People & sharing, and readiness summaries now use tested whole-card behavior with nested actions kept independent. Phone and desktop manual acceptance remains in the release checklist.
+
+### D-04D — Return Context and Scroll Intent (Implemented; manual review pending)
+
+View selection, return destination, and scroll position are related but independent state. Model navigation with an explicit intent instead of making every Trip-page mount jump to the current item.
+
+| Transition | Destination | Position rule |
+|---|---|---|
+| Fresh/root launch or Home → Trip | Timeline | Jump once to current/next |
+| Timeline → event/booking/document/readiness → Back | Timeline | Restore the user's prior timeline anchor and offset |
+| Trip details → child page → Back | Trip details | Restore the prior details section and scroll position |
+| Timeline → Trip details tab | Trip details | Save Timeline and restore the most recent Details position |
+| Trip details → normal Timeline tab | Timeline | Restore the most recent manual Timeline position |
+| Trip details → explicit current-timeline shortcut | Timeline | Jump once to current/next |
+| Press **Current / Next** | Timeline | Jump once to current/next |
+| Press the header Search action | Timeline search | Reveal and focus Search rather than jumping to current/next |
+| Choose a traveler or close a modal | Same view | Preserve the current position |
+
+- [x] Keep `?view=details` as the shareable view indicator and carry a validated same-trip return context on every child link, including search and document results.
+- [x] Make visible Back actions, browser Back, successful edit/archive redirects, and modal-to-page transitions honor the same return context.
+- [x] Track scroll continuously per trip and view while the page is active, not only when the user changes tabs.
+- [x] Prefer an event/section anchor plus viewport offset over raw pixels so content loaded above the target does not cause drift.
+- [x] Keep per-view scroll in session/history state so a fresh app launch still resolves current/next instead of reviving an old browsing position.
+- [x] Consume one-shot Jump/Search/target intents after use so browser Back cannot repeat an old automatic scroll.
+- [x] Resolve positioning in this order: explicit Search/item/current target, explicit return restoration, saved position, then current/next fallback.
+- [x] Do not let a traveler-filter refresh or background query update recenter the timeline after the user has scrolled.
+
 ## 6. Event Creation Decisions
 
 ### D-05 — Add Event Modal
 
 - [x] Open one modal or bottom sheet from the sticky/floating Add action.
-- [x] Present Flight, Hotel, Activity, and Bus first, then Train, Ferry/Boat, Cab, Meal, Preparation, Other transport, and Custom.
+- [x] Present Flight, Hotel, Activity, Bus, Cab, Ferry/Boat, and Train first, then Meal, Preparation, Other transport, and Custom.
 - [x] Show only fields relevant to the selected type.
-- [ ] Allow saving the event first and adding documents immediately afterward.
+- [x] Save the event first and offer **Add official document** from the completion screen.
 - [x] Allow optional cost entry in the same flow without forcing it.
 - [x] Allow participant selection using Everyone or selected travelers.
 - [ ] Preserve entered form values when moving between steps or fixing validation.
@@ -266,7 +307,7 @@ Why: a Bengaluru–Dubai–London trip has no single truthful trip timezone. A t
 - [x] Persist separate valid departure and arrival IANA timezones for every journey leg.
 - [x] Derive flight zones from a known airport. **Other** allows manual correction; International Other requires a strict zone.
 - [x] Hide Domestic journey zones and repeated-clock fields in creation and Domestic Flight editing. Known airports keep catalog zones; other Domestic endpoints use one hidden fallback zone.
-- [x] Ask one journey-country code once for a Domestic non-flight booking, not once for each leg.
+- [x] Ask for neither journey country nor timezone on a Domestic non-flight booking; retain the hidden compatibility zone and leave endpoint country nullable until trustworthy metadata can infer it.
 - [x] Require a same-country route that crosses time-zone regions to use International so separate endpoint zones can be entered.
 - [x] Require explicit strict origin and destination zones for International train, bus, ferry, and cab endpoints because no station/port catalog derives them.
 - [x] Store the actual instant as `timestamptz` and preserve the source IANA timezone for reconstruction and display.
@@ -308,27 +349,119 @@ Recommended daylight-saving rule: reject a local time that does not exist; when 
 
 - [x] Add `train`, `bus`, `ferry`, and `cab` to the booking types.
 - [x] Model a train booking with ordered shared journey legs rather than storing important fields only in unvalidated JSON.
-- [ ] Minimum train leg fields: operator, train number/name, departure station, arrival station, source times, source timezones, platform, coach, seat, and status note.
+- [x] Train leg entry covers operator, train number/name, boarding/destination stations, printed endpoint times, strict International zones, platform, per-traveler coach/seat, and ticket/current status where provided.
 - [x] Allow several train legs in one booking when the journey includes a change.
 - [ ] Reuse ticket-first document presentation and the grouped journey timeline card.
 - [ ] Keep train operational status manual; do not promise live railway data.
+
+### D-11A — Bus Form and Passenger Allocation (Implemented; endpoint-link/manual review pending)
+
+These items capture the 2026-09-14 bus-ticket review. The supplied ticket is treated only as private reference material; no passenger names or booking identifiers belong in product documentation or sample data.
+
+- [x] Remove the visible **Journey country** field from every Domestic train, bus, ferry, and cab form. Keep endpoint country nullable unless it is inferred from reviewed metadata; never ask for a raw two-letter code merely because the journey is Domestic.
+- [x] Keep Domestic and International independent from Direct and Connecting. A border-crossing direct bus is both International and Direct.
+- [x] Label a one-leg Direct bus **Bus details** or with its route. Reserve numbered leg labels for Connecting journeys; never show **First bus** when only one bus exists.
+- [x] Store seat information per traveler and per journey leg, not once on the shared leg. Seats may be blank at creation and added or changed later.
+- [x] Apply the same traveler allocation model to train coach/berth/seat and to assigned-seat ferry cabin/seat data. Cab journeys do not ask for passenger seats.
+- [x] Keep a shared ticket or booking reference at booking level and allow an optional passenger reference per traveler/leg. Do not impose flight-style PNR formatting on bus references.
+- [x] Keep **Operator** separate from **Booked via**. The operator runs the bus; the booking vendor or agent sold the ticket.
+- [x] Treat bus class/layout, such as seater, sleeper, or a seat arrangement, as optional service information rather than overloading service number.
+- [x] Make boarding point and drop-off point the primary endpoint labels for buses.
+- [ ] Add separate optional Maps links for each ground-journey endpoint; the current implementation retains one general/pickup navigation link where available.
+- [x] Use progressive disclosure: keep route and printed times in the main leg; show reservation fields, ticket details, per-traveler allocation, boarding/platform detail, cost, and documents only where relevant.
+- [x] Allow a bus plan to exist before a ticket is purchased and retain the same booking/timeline identity when its reservation state and booking-level details change later.
+- [x] Do not copy passenger age or other personal ticket fields without an accepted feature need.
+
+Ticket-derived model mapping:
+
+| Ticket concept | Trip Vault destination |
+|---|---|
+| Bus company | Journey-leg operator snapshot |
+| Booking website or agent | Booking-level **Booked via** snapshot |
+| Direct international route | One booking, one ordered journey leg, International scope |
+| Boarding and drop-off points | Leg origin/destination labels plus optional Maps links |
+| Printed departure and arrival | Endpoint-local times; elapsed duration is derived |
+| Bus type or layout | Optional leg service class |
+| Shared ticket number | Booking-level reference |
+| Passenger-specific PNR/reference | Traveler-and-leg allocation row |
+| Different seat for each passenger | Traveler-and-leg allocation row, editable later |
+
+Implemented progressive order for Bus:
+
+1. Timeline title, then **Plan only**, **Buy when needed**, or **Ticket booked**.
+2. Everyone or selected travelers.
+3. Domestic or International.
+4. Single service or Connecting services.
+5. Boarding point, drop-off point, and printed departure; printed arrival remains optional.
+6. Operator and optional service number when a ticket exists.
+
+When **Ticket booked** is selected, reveal Booked via, shared ticket reference, optional service class, and the traveler allocation rows. Phone/WhatsApp, endpoint Maps links, cost, documents, and boarding reminders stay optional.
+
+### D-11B — Regional Journey Operator Suggestions (Implemented locally; Admin publication deferred)
+
+- [x] Add a mode-aware Train/Bus/Ferry operator and Cab company/app picker with a small offline starter list and **Other**. User-entered values remain immediately usable and submit a privacy-safe service-provider suggestion.
+- [x] Do not mix operators with booking platforms. Keep redBus, AbhiBus, MakeMyTrip, Goibibo, Paytm, IRCTC Bus, and direct/operator website in **Booked via**.
+- [x] Default the Train operator to **Indian Railways**, while keeping the picker visible and editable; ask separately for train number/name and keep IRCTC or another seller under **Booked via**.
+- [ ] Treat train service type—for example Vande Bharat, Rajdhani, Shatabdi, Duronto, or Mail/Express—as optional metadata, not as an operator.
+- [x] Start bus suggestions with a non-ranked bundled set covering major state, private, Singapore/Malaysia, and Indonesia services. Do not claim that it is exhaustive or ordered by popularity.
+
+Candidate bus starter set for review:
+
+| Group | Candidate values |
+|---|---|
+| State/public | APSRTC; TGSRTC (alias TSRTC); KSRTC Karnataka; Kerala RTC; K-SWIFT; TNSTC; SETC; MSRTC; GSRTC; RSRTC; UPSRTC; HRTC; Uttarakhand Transport Corporation; OSRTC |
+| Private/branded | Vijayanand Travels (alias VRL); Orange Tours & Travels; KPN Express; IntrCity SmartBus; zingbus; NueGo; FlixBus India; Chartered Bus; Qistna Express |
+| Fallback | Other |
+
+The list is a curated entry-speed aid, not a live operator directory. Public references used for the review include the [ASRTU directory](https://www.asrtu.org/resource/front/uploads/Telephone%20Directory%202024.pdf), [Indian Railways enquiry](https://www.indianrail.gov.in/), [IRCTC booking guidance](https://contents.irctc.co.in/en/bookEticket.html), and Singapore LTA's [approved intercity bus operators and ticketing agents](https://www.lta.gov.sg/content/dam/ltagov/getting_around/pdf/Approved_Landing_Points_for_Intercity_Express_Bus_Services.pdf).
+
+### D-11C — All-event Progressive Form Contract (Implemented locally; manual review pending)
+
+The accepted contract and its deferred edges are maintained in `docs/EVENT_FORM_REDESIGN.md`.
+
+- [x] Use one shared sequence—Basics, reservation intent where applicable, Travelers, Timing/Route, optional details/cost, and completion—without displaying one generic field set for every event; traveler allocations render only for the included roster.
+- [x] Keep Flight booking-first and Hotel booked by default; let Activity, Meal, Train, Bus, Ferry, Cab, and eligible other types begin as a plan and change their booking state later without duplicating the timeline identity.
+- [x] Keep explicit Direct/Connecting selection for Flight. Use Single/Connecting service for Train, Bus, and Ferry. Do not ask the question for Cab.
+- [x] Make Train **Boarding station** distinct from optional **Booked from station**, which is disclosed only for a booked ticket.
+- [x] Store Ferry sailing direction independently from route connections and keep one timeline event per saved sailing.
+- [x] Replace Cab's ticket-style journey form with Local, Airport transfer, Outstation, and Hourly/Day modes plus Need a cab, Booked in advance, and Already took this ride states.
+- [x] Let booked Train, Bus, Ferry, and Cab arrivals remain unknown when the source does not provide an arrival, instead of inventing a value. Accepted as F5 on 2026-09-14.
+- [x] Save the event before optional document transfer, then offer **Add official document** or **Done**; seats, booking details, cost, and future connections remain available from the saved record rather than pretending all follow-up actions are in this completion sheet.
+- [x] Keep official tickets/vouchers as the authoritative reference and expose a labelled, zoomable in-app PDF/image preview with device Open fallback and no OCR.
+- [x] Reuse existing booking, cost, and document tables; add only reservation state, nullable non-flight arrival, explicit participant scope, validated mode details, per-traveler journey allocation, and the atomic hotel helper.
 
 ## 9. Documents and Readiness Decisions
 
 ### D-12 — Event-first Documents
 
-- [ ] Keep `documents` and immutable versions independent from events.
-- [ ] Keep `itinerary_item_documents` as the primary event association.
-- [ ] Starting upload from an event preselects that event and returns to it after success.
-- [ ] Starting upload from Vault permits an unlinked document and offers event linking afterward.
-- [ ] Preserve optional flight-leg association for a leg-specific ticket, boarding pass, or baggage tag.
-- [ ] Show several authorized documents on one event and allow one document on several events.
-- [ ] Unlinking an event never deletes the Vault document.
+- [x] Keep `documents` and immutable versions independent from events.
+- [x] Keep `itinerary_item_documents` as the primary event association.
+- [x] Starting upload from a saved event carries that event/booking context and links the completed document back to it.
+- [x] Starting upload from the account/Profile path permits an unlinked original and offers trip association afterward.
+- [x] Preserve optional flight-leg association for a leg-specific ticket, boarding pass, or baggage tag.
+- [x] Show several authorized documents on one event and allow one document on several events.
+- [x] Unlinking an event never deletes the Vault document.
 - [x] Keep the relationship model and add a two-phase account inbox: retain the original first, then atomically associate it with trip metadata only after Storage is verified.
 - [x] Keep account originals append-only: pending unassociated INSERT only, no Storage UPDATE, unassociated DELETE only, and immutable after association.
 - [x] Reconcile a successful association into the local receipt immediately and use the associated server receipt to suppress any stale unassociated cached inbox row.
 - [x] Permit offline deletion only before the first upload attempt; attempted or cloud-backed unassociated files require online deletion so synchronization cannot restore them.
 - [ ] Make upload stages observable: validate, create metadata, upload object, create immutable version, set current version, link event, and clean up a failed partial attempt.
+
+### D-12A — File Selection Surface (Implemented locally; manual review pending)
+
+- [x] Replace the small top-aligned native input in the trip uploader and Profile inbox with one reusable full-width file dropzone.
+- [x] Make the whole surface clickable and keyboard operable, with the icon and choose action centered vertically and horizontally.
+- [x] Use at least 128 CSS pixels of height on phone and 160 on desktop; keep a compact variant for Replace document. Admin artwork remains deferred with the broader Admin redesign.
+- [x] Show accepted PDF/JPEG/PNG/WebP types and the under-5-MB rule before selection, then filename plus measured size afterward.
+- [x] Keep choose-again guidance inside the same large selected state instead of shrinking the target after selection.
+- [x] Support desktop drag/drop but do not require it; phone touch selection remains the primary mobile interaction.
+- [x] Validate type, non-empty content, and size immediately; the native picker is non-multiple and a drop consumes one file, while API and database/Storage validation remain authoritative.
+- [x] Expose visible focus, hover, drag, disabled, and busy states; validation failures use an accessible alert.
+- [x] Announce a successful filename change through a dedicated live region in addition to the visible selected state.
+- [x] Lock the picker and drop handling from submit through completion so the visible filename cannot change while another file is being hashed or uploaded.
+- [x] Reset the native input immediately before every picker opening so reselecting the identical file fires a new change event.
+
+This is a UI and validation change only. Existing account-first local staging, outbox, document versions, private Storage buckets, and offline retry remain the persistence model; no schema migration is required.
 
 ### D-13 — Readiness as a Pre-trip Timeline Card
 
@@ -363,14 +496,17 @@ Recommended total: show committed spend (`paid - refunded`) and planned spend se
 
 ### D-15 — Search Scope
 
-- [ ] Make trip-local search P0 and place it in the trip header on both phone and desktop.
-- [ ] Search cached metadata so the feature works offline.
-- [ ] Include timeline titles/types, flight numbers, airport code/name, hotel/activity/meal names, booking vendor, PNR, traveler names, document title/purpose/short label, and notes where permitted.
-- [ ] Group results by Timeline, Bookings, Documents, Travelers, and Readiness.
-- [ ] Jump from a result to the matching timeline item or detail view.
-- [ ] Apply current membership and document visibility before indexing or displaying a result.
-- [ ] Do not search inside uploaded PDF/image contents.
-- [ ] Defer cross-trip/global search until trip-local search is proven useful.
+- [x] Make trip-local search P0 and place it in the trip header on both phone and desktop.
+- [x] Add a consistent header Search action that reveals the existing trip Search field, scrolls it clear of sticky UI, and focuses the input.
+- [x] If Search is invoked from Trip details, move to Timeline with a one-shot Search intent rather than using the current/next positioning rule.
+- [x] On phone, keep the focused result area scrollable above the software keyboard even when only one result exists.
+- [x] Search cached authorized metadata so the feature remains useful offline.
+- [x] Include permitted timeline titles/types, flight numbers, airport code/name, hotel/activity/meal names, booking vendor, PNR, traveler names, document title/purpose/short label, and notes.
+- [x] Group results by Timeline, Bookings, Documents, Travelers, and Readiness.
+- [x] Jump from a result to the matching timeline item or detail view.
+- [x] Apply current membership and document visibility before indexing or displaying a result.
+- [x] Do not search inside uploaded PDF/image contents.
+- [x] Defer cross-trip/global search until trip-local search is proven useful.
 
 P0 can use a normalized local index over IndexedDB records. A PostgreSQL full-text index is not required at personal-trip scale and should be reconsidered only if measured search latency or cross-trip search demands it.
 
@@ -391,7 +527,7 @@ P0 can use a normalized local index over IndexedDB records. A PostgreSQL full-te
 
 ### D-17 — Shared Autocomplete Behavior
 
-- [x] Use the shared accessible catalog-picker pattern for airline, airport, and booking-vendor fields; retain plain operator entry where no catalog exists yet.
+- [x] Use the shared accessible catalog-picker pattern for airline, airport, booking-vendor, bundled Train/Bus/Ferry operator, and Cab company/app fields; every mode retains Other/manual entry.
 - [x] Search the catalog's names, codes, and aliases.
 - [x] Always provide **Other** when a suitable saved value is unavailable.
 - [x] Keep the chosen name/code/URL as a booking or trip snapshot so later catalog changes do not rewrite history.
@@ -443,6 +579,14 @@ The accepted schema changes are implemented in forward migrations. Remaining unc
 | Require trimmed `bookings.reference_code` when type is `flight` | D-09 | Must | Use a type-aware database check plus matching Zod validation |
 | Add `flight_legs.boarding_lead_minutes` | D-10 | Must | Nullable bounded integer; retain explicit `boarding_at` override |
 | Add journey booking types and `journey_legs` | D-11 | Implemented | Train, Bus, Ferry, and Cab share ordered legs with strict endpoint timezones |
+| Add `journey_leg_travelers` | D-11A | Implemented | `202609140001` stores optional allocation columns per traveler and leg with trip/roster validation; the UI uses Train seat/berth + coach + reference, Bus seat + reference, and Ferry reference plus seat/cabin only for assigned seating |
+| Add `bookings.reservation_state` | D-11C | Implemented | `202609140001` distinguishes planned, walk-up/local, and booked reservation intent without duplicating Done/Skipped/Cancelled event status |
+| Make journey arrival nullable | D-11C / F5 | Implemented | `202609140001` permits unknown Train/Bus/Ferry/Cab arrival and keeps supplied-arrival ordering validation |
+| Add validated mode-specific journey details | D-11C | Implemented | `202609140001` validates a Train/Bus/Ferry/Cab discriminated details object and rejects keys/details that do not match the declared mode |
+| Store explicit Everyone/Selected scope | D-11C | Implemented | `202609140001` adds explicit booking scope and enforces consistency between scope and traveler-link rows |
+| Add journey service class | D-11A | Implemented | Mode details preserve optional Train/Bus/Ferry/Cab class/accommodation separately from service number |
+| Add separate endpoint Maps links | D-06, D-11A | Proposed should | Add exact boarding/drop-off navigation links in a later UI/data slice; the current form retains its general or pickup Maps link |
+| Add mode-aware journey operator catalog | D-11B | Implemented locally | A bundled Train/Bus/Ferry operator and Cab company/app picker works offline with Other/manual suggestions; defer a versioned Admin-managed catalog table until the Admin redesign |
 | Add booked-via snapshot fields to `bookings` | D-19 | Implemented | Keep `provider` for the actual operator/property; do not overload it with the seller |
 | Add versioned `booking_vendor_catalog_entries` | D-19 | Implemented | Follow existing airline/airport release and asset rules; `202609130005` publishes Airbnb and Trip.com |
 | Add privacy-safe `catalog_suggestions` | D-18, D-20 | Should | Authenticated insert, Admin-only read/review, no trip relationship |
@@ -455,15 +599,17 @@ The accepted schema changes are implemented in forward migrations. Remaining unc
 | Replace event-document relationships | D-12 | No | Fix upload flow; keep the existing many-to-many link |
 | Add readiness timeline rows | D-13 | No | The readiness card is derived; preparation events are ordinary itinerary rows |
 
-### Proposed Migration Order
+### Migration Order and Deployment Gate
 
 - [x] Migration R1–R4 combined in forward migration `202609110001_timeline_redesign.sql`: timeline types, hotel milestones, strict timezones, flight PNR/boarding lead, booked-via/catalog suggestions, and generic ordered journey legs.
 - [x] No readiness linkage migration: D-13 uses a derived card plus preparation events.
 - [x] Apply `202609130005_booking_vendor_catalog_additions.sql` after the published regional release from `202609130002`; it copies that release and adds Airbnb and Trip.com without changing booking snapshots.
 - [x] Apply `202609130006_trip_storage_cleanup_queue.sql` after `202609130005`; it queues legacy object cleanup atomically with permanent trip deletion and hardens post-creation flight connections on the server.
+- [x] Apply `202609130007_relative_event_timing.sql` after `202609130006` when it is not already present.
+- [x] Apply the single new `202609140001_event_form_data_model.sql` tail after `202609130007`; it adds reservation/scope fields, optional ground arrival, typed mode details, per-leg traveler allocations, and the atomic hotel-stay function.
 - [ ] Each migration must include safe backfill behavior for existing rows and a rollback/recovery note.
 
-Existing projects apply every missing migration in filename order. A project already current through `202609130004_account_document_storage_state.sql` runs `202609130005_booking_vendor_catalog_additions.sql`, then `202609130006_trip_storage_cleanup_queue.sql`, and then `supabase/tests/001_schema_smoke.sql`. A project current through `202609130005` runs only `202609130006` before the smoke test.
+Existing projects apply every missing migration in filename order. A project already current through `202609130007_relative_event_timing.sql` runs only the single new `202609140001_event_form_data_model.sql` tail and then `supabase/tests/001_schema_smoke.sql`.
 
 A fresh project uses this exact sequence:
 
@@ -471,7 +617,7 @@ A fresh project uses this exact sequence:
 2. Bootstrap the dedicated Auth administrator as an active `app_admins` row through trusted SQL.
 3. `supabase/migrations/202609130002_regional_travel_catalog.sql`
 4. `supabase/migrations/202609130005_booking_vendor_catalog_additions.sql`
-5. The complete setup already contains the `202609130006` schema contract; do not reapply that migration on a fresh database.
+5. The complete setup already contains the `202609140001` schema contract; do not reapply any historical or tail migration on a fresh database unless a catalog publication step is explicitly listed above.
 6. `supabase/tests/001_schema_smoke.sql`
 
 Step 4 deliberately fails if step 2 or 3 is missing; do not bypass either guard.
@@ -484,12 +630,17 @@ Development starts only after the decisions used by that slice are checked.
 |---:|---|---|---|
 | 1A | Clickable trip card; timeline-first trip shell; day/vertical separators; current/next resolver; one-time auto-scroll; Trip details entry | D-01–D-04 | R1 event type only if needed for rendering |
 | 1B | Sectioned Trip details workspace using the current cards; sticky section index; People control and member modal; return-to-timeline position | D-04A, D-04B | No section/member schema change |
+| 1C | Whole-card Home/expense/People/readiness targets; immediate traveler-switch close; header Search focus; view-aware Back and scroll restoration | D-04C, D-04D, D-15 | None; navigation state is session/device-local |
 | 2 | Add Event modal for Activity, Meal, Transport, and Custom; participants; location; optional cost | D-05, D-06, D-14 | Remaining R1 plus existing costs |
 | 3 | Flight form with mandatory PNR, strict airport/timezone input, several legs, layover calculation, grouped timeline card | D-07–D-10 | R1 and R2 |
 | 4 | Event-first document upload repair, several documents, return-to-event behavior, Vault independence | D-12 | Prefer no table change; add transactional helper only if diagnosis proves necessary |
+| 4A | Large centered FileDropzone for trip upload and Profile inbox; compact Replace variant; busy and validation states; Admin variant deferred with Admin redesign | D-12A | None |
+| 4B | Local-first PDF.js canvas preview with page/zoom/fit, image zoom, compact Info action, and device Open fallback | D-12 | None; bundled static viewer assets only |
 | 5 | Offline trip-local search and result-to-timeline navigation | D-15 | None initially |
 | 6 | Hotel check-in/out milestones, map actions, cost-missing states, and inline event/flight editing | D-02, D-06, D-10, D-14 | R1 |
 | 7 | Train booking and grouped train timeline card | D-11 | R4 |
+| 7A | Bus-specific progressive form, structure-aware labels, and Domestic-country removal | D-08, D-11A | No schema change for labels/country visibility; use existing nullable country columns |
+| 7B | Per-traveler journey seat/reference editing, service class, optional ground arrival, progressive reservation state, and bundled operator starter data | D-11A, D-11B, D-11C | Single `202609140001_event_form_data_model.sql` tail plus consolidated setup, RLS, offline cache, and smoke-test updates |
 | 8 | QR invitation screen using existing one-time code security | D-16 | None |
 | 9 | Unified autocomplete, vendor fields, airport seed, suggestion queue, and Admin catalog review | D-17–D-20 | R3 |
 | 10 | Readiness pre-trip card after its behavior is accepted | D-13 | R5 only if required |
@@ -516,14 +667,21 @@ Discuss these in order; they block the largest amount of later work.
 - [x] Q1: One grouped timeline item represents a connected journey; its detail view exposes the individual legs.
 - [x] Q2: Every hotel creates check-in and checkout milestones linked to one booking.
 - [x] Q3: Provider/source local time is primary; a future explicitly labeled device-local conversion may be secondary.
-- [ ] Q4: For a separately ticketed connection with different PNRs, use separate flight bookings for now?
+- [x] Q4: A separately ticketed connection with a different PNR remains a separate Flight booking/event for now.
 - [x] Q5: Accept **no cost row = missing** and **zero-value row = free**.
 - [x] Q6: P0 search covers the open trip; global cross-trip search is deferred.
 - [x] Q7: Unknown public metadata creates a best-effort privacy-safe Admin suggestion automatically.
 - [x] Q8: Readiness is one derived summary card; dated pre-trip tasks are separate preparation events.
 - [ ] Q9: Per-traveler readiness confirmation wording remains a future refinement; current status is requirement-level.
 - [x] Q10: Traveler selection prefills new forms and shows shared plus that traveler's relevant timeline, reservations, costs, readiness, seats, and documents; it is a presentation filter rather than impersonation or authorization.
-- [ ] Q11: Accept the recommended Trip details section order, with Timeline kept separate as the default trip view?
+- [x] Q11: Accept the recommended Trip details section order, with Timeline kept separate as the default trip view.
+- [x] Q12: Accept no visible country or timezone for Domestic non-flight journeys, leaving country nullable until a reviewed place selection can infer it.
+- [x] Q13: Accept one `journey_leg_travelers` row per included traveler and leg, with mode-aware inputs: Train seat/berth + coach + reference, Bus seat + reference, and Ferry reference plus assigned seat/cabin.
+- [x] Q14: Keep Bus arrival on the route form when printed on a ticket, but allow it to remain unknown for both planned and booked buses.
+- [x] Q15: Use bundled regional Train/Bus/Ferry operator and Cab company/app starter sets, default Train to Indian Railways, and keep booking websites in the separate **Booked via** catalog.
+- [x] Q16: Accept the D-04C whole-card contract, including immediate People-sheet close after a traveler selection.
+- [x] Q17: Accept separate normal-tab restoration and explicit current/search intents as defined in D-04D.
+- [x] Q18: Accept the D-12A large trip/Profile dropzone and compact Replace variant; defer Admin artwork selection with the Admin redesign.
 
 ## 17. Explicitly Deferred During the Redesign
 
@@ -568,6 +726,11 @@ Discuss these in order; they block the largest amount of later work.
 | Resource | Path | Relevance |
 |---|---|---|
 | Redesign checklist | `docs/REDESIGN_CHECKLIST.md` | Active decisions, priorities, schema impact, and preview order |
+| Event form redesign | `docs/EVENT_FORM_REDESIGN.md` | Accepted and locally implemented progressive form, ticket-reference, journey-mode, and schema contract, with deferred edges called out |
+| Card and navigation surfaces | `src/pages/HomePage.tsx`, `src/pages/TripPage.tsx`, `src/components/TripUi.tsx`, `src/components/AppShell.tsx`, `src/app/RouteScrollManager.tsx` | Current whole-card, search, view-return, and scroll-restoration behavior behind D-04C/D-04D/D-15 |
+| Event-form components | `src/features/timeline/AddEventForm.tsx`, `src/features/timeline/EventFormCommonFields.tsx`, `src/features/timeline/JourneyEventFields.tsx`, `src/features/workspace/JourneyTravelerDetails.tsx` | Progressive reservation intent, type-specific route/detail capture, optional ground arrival, and per-leg traveler ticket details |
+| Journey operator fallback | `src/features/metadata/JourneyOperatorPicker.tsx`, `src/features/metadata/starter-journey-operators.json` | Bundled Train/Bus/Ferry operator and Cab company/app suggestions plus Other/manual entry |
+| Document selection and preview | `src/components/FileDropzone.tsx`, `src/components/DocumentPreview.tsx`, `src/features/workspace/WorkspaceForms.tsx`, `src/features/workspace/DocumentInboxPanel.tsx`, `src/pages/DocumentPage.tsx`, `public/vendor/pdfjs/` | Large/compact validated selection, phone-MIME recovery, in-app PDF/image controls, Info action, and device Open fallback |
 | High-level design | `docs/HIGH_LEVEL_DESIGN.md` | Current system boundaries to reconcile after decisions |
 | Low-level design | `docs/LOW_LEVEL_DESIGN.md` | Current data and interaction contract |
 | Feature catalog | `docs/FEATURES.md` | Current baseline feature inventory |
@@ -579,4 +742,6 @@ Discuss these in order; they block the largest amount of later work.
 | Document Storage state | `supabase/migrations/202609130004_account_document_storage_state.sql` | Server-verified object completion, append-only pending upload policy, and unassociated cleanup boundary |
 | Booking-vendor additions | `supabase/migrations/202609130005_booking_vendor_catalog_additions.sql` | Immutable successor release containing Airbnb and Trip.com; requires the regional catalog and an active administrator |
 | Trip Storage cleanup queue | `supabase/migrations/202609130006_trip_storage_cleanup_queue.sql` | Atomic legacy-path capture with trip deletion, retryable post-commit cleanup, and server-hardened appended flight connections |
+| Relative-event timing | `supabase/migrations/202609130007_relative_event_timing.sql` | Explicit optional schedule details for relative events without inventing times |
+| Event-form data model | `supabase/migrations/202609140001_event_form_data_model.sql` | Single new tail for reservation state, participant scope, optional non-flight arrival, typed journey details, per-leg traveler allocations, and atomic Hotel save |
 | Manual acceptance | `docs/FEATURE_TEST_CHECKLIST.md` | Compact three-member, phone, desktop, offline, sharing, and Admin test run |

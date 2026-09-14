@@ -8,7 +8,9 @@ const mocks = vi.hoisted(() => ({
   localProfileId: vi.fn(),
   maybeSingle: vi.fn(),
   select: vi.fn(),
-  update: vi.fn()
+  update: vi.fn(),
+  syncBookingParticipants: vi.fn(),
+  cacheParticipantAssignments: vi.fn()
 }));
 
 vi.mock("../../lib/supabase/client", () => ({
@@ -23,6 +25,12 @@ vi.mock("../sync/localSync", () => ({
   queueDelete: vi.fn(),
   queueUpdate: vi.fn(),
   readEntityList: vi.fn()
+}));
+
+vi.mock("./participantSync", () => ({
+  syncBookingParticipants: mocks.syncBookingParticipants,
+  cacheParticipantAssignments: mocks.cacheParticipantAssignments,
+  queueBookingParticipantSync: vi.fn()
 }));
 
 import { cleanupQueuedTripDocuments, createTrip, linkBookingToItineraryItem } from "./api";
@@ -62,14 +70,10 @@ describe("activity booking linking", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
-    const request = { eq: mocks.eq, select: mocks.select, maybeSingle: mocks.maybeSingle };
-    mocks.update.mockReturnValue(request);
-    mocks.eq.mockReturnValue(request);
-    mocks.select.mockReturnValue(request);
-    mocks.from.mockReturnValue({ update: mocks.update });
+    mocks.cacheParticipantAssignments.mockResolvedValue(undefined);
   });
 
-  it("updates only the booking link and leaves the event fields and participants untouched", async () => {
+  it("links the booking and synchronizes its selected travelers with the event", async () => {
     const item: ItineraryItem = {
       id: "activity-1",
       trip_id: "trip-1",
@@ -89,16 +93,15 @@ describe("activity booking linking", () => {
       created_at: "2026-09-01T00:00:00.000Z"
     };
     const linked = { ...item, booking_id: "booking-1", version: 8 };
-    mocks.maybeSingle.mockResolvedValue({ data: linked, error: null });
+    const synchronizedBooking = { id: "booking-1", trip_id: "trip-1", participant_scope: "selected" };
+    mocks.syncBookingParticipants.mockResolvedValue({ booking: synchronizedBooking, itinerary_items: [linked] });
 
-    await expect(linkBookingToItineraryItem(item, "booking-1")).resolves.toEqual(linked);
+    await expect(linkBookingToItineraryItem(item, "booking-1", { participantScope: "selected", travelerIds: ["traveler-1"] })).resolves.toEqual(linked);
 
-    expect(mocks.from).toHaveBeenCalledWith("itinerary_items");
-    expect(mocks.update).toHaveBeenCalledWith({ booking_id: "booking-1" });
-    expect(mocks.eq).toHaveBeenNthCalledWith(1, "id", "activity-1");
-    expect(mocks.eq).toHaveBeenNthCalledWith(2, "trip_id", "trip-1");
-    expect(mocks.eq).toHaveBeenNthCalledWith(3, "version", 7);
+    expect(mocks.syncBookingParticipants).toHaveBeenCalledWith({ bookingId: "booking-1", participantScope: "selected", travelerIds: ["traveler-1"], itineraryItemId: "activity-1", itineraryVersion: 7 });
+    expect(mocks.cacheEntity).toHaveBeenCalledWith("bookings:trip-1", synchronizedBooking);
     expect(mocks.cacheEntity).toHaveBeenCalledWith("itinerary:trip-1", linked);
+    expect(mocks.cacheParticipantAssignments).toHaveBeenCalledWith({ tripId: "trip-1", bookingId: "booking-1", itineraryItemIds: ["activity-1"], participantScope: "selected", travelerIds: ["traveler-1"] });
   });
 
   it("keeps a committed booking link successful when the local cache write fails", async () => {
@@ -123,10 +126,10 @@ describe("activity booking linking", () => {
     const linked = { ...item, booking_id: "booking-1", version: 8 };
     const cacheError = new Error("IndexedDB quota exceeded");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    mocks.maybeSingle.mockResolvedValue({ data: linked, error: null });
+    mocks.syncBookingParticipants.mockResolvedValue({ booking: { id: "booking-1", trip_id: "trip-1" }, itinerary_items: [linked] });
     mocks.cacheEntity.mockRejectedValueOnce(cacheError);
 
-    await expect(linkBookingToItineraryItem(item, "booking-1")).resolves.toEqual(linked);
+    await expect(linkBookingToItineraryItem(item, "booking-1", { participantScope: "everyone", travelerIds: [] })).resolves.toEqual(linked);
 
     expect(warn).toHaveBeenCalledWith(
       "Booking was attached, but the local itinerary cache could not be refreshed.",

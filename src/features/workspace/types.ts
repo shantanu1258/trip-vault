@@ -1,3 +1,5 @@
+import type { ParticipantScope } from "../trips/types";
+
 export type MemberRole = "owner" | "editor" | "viewer";
 export type ParticipationType = "traveler" | "collaborator";
 
@@ -93,6 +95,66 @@ export const bookingTypes = ["flight", "hotel", "train", "bus", "ferry", "cab", 
 export type BookingType = (typeof bookingTypes)[number];
 export type JourneyScope = "domestic" | "international";
 export type JourneyMode = "train" | "bus" | "ferry" | "cab";
+export type ReservationState = "planned" | "walk_up" | "booked";
+
+export type TrainJourneyDetails = {
+  kind: "train";
+  train_name?: string;
+  booked_from_name?: string;
+  booked_from_code?: string;
+  travel_class?: string;
+  quota?: string;
+  booking_status?: string;
+  current_status?: string;
+};
+
+export type BusJourneyDetails = {
+  kind: "bus";
+  bus_class_or_layout?: string;
+  shared_ticket_number?: string;
+  boarding_point_details?: string;
+  dropoff_point_details?: string;
+};
+
+export type FerryJourneyDetails = {
+  kind: "ferry";
+  direction?: "one_way" | "outbound" | "return";
+  ticket_timing?: "fixed" | "open_date" | "open_return";
+  seating?: "free" | "assigned" | "unknown";
+  seller_reference?: string;
+  operator_reference?: string;
+  accommodation?: string;
+  vessel_name?: string;
+  departure_gate?: string;
+  baggage_allowance?: string;
+  related_sailing_id?: string;
+  vehicle?: {
+    type?: string;
+    registration?: string;
+    length_cm?: number;
+    height_cm?: number;
+  };
+};
+
+export type CabJourneyDetails = {
+  kind: "cab";
+  ride_type: "local" | "airport_transfer" | "outstation" | "hourly";
+  cross_border?: boolean;
+  linked_flight_leg_id?: string;
+  pickup_buffer_minutes?: number;
+  luggage_count?: number;
+  pickup_instructions?: string;
+  vehicle_class?: string;
+  driver_name?: string;
+  driver_phone?: string;
+  vehicle_registration?: string;
+  trip_shape?: "one_way" | "round_trip";
+  return_at?: string;
+  package_duration_minutes?: number;
+  final_dropoff?: string;
+};
+
+export type JourneyLegDetails = TrainJourneyDetails | BusJourneyDetails | FerryJourneyDetails | CabJourneyDetails;
 
 export type Booking = {
   id: string;
@@ -104,8 +166,10 @@ export type Booking = {
   start_at: string | null;
   end_at: string | null;
   source_timezone: string | null;
-  location: { label?: string; address?: string; latitude?: number | null; longitude?: number | null } | null;
+  location: { label?: string; address?: string; map_url?: string; latitude?: number | null; longitude?: number | null } | null;
   details: Record<string, unknown>;
+  reservation_state?: ReservationState;
+  participant_scope?: ParticipantScope;
   journey_scope?: JourneyScope | null;
   booked_via_name?: string | null;
   booked_via_url?: string | null;
@@ -162,7 +226,7 @@ export type JourneyLeg = {
   booking_id: string;
   segment_order: number;
   mode: JourneyMode;
-  operator_name: string;
+  operator_name: string | null;
   service_number: string | null;
   origin_code: string | null;
   origin_name: string;
@@ -173,16 +237,27 @@ export type JourneyLeg = {
   destination_country_code: string | null;
   destination_timezone: string;
   scheduled_departure_at: string;
-  scheduled_arrival_at: string;
+  scheduled_arrival_at: string | null;
   boarding_at: string | null;
   boarding_lead_minutes: number | null;
   departure_platform: string | null;
   arrival_platform: string | null;
   coach_or_cabin: string | null;
   seat: string | null;
+  details?: JourneyLegDetails | Record<string, never>;
   status_note: string | null;
   version?: number;
   created_at?: string;
+  updated_at?: string;
+};
+
+export type JourneyLegTraveler = {
+  id: string;
+  journey_leg_id: string;
+  traveler_id: string;
+  seat_or_berth: string | null;
+  coach_or_cabin: string | null;
+  passenger_reference: string | null;
   updated_at?: string;
 };
 
@@ -336,6 +411,9 @@ export type CreateBookingInput = {
   timezone?: string;
   location?: string;
   notes?: string;
+  bookingDetails?: Record<string, unknown>;
+  reservationState?: ReservationState;
+  participantScope?: ParticipantScope;
   journeyScope?: JourneyScope;
   bookedViaName?: string;
   bookedViaUrl?: string;
@@ -356,6 +434,8 @@ export type CreateFlightInput = {
   bookedViaUrl?: string;
   contactName?: string;
   contactPhone?: string;
+  reservationState?: ReservationState;
+  participantScope?: ParticipantScope;
   legs: Array<{
     airlineName: string;
     flightNumber: string;
@@ -371,6 +451,15 @@ export type CreateFlightInput = {
     arrivalTimezone: string;
     boardingAt?: string;
     boardingLeadMinutes?: number;
+    departureTerminal?: string;
+    departureGate?: string;
+    arrivalTerminal?: string;
+    travelerAllocations?: Array<{
+      travelerId: string;
+      seat?: string;
+      boardingGroup?: string;
+      ticketNumber?: string;
+    }>;
   }>;
   travelerIds?: string[];
   cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid"; paidByTravelerId?: string; participantTravelerIds?: string[] };
@@ -400,14 +489,17 @@ export type CreateJourneyInput = {
   title: string;
   mode: JourneyMode;
   referenceCode?: string;
-  journeyScope: JourneyScope;
+  reservationState?: ReservationState;
+  participantScope?: ParticipantScope;
+  journeyScope?: JourneyScope;
   bookedViaName?: string;
   bookedViaUrl?: string;
   contactName?: string;
   contactPhone?: string;
+  bookingDetails?: Record<string, unknown>;
   travelerIds?: string[];
   legs: Array<{
-    operatorName: string;
+    operatorName?: string;
     serviceNumber?: string;
     originCode?: string;
     originName: string;
@@ -418,13 +510,41 @@ export type CreateJourneyInput = {
     destinationCountryCode?: string;
     destinationTimezone: string;
     departureAt: string;
-    arrivalAt: string;
+    arrivalAt?: string;
     boardingAt?: string;
     boardingLeadMinutes?: number;
     departurePlatform?: string;
     arrivalPlatform?: string;
-    coachOrCabin?: string;
-    seat?: string;
+    details?: JourneyLegDetails;
+    travelerAllocations?: Array<{
+      travelerId: string;
+      seatOrBerth?: string;
+      coachOrCabin?: string;
+      passengerReference?: string;
+    }>;
   }>;
   cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid"; paidByTravelerId?: string; participantTravelerIds?: string[] };
+};
+
+export type UpdateJourneyLegInput = {
+  tripId: string;
+  legId: string;
+  version?: number;
+  operatorName?: string;
+  serviceNumber?: string;
+  originCode?: string;
+  originName: string;
+  originCountryCode?: string;
+  originTimezone: string;
+  destinationCode?: string;
+  destinationName: string;
+  destinationCountryCode?: string;
+  destinationTimezone: string;
+  departureAt: string;
+  arrivalAt?: string;
+  boardingAt?: string;
+  boardingLeadMinutes?: number;
+  departurePlatform?: string;
+  arrivalPlatform?: string;
+  details: JourneyLegDetails;
 };

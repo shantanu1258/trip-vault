@@ -47,6 +47,14 @@ export async function queueCreate<T extends { id: string }>(input: { entityType:
   return operationId;
 }
 
+export async function queueUpsert<T extends { id: string }>(input: { entityType: string; table: string; row: T; serverRow?: Record<string, unknown>; dependsOn?: string[] }) {
+  const profileId = await localProfileId(); if (!profileId) throw new Error("Sign in online once before saving offline.");
+  await cacheEntity(input.entityType, input.row);
+  const operationId = crypto.randomUUID();
+  await database.outbox.put({ operationId, profileId, entityType: input.entityType, entityId: input.row.id, operation: "upsert", payload: { table: input.table, row: input.serverRow ?? input.row }, dependsOn: input.dependsOn ?? [], attemptCount: 0, createdAt: new Date().toISOString() });
+  return operationId;
+}
+
 export async function queueDocumentUpload(input: { document: Record<string, unknown> & { id: string }; version: Record<string, unknown> & { id: string }; storagePath: string }) {
   const profileId = await localProfileId(); if (!profileId) throw new Error("Sign in online once before saving offline.");
   const operationId = crypto.randomUUID();
@@ -76,6 +84,13 @@ export async function queueUpdate<T extends { id: string }>(input: { entityType:
   return operationId;
 }
 
+export async function queueRpc(input: { entityType: string; entityId: string; functionName: string; args: Record<string, unknown>; dependsOn?: string[] }) {
+  const profileId = await localProfileId(); if (!profileId) throw new Error("Sign in online once before saving offline.");
+  const operationId = crypto.randomUUID();
+  await database.outbox.put({ operationId, profileId, entityType: input.entityType, entityId: input.entityId, operation: "rpc", payload: { functionName: input.functionName, args: input.args }, dependsOn: input.dependsOn ?? [], attemptCount: 0, createdAt: new Date().toISOString() });
+  return operationId;
+}
+
 export async function queueDelete(input: { entityType: string; table: string; entityId: string; match?: Record<string, string>; hard?: boolean; dependsOn?: string[] }) {
   const profileId = await localProfileId(); if (!profileId) throw new Error("Sign in online once before saving offline.");
   const operationId = crypto.randomUUID();
@@ -91,6 +106,186 @@ export function orderOutbox(operations: OutboxOperation[]) {
     ready.forEach((operation) => { ordered.push(operation); remaining.delete(operation.operationId); });
   }
   return ordered;
+}
+
+type OutboxRowPayload = {
+  table?: unknown;
+  row?: unknown;
+  patch?: unknown;
+  match?: unknown;
+} & Record<string, unknown>;
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function rowPayload(operation: OutboxOperation) {
+  const payload = recordValue(operation.payload) as OutboxRowPayload | null;
+  return { payload, row: recordValue(payload?.row), patch: recordValue(payload?.patch), match: recordValue(payload?.match) };
+}
+
+function bookingIdForTravelerOperation(operation: OutboxOperation) {
+  const { payload, row, match } = rowPayload(operation);
+  if (payload?.table !== "booking_travelers") return null;
+  const bookingId = row?.booking_id ?? match?.booking_id;
+  return typeof bookingId === "string" && bookingId ? bookingId : null;
+}
+
+/**
+ * Upgrades rows written by a previously cached PWA before they reach the
+ * stricter event-form schema. This is deliberately pure so the upgrade can be
+ * verified independently from IndexedDB and safely repeated after a crash.
+ */
+export function upgradeLegacyOutboxOperations(operations: OutboxOperation[]) {
+  const upgraded = operations.map((operation) => ({ ...operation, dependsOn: [...operation.dependsOn] }));
+  const changed = new Set<string>();
+  const removed = new Set<string>();
+  const travelerOperations = new Map<string, OutboxOperation[]>();
+
+  for (const operation of upgraded) {
+    const bookingId = bookingIdForTravelerOperation(operation);
+    if (!bookingId) continue;
+    const existing = travelerOperations.get(bookingId) ?? [];
+    existing.push(operation);
+    travelerOperations.set(bookingId, existing);
+  }
+
+  for (const operation of upgraded) {
+    const { payload, row, patch } = rowPayload(operation);
+    if (!payload) continue;
+
+    if ((operation.operation === "create" || operation.operation === "upsert") && payload.table === "journey_legs" && row) {
+      const details = recordValue(row.details);
+      const mode = row.mode;
+      if ((!details || Object.keys(details).length === 0) && ["train", "bus", "ferry", "cab"].includes(String(mode))) {
+        operation.payload = {
+          ...payload,
+          row: { ...row, details: mode === "cab" ? { kind: "cab", ride_type: "local" } : { kind: mode } }
+        };
+        changed.add(operation.operationId);
+      }
+      continue;
+    }
+
+    if (payload.table !== "bookings") continue;
+    const target = operation.operation === "update" ? patch : row;
+    if (!target) continue;
+    const bookingId = typeof target.id === "string" ? target.id : operation.entityId;
+    const relatedTravelerOperations = travelerOperations.get(bookingId) ?? [];
+    const additions = relatedTravelerOperations.filter((item) => item.operation === "create" || item.operation === "upsert");
+    const explicitScope = target.participant_scope === "everyone" || target.participant_scope === "selected"
+      ? target.participant_scope
+      : null;
+    let participantScope = explicitScope;
+
+    if (!participantScope && (operation.operation !== "update" || relatedTravelerOperations.length > 0)) {
+      // Legacy creates with no child rows meant Everyone; any explicit child
+      // row meant Selected. A legacy update only changes scope when its child
+      // operations prove that participant membership was edited.
+      participantScope = additions.length > 0 || operation.operation === "update" ? "selected" : "everyone";
+      const nextTarget = { ...target, participant_scope: participantScope };
+      operation.payload = operation.operation === "update"
+        ? { ...payload, patch: nextTarget }
+        : { ...payload, row: nextTarget };
+      changed.add(operation.operationId);
+    }
+
+    if (!participantScope) continue;
+    if (participantScope === "everyone") {
+      // Everyone is represented only by the booking flag. Keep deletes because
+      // they may be clearing traveler rows already stored on the server.
+      additions.forEach((item) => removed.add(item.operationId));
+      continue;
+    }
+
+    for (const child of relatedTravelerOperations) {
+      if (!child.dependsOn.includes(operation.operationId)) {
+        child.dependsOn = [...child.dependsOn, operation.operationId];
+        changed.add(child.operationId);
+      }
+    }
+  }
+
+  const bookingParentIds = new Set<string>();
+  for (const operation of upgraded) {
+    const { payload, row, patch } = rowPayload(operation);
+    if (payload?.table !== "bookings") continue;
+    const target = operation.operation === "update" ? patch : row;
+    const bookingId = typeof target?.id === "string" ? target.id : operation.entityId;
+    if (bookingId) bookingParentIds.add(bookingId);
+  }
+
+  // A cached app may have received the server response for the legacy booking
+  // but stopped before sending its traveler rows. Mark only those orphaned
+  // rows so sync can repair an Everyone default if the stricter trigger proves
+  // that the parent was stored before participant_scope existed.
+  for (const operation of upgraded) {
+    if (removed.has(operation.operationId) || (operation.operation !== "create" && operation.operation !== "upsert")) continue;
+    const bookingId = bookingIdForTravelerOperation(operation);
+    if (!bookingId || bookingParentIds.has(bookingId)) continue;
+    const { payload } = rowPayload(operation); if (!payload) continue;
+    operation.payload = { ...payload, legacyParticipantScopeRepair: true };
+    changed.add(operation.operationId);
+  }
+
+  // The allocation trigger checks Selected booking membership. Make that
+  // relationship an explicit dependency instead of relying on millisecond
+  // timestamps to happen to order sibling outbox rows correctly.
+  const legParents = new Map<string, { bookingId: string }>();
+  const travelerAdds = new Map<string, OutboxOperation>();
+  for (const operation of upgraded) {
+    if (removed.has(operation.operationId) || (operation.operation !== "create" && operation.operation !== "upsert")) continue;
+    const { payload, row } = rowPayload(operation); if (!payload || !row) continue;
+    if (payload.table === "flight_legs" || payload.table === "journey_legs") {
+      const legId = typeof row.id === "string" ? row.id : operation.entityId;
+      if (legId && typeof row.booking_id === "string") legParents.set(legId, { bookingId: row.booking_id });
+    } else if (payload.table === "booking_travelers" && typeof row.booking_id === "string" && typeof row.traveler_id === "string") {
+      travelerAdds.set(`${row.booking_id}:${row.traveler_id}`, operation);
+    }
+  }
+  for (const operation of upgraded) {
+    if (removed.has(operation.operationId) || (operation.operation !== "create" && operation.operation !== "upsert")) continue;
+    const { payload, row } = rowPayload(operation); if (!payload || !row) continue;
+    const legId = payload.table === "flight_leg_travelers" ? row.flight_leg_id
+      : payload.table === "journey_leg_travelers" ? row.journey_leg_id
+        : null;
+    if (typeof legId !== "string" || typeof row.traveler_id !== "string") continue;
+    const parent = legParents.get(legId); if (!parent) continue;
+    const traveler = travelerAdds.get(`${parent.bookingId}:${row.traveler_id}`); if (!traveler) continue;
+    if (!operation.dependsOn.includes(traveler.operationId)) {
+      operation.dependsOn = [...operation.dependsOn, traveler.operationId];
+      changed.add(operation.operationId);
+    }
+  }
+
+  return {
+    operations: upgraded.filter((operation) => !removed.has(operation.operationId)),
+    updatedOperationIds: [...changed].filter((operationId) => !removed.has(operationId)),
+    removedOperationIds: [...removed]
+  };
+}
+
+export function isParticipantScopeMismatchError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { message?: unknown; details?: unknown; hint?: unknown };
+  return [candidate.message, candidate.details, candidate.hint]
+    .some((value) => /booking traveler rows require selected scope/i.test(String(value ?? "")));
+}
+
+async function prepareOutboxForCurrentSchema(operations: OutboxOperation[]) {
+  const result = upgradeLegacyOutboxOperations(operations);
+  for (const operationId of result.removedOperationIds) await database.outbox.delete(operationId);
+  const byId = new Map(result.operations.map((operation) => [operation.operationId, operation]));
+  for (const operationId of result.updatedOperationIds) {
+    const operation = byId.get(operationId); if (!operation) continue;
+    await database.outbox.update(operationId, {
+      payload: operation.payload,
+      dependsOn: operation.dependsOn,
+      attemptCount: 0,
+      lastErrorCode: undefined
+    });
+  }
+  return result.operations;
 }
 
 export function classifySyncError(error: unknown) {
@@ -213,7 +408,9 @@ export async function resolveSyncIssue(operationId: string, resolution: "keep_lo
     await discardOperationTree(operationId); return;
   }
   if (resolution === "discard") {
-    if (operation.operation === "create") await database.entities.delete([operation.profileId, operation.entityType, operation.entityId]);
+    if (operation.operation === "create" || operation.operation === "upsert") {
+      await database.entities.delete([operation.profileId, operation.entityType, operation.entityId]);
+    }
     await discardOperationTree(operationId); return;
   }
   if (resolution === "keep_local") {
@@ -290,8 +487,10 @@ async function pushDocumentAssociation(operation: OutboxOperation) {
 
 export async function syncOutbox() {
   if (!navigator.onLine || !supabase) return { synced: 0, failed: 0 };
+  const api = supabase;
   const profileId = await localProfileId(); if (!profileId) return { synced: 0, failed: 0 };
-  const operations = orderOutbox(await database.outbox.where("profileId").equals(profileId).toArray()); let synced = 0; let failed = 0;
+  const pending = await database.outbox.where("profileId").equals(profileId).toArray();
+  const operations = orderOutbox(await prepareOutboxForCurrentSchema(pending)); let synced = 0; let failed = 0;
   for (const operation of operations) {
     const unresolvedDependencies = operation.dependsOn.length
       ? (await database.outbox.bulkGet(operation.dependsOn)).some(Boolean)
@@ -301,9 +500,27 @@ export async function syncOutbox() {
       if (operation.operation === "upload_document") await pushDocument(operation);
       else if (operation.operation === "upload_account_document") await pushAccountDocument(operation);
       else if (operation.operation === "associate_account_document") await pushDocumentAssociation(operation);
+      else if (operation.operation === "rpc") {
+        const payload = operation.payload as { functionName: string; args: Record<string, unknown> };
+        const { error } = await api.rpc(payload.functionName, payload.args);
+        if (error) throw error;
+      }
       else {
-        const payload = operation.payload as { table: string; row?: Record<string, unknown>; patch?: Record<string, unknown>; match?: Record<string, string>; hard?: boolean };
-        if (operation.operation === "create" && payload.row) { const { error } = await supabase.from(payload.table).upsert(payload.row, { ignoreDuplicates: true }); if (error) throw error; }
+        const payload = operation.payload as { table: string; row?: Record<string, unknown>; patch?: Record<string, unknown>; match?: Record<string, string>; hard?: boolean; legacyParticipantScopeRepair?: boolean };
+        if ((operation.operation === "create" || operation.operation === "upsert") && payload.row) {
+          const send = () => operation.operation === "create"
+            ? api.from(payload.table).upsert(payload.row!, { ignoreDuplicates: true })
+            : api.from(payload.table).upsert(payload.row!);
+          let { error } = await send();
+          if (error && payload.legacyParticipantScopeRepair && payload.table === "booking_travelers" && isParticipantScopeMismatchError(error)) {
+            const bookingId = payload.row.booking_id;
+            if (typeof bookingId !== "string" || !bookingId) throw error;
+            const { error: repairError } = await api.from("bookings").update({ participant_scope: "selected" }).eq("id", bookingId);
+            if (repairError) throw repairError;
+            ({ error } = await send());
+          }
+          if (error) throw error;
+        }
         if (operation.operation === "update" && payload.patch) {
           let request = supabase.from(payload.table).update(payload.patch).eq("id", operation.entityId);
           if (operation.baseVersion !== undefined) request = request.eq("version", operation.baseVersion);

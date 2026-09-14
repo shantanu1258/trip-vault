@@ -1,0 +1,104 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ItineraryItem, Trip } from "./types";
+import type { Traveler } from "../workspace/types";
+
+const mocks = vi.hoisted(() => ({
+  listItinerary: vi.fn(),
+  listItineraryParticipantIds: vi.fn(),
+  updateItineraryItem: vi.fn(),
+  clearDraft: vi.fn()
+}));
+
+vi.mock("../../components/ModalSheet", () => ({ ModalSheet: ({ children, title }: { children: React.ReactNode; title: string }) => <section aria-label={title}>{children}</section> }));
+vi.mock("../../lib/forms/useFormDraft", () => ({ useFormDraft: () => ({ formRef: { current: null }, clearDraft: mocks.clearDraft }) }));
+vi.mock("../timeline/TimingFields", () => ({
+  TimingFields: () => null,
+  readEventTiming: () => ({ startsAt: "2026-09-28T04:00:00.000Z", endsAt: undefined, timezone: "Asia/Dubai", timingMode: "exact" as const, isAllDay: false, hasExplicitStartTime: true })
+}));
+vi.mock("../workspace/api", () => ({ listItineraryParticipantIds: mocks.listItineraryParticipantIds }));
+vi.mock("./api", () => ({
+  addItineraryItem: vi.fn(),
+  addTripCost: vi.fn(),
+  archiveTrip: vi.fn(),
+  deleteTripPermanently: vi.fn(),
+  deleteTripRecoverably: vi.fn(),
+  listItinerary: mocks.listItinerary,
+  updateItineraryItem: mocks.updateItineraryItem,
+  updateTrip: vi.fn(),
+  updateTripCost: vi.fn()
+}));
+
+import { AddItineraryForm } from "./TripForms";
+
+const trip: Trip = {
+  id: "trip-1",
+  title: "Dubai trip",
+  destination_summary: "Dubai",
+  start_date: "2026-09-26",
+  end_date: "2026-10-02",
+  primary_timezone: "Asia/Kolkata",
+  base_currency: "INR",
+  status: "upcoming",
+  created_at: "2026-09-01T00:00:00.000Z",
+  updated_at: "2026-09-01T00:00:00.000Z"
+};
+
+const travelers: Traveler[] = [
+  { id: "asha", trip_id: trip.id, display_name: "Asha", is_minor: false, created_at: "" },
+  { id: "ravi", trip_id: trip.id, display_name: "Ravi", is_minor: false, created_at: "" }
+];
+
+const item: ItineraryItem = {
+  id: "meal-1",
+  trip_id: trip.id,
+  booking_id: null,
+  title: "Dinner",
+  event_type: "meal",
+  starts_at: "2026-09-28T04:00:00.000Z",
+  ends_at: null,
+  timezone: "Asia/Dubai",
+  location: null,
+  notes: null,
+  applies_to_all_travelers: false,
+  timing_mode: "exact",
+  version: 4,
+  created_at: "2026-09-01T00:00:00.000Z"
+};
+
+describe("AddItineraryForm participant scope", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.listItinerary.mockResolvedValue([item]);
+    mocks.listItineraryParticipantIds.mockResolvedValue(["asha", "ravi"]);
+    mocks.updateItineraryItem.mockResolvedValue(item);
+  });
+
+  it("preserves an intentional Selected scope when every current traveler is selected", async () => {
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><AddItineraryForm trip={trip} travelers={travelers} item={item} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    expect(screen.getByRole("radio", { name: "Selected travelers" })).toBeChecked();
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Asha" })).toBeChecked());
+    expect(screen.getByRole("checkbox", { name: "Ravi" })).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(mocks.updateItineraryItem).toHaveBeenCalledWith(expect.objectContaining({
+      id: item.id,
+      participantScope: "selected",
+      travelerIds: ["asha", "ravi"]
+    })));
+  });
+
+  it("does not offer a generic edit form for a linked hotel milestone", () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><AddItineraryForm trip={trip} travelers={travelers} item={{ ...item, booking_id: "hotel-1", event_type: "hotel_check_out" }} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    expect(screen.getByText(/Open the hotel booking to edit both milestones safely/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+  });
+});

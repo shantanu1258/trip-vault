@@ -93,6 +93,7 @@ describe("Add booking details to an existing event", () => {
     await user.type(screen.getByLabelText("Booking reference (optional)"), "MUSEUM-42");
     await user.type(screen.getByLabelText("Booked via selection"), "Direct");
     await user.type(screen.getByLabelText("Booking website (optional)"), "https://museum.example/manage");
+    await user.type(screen.getByLabelText("Entry or meeting instructions (optional)"), "Use the north entrance");
     await user.click(screen.getByRole("button", { name: "Save booking details" }));
 
     await waitFor(() => expect(mocks.addBooking).toHaveBeenCalledWith(expect.objectContaining({
@@ -107,9 +108,12 @@ describe("Add booking details to an existing event", () => {
       location: "Museum of the Future",
       bookedViaName: "Direct",
       bookedViaUrl: "https://museum.example/manage",
+      bookingDetails: { meeting_instructions: "Use the north entrance" },
+      reservationState: "booked",
+      participantScope: "selected",
       travelerIds: ["asha"]
     })));
-    expect(mocks.linkBookingToItineraryItem).toHaveBeenCalledWith(item, booking.id);
+    expect(mocks.linkBookingToItineraryItem).toHaveBeenCalledWith(item, booking.id, { participantScope: "selected", travelerIds: ["asha"] });
     expect(mocks.archiveBooking).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledOnce();
   });
@@ -143,6 +147,8 @@ describe("Add booking details to an existing event", () => {
 
     expect(screen.getByText(/After Marina hotel check-in/)).toBeInTheDocument();
     await user.type(screen.getByLabelText("Restaurant or venue (optional)"), "Marina Kitchen");
+    expect(screen.getByLabelText("Party size (optional)")).toHaveValue(1);
+    await user.type(screen.getByLabelText("Dietary or arrival notes (optional)"), "Window table");
     await user.click(screen.getByRole("button", { name: "Save booking details" }));
 
     await waitFor(() => expect(mocks.addBooking).toHaveBeenCalledWith(expect.objectContaining({
@@ -153,12 +159,44 @@ describe("Add booking details to an existing event", () => {
       startsAt: undefined,
       endsAt: undefined,
       timezone: undefined,
+      bookingDetails: { party_size: 1, dietary_notes: "Window table" },
+      reservationState: "booked",
+      participantScope: "selected",
       travelerIds: ["asha"]
     })));
     expect(mocks.addBooking).toHaveBeenCalledOnce();
     expect(mocks.linkBookingToItineraryItem).toHaveBeenCalledOnce();
-    expect(mocks.linkBookingToItineraryItem).toHaveBeenCalledWith(relativeMeal, booking.id);
+    expect(mocks.linkBookingToItineraryItem).toHaveBeenCalledWith(relativeMeal, booking.id, { participantScope: "selected", travelerIds: ["asha"] });
     expect(screen.getByText("The booking will stay untimed while this event has no explicit start time.")).toBeInTheDocument();
+  });
+
+  it("captures transport-specific booking details when a planned transfer is booked later", async () => {
+    const user = userEvent.setup();
+    const transfer = { ...item, id: "transfer-1", event_type: "transport" as const, title: "Hotel transfer" };
+    renderForm(vi.fn(), transfer);
+
+    await user.selectOptions(screen.getByLabelText("Transport type (optional)"), "private_transfer");
+    await user.type(screen.getByLabelText("Return date and time (optional)"), "2026-09-30T18:30");
+    await user.click(screen.getByRole("button", { name: "Save booking details" }));
+
+    await waitFor(() => expect(mocks.addBooking).toHaveBeenCalledWith(expect.objectContaining({
+      type: "transport",
+      bookingDetails: { transport_subtype: "private_transfer", transport_return_at: "2026-09-30T18:30" }
+    })));
+  });
+
+  it("keeps an Everyone event canonical when adding its booking later", async () => {
+    const user = userEvent.setup();
+    renderForm(vi.fn(), { ...item, applies_to_all_travelers: true }, []);
+
+    expect(screen.getByRole("radio", { name: "Everyone" })).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Save booking details" }));
+
+    await waitFor(() => expect(mocks.addBooking).toHaveBeenCalledWith(expect.objectContaining({
+      participantScope: "everyone",
+      reservationState: "booked",
+      travelerIds: []
+    })));
   });
 
   it("supports every flexible timing mode and all generic event types", () => {

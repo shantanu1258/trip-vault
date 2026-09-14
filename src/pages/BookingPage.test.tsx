@@ -4,31 +4,42 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { formatEventTime } from "../features/trips/presentation";
+import { tripChildNavigationState } from "../features/trips/navigation";
 import type { Trip } from "../features/trips/types";
 import type { Booking, JourneyLeg } from "../features/workspace/types";
 
 const mocks = vi.hoisted(() => ({
   getBooking: vi.fn(),
   getTrip: vi.fn(),
+  listBookingTravelerIds: vi.fn(),
+  listJourneyLegTravelers: vi.fn(),
   listJourneyLegsForBooking: vi.fn(),
-  listMembers: vi.fn().mockResolvedValue([])
+  listMembers: vi.fn().mockResolvedValue([]),
+  listTravelers: vi.fn(),
+  readTravelerFocus: vi.fn()
 }));
 
 vi.mock("../components/AppShell", () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("../features/trips/api", () => ({ getTrip: mocks.getTrip }));
 vi.mock("../features/sync/localSync", () => ({ localProfileId: vi.fn().mockResolvedValue("user-1") }));
-vi.mock("../features/workspace/travelerFocus", () => ({ readTravelerFocus: () => null }));
-vi.mock("../features/workspace/WorkspaceForms", () => ({ EditBookingForm: () => <section aria-label="Edit booking form" />, UploadDocumentForm: () => null }));
+vi.mock("../features/workspace/travelerFocus", () => ({ readTravelerFocus: mocks.readTravelerFocus }));
+vi.mock("../features/workspace/WorkspaceForms", () => ({
+  EditBookingForm: () => <section aria-label="Edit booking form" />,
+  UploadDocumentForm: ({ journeyLegId, contextTitle }: { journeyLegId?: string; contextTitle?: string }) => <section aria-label="Upload document form" data-journey-leg-id={journeyLegId} data-context-title={contextTitle} />
+}));
+vi.mock("../features/workspace/EditJourneyLegForm", () => ({ EditJourneyLegForm: ({ leg }: { leg: JourneyLeg }) => <section aria-label="Edit journey leg form">{leg.origin_name}</section> }));
 vi.mock("../features/workspace/api", () => ({
   archiveBooking: vi.fn(),
   getBooking: mocks.getBooking,
   googleMapsDirectionsUrl: vi.fn(() => "https://maps.example/directions"),
   googleMapsSearchUrl: vi.fn(() => "https://maps.example/search"),
-  listBookingTravelerIds: vi.fn().mockResolvedValue([]),
+  listBookingTravelerIds: mocks.listBookingTravelerIds,
+  listJourneyLegTravelers: mocks.listJourneyLegTravelers,
   listJourneyLegsForBooking: mocks.listJourneyLegsForBooking,
   listMembers: mocks.listMembers,
-  listTravelers: vi.fn().mockResolvedValue([]),
-  listVaultDocuments: vi.fn().mockResolvedValue([])
+  listTravelers: mocks.listTravelers,
+  listVaultDocuments: vi.fn().mockResolvedValue([]),
+  setJourneyLegTravelerDetails: vi.fn()
 }));
 
 import { BookingPage } from "./BookingPage";
@@ -88,11 +99,11 @@ const leg: JourneyLeg = {
   status_note: null
 };
 
-function renderPage() {
+function renderPage(initialEntry: string | { pathname: string; state: unknown } = "/trips/trip-1/bookings/booking-1") {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/trips/trip-1/bookings/booking-1"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes><Route path="/trips/:tripId/bookings/:bookingId" element={<BookingPage />} /></Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -101,6 +112,10 @@ function renderPage() {
 
 beforeEach(() => {
   mocks.listMembers.mockResolvedValue([]);
+  mocks.listBookingTravelerIds.mockReset().mockResolvedValue([]);
+  mocks.listJourneyLegTravelers.mockReset().mockResolvedValue([]);
+  mocks.listTravelers.mockReset().mockResolvedValue([]);
+  mocks.readTravelerFocus.mockReset().mockReturnValue(null);
 });
 
 describe("generic journey booking times", () => {
@@ -121,6 +136,46 @@ describe("generic journey booking times", () => {
       expect(within(endsCard!).getByText(expected)).toBeInTheDocument();
       expect(within(endsCard!).queryByText(departureZoneValue)).not.toBeInTheDocument();
     });
+  });
+
+  it("returns to the Trip details tab when that is where the booking was opened", async () => {
+    renderPage({
+      pathname: "/trips/trip-1/bookings/booking-1",
+      state: tripChildNavigationState(null, "trip-1", "details")
+    });
+
+    expect(await screen.findByRole("link", { name: "Back to trip" })).toHaveAttribute("href", "/trips/trip-1?view=details");
+  });
+
+  it("keeps a journey useful when its source does not provide an arrival", async () => {
+    mocks.listJourneyLegsForBooking.mockResolvedValue([{ ...leg, scheduled_arrival_at: null }]);
+
+    renderPage();
+
+    expect(await screen.findByText(/Arrival not added/)).toBeInTheDocument();
+    expect(screen.getByText("Duration not available")).toBeInTheDocument();
+  });
+
+  it("hydrates only the travelers selected for this booking and shows their individual ticket details", async () => {
+    const shantanu = { id: "traveler-1", trip_id: trip.id, display_name: "Shantanu", is_minor: false, created_at: "2026-09-01T00:00:00.000Z" };
+    const rahul = { ...shantanu, id: "traveler-2", display_name: "Rahul" };
+    let resolveTravelerIds!: (ids: string[]) => void;
+    mocks.getBooking.mockResolvedValue({ ...booking, participant_scope: "selected" });
+    mocks.listTravelers.mockResolvedValue([shantanu, rahul]);
+    mocks.listBookingTravelerIds.mockReturnValue(new Promise<string[]>((resolve) => { resolveTravelerIds = resolve; }));
+    mocks.listJourneyLegTravelers.mockResolvedValue([
+      { id: "leg-1:traveler-1", journey_leg_id: leg.id, traveler_id: shantanu.id, seat_or_berth: "5", coach_or_cabin: "Executive", passenger_reference: "85854178" }
+    ]);
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: booking.title });
+    expect(screen.queryByText("Traveler journey details")).not.toBeInTheDocument();
+    resolveTravelerIds([shantanu.id]);
+
+    expect(await screen.findByText("Traveler journey details")).toBeInTheDocument();
+    expect(screen.getAllByText(/Shantanu.*Seat 5.*85854178/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Rahul/)).not.toBeInTheDocument();
   });
 });
 
@@ -144,7 +199,7 @@ describe("booking detail card interactions", () => {
     ]);
   });
 
-  it("opens the booking editor from shallow fact and journey cards", async () => {
+  it("opens the booking editor from shallow booking cards", async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -161,6 +216,30 @@ describe("booking detail card interactions", () => {
     await user.click(screen.getByRole("button", { name: "Edit Starts" }));
 
     expect(screen.getByRole("region", { name: "Edit booking form" })).toBeInTheDocument();
+  });
+
+  it("opens the dedicated leg editor from a journey card", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Edit journey leg 1" }));
+
+    expect(screen.getByRole("region", { name: "Edit journey leg form" })).toHaveTextContent("Delhi");
+    expect(screen.queryByRole("region", { name: "Edit booking form" })).not.toBeInTheDocument();
+  });
+
+  it("starts a leg-associated upload without triggering the card editor", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Upload document for journey leg 1" }));
+
+    const upload = screen.getByRole("region", { name: "Upload document form" });
+    expect(upload).toHaveAttribute("data-journey-leg-id", leg.id);
+    expect(upload).toHaveAttribute("data-context-title", "Leg 1 · DEL to DXB");
+    expect(screen.queryByRole("region", { name: "Edit journey leg form" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Edit booking form" })).not.toBeInTheDocument();
+    expect(document.querySelector("button button, button a, a button, a a")).toBeNull();
   });
 
   it("keeps copy, booking-site, phone, and map actions independent from editing", async () => {

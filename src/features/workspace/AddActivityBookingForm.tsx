@@ -6,7 +6,7 @@ import { VendorPicker } from "../metadata/VendorPicker";
 import { eventTimeLabel } from "../timeline/model";
 import { linkBookingToItineraryItem } from "../trips/api";
 import { formatEventTime, getErrorMessage } from "../trips/presentation";
-import type { ItineraryItem, Trip } from "../trips/types";
+import type { ItineraryItem, ParticipantScope, Trip } from "../trips/types";
 import { ParticipantSelector } from "./ParticipantSelector";
 import { addBooking, archiveBooking } from "./api";
 import type { BookingType, CreateBookingInput, Traveler } from "./types";
@@ -60,7 +60,7 @@ export function AddActivityBookingForm({ trip, item, itinerary = [], travelers, 
       if (!navigator.onLine) throw new Error("Adding booking details requires a connection.");
       const booking = await addBooking(input);
       try {
-        await linkBookingToItineraryItem(item, booking.id);
+        await linkBookingToItineraryItem(item, booking.id, { participantScope: input.participantScope ?? "everyone", travelerIds: input.travelerIds ?? [] });
       } catch (linkError) {
         try {
           await archiveBooking(booking);
@@ -85,11 +85,26 @@ export function AddActivityBookingForm({ trip, item, itinerary = [], travelers, 
     event.preventDefault();
     setMessage("");
     const form = new FormData(event.currentTarget);
-    const travelerIds = form.getAll("travelerIds").map(String);
-    if (travelers.length > 0 && travelerIds.length === 0) {
-      setMessage("Choose at least one traveler for this booking.");
+    const participantScope = (form.get("participantScope") === "selected" ? "selected" : "everyone") as ParticipantScope;
+    const selectedTravelerIds = form.getAll("travelerIds").map(String);
+    if (participantScope === "selected" && selectedTravelerIds.length === 0) {
+      setMessage("Choose at least one traveler, or select Everyone.");
       return;
     }
+    const travelerIds = participantScope === "everyone" ? [] : selectedTravelerIds;
+    const optionalPositiveInteger = (name: string) => {
+      const raw = String(form.get(name) ?? "").trim();
+      if (!raw) return undefined;
+      const value = Number(raw);
+      return Number.isInteger(value) && value > 0 ? value : undefined;
+    };
+    const bookingDetails = eventType === "activity"
+      ? { meeting_instructions: String(form.get("meetingInstructions") ?? "").trim() || undefined }
+      : eventType === "meal"
+        ? { party_size: optionalPositiveInteger("partySize"), dietary_notes: String(form.get("dietaryNotes") ?? "").trim() || undefined }
+        : eventType === "transport"
+          ? { transport_subtype: String(form.get("transportSubtype") ?? "").trim() || undefined, transport_return_at: String(form.get("transportReturnAt") ?? "").trim() || undefined }
+          : undefined;
     mutation.mutate({
       tripId: trip.id,
       type: bookingType,
@@ -101,10 +116,13 @@ export function AddActivityBookingForm({ trip, item, itinerary = [], travelers, 
       timezone: hasExplicitStart ? item.timezone : undefined,
       location: item.location?.label ?? item.location?.address,
       notes: String(form.get("notes") ?? "").trim() || undefined,
+      bookingDetails,
       bookedViaName: String(form.get("bookedViaName") ?? "").trim() || undefined,
       bookedViaUrl: String(form.get("bookedViaUrl") ?? "").trim() || undefined,
       contactName: String(form.get("contactName") ?? "").trim() || undefined,
       contactPhone: String(form.get("contactPhone") ?? "").trim() || undefined,
+      reservationState: "booked",
+      participantScope,
       travelerIds
     });
   };
@@ -128,11 +146,14 @@ export function AddActivityBookingForm({ trip, item, itinerary = [], travelers, 
       <p className="rounded-2xl bg-warning/10 p-3 text-xs leading-5 text-warning">Adding booking details needs a connection for now. If attaching the booking fails, the new booking is archived and this event stays unchanged.</p>
       <label className="form-label">{providerCopy.label}<input autoFocus className="form-input" name="provider" placeholder={providerCopy.placeholder} /></label>
       <label className="form-label">Booking reference (optional)<input className="form-input" name="referenceCode" placeholder="Enter the confirmation number or reservation reference" /></label>
+      {eventType === "activity" && <label className="form-label">Entry or meeting instructions (optional)<textarea className="form-input min-h-20" name="meetingInstructions" placeholder="Enter the meeting point, entry rule, or arrival instruction" /></label>}
+      {eventType === "meal" && <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Party size (optional)<input className="form-input" name="partySize" type="number" min="1" inputMode="numeric" defaultValue={item.applies_to_all_travelers ? travelers.length || undefined : eventTravelerIds.length || undefined} placeholder="Enter the number of diners" /></label><label className="form-label">Dietary or arrival notes (optional)<textarea className="form-input min-h-20" name="dietaryNotes" placeholder="Add dietary needs or instructions for arrival" /></label></div>}
+      {eventType === "transport" && <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Transport type (optional)<select className="form-input" name="transportSubtype" defaultValue=""><option value="">Keep the existing plan</option><option value="metro">Metro / public transit</option><option value="rental">Rental vehicle</option><option value="private_transfer">Private transfer</option><option value="other">Other transport</option></select></label><label className="form-label">Return date and time (optional)<input className="form-input" name="transportReturnAt" type="datetime-local" min={`${trip.start_date}T00:00`} max={`${trip.end_date}T23:59`} /></label></div>}
       <div className="form-label"><span>Booked via (optional)</span><VendorPicker onWebsite={setBookedViaUrl} /></div>
       <label className="form-label">Booking website (optional)<input className="form-input" name="bookedViaUrl" type="url" value={bookedViaUrl} onChange={(event) => setBookedViaUrl(event.target.value)} placeholder="Paste the page used to view or manage this booking" /></label>
       <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Contact name (optional)<input className="form-input" name="contactName" placeholder="Enter the guide, venue, or support contact" /></label><label className="form-label">Phone number (optional)<input className="form-input" name="contactPhone" type="tel" placeholder="Include the country code for call and WhatsApp" /></label></div>
       <label className="form-label">Booking notes (optional)<textarea className="form-input min-h-24 resize-y" name="notes" placeholder="Add entry instructions, meeting point, or booking conditions" /></label>
-      <ParticipantSelector travelers={travelers} explicitAll selectedTravelerIds={defaultTravelerIds} />
+      <ParticipantSelector travelers={travelers} selectedTravelerIds={defaultTravelerIds} initialScope={item.applies_to_all_travelers ? "everyone" : "selected"} scopeName="participantScope" />
       {(message || mutation.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{message || getErrorMessage(mutation.error)}</p>}
       <button type="submit" className="primary-button w-full" disabled={!online || mutation.isPending}>{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <TicketCheck className="size-4" />} Save booking details</button>
     </form>

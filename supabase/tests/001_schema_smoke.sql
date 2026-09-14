@@ -13,7 +13,7 @@ declare
     'itinerary_item_documents', 'documents', 'document_versions', 'account_document_uploads', 'trip_storage_cleanup_queue', 'document_access', 'document_travelers', 'notes',
     'trip_requirements', 'requirement_assignees', 'trip_costs', 'trip_cost_participants', 'reminders', 'alert_states',
     'activity_events', 'config_releases', 'airline_catalog_entries', 'airport_catalog_entries',
-    'booking_vendor_catalog_entries', 'catalog_suggestions', 'journey_legs',
+    'booking_vendor_catalog_entries', 'catalog_suggestions', 'journey_legs', 'journey_leg_travelers',
     'trip_membership_offers',
     'metadata_defaults', 'theme_palettes', 'config_audit_events'
   ];
@@ -23,6 +23,10 @@ declare
   published_release_id uuid;
   permanent_delete_definition text;
   flight_connection_definition text;
+  hotel_save_definition text;
+  journey_save_definition text;
+  participant_sync_definition text;
+  parent_scope_definition text;
   relative_timing_definition text;
   relative_timing_trigger_definition text;
   relative_anchor_definition text;
@@ -128,6 +132,61 @@ begin
   end if;
   if to_regprocedure('public.add_flight_connection(uuid,jsonb)') is null then
     raise exception 'add_flight_connection RPC is missing';
+  end if;
+  if to_regprocedure('public.save_hotel_stay(jsonb,uuid[],jsonb)') is null then
+    raise exception 'Atomic hotel booking/milestone RPC is missing';
+  end if;
+  hotel_save_definition := lower(pg_get_functiondef('public.save_hotel_stay(jsonb,uuid[],jsonb)'::regprocedure));
+  if strpos(hotel_save_definition, 'left(title_value, 148)') = 0 then
+    raise exception 'Hotel milestone titles can exceed the itinerary title limit';
+  end if;
+  if to_regprocedure('public.save_journey_leg(uuid,jsonb)') is null then
+    raise exception 'Atomic journey leg editing RPC is missing';
+  end if;
+  journey_save_definition := lower(pg_get_functiondef('public.save_journey_leg(uuid,jsonb)'::regprocedure));
+  if strpos(journey_save_definition, 'edited departure must match the previous leg destination') = 0
+    or strpos(journey_save_definition, 'edited destination must match the next leg origin') = 0
+    or strpos(journey_save_definition, 'edited departure time zone must match the previous leg destination time zone') = 0
+    or strpos(journey_save_definition, 'edited destination time zone must match the next leg origin time zone') = 0
+    or strpos(journey_save_definition, 'departure_at <= previous_leg.scheduled_arrival_at') = 0
+    or strpos(journey_save_definition, 'next_leg.scheduled_departure_at <= arrival_at') = 0
+    or strpos(journey_save_definition, 'for update') = 0 then
+    raise exception 'Journey leg editing does not preserve adjacent connection endpoints, time zones, chronology, and locks';
+  end if;
+  if strpos(journey_save_definition, 'lock order invariant: resolve and lock the parent booking first') = 0
+    or strpos(journey_save_definition, 'lock order invariant: every editor next locks all active route legs') = 0
+    or strpos(journey_save_definition, 'order by journey.segment_order, journey.id') = 0
+    or strpos(journey_save_definition, 'lock order invariant: resolve and lock the parent booking first')
+      >= strpos(journey_save_definition, 'lock order invariant: every editor next locks all active route legs')
+    or strpos(journey_save_definition, 'lock order invariant: every editor next locks all active route legs')
+      >= strpos(journey_save_definition, 'select journey.* into target_leg') then
+    raise exception 'Journey leg editing does not lock booking then route legs in deterministic order';
+  end if;
+  if to_regprocedure('public.sync_booking_participants(uuid,public.participant_scope,uuid[],uuid,integer)') is null then
+    raise exception 'Atomic booking/event participant synchronization RPC is missing';
+  end if;
+  participant_sync_definition := lower(pg_get_functiondef('public.sync_booking_participants(uuid,public.participant_scope,uuid[],uuid,integer)'::regprocedure));
+  if strpos(participant_sync_definition, 'public.can_edit_trip(target_trip_id)') = 0
+    or strpos(participant_sync_definition, 'delete from public.booking_travelers') = 0
+    or strpos(participant_sync_definition, 'delete from public.flight_leg_travelers') = 0
+    or strpos(participant_sync_definition, 'delete from public.journey_leg_travelers') = 0
+    or strpos(participant_sync_definition, 'allocation.traveler_id <> all') = 0
+    or strpos(participant_sync_definition, 'update public.itinerary_items') = 0
+    or strpos(participant_sync_definition, 'delete from public.itinerary_participants') = 0 then
+    raise exception 'Booking/event participant synchronization is not authorized or complete';
+  end if;
+  if to_regprocedure('public.canonicalize_parent_participant_scope()') is null then
+    raise exception 'Parent-side participant scope canonicalization is missing';
+  end if;
+  parent_scope_definition := lower(pg_get_functiondef('public.canonicalize_parent_participant_scope()'::regprocedure));
+  if strpos(parent_scope_definition, 'delete from public.booking_travelers') = 0
+    or strpos(parent_scope_definition, 'delete from public.flight_leg_travelers') = 0
+    or strpos(parent_scope_definition, 'delete from public.journey_leg_travelers') = 0
+    or strpos(parent_scope_definition, 'delete from public.itinerary_participants') = 0 then
+    raise exception 'Parent-side participant scope canonicalization is incomplete';
+  end if;
+  if to_regprocedure('public.valid_journey_leg_details(public.journey_mode,jsonb)') is null then
+    raise exception 'Mode-specific journey detail validation is missing';
   end if;
   if to_regprocedure('public.reorder_itinerary_items(uuid,uuid[])') is null then
     raise exception 'reorder_itinerary_items RPC is missing';
@@ -356,6 +415,86 @@ begin
   end if;
   if not exists (select 1 from pg_trigger where tgname = 'journeys_valid_timezones' and not tgisinternal) then
     raise exception 'Strict journey timezone validation trigger is missing';
+  end if;
+  if not exists (select 1 from pg_trigger where tgname = 'journey_leg_traveler_same_trip' and not tgisinternal) then
+    raise exception 'Journey traveler same-trip validation trigger is missing';
+  end if;
+  if not exists (select 1 from pg_trigger where tgname = 'booking_traveler_explicit_scope' and not tgisinternal)
+    or not exists (select 1 from pg_trigger where tgname = 'itinerary_participant_explicit_scope' and not tgisinternal) then
+    raise exception 'Explicit Everyone/Selected participant validation is missing';
+  end if;
+  if not exists (
+    select 1 from pg_trigger
+    where tgname = 'booking_parent_participant_scope'
+      and tgrelid = 'public.bookings'::regclass and not tgisinternal
+  ) or not exists (
+    select 1 from pg_trigger
+    where tgname = 'itinerary_parent_participant_scope'
+      and tgrelid = 'public.itinerary_items'::regclass and not tgisinternal
+  ) then
+    raise exception 'Parent-side Everyone scope canonicalization triggers are missing';
+  end if;
+  if exists (
+    select 1
+    from public.booking_travelers assignment
+    join public.bookings booking on booking.id = assignment.booking_id
+    where booking.participant_scope = 'everyone'
+  ) or exists (
+    select 1
+    from public.itinerary_participants assignment
+    join public.itinerary_items item on item.id = assignment.itinerary_item_id
+    where item.applies_to_all_travelers
+  ) then
+    raise exception 'Everyone scope still contains explicit traveler rows';
+  end if;
+  if exists (
+    select 1
+    from public.booking_travelers assignment
+    join public.travelers traveler on traveler.id = assignment.traveler_id
+    where traveler.removed_at is not null
+  ) or exists (
+    select 1
+    from public.itinerary_participants assignment
+    join public.travelers traveler on traveler.id = assignment.traveler_id
+    where traveler.removed_at is not null
+  ) then
+    raise exception 'Removed travelers still have booking or timeline participant rows';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'bookings' and column_name = 'reservation_state'
+      and udt_name = 'booking_reservation_state' and is_nullable = 'NO'
+  ) or not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'bookings' and column_name = 'participant_scope'
+      and udt_name = 'participant_scope' and is_nullable = 'NO'
+  ) then
+    raise exception 'Booking reservation state or explicit participant scope is missing';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'journey_legs' and column_name = 'scheduled_arrival_at' and is_nullable = 'YES'
+  ) or not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'journey_legs' and column_name = 'details' and data_type = 'jsonb'
+  ) then
+    raise exception 'Journey optional arrival or typed details storage is missing';
+  end if;
+  if not public.valid_journey_leg_details('train', '{"kind":"train","travel_class":"AC 2 Tier"}'::jsonb)
+    or public.valid_journey_leg_details('train', '{}'::jsonb)
+    or public.valid_journey_leg_details('bus', '{"kind":"train"}'::jsonb)
+    or public.valid_journey_leg_details('cab', '{"kind":"cab","ride_type":"teleport"}'::jsonb)
+    or public.valid_journey_leg_details('ferry', '{"kind":"ferry","unexpected":true}'::jsonb) then
+    raise exception 'Mode-specific journey detail validation accepts an invalid shape';
+  end if;
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'journey_leg_travelers' and policyname = 'journey_leg_travelers_read'
+  ) or not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'journey_leg_travelers' and policyname = 'journey_leg_travelers_write'
+  ) then
+    raise exception 'Journey traveler RLS policies are missing';
   end if;
   if not exists (select 1 from pg_trigger where tgname = 'airport_catalog_validate' and not tgisinternal)
     or not exists (select 1 from pg_trigger where tgname = 'theme_palettes_validate' and not tgisinternal) then

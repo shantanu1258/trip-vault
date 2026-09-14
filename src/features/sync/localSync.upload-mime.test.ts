@@ -24,11 +24,14 @@ const mocks = vi.hoisted(() => {
       entities: { get: getEntity, put: putEntity }
     },
     deleteOperation,
+    eq,
     from,
     readOfflineFile,
     rpc,
     storageFrom,
     toArray,
+    update,
+    upsert,
     upload
   };
 });
@@ -62,6 +65,8 @@ describe("offline upload MIME restoration", () => {
     vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);
     mocks.readOfflineFile.mockImplementation(async (_profileId: string, _versionId: string, expectedMimeType?: string) => new Blob(["bytes"], { type: expectedMimeType }));
     mocks.upload.mockResolvedValue({ error: null });
+    mocks.upsert.mockResolvedValue({ error: null });
+    mocks.eq.mockResolvedValue({ error: null });
   });
 
   it("restores the private-inbox MIME before Supabase wraps the Blob in multipart form data", async () => {
@@ -88,5 +93,21 @@ describe("offline upload MIME restoration", () => {
     expect(mocks.readOfflineFile).toHaveBeenCalledWith("profile-1", "version-1", "image/png");
     const uploadedBlob = mocks.upload.mock.calls[0]?.[1] as Blob;
     expect(uploadedBlob.type).toBe("image/png");
+  });
+
+  it("repairs an orphaned legacy booking scope only after the database rejects its traveler row", async () => {
+    mocks.toArray.mockResolvedValue([{
+      ...operation("create", { table: "booking_travelers", row: { booking_id: "booking-1", traveler_id: "traveler-1" } }),
+      entityType: "booking-travelers:booking-1"
+    }]);
+    mocks.upsert
+      .mockResolvedValueOnce({ error: { message: "Booking traveler rows require Selected scope" } })
+      .mockResolvedValueOnce({ error: null });
+
+    await expect(syncOutbox()).resolves.toEqual({ synced: 1, failed: 0 });
+
+    expect(mocks.update).toHaveBeenCalledWith({ participant_scope: "selected" });
+    expect(mocks.eq).toHaveBeenCalledWith("id", "booking-1");
+    expect(mocks.upsert).toHaveBeenCalledTimes(2);
   });
 });

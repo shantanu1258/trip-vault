@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { googleMapsDirectionsUrl, googleMapsSearchUrl, isMissingAccountDocumentObject, mergeAccountDocumentUploads, mergeCloudAndPendingDocuments, normalizeJoinCode, sanitizeFilename, validateDocumentFile } from "./api";
+import { googleMapsDirectionsUrl, googleMapsSearchUrl, isMissingAccountDocumentObject, journeyTimelineFields, mergeAccountDocumentUploads, mergeCloudAndPendingDocuments, normalizeJoinCode, normalizeJourneyLegDetails, sanitizeFilename, validateDocumentFile } from "./api";
 import type { AccountDocumentUpload, VaultDocument } from "./types";
 
 function document(id: string, title: string, updatedAt: string, withFile = true): VaultDocument {
@@ -80,5 +80,36 @@ describe("workspace boundaries", () => {
     expect(isMissingAccountDocumentObject({ message: "Document file is not stored yet" })).toBe(true);
     expect(isMissingAccountDocumentObject({ message: "Failed to fetch" })).toBe(false);
     expect(isMissingAccountDocumentObject(new Error("network timeout"))).toBe(false);
+  });
+  it("defaults compatible journey details and rejects details from another mode", () => {
+    expect(normalizeJourneyLegDetails("bus")).toEqual({ kind: "bus" });
+    expect(normalizeJourneyLegDetails("cab")).toEqual({ kind: "cab", ride_type: "local" });
+    expect(() => normalizeJourneyLegDetails("train", { kind: "bus" })).toThrow(/cannot be used/);
+  });
+  it("validates mode-specific journey details before they enter the offline queue", () => {
+    expect(normalizeJourneyLegDetails("ferry", { kind: "ferry", seating: "assigned", vehicle: { length_cm: 420 } })).toMatchObject({ seating: "assigned" });
+    expect(() => normalizeJourneyLegDetails("ferry", { kind: "ferry", seating: "reserved" } as never)).toThrow(/ticket details/i);
+    expect(() => normalizeJourneyLegDetails("cab", { kind: "cab", ride_type: "airport_transfer", luggage_count: -1 })).toThrow(/ticket details/i);
+    expect(() => normalizeJourneyLegDetails("bus", { kind: "bus", airline: "not applicable" } as never)).toThrow(/ticket details/i);
+  });
+  it("uses a cab's relative timeline semantics instead of flattening it to the journey departure", () => {
+    expect(journeyTimelineFields({
+      startsAt: "2026-09-28T09:30:00.000Z",
+      timezone: "Asia/Kolkata",
+      timingMode: "relative",
+      anchorItineraryItemId: "checkout-1",
+      relativePosition: "after",
+      hasExplicitStartTime: false,
+      durationMinutes: 30
+    }, {
+      startsAt: "2026-09-28T10:00:00.000Z",
+      timezone: "Asia/Kolkata"
+    })).toMatchObject({
+      timingMode: "relative",
+      anchorItineraryItemId: "checkout-1",
+      relativePosition: "after",
+      hasExplicitStartTime: false,
+      durationMinutes: 30
+    });
   });
 });

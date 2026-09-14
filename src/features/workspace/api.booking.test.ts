@@ -30,9 +30,23 @@ vi.mock("../sync/localSync", () => ({
   syncOutbox: vi.fn()
 }));
 
-import { addBooking, bookingInputForTimelineEvent } from "./api";
+import { addBooking, bookingFields, bookingInputForTimelineEvent } from "./api";
 
 describe("timeline event booking timing", () => {
+  it("keeps the pasted navigation link in booking location metadata", () => {
+    expect(bookingFields({
+      tripId: "trip-1",
+      type: "other",
+      title: "Visa appointment",
+      location: "Visa centre",
+      mapUrl: "https://maps.google.com/visa-centre"
+    }).location).toEqual({
+      label: "Visa centre",
+      address: "Visa centre",
+      map_url: "https://maps.google.com/visa-centre"
+    });
+  });
+
   it("removes a flexible relative event's synthetic anchor time from booking metadata", () => {
     const bookingInput = bookingInputForTimelineEvent({
       tripId: "trip-1",
@@ -109,6 +123,10 @@ describe("booking creation compensation", () => {
     })).rejects.toEqual(participantError);
 
     const createdId = mocks.bookingInsert.mock.calls[0][0].id;
+    expect(mocks.bookingInsert.mock.calls[0][0]).toMatchObject({
+      reservation_state: "booked",
+      participant_scope: "selected"
+    });
     expect(mocks.bookingUpdate).toHaveBeenCalledWith({ deleted_at: expect.any(String) });
     expect(mocks.cleanupEq).toHaveBeenCalledWith("id", createdId);
     expect(mocks.cacheEntity).not.toHaveBeenCalled();

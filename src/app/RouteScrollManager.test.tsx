@@ -1,6 +1,7 @@
 import { fireEvent, render } from "@testing-library/react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
+import { tripEntryNavigationState, tripIntentNavigationState } from "../features/trips/navigation";
 import { RouteScrollManager } from "./RouteScrollManager";
 
 function NavigationHarness() {
@@ -10,6 +11,8 @@ function NavigationHarness() {
       <RouteScrollManager />
       <button onClick={() => navigate("/trips/example?view=details")}>Trip</button>
       <button onClick={() => navigate("/trips/example?view=timeline")}>Trip view</button>
+      <button onClick={() => navigate("/trips/example", { state: tripIntentNavigationState(null, "example", "restore", { view: "timeline" }) })}>Return to trip</button>
+      <button onClick={() => navigate("/trips/example?view=details", { state: tripEntryNavigationState(null, "example", "details") })}>Restore trip tab</button>
       <button onClick={() => navigate("/profile")}>Profile</button>
     </>
   );
@@ -32,6 +35,21 @@ describe("route scroll isolation", () => {
     fireEvent.click(view.getByRole("button", { name: "Profile" }));
     expect(scrollTo).toHaveBeenCalledTimes(3);
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, left: 0, behavior: "auto" });
+  });
+
+  it("leaves child returns and saved trip-tab entries for TripPage to restore", () => {
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    const view = render(
+      <MemoryRouter initialEntries={["/trips/example/bookings/booking-1"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <NavigationHarness />
+      </MemoryRouter>
+    );
+
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    fireEvent.click(view.getByRole("button", { name: "Return to trip" }));
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    fireEvent.click(view.getByRole("button", { name: "Restore trip tab" }));
+    expect(scrollTo).toHaveBeenCalledTimes(1);
   });
 
   it("restores the browser scroll-restoration setting when it unmounts", () => {
