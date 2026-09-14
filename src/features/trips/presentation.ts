@@ -45,8 +45,14 @@ export function formatDate(date: string, options: Intl.DateTimeFormatOptions = {
 }
 
 export function formatDateRange(startDate: string, endDate: string) {
-  if (startDate === endDate) return formatDate(startDate);
-  return `${formatDate(startDate, { year: undefined })} – ${formatDate(endDate)}`;
+  const formatTripDate = (date: string) => new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(new Date(`${date}T12:00:00Z`));
+  if (startDate === endDate) return formatTripDate(startDate);
+  return `${formatTripDate(startDate)} - ${formatTripDate(endDate)}`;
 }
 
 export function formatEventTime(isoDate: string, timeZone: string) {

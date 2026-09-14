@@ -111,6 +111,7 @@ describe("home trip expenses", () => {
 
     const featuredCardTarget = await screen.findByRole("link", { name: "Open October escape" });
     const explicitOpen = screen.getByRole("link", { name: /^Open trip$/ });
+    expect(screen.getByText("Sep 26, 2026 - Oct 12, 2026")).toBeInTheDocument();
     expect(featuredCardTarget).toHaveAttribute("href", "/trips/trip-1");
     expect(explicitOpen).toHaveAttribute("href", "/trips/trip-1");
     expect(featuredCardTarget.contains(explicitOpen)).toBe(false);
