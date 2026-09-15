@@ -9,13 +9,14 @@ last_verified: 2026-09-15
 
 # Trip Vault Feature Test Checklist
 
-For an existing Supabase project, run every not-yet-applied migration in filename order through `supabase/migrations/202609150001_readiness_timeline_and_document_visibility.sql`, then run the schema smoke test. The earlier catalog addition still requires the published regional release from `202609130002` and an active `app_admins` row.
+For an existing Supabase project, run every not-yet-applied migration in filename order through `supabase/migrations/202609150002_participant_trigger_row_types.sql`, then run the schema smoke test. The earlier catalog addition still requires the published regional release from `202609130002` and an active `app_admins` row.
 
 For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it includes the readiness-timeline and document-visibility contract—bootstrap the dedicated active administrator, run `202609130002_regional_travel_catalog.sql`, run `202609130005_booking_vendor_catalog_additions.sql`, and then run `supabase/tests/001_schema_smoke.sql`. Sign in with three test accounts and use synthetic names and documents smaller than 5 MB.
 
 ## Database Gate
 
 - [ ] On an existing project current through `202609140001`, run `202609150001_readiness_timeline_and_document_visibility.sql` once and then run `supabase/tests/001_schema_smoke.sql`; confirm the smoke test passes before testing tasks or access changes.
+- [ ] Run `202609150002_participant_trigger_row_types.sql`, then create a Flight for Selected travelers with per-person flight details, an event cost with participants, and an attached document. Confirm the whole flow saves without a `NEW.itinerary_item_id` row-type error and all selected travelers remain attached to the booking and timeline event.
 - [ ] On a fresh project, run the complete setup and smoke test; confirm readiness timing columns/guard, `update_document_visibility`, reservation state, participant scope, typed ground details, per-leg traveler allocations, and `save_hotel_stay` are present.
 
 ## Organizer and Timeline

@@ -27,6 +27,7 @@ declare
   journey_save_definition text;
   participant_sync_definition text;
   parent_scope_definition text;
+  explicit_participant_definition text;
   relative_timing_definition text;
   relative_timing_trigger_definition text;
   relative_anchor_definition text;
@@ -443,6 +444,12 @@ begin
   if not exists (select 1 from pg_trigger where tgname = 'booking_traveler_explicit_scope' and not tgisinternal)
     or not exists (select 1 from pg_trigger where tgname = 'itinerary_participant_explicit_scope' and not tgisinternal) then
     raise exception 'Explicit Everyone/Selected participant validation is missing';
+  end if;
+  explicit_participant_definition := lower(pg_get_functiondef('public.enforce_explicit_participant_row()'::regprocedure));
+  if strpos(explicit_participant_definition, 'if tg_table_name = ''booking_travelers'' then') = 0
+    or strpos(explicit_participant_definition, 'elsif tg_table_name = ''itinerary_participants'' then') = 0
+    or strpos(explicit_participant_definition, 'unexpected participant-scope trigger table') = 0 then
+    raise exception 'Participant validation may resolve a field from the wrong trigger row type';
   end if;
   if not exists (
     select 1 from pg_trigger

@@ -3614,14 +3614,23 @@ for each row execute function public.enforce_assignment_trip();
 create or replace function public.enforce_explicit_participant_row()
 returns trigger language plpgsql security definer set search_path = public as $function$
 begin
-  if tg_table_name = 'booking_travelers' and not exists (
-    select 1 from public.bookings booking where booking.id = new.booking_id and booking.participant_scope = 'selected'
-  ) then
-    raise exception 'Booking traveler rows require Selected scope';
-  elsif tg_table_name = 'itinerary_participants' and not exists (
-    select 1 from public.itinerary_items item where item.id = new.itinerary_item_id and not item.applies_to_all_travelers
-  ) then
-    raise exception 'Itinerary participant rows require Selected scope';
+  -- Keep row-type-specific fields inside their own PL/pgSQL branches. Putting
+  -- NEW.booking_id and NEW.itinerary_item_id in sibling SQL boolean
+  -- expressions lets PostgreSQL resolve a field from the wrong trigger row.
+  if tg_table_name = 'booking_travelers' then
+    if not exists (
+      select 1 from public.bookings booking where booking.id = new.booking_id and booking.participant_scope = 'selected'
+    ) then
+      raise exception 'Booking traveler rows require Selected scope';
+    end if;
+  elsif tg_table_name = 'itinerary_participants' then
+    if not exists (
+      select 1 from public.itinerary_items item where item.id = new.itinerary_item_id and not item.applies_to_all_travelers
+    ) then
+      raise exception 'Itinerary participant rows require Selected scope';
+    end if;
+  else
+    raise exception 'Unexpected participant-scope trigger table: %', tg_table_name;
   end if;
   return new;
 end
