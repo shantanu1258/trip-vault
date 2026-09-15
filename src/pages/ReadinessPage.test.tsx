@@ -11,6 +11,7 @@ import type { Requirement } from "../features/workspace/types";
 const mocks = vi.hoisted(() => ({
   archiveRequirement: vi.fn(),
   getTrip: vi.fn(),
+  listItinerary: vi.fn(),
   listMembers: vi.fn(),
   listRequirements: vi.fn(),
   listTravelers: vi.fn(),
@@ -20,7 +21,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => <>{children}</> }));
 vi.mock("../features/sync/localSync", () => ({ localProfileId: vi.fn().mockResolvedValue("user-1") }));
-vi.mock("../features/trips/api", () => ({ getTrip: mocks.getTrip }));
+vi.mock("../features/trips/api", () => ({ getTrip: mocks.getTrip, listItinerary: mocks.listItinerary }));
 vi.mock("../features/workspace/travelerFocus", () => ({ readTravelerFocus: () => null }));
 vi.mock("../features/workspace/WorkspaceForms", () => ({
   AddRequirementForm: ({ requirement, onClose }: { requirement?: Requirement; onClose: () => void }) => (
@@ -88,6 +89,7 @@ describe("readiness checklist interactions", () => {
     vi.clearAllMocks();
     mocks.getTrip.mockResolvedValue(trip);
     mocks.listRequirements.mockResolvedValue([requirement]);
+    mocks.listItinerary.mockResolvedValue([]);
     mocks.listTravelers.mockResolvedValue([]);
     mocks.listMembers.mockResolvedValue([{ user_id: "user-1", role: "owner", participation_type: "traveler", joined_at: null, display_name: "Owner" }]);
     mocks.listTripRequirementAssignees.mockResolvedValue([]);
@@ -101,11 +103,12 @@ describe("readiness checklist interactions", () => {
     renderPage();
 
     const editTask = await screen.findByRole("button", { name: "Edit Passport ready" });
-    expect(screen.getByText("Due Sep 20")).toBeInTheDocument();
+    expect(screen.getByText(/Due Sep 20, 2026/)).toBeInTheDocument();
     expect(screen.getByText("Check validity before departure.")).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "Mark as done: Passport ready" }));
     await waitFor(() => expect(mocks.updateRequirementStatus).toHaveBeenCalledWith("requirement-1", "complete", "trip-1"));
+    expect(screen.getByRole("status")).toHaveTextContent("marked done");
     expect(screen.queryByRole("region", { name: "Edit task" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Archive Passport ready" }));

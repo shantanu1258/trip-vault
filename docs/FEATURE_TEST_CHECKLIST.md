@@ -4,27 +4,28 @@ description: "Short manual acceptance checklist for the timeline-first Trip Vaul
 scope: [service-wide]
 agents: [tester, reviewer]
 tags: [manual-testing, acceptance, timeline, mobile, admin]
-last_verified: 2026-09-14
+last_verified: 2026-09-15
 ---
 
 # Trip Vault Feature Test Checklist
 
-For an existing Supabase project, run every not-yet-applied migration in filename order through `supabase/migrations/202609140001_event_form_data_model.sql`. If the database is already current through `202609130007_relative_event_timing.sql`, `202609140001` is the single new migration for this release. Then run the schema smoke test. The earlier catalog addition still requires the published regional release from `202609130002` and an active `app_admins` row.
+For an existing Supabase project, run every not-yet-applied migration in filename order through `supabase/migrations/202609150001_readiness_timeline_and_document_visibility.sql`, then run the schema smoke test. The earlier catalog addition still requires the published regional release from `202609130002` and an active `app_admins` row.
 
-For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it already includes the `202609140001` schema contract, so do not reapply that migration—bootstrap the dedicated active administrator, run `202609130002_regional_travel_catalog.sql`, run `202609130005_booking_vendor_catalog_additions.sql`, and then run `supabase/tests/001_schema_smoke.sql`. Sign in with three test accounts and use synthetic names and documents smaller than 5 MB.
+For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it includes the readiness-timeline and document-visibility contract—bootstrap the dedicated active administrator, run `202609130002_regional_travel_catalog.sql`, run `202609130005_booking_vendor_catalog_additions.sql`, and then run `supabase/tests/001_schema_smoke.sql`. Sign in with three test accounts and use synthetic names and documents smaller than 5 MB.
 
 ## Database Gate
 
-- [ ] On an existing project already current through `202609130007`, run the single new `202609140001_event_form_data_model.sql` migration once and then run `supabase/tests/001_schema_smoke.sql`; confirm the smoke test passes before testing the new forms.
-- [ ] On a fresh project, run the complete setup and smoke test without reapplying `202609140001`; confirm reservation state, participant scope, optional non-flight arrival, typed ground details, per-leg traveler allocations, and `save_hotel_stay` are present.
+- [ ] On an existing project current through `202609140001`, run `202609150001_readiness_timeline_and_document_visibility.sql` once and then run `supabase/tests/001_schema_smoke.sql`; confirm the smoke test passes before testing tasks or access changes.
+- [ ] On a fresh project, run the complete setup and smoke test; confirm readiness timing columns/guard, `update_document_visibility`, reservation state, participant scope, typed ground details, per-leg traveler allocations, and `save_hotel_stay` are present.
 
 ## Organizer and Timeline
 
 - [ ] Open Create trip and confirm Start initially suggests 15 days from today and End seven days after Start. Change Start and confirm the untouched End follows; edit End deliberately, change Start again, and confirm the chosen End is preserved.
 - [ ] Create a trip, add three travelers, click its card, and confirm Timeline opens first.
 - [ ] Open Add Event and confirm the order is Flight, Hotel, Activity, Bus, Cab, Ferry/Boat, Train, Meal, Preparation, Other transport, and Custom.
-- [ ] Add preparation tasks before departure and confirm the separate Trip readiness summary remains above the timeline.
-- [ ] Add a readiness check, complete it, and confirm the readiness count changes.
+- [ ] Add three tasks: Checklist only, On a date, and **3 days before** a selected flight. Confirm the latter two appear as compact checkbox rows inside the same connected timeline while checklist-only remains in **Tasks & readiness**.
+- [ ] Let the linked task become due, reopen the trip, and confirm it is the highlighted actionable row. Check it off in the timeline and confirm an in-app success message appears, its highlight disappears, the next event becomes active, and its derived alert disappears.
+- [ ] Open **Tasks & readiness** and confirm pending and completed tasks remain visible. Reopen a completed task, then archive it; confirm both actions show in-app feedback and Archive removes it from the list, timeline, and alerts.
 - [ ] Add an activity, meal, and custom event; include a map link and attach several documents to one event.
 - [ ] Add exact-time, date-only, all-day, before/after, and unscheduled events. Create two Before and two After events for one anchor and confirm the stable order is every Before item, the named anchor, then every After item; undated work stays under Unscheduled.
 - [ ] Create a relation-only event such as **After Hotel check-in**. Confirm Position and Event remain visible, Start is blank, End is disabled, and timeline plus detail say **After Hotel check-in** rather than showing the anchor's clock as this event's start.
@@ -58,7 +59,7 @@ For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it already i
 - [ ] In an event sheet, activate a linked expense row; then activate the same or another row in the main Trip expenses section. Confirm both open `CostDetailsSheet` and show amount, payment state, category, payer, connected event/booking, every participant and equal/explicit share, and notes. As Viewer, confirm the same detail remains available but Edit expense and Archive are absent; as Editor, confirm those actions appear only inside the sheet.
 - [ ] Reload the Trip expenses section and confirm **Balances by currency** is absent by default. Enable **Show balances**, verify each currency remains separate and the expected gets/owes values appear, then disable it and confirm the balances hide without changing costs. Repeat the toggle as Viewer.
 - [ ] As Editor, activate the body of a trip note and a trip-airline snapshot and confirm each opens its edit surface directly because the displayed card already contains its useful detail. Confirm the note's Archive button is a separate target and does not open Edit. As Viewer, confirm both cards are static and no edit/archive controls appear.
-- [ ] On `ReadinessPage.tsx`, as Owner and Editor click/tap the title, blank padding, and trailing area of a requirement card, then activate the card with keyboard Enter and Space; confirm each opens that requirement's edit form. Use the status selector, Official guidance link, Open document action, and Archive action separately and confirm none opens Edit or masks its own phone-sized touch target. As Viewer, confirm the card body is static, mutation controls are absent, and permitted guidance/document links still work.
+- [ ] On **Tasks & readiness**, as Owner and Editor use each row checkbox, Edit, and Archive independently and confirm each has a phone-sized target. Confirm the schedule reads Checklist only, Due date, or the named before/after event offset. As Viewer, confirm rows remain readable while mutation controls are unavailable.
 - [ ] In Trip details, as Owner click/tap the body of the **Trip information** overview and activate it by keyboard; confirm it opens Trip settings. Close it, use the explicit Settings action, and confirm the same destination opens without a duplicate activation. As Editor and Viewer, confirm the overview body is static and no Owner settings target is exposed.
 - [ ] In the Admin console, confirm catalog cards continue to use their explicit named controls and have no ambiguous whole-card action. Treat this as deliberate until the Admin redesign.
 - [ ] Create unbooked Activity, Meal, Other transport, Preparation, and Custom events. Use Selected travelers on one and Everyone on another. Reopen each while online, add reservation details, and confirm one type-appropriate Booked row appears without a duplicate timeline event or changed before/after placement; Selected keeps those travelers, while Everyone writes no redundant individual traveler links. Confirm the action disables itself offline.
@@ -112,6 +113,7 @@ For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it already i
 - [ ] Attach a successfully stored inbox file to a trip and confirm one document/version is created. Attempt association for an unfinished receipt and confirm the server rejects it without creating a broken Vault entry.
 - [ ] After association, confirm the upload no longer appears as an unfinished inbox item, pending/error state is cleared, and direct Storage UPDATE/DELETE attempts fail. Reload, reconnect, and check from another signed-in device; confirm the associated server receipt suppresses any stale unassociated cached copy instead of making the upload reappear. Manage the resulting document through Vault archive/replacement instead.
 - [ ] Change document type and Who is it for and confirm the generated Vault name updates while the original filename remains in Info.
+- [ ] Upload as Owner/Editor without changing access and confirm **Trip members** is the default and is visibly badged. Open Info → Change, save **Only me**, then **Selected signed-in members**, and confirm another member can open the document only in the permitted states. Repeat as Viewer and confirm their upload remains private and they cannot broaden access.
 - [ ] Upload from an event and confirm the default name includes document type, traveler context, and event title. Enter a custom name and confirm the derived context still appears below it.
 - [ ] Open a multi-page PDF from cloud and from the device copy; confirm its first page renders inside the app, previous/next change pages, zoom/fit work, and **Open** launches the device viewer as a fallback without a forced download. Open an image and confirm in-app zoom plus the same fallback.
 - [ ] At phone width, confirm the document card's Info icon is centered in its own compact secondary button, is announced as document information rather than preview/open, and does not activate the adjacent Open action.

@@ -40,7 +40,7 @@ A traveler should be able to open Trip Vault and immediately answer:
 
 The product should feel like a focused travel utility, not a general cloud drive.
 
-The primary trip experience is a chronological projection over itinerary rows. Detailed booking, journey-leg, cost, readiness, and document records remain authoritative in their own tables and link into that projection. Readiness is derived into one pre-trip summary card; optional dated work such as packing or SIM setup is stored as a normal Preparation event.
+The primary trip experience is a chronological projection over itinerary events and scheduled task/readiness rows. Detailed booking, journey-leg, cost, readiness, and document records remain authoritative in their own tables and link into that projection. A task may remain checklist-only, occur on a date, or appear a defined time before/after a selected dated event.
 
 ## 2. Goals and Non-Goals
 
@@ -135,7 +135,7 @@ For a first shared trip, the owner creates a unique, expiring, one-time code for
 
 ### 6.6 Sensitive defaults
 
-New documents are private to their uploader until the user deliberately chooses trip-wide or selected-member visibility. Removing a member prevents future cloud access but cannot revoke copies already downloaded.
+An Owner/Editor upload defaults to all signed-in trip members so ordinary shared confirmations work without extra setup; a Viewer-managed upload remains private. The uploader may choose narrower access during upload, and an Owner/Editor can later change an existing document between trip-wide, private, and selected-member visibility. Removing a member prevents future cloud access but cannot revoke copies already downloaded.
 
 ### 6.7 Document meaning is separate from access
 
@@ -151,7 +151,7 @@ A timeline event exposes one labelled primary document shortcut—such as **Open
 
 ### 6.8 Timeline is the primary trip interface
 
-Opening a trip displays the applicable itinerary in chronological order on one connected timeline. The app identifies one current, next, or most-recent event, scrolls it into view on the first open, and distinguishes it with color and an explicit label. Everyone context shows the complete trip. Selecting a traveler becomes a presentation filter across the timeline, reservations, costs, readiness, seats, and documents: shared records plus that traveler's assigned records remain, while another traveler's private planning context is hidden. This filter never changes authentication or database authorization.
+Opening a trip displays applicable events plus dated/event-linked readiness tasks in chronological order on one connected timeline. The app identifies one current or next actionable entry, scrolls it into view on the first open, and distinguishes it with color and an explicit label. Completing a task advances attention to the next entry; completing or archiving it immediately removes its timeline emphasis and derived in-app alert, while the completed task remains visible in **Tasks & readiness**. Everyone context shows the complete trip. Selecting a traveler becomes a presentation filter across the timeline, reservations, costs, readiness, seats, and documents: shared records plus that traveler's assigned records remain, while another traveler's private planning context is hidden. This filter never changes authentication or database authorization.
 
 Cards are the primary interaction targets, but their destination follows the information depth instead of forcing every card into the same behavior. A timeline event opens an inspection-first event sheet, and a reservation card navigates as one whole card to its flight or booking details; applicable Edit and Archive controls stay inside those detail surfaces. The event summary keeps travel-critical facts visible before opening it: reservation state, complete route and connection count, traveler-filtered seats or berth/cabin data, derived boarding time, terminal/gate/platform, and a Cab contact action when available. Event-linked expense rows and the main Trip expenses rows open the same `CostDetailsSheet` for Viewers, Editors, and Owners. That sheet shows the amount, status, category, payer, linked event or booking, included travelers and their shares, and notes; only an authorized Editor or Owner sees Edit and Archive. **Balances by currency** is deliberately hidden until the member enables **Show balances**, so settlement math does not displace the expense list.
 

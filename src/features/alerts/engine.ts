@@ -1,7 +1,8 @@
-import type { AlertState, Reminder, Trip } from "../trips/types";
+import type { AlertState, ItineraryItem, Reminder, Trip } from "../trips/types";
 import type { FlightLeg, Requirement } from "../workspace/types";
 import type { VaultDocument } from "../workspace/types";
 import { delayMinutes, effectiveDeparture } from "../workspace/flight";
+import { requirementTimelineSchedule } from "../timeline/model";
 
 export type DerivedAlert = {
   key: string;
@@ -19,7 +20,7 @@ function groupForDate(date: Date, now: Date): DerivedAlert["group"] {
   return "upcoming";
 }
 
-export function deriveAlerts(input: { trips: Trip[]; flights: FlightLeg[]; requirements: Requirement[]; reminders: Reminder[]; states?: AlertState[]; documents?: VaultDocument[]; offlineManifests?: { tripId: string; state: string; checkedAt: string }[]; conflicts?: { entityId: string; entityType: string }[]; now?: Date }, view: "visible" | "dismissed" = "visible") {
+export function deriveAlerts(input: { trips: Trip[]; flights: FlightLeg[]; requirements: Requirement[]; itinerary?: ItineraryItem[]; reminders: Reminder[]; states?: AlertState[]; documents?: VaultDocument[]; offlineManifests?: { tripId: string; state: string; checkedAt: string }[]; conflicts?: { entityId: string; entityType: string }[]; now?: Date }, view: "visible" | "dismissed" = "visible") {
   const now = input.now ?? new Date();
   const alerts: DerivedAlert[] = [];
   const groupPriority = { urgent: 0, today: 1, upcoming: 2 } as const;
@@ -36,12 +37,13 @@ export function deriveAlerts(input: { trips: Trip[]; flights: FlightLeg[]; requi
   });
   input.requirements.forEach((requirement) => {
     if (["complete", "not_required"].includes(requirement.status)) return;
-    if (requirement.due_date) {
-      const due = new Date(`${requirement.due_date}T23:59:59`);
-      if ((due.getTime() - now.getTime()) / 86_400_000 <= 14) alerts.push({ key: `requirement-due:${requirement.id}:${requirement.due_date}`, tripId: requirement.trip_id, title: requirement.title, detail: due < now ? "This readiness item is overdue." : `Due ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(due)}.`, group: groupForDate(due, now), target: `/trips/${requirement.trip_id}/readiness` });
+    const trip = input.trips.find((item) => item.id === requirement.trip_id);
+    const schedule = trip ? requirementTimelineSchedule(requirement, (input.itinerary ?? []).filter((item) => item.trip_id === requirement.trip_id), trip.primary_timezone) : null;
+    if (schedule) {
+      const due = new Date(schedule.startsAt);
+      if ((due.getTime() - now.getTime()) / 86_400_000 <= 14) alerts.push({ key: `requirement-due:${requirement.id}:${schedule.startsAt}`, tripId: requirement.trip_id, title: requirement.title, detail: due < now ? `${schedule.label} · This task is overdue.` : schedule.label, group: groupForDate(due, now), target: `/trips/${requirement.trip_id}/readiness` });
     }
     if (requirement.expires_on) {
-      const trip = input.trips.find((item) => item.id === requirement.trip_id);
       if (trip) {
         const safeUntil = new Date(`${trip.end_date}T12:00:00`); safeUntil.setDate(safeUntil.getDate() + (requirement.validity_buffer_days ?? 0));
         const expiry = new Date(`${requirement.expires_on}T12:00:00`);

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ItineraryItem, Trip, TripCost } from "../features/trips/types";
 import { tripIntentNavigationState } from "../features/trips/navigation";
 import { CostDetailsSheet, TripExpensesContent } from "../features/trips/TripExpenses";
-import type { Booking, FlightLeg, JourneyLeg, Traveler, TripNote } from "../features/workspace/types";
+import type { Booking, FlightLeg, JourneyLeg, Requirement, Traveler, TripNote } from "../features/workspace/types";
 
 const mocks = vi.hoisted(() => ({
   getTrip: vi.fn(),
@@ -26,7 +26,8 @@ const mocks = vi.hoisted(() => ({
   listTripItineraryParticipants: vi.fn().mockResolvedValue([]),
   listTripRequirementAssignees: vi.fn().mockResolvedValue([]),
   listVaultDocuments: vi.fn().mockResolvedValue([]),
-  attachDocumentsToEvent: vi.fn().mockResolvedValue(undefined)
+  attachDocumentsToEvent: vi.fn().mockResolvedValue(undefined),
+  updateRequirementStatus: vi.fn().mockResolvedValue(undefined)
 }));
 
 vi.mock("../components/AppShell", () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
@@ -73,7 +74,8 @@ vi.mock("../features/workspace/api", async () => {
     listTripBookingTravelers: mocks.listTripBookingTravelers,
     listTripItineraryParticipants: mocks.listTripItineraryParticipants,
     listTripRequirementAssignees: mocks.listTripRequirementAssignees,
-    listVaultDocuments: mocks.listVaultDocuments
+    listVaultDocuments: mocks.listVaultDocuments,
+    updateRequirementStatus: mocks.updateRequirementStatus
   };
 });
 
@@ -85,7 +87,9 @@ afterEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   mocks.listJourneyLegTravelers.mockReset().mockResolvedValue([]);
+  mocks.listVaultDocuments.mockReset().mockResolvedValue([]);
   mocks.attachDocumentsToEvent.mockReset().mockResolvedValue(undefined);
+  mocks.updateRequirementStatus.mockReset().mockResolvedValue(undefined);
 });
 
 const activity: ItineraryItem = {
@@ -219,6 +223,27 @@ describe("trip summary interactions", () => {
     expect(detailsCard?.querySelector("a a, a button, button a, button button")).toBeNull();
   });
 
+  it("renders an event-linked readiness task in the main timeline and completes it in place", async () => {
+    const linkedTask: Requirement = {
+      id: "visa-task", trip_id: ownerTrip.id, type: "visa", title: "Prepare Bali visa", status: "to_check",
+      destination_country_code: null, visa_type: null, due_date: null, timing_mode: "relative",
+      anchor_itinerary_item_id: activity.id, relative_position: "before", offset_minutes: 4_320,
+      issued_on: null, expires_on: null, validity_buffer_days: null, official_guidance_url: null,
+      guidance_checked_at: null, linked_document_id: null, notes: null
+    };
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listItinerary.mockResolvedValue([activity]);
+    mocks.listRequirements.mockResolvedValue([linkedTask]);
+    mocks.listMembers.mockResolvedValue([{ user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: null, display_name: "Shantanu" }]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+
+    expect(await screen.findByText("3 days before Museum visit · Readiness task")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Mark as done: Prepare Bali visa" }));
+    await waitFor(() => expect(mocks.updateRequirementStatus).toHaveBeenCalledWith("visa-task", "complete", "trip-1"));
+    expect(screen.getByText(/next item is now highlighted/i)).toHaveAttribute("role", "status");
+  });
+
   it("closes People after a traveler switch, restores the card focus, and keeps the saved scroll", async () => {
     localStorage.clear();
     mocks.getTrip.mockResolvedValue(ownerTrip);
@@ -289,6 +314,26 @@ describe("trip summary interactions", () => {
     expect(searchRegion.className).toContain("safe-area-inset-top");
 
     HTMLElement.prototype.scrollIntoView = previousScrollIntoView;
+  });
+
+  it("shows complete wrapped document names in Trip details", async () => {
+    const longTitle = "Other booking confirmation · Ankita · Some Place to Some Place with a deliberately long generated title";
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listCosts.mockResolvedValue([]);
+    mocks.listItinerary.mockResolvedValue([]);
+    mocks.listTravelers.mockResolvedValue([]);
+    mocks.listRequirements.mockResolvedValue([]);
+    mocks.listMembers.mockResolvedValue([]);
+    mocks.listVaultDocuments.mockResolvedValue([
+      { id: "document-long", trip_id: ownerTrip.id, booking_id: null, flight_leg_id: null, traveler_id: null, assignment_mode: "shared", traveler_ids: [], title: longTitle, category: "flight", purpose: "confirmation", short_label: null, visibility: "trip", current_version_id: null, updated_at: "2026-09-01T00:00:00.000Z" }
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1?view=details"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+
+    const title = await screen.findByText(longTitle);
+    expect(title).toHaveClass("whitespace-normal", "break-words", "[overflow-wrap:anywhere]");
+    expect(title).not.toHaveClass("truncate");
+    expect(title.closest("a")).toHaveClass("flex-col", "overflow-hidden");
   });
 });
 

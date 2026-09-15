@@ -15,7 +15,7 @@ import { ModalSheet } from "../components/ModalSheet";
 import { CompactCostTotal, CostTotals, ErrorCard, LoadingCard } from "../components/TripUi";
 import { OfflinePackControl } from "../features/readiness/OfflinePackControl";
 import { AddEventForm } from "../features/timeline/AddEventForm";
-import { costsForEvent, eventEndDetails, eventEndTimeZone, eventTimeLabel, hasExplicitEventStart, journeyDuration, journeyRoute, mapsUrl, phoneActionUrls, plannedDurationLabel, readinessSummary, resolveCurrentTimelineItem, searchTrip, sortTimelineItems, timelinePhase, type TimelinePhase } from "../features/timeline/model";
+import { buildTripTimelineEntries, costsForEvent, eventEndDetails, eventEndTimeZone, eventTimeLabel, hasExplicitEventStart, journeyDuration, journeyRoute, mapsUrl, phoneActionUrls, plannedDurationLabel, readinessSummary, resolveCurrentTripTimelineEntry, searchTrip, sortTimelineItems, timelineEntryPhase, timelinePhase, type TimelinePhase, type TripTimelineEntry } from "../features/timeline/model";
 import { preferredScrollBehavior, scrollTimelineEventIntoView } from "../features/timeline/scroll";
 import { archiveItineraryItem, archiveTripCost, getTrip, listArchivedTripItems, listCosts, listItinerary, reorderItineraryItems, restoreItineraryItem, restoreTripCost, setItineraryItemStatus } from "../features/trips/api";
 import { downloadTripCalendar } from "../features/trips/calendar";
@@ -41,13 +41,13 @@ import {
   archiveNote, attachDocumentsToEvent, listBookings, listFlightLegsForTrip, listFlightTravelers, listJourneyLegsForTrip, listMembers,
   listNotes, listRequirements, listTravelers, listVaultDocuments, removeMember,
   removeTraveler, updateMemberRole, listTripItineraryParticipants, listTripBookingTravelers,
-  listTripRequirementAssignees
+  listTripRequirementAssignees, updateRequirementStatus
 } from "../features/workspace/api";
 import {
   AddNoteForm, AddRequirementForm, AddTravelerForm, EditBookingForm, EditTravelerForm,
   ShareTripForm, UploadDocumentForm
 } from "../features/workspace/WorkspaceForms";
-import type { Booking, FlightLeg, JourneyLeg, MemberRole, Traveler, TripMember, TripNote, VaultDocument } from "../features/workspace/types";
+import type { Booking, FlightLeg, JourneyLeg, MemberRole, Requirement, RequirementStatus, Traveler, TripMember, TripNote, VaultDocument } from "../features/workspace/types";
 
 type OpenForm = "event" | "cost" | "document" | "people" | "traveler" | "share" | "requirement" | "note" | "settings" | null;
 type DocumentUploadTarget = Pick<ItineraryItem, "id" | "title"> & { booking_id?: string | null; initialFile?: File; initialKind?: DocumentKind };
@@ -257,6 +257,8 @@ export function TripPage() {
   const [eventBookingTarget, setEventBookingTarget] = useState<ItineraryItem | null>(null);
   const [focusedTravelerId, setFocusedTravelerId] = useState<string | null>(() => readTravelerFocus(tripId));
   const [travelerAnnouncement, setTravelerAnnouncement] = useState("");
+  const [timelineStatus, setTimelineStatus] = useState("");
+  const [advanceAfterRequirementId, setAdvanceAfterRequirementId] = useState<string | null>(null);
   const positioned = useRef(false); const requestedTimelineItem = useRef<string | null>(null);
   const searchRegionRef = useRef<HTMLDivElement>(null); const searchInputRef = useRef<HTMLInputElement>(null); const peopleTriggerRef = useRef<HTMLButtonElement | null>(null);
   const handledIntentToken = useRef<string | null>(null); const handledSection = useRef<string | null>(null);
@@ -311,16 +313,17 @@ export function TripPage() {
   const visibleItinerary = useMemo(() => sortTimelineItems(focusedWorkspace.itinerary), [focusedWorkspace.itinerary]); const visibleBookings = focusedWorkspace.bookings; const visibleCosts = focusedWorkspace.costs; const visibleRequirements = focusedWorkspace.requirements; const focusedDocuments = focusedWorkspace.documents;
   const viewingItinerary = viewingItineraryId ? visibleItinerary.find((item) => item.id === viewingItineraryId) : undefined;
   const viewingItineraryIndex = viewingItinerary ? itinerary.findIndex((item) => item.id === viewingItinerary.id) : -1;
-  const activeItem = useMemo(() => resolveCurrentTimelineItem(visibleItinerary), [visibleItinerary]); const readiness = useMemo(() => readinessSummary(visibleRequirements), [visibleRequirements]);
+  const timelineEntries = useMemo(() => buildTripTimelineEntries(visibleItinerary, visibleRequirements, trip?.primary_timezone ?? "UTC"), [visibleItinerary, visibleRequirements, trip?.primary_timezone]);
+  const activeTimelineEntry = useMemo(() => resolveCurrentTripTimelineEntry(timelineEntries), [timelineEntries]); const readiness = useMemo(() => readinessSummary(visibleRequirements), [visibleRequirements]);
   const balances = useMemo(() => calculateTripBalances(visibleCosts).filter((balance) => !focusedTravelerId || balance.travelerId === focusedTravelerId), [visibleCosts, focusedTravelerId]);
   const flightByBooking = useMemo(() => indexFirstFlightByBooking(flights), [flights]);
   const focusedTraveler = focusedTravelerId ? travelers.find((traveler) => traveler.id === focusedTravelerId) : undefined;
   const results = useMemo(() => searchTrip({ query, tripId, itinerary: visibleItinerary, bookings: visibleBookings, flights, journeys, documents: focusedDocuments, travelers: focusedTraveler ? [focusedTraveler] : travelers, requirements: visibleRequirements }), [query, tripId, visibleItinerary, visibleBookings, flights, journeys, focusedDocuments, focusedTraveler, travelers, visibleRequirements]);
   const phaseJumps = useMemo(() => {
-    const firstByPhase = new Map<TimelinePhase, ItineraryItem>();
-    for (const item of visibleItinerary) { const phase = timelinePhase(item); if (!firstByPhase.has(phase)) firstByPhase.set(phase, item); }
-    return (["past", "current", "future", "unscheduled"] as const).flatMap((phase) => firstByPhase.has(phase) ? [{ phase, item: firstByPhase.get(phase)! }] : []);
-  }, [visibleItinerary]);
+    const firstByPhase = new Map<TimelinePhase, TripTimelineEntry>();
+    for (const entry of timelineEntries) { const phase = timelineEntryPhase(entry); if (!firstByPhase.has(phase)) firstByPhase.set(phase, entry); }
+    return (["past", "current", "future", "unscheduled"] as const).flatMap((phase) => firstByPhase.has(phase) ? [{ phase, entry: firstByPhase.get(phase)! }] : []);
+  }, [timelineEntries]);
 
   useEffect(() => {
     if (positioned.current || !tripQuery.isSuccess) return;
@@ -341,7 +344,7 @@ export function TripPage() {
           if (requestedId && scrollTimelineEventIntoView(requestedId, preferredScrollBehavior())) requestedTimelineItem.current = null;
           else if ((activeNavigationIntent?.kind === "restore" || returningToEntry) && restoreScroll(tripId, "timeline")) {
             // The saved anchor has priority when returning from a child or switching tabs.
-          } else if (activeItem) scrollTimelineEventIntoView(activeItem.id, preferredScrollBehavior());
+          } else if (activeTimelineEntry) scrollTimelineEventIntoView(activeTimelineEntry.id, preferredScrollBehavior());
         }
         if (activeNavigationIntent) consumeTripNavigationIntent(activeNavigationIntent);
         positioned.current = true;
@@ -349,7 +352,7 @@ export function TripPage() {
       });
     });
     return () => { window.cancelAnimationFrame(firstFrame); window.cancelAnimationFrame(secondFrame); };
-  }, [activeItem, activeNavigationIntent, bookingTravelersQuery.isLoading, itineraryQuery.isSuccess, location.state, participantsQuery.isLoading, requestedSection, requirementAssigneesQuery.isLoading, returningToEntry, tripId, tripQuery.isSuccess, view]);
+  }, [activeTimelineEntry, activeNavigationIntent, bookingTravelersQuery.isLoading, itineraryQuery.isSuccess, location.state, participantsQuery.isLoading, requestedSection, requirementAssigneesQuery.isLoading, returningToEntry, tripId, tripQuery.isSuccess, view]);
   useEffect(() => {
     let frame = 0;
     const record = () => {
@@ -381,7 +384,7 @@ export function TripPage() {
     setSearchParams(nextParams, { state: tripEntryNavigationState(location.state, tripId, next) });
   };
   const openCurrentTimeline = () => {
-    if (activeItem) requestedTimelineItem.current = activeItem.id;
+    if (activeTimelineEntry) requestedTimelineItem.current = activeTimelineEntry.id;
     saveScroll(tripId, view); positioned.current = false;
     const nextParams = new URLSearchParams(searchParams); nextParams.delete("view"); nextParams.delete("section");
     setSearchParams(nextParams, { state: tripIntentNavigationState(location.state, tripId, "current", { view: "timeline" }) });
@@ -411,10 +414,32 @@ export function TripPage() {
   const archiveItinerary = useMutation({ mutationFn: archiveItineraryItem, onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ["itinerary", tripId] }), queryClient.invalidateQueries({ queryKey: ["bookings", tripId] }), queryClient.invalidateQueries({ queryKey: ["archived-trip-items", tripId] })]); } });
   const reorderItinerary = useMutation({ mutationFn: ({ itemId, direction }: { itemId: string; direction: "up" | "down" }) => reorderItineraryItems(itinerary, itemId, direction), onSuccess: (items) => queryClient.setQueryData(["itinerary", tripId], items) });
   const updateEventStatus = useMutation({ mutationFn: ({ item, status }: { item: ItineraryItem; status: EventStatus }) => setItineraryItemStatus(item, status), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["itinerary", tripId] }) });
+  const updateTimelineRequirement = useMutation({
+    mutationFn: ({ requirement, status }: { requirement: Requirement; status: RequirementStatus }) => updateRequirementStatus(requirement.id, status, tripId),
+    onMutate: async ({ requirement, status }) => {
+      await queryClient.cancelQueries({ queryKey: ["requirements", tripId] });
+      const previous = queryClient.getQueryData<Requirement[]>(["requirements", tripId]);
+      queryClient.setQueryData<Requirement[]>(["requirements", tripId], (items = []) => items.map((item) => item.id === requirement.id ? { ...item, status } : item));
+      return { previous };
+    },
+    onError: (_error, _input, context) => queryClient.setQueryData(["requirements", tripId], context?.previous),
+    onSuccess: (_data, { requirement, status }) => {
+      setTimelineStatus(status === "complete" ? `${requirement.title} marked done. The next item is now highlighted.` : `${requirement.title} reopened.`);
+      if (status === "complete") setAdvanceAfterRequirementId(requirement.id);
+    },
+    onSettled: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ["requirements", tripId] }), queryClient.invalidateQueries({ queryKey: ["alerts"] })]); }
+  });
   const archiveCost = useMutation({ mutationFn: archiveTripCost, onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ["costs", tripId] }), queryClient.invalidateQueries({ queryKey: ["archived-trip-items", tripId] })]); } });
   const restoreArchivedItem = useMutation({ mutationFn: async ({ id, kind }: { id: string; kind: "event" | "booking" | "cost" }) => kind === "cost" ? restoreTripCost(id) : restoreItineraryItem(id), onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ["archived-trip-items", tripId] }), queryClient.invalidateQueries({ queryKey: ["itinerary", tripId] }), queryClient.invalidateQueries({ queryKey: ["bookings", tripId] }), queryClient.invalidateQueries({ queryKey: ["costs", tripId] })]); } });
   const removeTravelerMutation = useMutation({ mutationFn: removeTraveler, onSuccess: () => queryClient.invalidateQueries({ queryKey: ["travelers", tripId] }) });
   const archiveNoteMutation = useMutation({ mutationFn: archiveNote, onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes", tripId] }) });
+
+  useEffect(() => {
+    if (!advanceAfterRequirementId || !activeTimelineEntry || activeTimelineEntry.id === `requirement:${advanceAfterRequirementId}`) return;
+    const frame = window.requestAnimationFrame(() => scrollTimelineEventIntoView(activeTimelineEntry.id, preferredScrollBehavior()));
+    setAdvanceAfterRequirementId(null);
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTimelineEntry, advanceAfterRequirementId]);
 
   return <AppShell><div className="mx-auto max-w-6xl pb-24">
     <Link to="/trips" className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted hover:text-ink"><ArrowLeft className="size-4" /> All trips</Link>
@@ -430,12 +455,33 @@ export function TripPage() {
         <section id="timeline-readiness" data-trip-scroll-anchor="timeline" className="surface-card group relative overflow-hidden p-5 transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft sm:p-6 motion-reduce:hover:translate-y-0"><Link className="absolute inset-0 z-10 rounded-[inherit] focus-visible:ring-2 focus-visible:ring-brand" to={`/trips/${trip.id}/readiness`} state={childNavigationState} aria-label="Open trip readiness" /><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="eyebrow">Before you go</p><h2 className="mt-1 font-display text-xl font-black">Readiness checklist</h2></div><ShieldCheck className={`size-6 ${readiness.remaining ? "text-warning" : "text-success"}`} /></div>{readiness.total ? <><p className="mt-3 text-sm text-muted">{readiness.resolved} of {readiness.total} tasks done</p><div className="mt-3 h-2 overflow-hidden rounded-full bg-elevated"><span className="block h-full rounded-full bg-success transition-all" style={{ width: `${Math.round(readiness.resolved / readiness.total * 100)}%` }} /></div></> : <p className="mt-3 text-sm text-muted">Add the first thing you need to do before this trip.</p>}<div className="relative z-20 mt-4 flex gap-4"><Link className="text-sm font-extrabold text-brand" to={`/trips/${trip.id}/readiness`} state={childNavigationState}>Open checklist</Link>{editable && <button type="button" className="text-sm font-extrabold text-brand" onClick={() => setOpenForm("requirement")}>+ Add task</button>}</div></section>
         <section className="surface-card mt-5 p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="eyebrow">Everything in order</p><h2 className="mt-1 font-display text-2xl font-black">{focusedTraveler ? `${focusedTraveler.display_name}'s timeline` : "Complete timeline"}</h2><p className="mt-2 text-sm text-muted">{focusedTraveler ? "Shared events and this traveler's events are shown in time order." : "Past events are above you. Upcoming events continue below."}</p></div>{visibleItinerary.length > 0 && <button type="button" className="secondary-button" onClick={() => downloadTripCalendar(trip, visibleItinerary)}><Download className="size-4" /> Calendar</button>}</div>
-          {phaseJumps.length > 0 && <nav aria-label="Timeline sections" className="sticky top-2 z-30 mt-4 flex gap-2 overflow-auto rounded-2xl border border-line bg-surface/95 p-2 shadow-soft backdrop-blur">{phaseJumps.map(({ phase, item }) => <button key={phase} type="button" onClick={() => scrollToItem(item.id)} className={`shrink-0 rounded-xl px-3 py-2 text-xs font-black ${phase === "current" ? "bg-coral text-white" : "bg-elevated text-brand"}`}>{phaseLabels[phase]}</button>)}</nav>}
+          {timelineStatus && <p role="status" className="mt-4 rounded-xl bg-success/10 p-3 text-sm font-bold text-success">{timelineStatus}</p>}
+          {phaseJumps.length > 0 && <nav aria-label="Timeline sections" className="sticky top-2 z-30 mt-4 flex gap-2 overflow-auto rounded-2xl border border-line bg-surface/95 p-2 shadow-soft backdrop-blur">{phaseJumps.map(({ phase, entry }) => <button key={phase} type="button" onClick={() => scrollToItem(entry.id)} className={`shrink-0 rounded-xl px-3 py-2 text-xs font-black ${phase === "current" ? "bg-coral text-white" : "bg-elevated text-brand"}`}>{phaseLabels[phase]}</button>)}</nav>}
           <div className="relative mt-6 before:absolute before:bottom-5 before:left-1 before:top-5 before:w-px before:bg-line sm:before:left-[8.25rem]">
-            {visibleItinerary.map((item, index, items) => {
-              const current = activeItem?.id === item.id;
-              const phase = timelinePhase(item);
-              const previousPhase = index ? timelinePhase(items[index - 1]) : null;
+            {timelineEntries.map((entry, index, entries) => {
+              const current = activeTimelineEntry?.id === entry.id;
+              const phase = timelineEntryPhase(entry);
+              const previousPhase = index ? timelineEntryPhase(entries[index - 1]) : null;
+              const showDate = index === 0 || itineraryDateKey(entries[index - 1].startsAt, entries[index - 1].timezone) !== itineraryDateKey(entry.startsAt, entry.timezone);
+              if (entry.kind === "requirement") {
+                const item = entry.requirement;
+                const done = ["complete", "not_required"].includes(item.status);
+                return <Fragment key={entry.id}>
+                  {phase !== previousPhase && <div id={`timeline-phase-${phase}`} className={`${index ? "pt-7" : ""} relative z-10 pb-3 pl-6 sm:pl-[10.5rem]`}><span className={`inline-flex rounded-full px-3 py-1.5 text-[.65rem] font-black uppercase tracking-[.14em] ${current ? "bg-coral text-white" : "border border-line bg-surface text-muted"}`}>{current ? "Needs attention" : phaseLabels[phase]}</span></div>}
+                  {showDate && <h3 className={`${index ? "pt-3" : ""} pb-3 pl-6 text-sm font-black sm:pl-[10.5rem]`}>{formatItineraryDate(entry.startsAt, entry.timezone)}</h3>}
+                  <div id={`timeline-${entry.id}`} data-trip-scroll-anchor="timeline" className="relative mb-3 grid scroll-mt-28 grid-cols-1 pl-5 sm:grid-cols-[6rem_2.5rem_minmax(0,1fr)] sm:gap-4 sm:pl-0">
+                    <span aria-hidden="true" className={`absolute left-[-0.05rem] top-5 z-10 size-2.5 rounded-full ring-4 ring-surface sm:hidden ${current ? "bg-coral" : done || phase === "past" ? "bg-line" : "bg-brand"}`} />
+                    <time className={`hidden pt-3 text-right text-xs font-black sm:block ${current ? "text-coral" : "text-muted"}`}>{formatEventTime(entry.startsAt, entry.timezone).split(",").at(-1)}</time>
+                    <span className={`z-10 mt-2 hidden size-10 place-items-center rounded-full border-4 border-surface sm:grid ${current ? "bg-coral text-white shadow-focus" : done || phase === "past" ? "bg-line text-muted" : "bg-brand-soft text-brand"}`}><Check className="size-4" /></span>
+                    <div className={`flex min-h-16 items-center gap-3 rounded-2xl border px-3 py-2 transition sm:px-4 ${current ? "border-coral bg-coral/10 shadow-focus" : "border-line bg-elevated"}`}>
+                      <input type="checkbox" className="relative z-10 size-5 shrink-0 accent-brand" checked={done} disabled={!editable || updateTimelineRequirement.isPending} aria-label={`${done ? "Mark as not done" : "Mark as done"}: ${item.title}`} onChange={(event) => updateTimelineRequirement.mutate({ requirement: item, status: event.target.checked ? "complete" : "to_check" })} />
+                      <Link to={`/trips/${trip.id}/readiness`} state={childNavigationState} className="min-w-0 flex-1 rounded-lg focus-visible:ring-2 focus-visible:ring-brand"><strong className={`block truncate text-sm ${done ? "text-muted line-through" : "text-ink"}`}>{item.title}</strong><span className="mt-0.5 block text-xs text-muted">{entry.scheduleLabel}{done ? " · Done" : " · Readiness task"}</span></Link>
+                      {current && !done && <span className="shrink-0 rounded-full bg-coral px-2 py-1 text-[.6rem] font-black uppercase text-white">Next</span>}
+                    </div>
+                  </div>
+                </Fragment>;
+              }
+              const item = entry.item;
               const Icon = iconFor[item.event_type ?? "custom"];
               const booking = item.booking_id ? visibleBookings.find((row) => row.id === item.booking_id) : undefined;
               const end = eventEndDetails(item);
@@ -450,7 +496,7 @@ export function TripPage() {
               const travelerIds = participantRows.filter((row) => row.itinerary_item_id === item.id).map((row) => row.traveler_id);
               return <Fragment key={item.id}>
                 {phase !== previousPhase && <div id={`timeline-phase-${phase}`} className={`${index ? "pt-7" : ""} relative z-10 pb-3 pl-6 sm:pl-[10.5rem]`}><span className={`inline-flex rounded-full px-3 py-1.5 text-[.65rem] font-black uppercase tracking-[.14em] ${phase === "current" ? "bg-coral text-white" : "border border-line bg-surface text-muted"}`}>{phaseLabels[phase]}</span></div>}
-                {item.timing_mode !== "unscheduled" && (index === 0 || items[index - 1].timing_mode === "unscheduled" || itineraryDateKey(items[index - 1].starts_at, items[index - 1].timezone) !== itineraryDateKey(item.starts_at, item.timezone)) && <h3 className={`${index ? "pt-3" : ""} pb-3 pl-6 text-sm font-black sm:pl-[10.5rem]`}>{formatItineraryDate(item.starts_at, item.timezone)}</h3>}
+                {item.timing_mode !== "unscheduled" && showDate && <h3 className={`${index ? "pt-3" : ""} pb-3 pl-6 text-sm font-black sm:pl-[10.5rem]`}>{formatItineraryDate(item.starts_at, item.timezone)}</h3>}
                 <div id={`timeline-${item.id}`} data-trip-scroll-anchor="timeline" className="relative mb-4 grid scroll-mt-28 grid-cols-1 pl-5 sm:grid-cols-[6rem_2.5rem_minmax(0,1fr)] sm:gap-4 sm:pl-0">
                   <span aria-hidden="true" className={`absolute left-[-0.05rem] top-6 z-10 size-2.5 rounded-full ring-4 ring-surface sm:hidden ${current ? "bg-coral" : phase === "past" ? "bg-line" : "bg-brand"}`} />
                   <time className={`hidden pt-4 text-right text-xs font-black sm:block ${current ? "text-coral" : "text-muted"}`}>{compactTimingLabel}</time>
@@ -469,7 +515,7 @@ export function TripPage() {
                 </div>
               </Fragment>;
             })}
-            {visibleItinerary.length === 0 && <button type="button" disabled={!editable} onClick={() => setOpenForm("event")} className="w-full rounded-2xl border border-dashed border-line p-8 text-sm text-muted">{editable ? focusedTraveler ? `No events apply to ${focusedTraveler.display_name}. Add one for them.` : "Your timeline is empty. Add the first event." : "No relevant timeline events have been added yet."}</button>}
+            {timelineEntries.length === 0 && <button type="button" disabled={!editable} onClick={() => setOpenForm("event")} className="w-full rounded-2xl border border-dashed border-line p-8 text-sm text-muted">{editable ? focusedTraveler ? `No events or scheduled tasks apply to ${focusedTraveler.display_name}. Add one for them.` : "Your timeline is empty. Add the first event." : "No relevant timeline items have been added yet."}</button>}
           </div>
         </section>
       </main> : <main className="mt-5 space-y-5">
@@ -478,8 +524,8 @@ export function TripPage() {
         <Section id="reservations" eyebrow="Bookings" title={focusedTraveler ? `${focusedTraveler.display_name}'s reservations` : "Reservations"} action={editable && <button type="button" className="secondary-button" onClick={() => setOpenForm("event")}><Plus className="size-4" /> Add</button>}><div className="grid gap-3 sm:grid-cols-2">{visibleBookings.map((booking) => { const flight = flightByBooking.get(booking.id); const href = flight ? `/trips/${trip.id}/flights/${flight.id}` : `/trips/${trip.id}/bookings/${booking.id}`; const bookingFlights = flights.filter((leg) => leg.booking_id === booking.id).sort((a, b) => a.segment_order - b.segment_order); const bookingJourneys = journeys.filter((leg) => leg.booking_id === booking.id).sort((a, b) => a.segment_order - b.segment_order); const route = bookingFlights.length ? journeyRoute(bookingFlights.map((leg) => ({ origin: leg.departure_airport_code || leg.departure_airport_name, destination: leg.arrival_airport_code || leg.arrival_airport_name }))) : journeyRoute(bookingJourneys.map((leg) => ({ origin: leg.origin_code || leg.origin_name, destination: leg.destination_code || leg.destination_name }))); return <ReservationCard booking={booking} href={href} route={route} navigationState={childNavigationState} key={booking.id} />; })}{visibleBookings.length === 0 && <p className="col-span-full text-sm text-muted">No relevant reservations yet.</p>}</div></Section>
         <Section id="costs" eyebrow="Money" title={focusedTraveler ? `${focusedTraveler.display_name}'s trip costs` : "Trip expenses"} onActivate={() => openExpenses()} activateLabel="Open itemized trip expenses" action={editable && <button type="button" className="secondary-button" onClick={() => { setCostTargetItem(null); setOpenForm("cost"); }}><Plus className="size-4" /> Add</button>}><CostTotals costs={visibleCosts} /><span className="mt-3 flex items-center justify-end gap-1 text-xs font-extrabold text-brand">View itemized expenses <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" /></span></Section>
         <Section id="people" eyebrow="People & sharing" title={focusedTravelerId ? travelers.find((row) => row.id === focusedTravelerId)?.display_name ?? "Selected traveler" : "Everyone"} onActivate={openPeople} activateLabel="Open People & sharing" action={<button type="button" className="secondary-button" onClick={(event) => openPeople(event.currentTarget)}><UsersRound className="size-4" /> Open</button>}><p className="text-sm text-muted">Switch between the complete trip and one person's relevant timeline, reservations, costs, readiness, seats, and documents.</p></Section>
-        <Section id="readiness" eyebrow="Before departure" title="Readiness checklist" onActivate={() => navigate(`/trips/${trip.id}/readiness`, { state: childNavigationState })} activateLabel="Open trip readiness" action={<Link className="secondary-button" to={`/trips/${trip.id}/readiness`} state={childNavigationState}>Open</Link>}><p className="text-sm text-muted">{readiness.resolved} of {readiness.total} tasks done.</p></Section>
-        <Section id="documents" eyebrow="Vault" title="Documents" action={<button type="button" className="secondary-button" onClick={() => setOpenForm("document")}><Plus className="size-4" /> Upload</button>}><p className="text-sm text-muted">{focusedDocuments.length} document{focusedDocuments.length === 1 ? "" : "s"} {focusedTravelerId ? "for the selected traveler" : "in this trip"}</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{focusedDocuments.map((document) => <Link key={document.id} to={`/trips/${trip.id}/documents/${document.id}`} state={childNavigationState} className="flex min-w-0 items-center gap-2 rounded-xl bg-elevated p-3 text-sm font-bold text-brand"><span className="min-w-0 flex-1 truncate">{document.title}</span><DocumentVisibilityBadge visibility={document.visibility} /></Link>)}</div></Section>
+        <Section id="readiness" eyebrow="Tasks" title="Tasks & readiness" onActivate={() => navigate(`/trips/${trip.id}/readiness`, { state: childNavigationState })} activateLabel="Open trip readiness" action={<Link className="secondary-button" to={`/trips/${trip.id}/readiness`} state={childNavigationState}>Open</Link>}><p className="text-sm text-muted">{readiness.resolved} of {readiness.total} tasks done. Scheduled tasks also appear in the timeline.</p></Section>
+        <Section id="documents" eyebrow="Vault" title="Documents" action={<button type="button" className="secondary-button" onClick={() => setOpenForm("document")}><Plus className="size-4" /> Upload</button>}><p className="text-sm text-muted">{focusedDocuments.length} document{focusedDocuments.length === 1 ? "" : "s"} {focusedTravelerId ? "for the selected traveler" : "in this trip"}</p><div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">{focusedDocuments.map((document) => <Link key={document.id} to={`/trips/${trip.id}/documents/${document.id}`} state={childNavigationState} className="flex min-w-0 max-w-full flex-col items-start gap-2 overflow-hidden rounded-xl bg-elevated p-3 text-sm font-bold text-brand"><span className="min-w-0 max-w-full whitespace-normal break-words [overflow-wrap:anywhere]">{document.title}</span><DocumentVisibilityBadge visibility={document.visibility} /></Link>)}</div></Section>
         <Section id="archived" eyebrow="Recoverable" title="Archived trip items"><p className="text-sm text-muted">Archived events and booking groups leave the timeline, while their documents and costs stay available. Archived costs can also be restored here.</p><div className="mt-4 space-y-2">{archivedItemsQuery.data?.map((item) => <div key={`${item.kind}:${item.id}`} className="flex items-center gap-3 rounded-xl bg-elevated p-3 text-sm"><span className="min-w-0 flex-1"><strong className="block">{item.title}</strong><span className="text-xs capitalize text-muted">{item.kind}</span></span>{editable && <button type="button" className="secondary-button min-h-9 px-3 py-2 text-xs" disabled={restoreArchivedItem.isPending} onClick={() => restoreArchivedItem.mutate({ id: item.id, kind: item.kind })}><RotateCcw className="size-3.5" /> Restore</button>}</div>)}{!navigator.onLine && <p className="rounded-xl bg-warning/10 p-3 text-sm text-warning">Connect to view and restore archived items.</p>}{navigator.onLine && archivedItemsQuery.data?.length === 0 && <p className="text-sm text-muted">Nothing is archived.</p>}</div></Section>
         <Section id="offline" eyebrow="On this device" title="Offline pack"><OfflinePackControl tripId={trip.id} /></Section>
         <Section id="metadata" eyebrow="Travel metadata" title="Airlines"><TripAirlinesPanel tripId={trip.id} canEdit={editable} /></Section>
@@ -487,7 +533,7 @@ export function TripPage() {
       </main>}
 
       <p className="sr-only" role="status" aria-live="polite">{travelerAnnouncement}</p>
-      <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-line bg-surface/95 p-2 shadow-focus backdrop-blur sm:bottom-6">{editable && <button type="button" onClick={() => setOpenForm("event")} className="primary-button min-h-11 whitespace-nowrap px-3 sm:px-4" aria-label="Add event"><CalendarPlus className="size-4" /><span>Add event</span></button>}<button type="button" onClick={(event) => openPeople(event.currentTarget)} className="secondary-button size-11 justify-center px-0 sm:size-auto sm:px-4" aria-label={`People and sharing · ${focusedTraveler?.display_name ?? "Everyone"}`}>{focusedTraveler ? <span className="grid size-6 place-items-center rounded-full bg-brand text-[.55rem] font-black text-surface">{focusedTraveler.display_name.slice(0, 2).toUpperCase()}</span> : <UsersRound className="size-4" />}<span className="hidden max-w-32 truncate sm:inline">{focusedTraveler?.display_name ?? "Everyone"}</span></button><button type="button" onClick={() => view === "details" ? openCurrentTimeline() : changeView("details")} className="tap-target grid size-11 place-items-center rounded-xl border border-line text-brand" aria-label={view === "details" ? "Jump to current timeline" : "Open trip details"}>{view === "details" ? <CalendarClock className="size-5" /> : <Info className="size-5" />}</button>{view === "timeline" && activeItem && <button type="button" onClick={() => scrollToItem(activeItem.id)} className="tap-target grid size-11 place-items-center rounded-xl border border-line text-brand" aria-label="Jump to now or next"><LocateFixed className="size-5" /></button>}</div>
+      <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-line bg-surface/95 p-2 shadow-focus backdrop-blur sm:bottom-6">{editable && <button type="button" onClick={() => setOpenForm("event")} className="primary-button min-h-11 whitespace-nowrap px-3 sm:px-4" aria-label="Add event"><CalendarPlus className="size-4" /><span>Add event</span></button>}<button type="button" onClick={(event) => openPeople(event.currentTarget)} className="secondary-button size-11 justify-center px-0 sm:size-auto sm:px-4" aria-label={`People and sharing · ${focusedTraveler?.display_name ?? "Everyone"}`}>{focusedTraveler ? <span className="grid size-6 place-items-center rounded-full bg-brand text-[.55rem] font-black text-surface">{focusedTraveler.display_name.slice(0, 2).toUpperCase()}</span> : <UsersRound className="size-4" />}<span className="hidden max-w-32 truncate sm:inline">{focusedTraveler?.display_name ?? "Everyone"}</span></button><button type="button" onClick={() => view === "details" ? openCurrentTimeline() : changeView("details")} className="tap-target grid size-11 place-items-center rounded-xl border border-line text-brand" aria-label={view === "details" ? "Jump to current timeline" : "Open trip details"}>{view === "details" ? <CalendarClock className="size-5" /> : <Info className="size-5" />}</button>{view === "timeline" && activeTimelineEntry && <button type="button" onClick={() => scrollToItem(activeTimelineEntry.id)} className="tap-target grid size-11 place-items-center rounded-xl border border-line text-brand" aria-label="Jump to now or next"><LocateFixed className="size-5" /></button>}</div>
     </>}
   </div>
   {showingExpenses && <TripExpensesSheet title={focusedTraveler ? `${focusedTraveler.display_name}'s trip expenses` : "Trip expenses"} costs={visibleCosts} balances={balances} travelers={travelers} onClose={() => { setShowingExpenses(false); setViewingCost(null); setCostReturnsToExpenses(false); }} onViewCost={(cost) => { setShowingExpenses(false); setCostReturnsToExpenses(true); setViewingCost(cost); }} />}

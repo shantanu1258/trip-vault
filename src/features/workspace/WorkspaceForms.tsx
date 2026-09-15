@@ -276,15 +276,23 @@ export function ShareTripForm({ trip, travelers, onClose }: { trip: Trip; travel
 export function AddRequirementForm({ trip, travelers = [], requirement, preferredTravelerId, onClose }: { trip: Trip; travelers?: Traveler[]; requirement?: Requirement; preferredTravelerId?: string; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
+  const initialTimingMode = requirement?.timing_mode ?? (requirement?.due_date ? "date_only" : "unscheduled");
+  const initialOffsetMinutes = requirement?.offset_minutes ?? 0;
+  const initialOffsetUnit = initialOffsetMinutes > 0 && initialOffsetMinutes % 10_080 === 0 ? "weeks" : initialOffsetMinutes > 0 && initialOffsetMinutes % 1_440 === 0 ? "days" : initialOffsetMinutes > 0 && initialOffsetMinutes % 60 === 0 ? "hours" : "minutes";
+  const initialOffsetValue = initialOffsetUnit === "weeks" ? initialOffsetMinutes / 10_080 : initialOffsetUnit === "days" ? initialOffsetMinutes / 1_440 : initialOffsetUnit === "hours" ? initialOffsetMinutes / 60 : initialOffsetMinutes;
+  const [timingMode, setTimingMode] = useState(initialTimingMode);
   const draft = useFormDraft(`requirement:${requirement?.id ?? "new"}:${trip.id}`);
   const assignees = useQuery({ queryKey: ["requirement-assignee-ids", requirement?.id], queryFn: () => listRequirementAssigneeIds(requirement!.id, trip.id), enabled: Boolean(requirement) });
+  const itinerary = useQuery({ queryKey: ["itinerary", trip.id], queryFn: () => listItinerary(trip.id), enabled: timingMode === "relative" });
+  const anchorOptions = (itinerary.data ?? []).filter((item) => item.timing_mode !== "unscheduled" && item.timing_mode !== "relative");
   const mutation = useMutation({
     mutationFn: (input: RequirementInput) => requirement ? updateRequirement({ ...input, id: requirement.id, version: requirement.version }) : addRequirement(input),
     onSuccess: async () => {
       draft.clearDraft();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["requirements", trip.id] }),
-        queryClient.invalidateQueries({ queryKey: ["requirement-assignee-ids", requirement?.id] })
+        queryClient.invalidateQueries({ queryKey: ["requirement-assignee-ids", requirement?.id] }),
+        queryClient.invalidateQueries({ queryKey: ["alerts"] })
       ]);
       onClose();
     }
@@ -293,9 +301,16 @@ export function AddRequirementForm({ trip, travelers = [], requirement, preferre
     event.preventDefault(); setMessage("");
     const form = new FormData(event.currentTarget);
     const title = String(form.get("title") ?? "").trim();
-    const dueDate = String(form.get("dueDate") ?? "").trim() || undefined;
+    const dueDate = timingMode === "date_only" ? String(form.get("dueDate") ?? "").trim() || undefined : undefined;
     const notes = String(form.get("notes") ?? "").trim() || undefined;
     if (!title) { setMessage("Enter the task that needs to be done."); return; }
+    if (timingMode === "date_only" && !dueDate) { setMessage("Choose the date when this task should appear."); return; }
+    const anchorItineraryItemId = timingMode === "relative" ? String(form.get("anchorItineraryItemId") ?? "") : undefined;
+    if (timingMode === "relative" && !anchorItineraryItemId) { setMessage("Choose the event this task belongs before or after."); return; }
+    const offsetValue = Number(form.get("offsetValue") ?? 0);
+    const offsetUnit = String(form.get("offsetUnit") ?? "days");
+    if (timingMode === "relative" && (!Number.isFinite(offsetValue) || offsetValue < 0)) { setMessage("Enter a valid non-negative offset."); return; }
+    const offsetMultiplier = offsetUnit === "weeks" ? 10_080 : offsetUnit === "days" ? 1_440 : offsetUnit === "hours" ? 60 : 1;
     if (requirement && !assignees.isSuccess) { setMessage("Wait for this task to finish loading, then try again."); return; }
     const travelerIds = requirement
       ? assignees.data
@@ -310,6 +325,10 @@ export function AddRequirementForm({ trip, travelers = [], requirement, preferre
       destinationCountryCode: requirement?.destination_country_code ?? undefined,
       visaType: requirement?.visa_type ?? undefined,
       dueDate,
+      timingMode,
+      anchorItineraryItemId,
+      relativePosition: timingMode === "relative" ? String(form.get("relativePosition") ?? "before") as "before" | "after" : undefined,
+      offsetMinutes: timingMode === "relative" ? Math.round(offsetValue * offsetMultiplier) : undefined,
       issuedOn: requirement?.issued_on ?? undefined,
       expiresOn: requirement?.expires_on ?? undefined,
       validityBufferDays: requirement?.validity_buffer_days ?? undefined,
@@ -322,7 +341,9 @@ export function AddRequirementForm({ trip, travelers = [], requirement, preferre
   return <ModalSheet eyebrow={trip.title} title={requirement ? "Edit task" : "Add task"} onClose={onClose}>
     <form ref={draft.formRef} onSubmit={submit} className="mt-6 space-y-4">
       <label className="form-label">Task<input autoFocus className="form-input" name="title" placeholder="What needs to be done?" defaultValue={requirement?.title ?? ""} /></label>
-      <label className="form-label">Due date (optional)<input className="form-input" type="date" name="dueDate" defaultValue={requirement?.due_date ?? ""} /></label>
+      <label className="form-label">When should it appear?<select className="form-input" name="timingMode" value={timingMode} onChange={(event) => setTimingMode(event.target.value as typeof timingMode)}><option value="unscheduled">Checklist only</option><option value="date_only">On a date</option><option value="relative">Before or after an event</option></select></label>
+      {timingMode === "date_only" && <label className="form-label">Date<input className="form-input" type="date" name="dueDate" defaultValue={requirement?.due_date ?? ""} /></label>}
+      {timingMode === "relative" && <fieldset className="rounded-2xl border border-line p-4"><legend className="px-1 text-sm font-extrabold">Timeline position</legend><div className="mt-2 grid gap-4 sm:grid-cols-2"><label className="form-label">Position<select className="form-input" name="relativePosition" defaultValue={requirement?.relative_position ?? "before"}><option value="before">Before</option><option value="after">After</option></select></label><label className="form-label">Event<select className="form-input" name="anchorItineraryItemId" defaultValue={requirement?.anchor_itinerary_item_id ?? ""}><option value="">Select an event</option>{anchorOptions.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><label className="form-label">How long?<input className="form-input" type="number" name="offsetValue" min="0" step="1" defaultValue={initialOffsetValue} /></label><label className="form-label">Unit<select className="form-input" name="offsetUnit" defaultValue={initialOffsetUnit}><option value="minutes">Minutes</option><option value="hours">Hours</option><option value="days">Days</option><option value="weeks">Weeks</option></select></label></div>{itinerary.isLoading && <p className="mt-3 text-xs text-muted">Loading trip events…</p>}{itinerary.isSuccess && !anchorOptions.length && <p className="mt-3 text-xs font-bold text-warning">Add a dated trip event before linking this task.</p>}</fieldset>}
       <label className="form-label">Notes (optional)<textarea className="form-input min-h-20 resize-y" name="notes" placeholder="Add a useful detail or reminder" defaultValue={requirement?.notes ?? ""} /></label>
       {(message || mutation.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{message || getErrorMessage(mutation.error)}</p>}
       <button className="primary-button w-full" disabled={mutation.isPending || Boolean(requirement && !assignees.isSuccess)}>{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />} {requirement ? "Save task" : "Add task"}</button>

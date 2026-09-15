@@ -209,6 +209,27 @@ begin
   if to_regprocedure('public.can_edit_traveler_profile(uuid,uuid)') is null then
     raise exception 'Delegated traveler profile authorization is missing';
   end if;
+  if to_regprocedure('public.update_document_visibility(uuid,public.document_visibility,uuid[])') is null then
+    raise exception 'Atomic document visibility update RPC is missing';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'trip_requirements' and column_name = 'timing_mode'
+  ) or not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'trip_requirements' and column_name = 'anchor_itinerary_item_id'
+  ) or not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'trip_requirements' and column_name = 'relative_position'
+  ) or not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'trip_requirements' and column_name = 'offset_minutes'
+  ) then
+    raise exception 'Readiness timeline scheduling columns are missing';
+  end if;
+  if not exists (select 1 from pg_trigger where tgname = 'trip_requirement_timing_guard' and not tgisinternal) then
+    raise exception 'Readiness task timing validation trigger is missing';
+  end if;
   if not exists (
     select 1 from pg_policies
     where schemaname = 'public' and tablename = 'trips'

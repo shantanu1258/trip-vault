@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { arrivalDayOffset, eventEndDetails, eventEndTimeZone, eventTimeLabel, journeyDuration, journeyEndDetails, journeyRoute, normalizePhoneNumber, phoneActionUrls, plannedDurationLabel, readinessSummary, resolveCurrentTimelineItem, searchTrip, sortTimelineItems, timelinePhase, validateLegOrder } from "./model";
+import { arrivalDayOffset, buildTripTimelineEntries, eventEndDetails, eventEndTimeZone, eventTimeLabel, journeyDuration, journeyEndDetails, journeyRoute, normalizePhoneNumber, phoneActionUrls, plannedDurationLabel, readinessSummary, requirementTimelineSchedule, resolveCurrentTimelineItem, resolveCurrentTripTimelineEntry, searchTrip, sortTimelineItems, timelinePhase, validateLegOrder } from "./model";
 import type { ItineraryItem } from "../trips/types";
+import type { Requirement } from "../workspace/types";
 
 const event = (id: string, start: string, end: string | null = null): ItineraryItem => ({ id, trip_id: "trip", booking_id: null, title: id, event_type: "activity", starts_at: start, ends_at: end, timezone: "UTC", location: null, notes: null, applies_to_all_travelers: true, created_at: "" });
 
@@ -73,5 +74,18 @@ describe("timeline model", () => {
   it("builds call and WhatsApp actions from an international number", () => expect(phoneActionUrls("+91 98765-43210")).toEqual({ call: "tel:+919876543210", whatsapp: "https://wa.me/919876543210" }));
   it("rejects unusable numbers", () => expect(normalizePhoneNumber("123")).toBeNull());
   it("derives the readiness card from unresolved requirements", () => expect(readinessSummary([{ status: "complete", due_date: null }, { status: "required", due_date: "2026-09-20" }] as never)).toEqual({ total: 2, resolved: 1, remaining: 1, dueDate: "2026-09-20" }));
+  it("places a linked readiness task at its exact offset before an event", () => {
+    const flight = { ...event("bali-flight", "2026-09-20T10:00:00Z"), title: "Flight to Bali", event_type: "flight" as const };
+    const task = { id: "visa", trip_id: "trip", title: "Prepare Bali visa", status: "to_check", timing_mode: "relative", anchor_itinerary_item_id: flight.id, relative_position: "before", offset_minutes: 4_320 } as never;
+    expect(requirementTimelineSchedule(task, [flight], "UTC")).toMatchObject({ startsAt: "2026-09-17T10:00:00.000Z", label: "3 days before Flight to Bali" });
+    expect(buildTripTimelineEntries([flight], [task], "UTC").map((entry) => entry.id)).toEqual(["requirement:visa", "bali-flight"]);
+  });
+  it("moves attention to the next event as soon as a readiness task is complete", () => {
+    const flight = { ...event("flight", "2026-09-20T10:00:00Z"), event_type: "flight" as const };
+    const pending = { id: "visa", trip_id: "trip", title: "Visa", status: "to_check", timing_mode: "date_only", due_date: "2026-09-15" } as Requirement;
+    const complete = { ...pending, status: "complete" as const };
+    expect(resolveCurrentTripTimelineEntry(buildTripTimelineEntries([flight], [pending], "UTC"), new Date("2026-09-16T00:00:00Z"))?.id).toBe("requirement:visa");
+    expect(resolveCurrentTripTimelineEntry(buildTripTimelineEntries([flight], [complete], "UTC"), new Date("2026-09-16T00:00:00Z"))?.id).toBe("flight");
+  });
   it("finds a flight by number without reading document contents", () => expect(searchTrip({ query: "sq403", tripId: "trip", itinerary: [], bookings: [{ id: "booking", trip_id: "trip", type: "flight", title: "To Singapore", provider: "Singapore Airlines", reference_code: "ABC", start_at: null, end_at: null, source_timezone: null, location: null, details: {}, created_at: "" }], flights: [{ booking_id: "booking", flight_number: "SQ403", airline_name: "Singapore Airlines" } as never], journeys: [], documents: [], travelers: [], requirements: [] })[0]?.title).toBe("To Singapore"));
 });

@@ -160,12 +160,16 @@ describe("Upload document flow", () => {
     render(<MemoryRouter><QueryClientProvider client={queryClient}><AddRequirementForm trip={trip} travelers={travelers} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
 
     expect(screen.getByLabelText("Task")).toBeInTheDocument();
-    expect(screen.getByLabelText("Due date (optional)")).toBeInTheDocument();
+    expect(screen.getByLabelText("When should it appear?")).toHaveValue("unscheduled");
+    expect(screen.queryByLabelText("Date")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Notes (optional)")).toBeInTheDocument();
     expect(screen.queryByLabelText("Type")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Status")).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("Task"), "Pack phone chargers");
-    await user.type(screen.getByLabelText("Due date (optional)"), "2026-09-23");
+    await user.selectOptions(screen.getByLabelText("When should it appear?"), "date_only");
+    expect(screen.getByLabelText("Date")).not.toHaveAttribute("min");
+    expect(screen.getByLabelText("Date")).not.toHaveAttribute("max");
+    await user.type(screen.getByLabelText("Date"), "2026-09-20");
     await user.type(screen.getByLabelText("Notes (optional)"), "Pack one charger per traveler");
     await user.click(screen.getByRole("button", { name: "Add task" }));
 
@@ -176,7 +180,11 @@ describe("Upload document flow", () => {
       status: "to_check",
       destinationCountryCode: undefined,
       visaType: undefined,
-      dueDate: "2026-09-23",
+      dueDate: "2026-09-20",
+      timingMode: "date_only",
+      anchorItineraryItemId: undefined,
+      relativePosition: undefined,
+      offsetMinutes: undefined,
       issuedOn: undefined,
       expiresOn: undefined,
       validityBufferDays: undefined,
@@ -185,6 +193,26 @@ describe("Upload document flow", () => {
       notes: "Pack one charger per traveler",
       travelerIds: ["asha", "ravi"]
     }));
+  });
+
+  it("adds a readiness task a chosen offset before a dated event", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><AddRequirementForm trip={trip} travelers={travelers} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    await user.type(screen.getByLabelText("Task"), "Prepare hotel documents");
+    await user.selectOptions(screen.getByLabelText("When should it appear?"), "relative");
+    await screen.findByRole("option", { name: "Harbour Hotel · Check in" });
+    await user.selectOptions(screen.getByLabelText("Position"), "before");
+    await user.selectOptions(screen.getByLabelText("Event"), "check-in-1");
+    await user.clear(screen.getByLabelText("How long?"));
+    await user.type(screen.getByLabelText("How long?"), "3");
+    await user.selectOptions(screen.getByLabelText("Unit"), "days");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+
+    await waitFor(() => expect(mocks.addRequirement).toHaveBeenCalledWith(expect.objectContaining({
+      timingMode: "relative", anchorItineraryItemId: "check-in-1", relativePosition: "before", offsetMinutes: 4_320, dueDate: undefined
+    })));
   });
 
   it("edits task details without discarding hidden legacy data or assignees", async () => {
@@ -202,15 +230,15 @@ describe("Upload document flow", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Save task" })).toBeEnabled());
     await user.clear(task);
     await user.type(task, "Confirm visas");
-    await user.clear(screen.getByLabelText("Due date (optional)"));
-    await user.type(screen.getByLabelText("Due date (optional)"), "2026-09-22");
+    await user.clear(screen.getByLabelText("Date"));
+    await user.type(screen.getByLabelText("Date"), "2026-09-29");
     await user.clear(screen.getByLabelText("Notes (optional)"));
     await user.type(screen.getByLabelText("Notes (optional)"), "Confirm requirements with the embassy");
     await user.click(screen.getByRole("button", { name: "Save task" }));
 
     await waitFor(() => expect(mocks.updateRequirement).toHaveBeenCalledWith(expect.objectContaining({
       id: "requirement-1", version: 3, title: "Confirm visas", type: "visa", status: "in_progress",
-      destinationCountryCode: "AE", visaType: "Tourist", dueDate: "2026-09-22", issuedOn: "2026-09-01",
+      destinationCountryCode: "AE", visaType: "Tourist", dueDate: "2026-09-29", timingMode: "date_only", issuedOn: "2026-09-01",
       expiresOn: "2026-12-01", validityBufferDays: 30, officialGuidanceUrl: "https://example.gov/visa",
       linkedDocumentId: "document-1", notes: "Confirm requirements with the embassy", travelerIds: ["ravi"]
     })));
@@ -228,13 +256,13 @@ describe("Upload document flow", () => {
     render(<MemoryRouter><QueryClientProvider client={queryClient}><AddRequirementForm trip={trip} travelers={travelers} requirement={requirement} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Save task" })).toBeEnabled());
-    await user.clear(screen.getByLabelText("Due date (optional)"));
+    await user.selectOptions(screen.getByLabelText("When should it appear?"), "unscheduled");
     await user.clear(screen.getByLabelText("Notes (optional)"));
     await user.click(screen.getByRole("button", { name: "Save task" }));
 
     await waitFor(() => expect(mocks.updateRequirement).toHaveBeenCalledWith(expect.objectContaining({
       id: "requirement-1", version: 3, title: "Check visas", type: "visa", status: "in_progress",
-      destinationCountryCode: "AE", visaType: "Tourist", dueDate: undefined, issuedOn: "2026-09-01",
+      destinationCountryCode: "AE", visaType: "Tourist", dueDate: undefined, timingMode: "unscheduled", issuedOn: "2026-09-01",
       expiresOn: "2026-12-01", validityBufferDays: 30, officialGuidanceUrl: "https://example.gov/visa",
       linkedDocumentId: "document-1", notes: undefined, travelerIds: ["ravi"]
     })));

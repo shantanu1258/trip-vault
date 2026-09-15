@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   listMembers: vi.fn(),
   listTravelers: vi.fn(),
   listDocumentVersions: vi.fn(),
+  listDocumentAccessUserIds: vi.fn(),
+  updateDocumentVisibility: vi.fn(),
   localProfileId: vi.fn(),
   readOfflineFile: vi.fn()
 }));
@@ -25,6 +27,8 @@ vi.mock("../features/workspace/api", () => ({
   listMembers: mocks.listMembers,
   listTravelers: mocks.listTravelers,
   listDocumentVersions: mocks.listDocumentVersions,
+  listDocumentAccessUserIds: mocks.listDocumentAccessUserIds,
+  updateDocumentVisibility: mocks.updateDocumentVisibility,
   archiveDocument: vi.fn(),
   downloadDocumentVersion: vi.fn(),
   replaceDocumentVersion: vi.fn()
@@ -38,6 +42,8 @@ vi.mock("../lib/storage/offlineFiles", () => ({
 import { DocumentPage } from "./DocumentPage";
 
 describe("DocumentPage", () => {
+  const longTitle = "Other booking confirmation · Ankita · Some Place to Some Place with a deliberately long generated title";
+
   beforeEach(() => {
     vi.clearAllMocks();
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:ticket") });
@@ -46,6 +52,8 @@ describe("DocumentPage", () => {
     mocks.listMembers.mockResolvedValue([{ user_id: "user-1", role: "owner", display_name: "Owner" }]);
     mocks.listTravelers.mockResolvedValue([]);
     mocks.listDocumentVersions.mockResolvedValue([]);
+    mocks.listDocumentAccessUserIds.mockResolvedValue([]);
+    mocks.updateDocumentVisibility.mockResolvedValue(undefined);
     mocks.readOfflineFile.mockResolvedValue(new Blob(["%PDF-test"], { type: "application/pdf" }));
     mocks.getVaultDocument.mockResolvedValue({
       id: "document-1",
@@ -53,7 +61,7 @@ describe("DocumentPage", () => {
       booking_id: null,
       flight_leg_id: null,
       traveler_id: null,
-      title: "Visa",
+      title: longTitle,
       category: "visa",
       purpose: "visa",
       short_label: null,
@@ -80,6 +88,9 @@ describe("DocumentPage", () => {
     render(<MemoryRouter initialEntries={[{ pathname: "/trips/trip-1/documents/document-1", state: tripChildNavigationState(null, "trip-1", "details") }]}><QueryClientProvider client={client}><Routes><Route path="/trips/:tripId/documents/:documentId" element={<DocumentPage />} /></Routes></QueryClientProvider></MemoryRouter>);
 
     expect(await screen.findByTestId("document-preview")).toHaveTextContent("visa.pdf · application/octet-stream");
+    const title = screen.getByRole("heading", { name: longTitle });
+    expect(title).toHaveClass("whitespace-normal", "break-words", "[overflow-wrap:anywhere]");
+    expect(title).not.toHaveClass("truncate");
     expect(screen.getByLabelText("Visible to all signed-in trip members")).toHaveTextContent("Trip members");
     expect(screen.getByRole("link", { name: "Back to trip" })).toHaveAttribute("href", "/trips/trip-1?view=details");
     expect(screen.getByRole("link", { name: "Open with device viewer" })).toHaveAttribute("href", "blob:ticket");
@@ -88,5 +99,20 @@ describe("DocumentPage", () => {
     await user.click(info);
     expect(screen.getByRole("region", { name: "Document information" })).toBeInTheDocument();
     expect(screen.getByText("Visible to all signed-in trip members")).toBeInTheDocument();
+  });
+
+  it("lets an owner change an existing document to selected-member access", async () => {
+    const user = userEvent.setup();
+    mocks.listMembers.mockResolvedValue([{ user_id: "user-1", role: "owner", display_name: "Owner" }, { user_id: "user-2", role: "viewer", display_name: "Friend" }]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<MemoryRouter initialEntries={["/trips/trip-1/documents/document-1"]}><QueryClientProvider client={client}><Routes><Route path="/trips/:tripId/documents/:documentId" element={<DocumentPage />} /></Routes></QueryClientProvider></MemoryRouter>);
+
+    await user.click(await screen.findByRole("button", { name: "Document information and actions" }));
+    await user.click(await screen.findByRole("button", { name: "Change" }));
+    await user.selectOptions(screen.getByLabelText("Visibility"), "selected_members");
+    await user.click(screen.getByRole("checkbox", { name: "Friend" }));
+    await user.click(screen.getByRole("button", { name: "Save visibility" }));
+
+    expect(mocks.updateDocumentVisibility).toHaveBeenCalledWith({ documentId: "document-1", visibility: "selected_members", selectedUserIds: ["user-2"] });
   });
 });

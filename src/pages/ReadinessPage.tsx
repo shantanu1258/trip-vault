@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { ErrorCard, LoadingCard, PageHeader } from "../components/TripUi";
-import { getTrip } from "../features/trips/api";
+import { getTrip, listItinerary } from "../features/trips/api";
+import { requirementTimelineSchedule } from "../features/timeline/model";
 import { archiveRequirement, listMembers, listRequirements, listTravelers, listTripRequirementAssignees, updateRequirementStatus } from "../features/workspace/api";
 import { AddRequirementForm } from "../features/workspace/WorkspaceForms";
 import { type Requirement, type RequirementStatus } from "../features/workspace/types";
@@ -13,10 +14,11 @@ import { readTravelerFocus } from "../features/workspace/travelerFocus";
 import { tripReturnNavigation } from "../features/trips/navigation";
 
 export function ReadinessPage() {
-  const { tripId = "" } = useParams(); const locationState = useLocation().state; const queryClient = useQueryClient(); const [adding, setAdding] = useState(false); const [editing, setEditing] = useState<Requirement | null>(null); const [userId, setUserId] = useState("");
+  const { tripId = "" } = useParams(); const locationState = useLocation().state; const queryClient = useQueryClient(); const [adding, setAdding] = useState(false); const [editing, setEditing] = useState<Requirement | null>(null); const [userId, setUserId] = useState(""); const [statusMessage, setStatusMessage] = useState("");
   useEffect(() => { void localProfileId().then((profileId) => setUserId(profileId ?? "")); }, []);
   const tripQuery = useQuery({ queryKey: ["trip", tripId], queryFn: () => getTrip(tripId), enabled: Boolean(tripId) });
   const query = useQuery({ queryKey: ["requirements", tripId], queryFn: () => listRequirements(tripId), enabled: Boolean(tripId) });
+  const itineraryQuery = useQuery({ queryKey: ["itinerary", tripId], queryFn: () => listItinerary(tripId), enabled: Boolean(tripId) });
   const travelersQuery = useQuery({ queryKey: ["travelers", tripId], queryFn: () => listTravelers(tripId), enabled: Boolean(tripId) });
   const membersQuery = useQuery({ queryKey: ["members", tripId], queryFn: () => listMembers(tripId), enabled: Boolean(tripId) });
   const focusedTravelerId = readTravelerFocus(tripId); const requirementIds = (query.data ?? []).map((item) => item.id);
@@ -30,12 +32,16 @@ export function ReadinessPage() {
       return { previous };
     },
     onError: (_error, _input, context) => queryClient.setQueryData(["requirements", tripId], context?.previous),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["requirements", tripId] })
+    onSuccess: (_data, input) => {
+      const item = query.data?.find((candidate) => candidate.id === input.id);
+      setStatusMessage(input.status === "complete" ? `${item?.title ?? "Task"} marked done. It will no longer be highlighted on the timeline.` : `${item?.title ?? "Task"} reopened and will be highlighted when it is due.`);
+    },
+    onSettled: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ["requirements", tripId] }), queryClient.invalidateQueries({ queryKey: ["alerts"] })]); }
   });
   const trip = tripQuery.data; const visibleRequirements = focusedTravelerId ? (query.data ?? []).filter((item) => assigneesQuery.data?.some((row) => row.requirement_id === item.id && row.traveler_id === focusedTravelerId)) : query.data ?? []; const resolved = visibleRequirements.filter((item) => ["complete", "not_required"].includes(item.status)).length;
   const role = membersQuery.data?.find((member) => member.user_id === userId)?.role; const editable = role === "owner" || role === "editor";
   const returnNavigation = tripReturnNavigation(locationState, tripId);
-  const archive = useMutation({ mutationFn: archiveRequirement, onSuccess: () => queryClient.invalidateQueries({ queryKey: ["requirements", tripId] }) });
+  const archive = useMutation({ mutationFn: archiveRequirement, onSuccess: async (_data, item) => { setStatusMessage(`${item.title} archived. It has been removed from timeline highlights and alerts.`); await Promise.all([queryClient.invalidateQueries({ queryKey: ["requirements", tripId] }), queryClient.invalidateQueries({ queryKey: ["alerts"] })]); } });
   return (
     <AppShell>
       <div className="mx-auto max-w-4xl">
@@ -45,12 +51,13 @@ export function ReadinessPage() {
         <div className="mt-5">
           <PageHeader
             eyebrow={trip?.title ?? "Trip"}
-            title="Readiness checklist"
-            text={focusedTravelerId ? "Tasks for the selected traveler. Check each one off when it is done." : "Keep a simple list of everything that needs to be done before the trip."}
+            title="Tasks & readiness"
+            text={focusedTravelerId ? "Tasks for the selected traveler. Scheduled tasks also appear in their timeline." : "Keep every task here; dated and event-linked tasks also appear in the trip timeline."}
           />
         </div>
         {query.isLoading && <LoadingCard label="Loading checklist" />}
         {query.error && <ErrorCard error={query.error} />}
+        {statusMessage && <p role="status" className="mt-4 rounded-xl bg-success/10 p-3 text-sm font-bold text-success">{statusMessage}</p>}
         {query.data && (
           <section className="surface-card mt-4 overflow-hidden">
             <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-2 sm:px-4">
@@ -68,6 +75,7 @@ export function ReadinessPage() {
               <ul className="divide-y divide-line">
                 {visibleRequirements.map((item) => {
                   const done = ["complete", "not_required"].includes(item.status);
+                  const schedule = trip ? requirementTimelineSchedule(item, itineraryQuery.data ?? [], trip.primary_timezone) : null;
                   return (
                     <li key={item.id} className="flex items-center gap-1 px-2 py-1 sm:px-3">
                       <label className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1 hover:bg-elevated ${editable ? "cursor-pointer" : "cursor-default"}`}>
@@ -83,9 +91,9 @@ export function ReadinessPage() {
                           <strong className={`block truncate text-sm leading-5 ${done ? "text-muted line-through" : "text-ink"}`}>{item.title}</strong>
                           <span className="flex min-w-0 items-center gap-2 overflow-hidden text-[0.7rem] leading-4 text-muted">
                             <span className={`shrink-0 font-bold ${done ? "text-success" : "text-muted"}`}>{done ? "Done" : "Not done"}</span>
-                            {item.due_date && (
-                              <time className="inline-flex shrink-0 items-center gap-1" dateTime={item.due_date}>
-                                <CalendarDays aria-hidden="true" className="size-3" /> Due {new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(`${item.due_date}T00:00:00`))}
+                            {schedule && (
+                              <time className="inline-flex shrink-0 items-center gap-1" dateTime={schedule.startsAt}>
+                                <CalendarDays aria-hidden="true" className="size-3" /> {schedule.label}
                               </time>
                             )}
                             {item.notes && (

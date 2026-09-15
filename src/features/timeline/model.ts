@@ -1,10 +1,15 @@
 import { isJourneyEventType, type ItineraryItem, type TripCost } from "../trips/types";
 import type { Booking, FlightLeg, JourneyLeg, Requirement, Traveler, VaultDocument } from "../workspace/types";
+import { localDateTimeToIso } from "../trips/validation";
 
 export type TimelineSearchGroup = "Timeline" | "Bookings" | "Documents" | "Travelers" | "Readiness";
 export type TimelineSearchResult = { id: string; group: TimelineSearchGroup; title: string; detail: string; timelineItemId?: string; href?: string };
 
 export type TimelinePhase = "past" | "current" | "future" | "unscheduled";
+
+export type TripTimelineEntry =
+  | { kind: "event"; id: string; startsAt: string; timezone: string; item: ItineraryItem }
+  | { kind: "requirement"; id: string; startsAt: string; timezone: string; requirement: Requirement; scheduleLabel: string };
 
 export function hasExplicitEventStart(item: ItineraryItem) {
   const mode = item.timing_mode ?? (item.is_all_day ? "all_day" : "exact");
@@ -101,6 +106,93 @@ export function sortTimelineItems(items: ItineraryItem[]) {
   for (const item of baseline) if (!relatedIds.has(item.id)) visit(item);
   for (const item of baseline) visit(item);
   return ordered;
+}
+
+function readinessOffsetLabel(minutes: number) {
+  const safe = Math.max(0, Math.round(minutes));
+  const units = [
+    { minutes: 10_080, singular: "week", plural: "weeks" },
+    { minutes: 1_440, singular: "day", plural: "days" },
+    { minutes: 60, singular: "hour", plural: "hours" },
+    { minutes: 1, singular: "minute", plural: "minutes" }
+  ];
+  const unit = units.find((candidate) => safe >= candidate.minutes && safe % candidate.minutes === 0) ?? units.at(-1)!;
+  const value = safe / unit.minutes;
+  return safe === 0 ? "Immediately" : `${value} ${value === 1 ? unit.singular : unit.plural}`;
+}
+
+export function requirementTimelineSchedule(requirement: Requirement, itinerary: ItineraryItem[], fallbackTimezone: string) {
+  const mode = requirement.timing_mode ?? (requirement.due_date ? "date_only" : "unscheduled");
+  if (mode === "date_only" && requirement.due_date) {
+    return {
+      startsAt: localDateTimeToIso(`${requirement.due_date}T09:00`, fallbackTimezone),
+      timezone: fallbackTimezone,
+      label: `Due ${new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(new Date(`${requirement.due_date}T12:00:00Z`))}`,
+      sortAdjustment: 0
+    };
+  }
+  if (mode !== "relative" || !requirement.anchor_itinerary_item_id || !requirement.relative_position) return null;
+  const anchor = itinerary.find((item) => item.id === requirement.anchor_itinerary_item_id && item.timing_mode !== "unscheduled");
+  if (!anchor) return null;
+  const offset = Math.max(0, requirement.offset_minutes ?? 0);
+  const direction = requirement.relative_position === "before" ? -1 : 1;
+  const startsAt = new Date(new Date(anchor.starts_at).getTime() + direction * offset * 60_000).toISOString();
+  const prefix = offset ? `${readinessOffsetLabel(offset)} ` : "";
+  return {
+    startsAt,
+    timezone: anchor.timezone,
+    label: `${prefix}${requirement.relative_position} ${anchor.title}`,
+    sortAdjustment: offset === 0 ? direction : 0
+  };
+}
+
+export function buildTripTimelineEntries(itinerary: ItineraryItem[], requirements: Requirement[], fallbackTimezone: string): TripTimelineEntry[] {
+  const orderedEvents = sortTimelineItems(itinerary);
+  const entries: Array<TripTimelineEntry & { sortValue: number; stableOrder: number }> = orderedEvents.map((item, index) => ({
+    kind: "event",
+    id: item.id,
+    startsAt: item.starts_at,
+    timezone: item.timezone,
+    item,
+    sortValue: new Date(item.starts_at).getTime(),
+    stableOrder: index * 2
+  }));
+  requirements.forEach((requirement, index) => {
+    const schedule = requirementTimelineSchedule(requirement, orderedEvents, fallbackTimezone);
+    if (!schedule) return;
+    entries.push({
+      kind: "requirement",
+      id: `requirement:${requirement.id}`,
+      startsAt: schedule.startsAt,
+      timezone: schedule.timezone,
+      requirement,
+      scheduleLabel: schedule.label,
+      sortValue: new Date(schedule.startsAt).getTime() + schedule.sortAdjustment,
+      stableOrder: orderedEvents.length * 2 + index
+    });
+  });
+  return entries
+    .sort((left, right) => left.sortValue - right.sortValue || left.stableOrder - right.stableOrder)
+    .map(({ sortValue: _sortValue, stableOrder: _stableOrder, ...entry }) => entry);
+}
+
+export function timelineEntryPhase(entry: TripTimelineEntry, now = new Date()): TimelinePhase {
+  if (entry.kind === "event") return timelinePhase(entry.item, now);
+  return new Date(entry.startsAt).getTime() > now.getTime() ? "future" : "past";
+}
+
+export function resolveCurrentTripTimelineEntry(entries: TripTimelineEntry[], now = new Date()) {
+  const actionable = entries.filter((entry) => entry.kind === "event"
+    ? !entry.item.completed_at && (entry.item.event_status ?? "planned") === "planned" && entry.item.timing_mode !== "unscheduled"
+    : !["complete", "not_required"].includes(entry.requirement.status));
+  const liveEvent = actionable.find((entry) => entry.kind === "event" && timelinePhase(entry.item, now) === "current");
+  if (liveEvent) return liveEvent;
+  const timestamp = now.getTime();
+  return actionable.find((entry) => entry.kind === "requirement" && new Date(entry.startsAt).getTime() <= timestamp)
+    ?? actionable.find((entry) => new Date(entry.startsAt).getTime() >= timestamp)
+    ?? [...actionable].reverse().find(Boolean)
+    ?? entries.at(-1)
+    ?? null;
 }
 
 export function resolveCurrentTimelineItem(items: ItineraryItem[], now = new Date()) {

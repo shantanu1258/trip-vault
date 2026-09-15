@@ -964,7 +964,7 @@ export async function listRequirements(tripId: string): Promise<Requirement[]> {
 
 export async function addRequirement(input: RequirementInput): Promise<Requirement> {
   const actor = await userId();
-  const id = crypto.randomUUID(); const requirement = { id, trip_id: input.tripId, type: input.type, title: input.title, status: input.status, destination_country_code: input.destinationCountryCode || null, visa_type: input.visaType || null, due_date: input.dueDate || null, issued_on: input.issuedOn || null, expires_on: input.expiresOn || null, validity_buffer_days: input.validityBufferDays ?? null, official_guidance_url: input.officialGuidanceUrl || null, guidance_checked_at: input.officialGuidanceUrl ? new Date().toISOString() : null, linked_document_id: input.linkedDocumentId || null, notes: input.notes || null } satisfies Requirement; const row = { ...requirement, created_by: actor };
+  const id = crypto.randomUUID(); const requirement = { id, trip_id: input.tripId, type: input.type, title: input.title, status: input.status, destination_country_code: input.destinationCountryCode || null, visa_type: input.visaType || null, due_date: input.dueDate || null, timing_mode: input.timingMode ?? (input.dueDate ? "date_only" : "unscheduled"), anchor_itinerary_item_id: input.anchorItineraryItemId || null, relative_position: input.relativePosition || null, offset_minutes: input.offsetMinutes ?? null, issued_on: input.issuedOn || null, expires_on: input.expiresOn || null, validity_buffer_days: input.validityBufferDays ?? null, official_guidance_url: input.officialGuidanceUrl || null, guidance_checked_at: input.officialGuidanceUrl ? new Date().toISOString() : null, linked_document_id: input.linkedDocumentId || null, notes: input.notes || null } satisfies Requirement; const row = { ...requirement, created_by: actor };
   if (!navigator.onLine) {
     const parentOperation = await queueCreate({ entityType: `requirements:${input.tripId}`, table: "trip_requirements", row });
     for (const travelerId of input.travelerIds ?? []) await queueCreate({ entityType: `requirement-assignees:${id}`, table: "requirement_assignees", row: { id: `${id}:${travelerId}`, requirement_id: id, traveler_id: travelerId, completed_at: null }, serverRow: { requirement_id: id, traveler_id: travelerId }, dependsOn: [parentOperation] });
@@ -973,7 +973,7 @@ export async function addRequirement(input: RequirementInput): Promise<Requireme
   const { data, error } = await client().from("trip_requirements").insert({
     id, trip_id: input.tripId, type: input.type, title: input.title, status: input.status,
     destination_country_code: input.destinationCountryCode || null, visa_type: input.visaType || null,
-    due_date: input.dueDate || null, issued_on: input.issuedOn || null, expires_on: input.expiresOn || null, validity_buffer_days: input.validityBufferDays ?? null,
+    due_date: input.dueDate || null, timing_mode: input.timingMode ?? (input.dueDate ? "date_only" : "unscheduled"), anchor_itinerary_item_id: input.anchorItineraryItemId || null, relative_position: input.relativePosition || null, offset_minutes: input.offsetMinutes ?? null, issued_on: input.issuedOn || null, expires_on: input.expiresOn || null, validity_buffer_days: input.validityBufferDays ?? null,
     official_guidance_url: input.officialGuidanceUrl || null, guidance_checked_at: input.officialGuidanceUrl ? new Date().toISOString() : null,
     linked_document_id: input.linkedDocumentId || null, notes: input.notes || null, created_by: actor
   }).select("*").single();
@@ -1004,6 +1004,10 @@ export async function updateRequirement(input: UpdateRequirementInput): Promise<
     destination_country_code: input.destinationCountryCode || null,
     visa_type: input.visaType || null,
     due_date: input.dueDate || null,
+    timing_mode: input.timingMode ?? (input.dueDate ? "date_only" : "unscheduled"),
+    anchor_itinerary_item_id: input.anchorItineraryItemId || null,
+    relative_position: input.relativePosition || null,
+    offset_minutes: input.offsetMinutes ?? null,
     issued_on: input.issuedOn || null,
     expires_on: input.expiresOn || null,
     validity_buffer_days: input.validityBufferDays ?? null,
@@ -1059,6 +1063,23 @@ export async function updateRequirementStatus(id: string, status: RequirementSta
   if (error) throw error;
   if (!data) throw new Error("This readiness item changed on another device. Refresh before editing it.");
   if (tripId) await cacheEntity(`requirements:${tripId}`, data as Requirement); return data as Requirement;
+}
+
+export async function listDocumentAccessUserIds(documentId: string): Promise<string[]> {
+  if (!navigator.onLine) return [];
+  const { data, error } = await client().from("document_access").select("user_id").eq("document_id", documentId);
+  if (error) throw error;
+  return (data ?? []).map((row) => String(row.user_id));
+}
+
+export async function updateDocumentVisibility(input: { documentId: string; visibility: DocumentVisibility; selectedUserIds?: string[] }) {
+  if (!navigator.onLine) throw new Error("Connect to change who can open this document.");
+  const { error } = await client().rpc("update_document_visibility", {
+    requested_document_id: input.documentId,
+    requested_visibility: input.visibility,
+    requested_user_ids: input.visibility === "selected_members" ? input.selectedUserIds ?? [] : []
+  });
+  if (error) throw error;
 }
 
 const documentSelect = "id,trip_id,booking_id,flight_leg_id,journey_leg_id,traveler_id,assignment_mode,title,category,purpose,short_label,visibility,uploaded_by,current_version_id,version,updated_at,deleted_at,document_travelers(traveler_id),current_version:document_versions!documents_current_version_id_fkey(id,storage_bucket,storage_path,original_filename,mime_type,byte_size,sha256,version_number,created_at)";

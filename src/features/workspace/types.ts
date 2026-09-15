@@ -291,6 +291,7 @@ export const requirementTypes = ["visa", "passport", "insurance", "check_in", "p
 export const requirementStatuses = ["to_check", "not_required", "required", "in_progress", "complete", "expired"] as const;
 export type RequirementType = (typeof requirementTypes)[number];
 export type RequirementStatus = (typeof requirementStatuses)[number];
+export type RequirementTimingMode = "unscheduled" | "date_only" | "relative";
 
 export type Requirement = {
   id: string;
@@ -301,6 +302,10 @@ export type Requirement = {
   visa_type: string | null;
   status: RequirementStatus;
   due_date: string | null;
+  timing_mode?: RequirementTimingMode;
+  anchor_itinerary_item_id?: string | null;
+  relative_position?: "before" | "after" | null;
+  offset_minutes?: number | null;
   issued_on: string | null;
   expires_on: string | null;
   validity_buffer_days: number | null;
@@ -319,6 +324,10 @@ export type RequirementInput = {
   destinationCountryCode?: string;
   visaType?: string;
   dueDate?: string;
+  timingMode?: RequirementTimingMode;
+  anchorItineraryItemId?: string;
+  relativePosition?: "before" | "after";
+  offsetMinutes?: number;
   issuedOn?: string;
   expiresOn?: string;
   validityBufferDays?: number;

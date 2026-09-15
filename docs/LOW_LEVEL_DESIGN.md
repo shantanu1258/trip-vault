@@ -793,7 +793,11 @@ Primary key: `(document_id, user_id)`.
 | `destination_country_code` | Text, nullable | Relevant destination for a visa or entry requirement |
 | `visa_type` | Text, nullable | User-entered visa or permit type |
 | `status` | `requirement_status` | Current manual state |
-| `due_date` | Date, nullable | Need-by date in trip context |
+| `timing_mode` | Text | `unscheduled`, `date_only`, or `relative` |
+| `due_date` | Date, nullable | Required only for date-only task timing |
+| `anchor_itinerary_item_id` | UUID, nullable | Dated event used by relative timing |
+| `relative_position` | Text, nullable | `before` or `after` the anchor event |
+| `offset_minutes` | Integer, nullable | Non-negative distance from the anchor |
 | `issued_on` | Date, nullable | User-entered document issue date |
 | `expires_on` | Date, nullable | User-entered expiry date |
 | `validity_buffer_days` | Integer, nullable | User-defined desired validity after the trip |
@@ -806,7 +810,7 @@ Primary key: `(document_id, user_id)`.
 | `updated_at` | Timestamp | Change detection and cache freshness |
 | `deleted_at` | Timestamp, nullable | Recoverable soft deletion |
 
-Trip Vault stores this information but never labels a traveler legally eligible or replaces official immigration guidance.
+The timing-shape constraint permits exactly one scheduling mode. A relative task must reference an active, dated, non-relative event in the same trip. Scheduled tasks join the main timeline projection; checklist-only tasks remain on **Tasks & readiness**. Completed tasks stay in that list but cannot become the active timeline entry or produce a due alert. Trip Vault stores this information but never labels a traveler legally eligible or replaces official immigration guidance.
 
 #### `requirement_assignees`
 
@@ -1061,7 +1065,7 @@ flowchart TD
 
 The same access predicate must protect document metadata and the corresponding private storage object. UI hiding is not authorization.
 
-New uploads expose **Only me** (`private`), **Signed-in trip members** (`trip`), and **Selected signed-in members** (`selected_members`). `traveler_and_managers` remains a schema compatibility mode for older records and is not offered by the current upload flow.
+New uploads expose **Only me** (`private`), **Signed-in trip members** (`trip`), and **Selected signed-in members** (`selected_members`). Owner/Editor uploads default to `trip`; Viewer-managed uploads are forced to `private`. An Owner/Editor may later change an existing document through `update_document_visibility`, which validates selected accounts against active trip membership and replaces `document_access` rows atomically. `traveler_and_managers` remains a schema compatibility mode for older records and is not offered by the current flow.
 
 ### 6.4 One-time join-code redemption
 

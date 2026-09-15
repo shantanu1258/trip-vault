@@ -13,4 +13,11 @@ describe("alert engine", () => {
   it("suppresses snoozed alerts until their time passes", () => { const key = "flight-delayed:f:2026-09-10T12:30:00Z"; expect(deriveAlerts({ ...base, states: [{ alert_key: key, read_at: null, dismissed_at: null, snoozed_until: "2026-09-10T11:00:00Z" }] }).some((alert) => alert.key === key)).toBe(false); });
   it("counts only unread visible alerts", () => { const alerts = deriveAlerts(base); expect(unreadAlertCount(alerts, [{ alert_key: alerts[0].key, read_at: "2026-09-10T10:31:00Z", dismissed_at: null, snoozed_until: null }])).toBe(alerts.length - 1); });
   it("surfaces stale packs and version conflicts", () => { const alerts = deriveAlerts({ ...base, offlineManifests: [{ tripId: "t", state: "stale", checkedAt: "2026-09-01" }], conflicts: [{ entityId: "f", entityType: "flights:t" }] }); expect(alerts.some((alert) => alert.key.startsWith("offline-pack"))).toBe(true); expect(alerts.some((alert) => alert.key.startsWith("sync-conflict"))).toBe(true); });
+  it("alerts for an event-linked task and removes it as soon as it is complete", () => {
+    const trips = [{ id: "t", title: "Bali", destination_summary: "Bali", start_date: "2026-09-10", end_date: "2026-09-20", primary_timezone: "UTC", base_currency: "INR", status: "current", created_at: "", updated_at: "" }] as never;
+    const itinerary = [{ id: "bali", trip_id: "t", booking_id: null, title: "Flight to Bali", event_type: "flight", starts_at: "2026-09-13T10:00:00Z", ends_at: null, timezone: "UTC", location: null, notes: null, applies_to_all_travelers: true, created_at: "" }] as never;
+    const linked = { ...requirement, timing_mode: "relative", due_date: null, anchor_itinerary_item_id: "bali", relative_position: "before", offset_minutes: 4_320 } as Requirement;
+    expect(deriveAlerts({ ...base, trips, itinerary, requirements: [linked] }).some((alert) => alert.title === "Visa check")).toBe(true);
+    expect(deriveAlerts({ ...base, trips, itinerary, requirements: [{ ...linked, status: "complete" }] }).some((alert) => alert.title === "Visa check")).toBe(false);
+  });
 });

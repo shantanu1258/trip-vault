@@ -147,7 +147,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DSH-008 | Add custom itinerary item | P0 | MVP | Authorized user can add a timed or date-only item without requiring a booking |
 | DSH-009 | Reorder equal-time items | P1 | MVP | Stable manual ordering is preserved across clients |
 | DSH-010 | Timezone clarity | P0 | MVP | Stored times retain a strict IANA zone and never silently shift date; Domestic journeys and local events hide zone controls, known airports derive them, and International Other/non-flight endpoints request them. Domestic manual endpoints use one hidden fallback zone, so a same-country route crossing time-zone regions must be entered as International |
-| DSH-011 | Preparation checklist | P1 | MVP | Trip owners can track agreed readiness items with explicit completion rules |
+| DSH-011 | Tasks in the main timeline | P0 | MVP | Dated and event-linked tasks appear as compact checkbox rows in the same chronological timeline; completion immediately advances its active highlight |
 | DSH-012 | Calendar view | P1 | Later | Month or week presentation complements, but does not replace, the timeline |
 | DSH-013 | Calendar export | P1 | MVP | User can export selected itinerary items and preparation deadlines without exposing private documents |
 | DSH-014 | Open in Google Maps | P1 | MVP | An address or stored coordinate opens through a Google Maps URL without requiring an API key; the action is unavailable offline |
@@ -209,7 +209,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DOC-002 | Upload mockup | P0 | Prototype | Demonstrates progress, metadata entry, visibility selection, and error states |
 | DOC-003 | Document preview mockup | P0 | Prototype | Makes the PDF/image the primary page, with an Info sheet, in-app viewing controls, and a device Open fallback |
 | DOC-004 | Category filters | P0 | Prototype | User can switch between all documents and major travel categories |
-| DOC-005 | Private upload | P0 | MVP | New document is private to uploader unless a broader scope is deliberately selected |
+| DOC-005 | Safe upload default | P0 | MVP | Owner/Editor uploads default to signed-in trip members; Viewer-managed uploads remain private, and either may be narrowed where authorized |
 | DOC-006 | Shared upload | P0 | MVP | Authorized user can share with the whole trip or selected active members |
 | DOC-007 | Retryable small-file upload | P0 | MVP | An interrupted file remains in the outbox and retries safely from its verified local copy; extensionless device blobs regain their approved PDF/image MIME before upload instead of becoming `application/octet-stream`; the under-5-MB MVP does not promise chunk-level resume |
 | DOC-008 | Immutable versions | P0 | MVP | Replacing a document creates a new version and preserves version history |
@@ -233,6 +233,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DOC-026 | Travel-specific document types | P0 | MVP | Upload offers flight ticket, boarding pass, baggage tag, visa, passport, stay confirmation, journey ticket, activity confirmation/admission, meal voucher, receipt, insurance, and Other with sensible assignment defaults |
 | DOC-027 | Assignment/access separation | P0 | MVP | The upload form explains that who uses a document is independent from Only me, signed-in trip, or selected-member access |
 | DOC-028 | Context-derived document name | P0 | MVP | Default name combines document type, who it is for, and linked event; a custom name is allowed while the derived context remains visible below it |
+| DOC-029 | Change document access | P0 | MVP | Owner/Editor can later change an existing document between trip-wide, private, and selected-member access; selected grants update atomically |
 | DOC-029 | Private upload inbox | P0 | MVP | Every new original is first retained under the signed-in account; a failed, cancelled, or interrupted trip association remains in Profile for retry, later association, or deletion while unassociated |
 | DOC-030 | Server-verified upload completion | P0 | MVP | A receipt is marked stored only after its private Storage object exists; association rejects missing objects, and a different device never reports a receipt-only upload as complete |
 | DOC-031 | Append-only inbox original | P0 | MVP | Private Storage permits INSERT only for an owned pending unassociated receipt, exposes no UPDATE, and permits DELETE only while unassociated; an associated original is immutable through the inbox |
@@ -412,7 +413,7 @@ When no trip is current, the Home page emphasizes the next upcoming trip and its
 | RDY-004 | Trip requirements checklist | P0 | MVP | User can create visa, passport, insurance, check-in, payment, packing, or custom requirements; Owner/Editor can activate a requirement card to edit it while status, guidance, document, and Archive controls remain independent, and Viewer cards remain static |
 | RDY-005 | Assign requirement to traveler | P1 | MVP | A requirement applies to the whole trip or selected traveler profiles, including those managed without accounts |
 | RDY-006 | Link requirement to document | P0 | MVP | Requirement can open its current authorized document version in one action |
-| RDY-007 | Need-by date | P0 | MVP | Requirement supports a due date, completion state, notes, and contextual urgency |
+| RDY-007 | Task scheduling | P0 | MVP | A task may stay checklist-only, use a date, or use a minute/hour/day/week offset before or after a selected dated event |
 | RDY-008 | Passport and visa expiry warning | P0 | MVP | User-entered expiry is compared with trip dates and a configurable validity buffer without claiming legal advice |
 | RDY-009 | App-load readiness reminders | P0 | MVP | Opening the app surfaces overdue, due-soon, missing, or stale items from cached data |
 | RDY-010 | Readiness completion | P0 | MVP | A trip is marked ready only when all required items for all assigned travelers are complete |
@@ -420,6 +421,7 @@ When no trip is current, the Home page emphasizes the next upcoming trip and its
 | RDY-012 | Automated visa eligibility | Explore | Not planned | Trip Vault does not determine eligibility or present user-entered data as immigration advice |
 | RDY-013 | Shared packing checklist | P2 | Later | Travelers can assign and complete non-sensitive packing items separately from legal/document requirements |
 | RDY-014 | Manual visa input | P0 | MVP | User records destination, traveler, requirement status, visa type, due date, issue and expiry dates, validity buffer, notes, official link, and linked document |
+| RDY-015 | Tasks & readiness management | P0 | MVP | The full section keeps pending and completed tasks, supports check/uncheck/edit/archive, and confirms that completed or archived work no longer highlights or alerts |
 
 ## 16. Flight Assistance Candidates
 

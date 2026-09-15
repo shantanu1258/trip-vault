@@ -13,7 +13,8 @@ const mocks = vi.hoisted(() => ({
   getFlightLeg: vi.fn(),
   getTrip: vi.fn(),
   listMembers: vi.fn(),
-  listFlightLegsForBooking: vi.fn()
+  listFlightLegsForBooking: vi.fn(),
+  listVaultDocuments: vi.fn()
 }));
 
 vi.mock("../components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => <>{children}</> }));
@@ -34,7 +35,7 @@ vi.mock("../features/workspace/api", () => ({
   listMembers: mocks.listMembers,
   listTravelers: vi.fn().mockResolvedValue([]),
   listTripAirlines: vi.fn().mockResolvedValue([]),
-  listVaultDocuments: vi.fn().mockResolvedValue([]),
+  listVaultDocuments: mocks.listVaultDocuments,
   updateFlightLeg: vi.fn()
 }));
 
@@ -138,7 +139,10 @@ async function renderEditor(scope: JourneyScope) {
 }
 
 describe("flight edit time-zone controls", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.listVaultDocuments.mockResolvedValue([]);
+  });
 
   it("keeps domestic conversion metadata hidden and deterministic", async () => {
     const container = await renderEditor("domestic");
@@ -174,5 +178,20 @@ describe("flight edit time-zone controls", () => {
     });
 
     expect(screen.getByRole("link", { name: "Back to trip" })).toHaveAttribute("href", "/trips/trip-1?view=details");
+  });
+
+  it("contains long generated document titles inside the mobile flight card", async () => {
+    const longTitle = "Other booking confirmation · Ankita · Some Place to Some Place with a deliberately long generated title";
+    mocks.listVaultDocuments.mockResolvedValue([
+      { id: "primary", trip_id: trip.id, booking_id: "booking-1", flight_leg_id: "flight-1", traveler_id: null, assignment_mode: "shared", traveler_ids: [], title: "Boarding pass", category: "flight", purpose: "boarding_pass", short_label: null, visibility: "trip", current_version_id: null, updated_at: "2026-09-01T00:00:00.000Z" },
+      { id: "long", trip_id: trip.id, booking_id: "booking-1", flight_leg_id: "flight-1", traveler_id: null, assignment_mode: "shared", traveler_ids: [], title: longTitle, category: "flight", purpose: "confirmation", short_label: null, visibility: "trip", current_version_id: null, updated_at: "2026-09-01T00:00:00.000Z" }
+    ]);
+
+    await renderFlight("domestic");
+
+    const card = screen.getByRole("link", { name: new RegExp(longTitle) });
+    expect(card).toHaveClass("min-w-0", "max-w-full", "overflow-hidden");
+    expect(screen.getByText(longTitle)).toHaveClass("whitespace-normal", "break-words", "[overflow-wrap:anywhere]");
+    expect(screen.getByText(longTitle)).not.toHaveClass("truncate");
   });
 });
