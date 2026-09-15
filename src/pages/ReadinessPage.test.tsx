@@ -16,13 +16,24 @@ const mocks = vi.hoisted(() => ({
   listRequirements: vi.fn(),
   listTravelers: vi.fn(),
   listTripRequirementAssignees: vi.fn(),
-  updateRequirementStatus: vi.fn()
+  updateRequirementStatus: vi.fn(),
+  focusedTravelerId: null as string | null
 }));
 
 vi.mock("../components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => <>{children}</> }));
 vi.mock("../features/sync/localSync", () => ({ localProfileId: vi.fn().mockResolvedValue("user-1") }));
 vi.mock("../features/trips/api", () => ({ getTrip: mocks.getTrip, listItinerary: mocks.listItinerary }));
-vi.mock("../features/workspace/travelerFocus", () => ({ readTravelerFocus: () => null }));
+vi.mock("../features/workspace/travelerFocus", () => ({
+  readTravelerFocus: () => mocks.focusedTravelerId,
+  requirementMatchesTraveler: (requirementId: string, travelerId: string, assignees: Array<{ requirement_id: string; traveler_id: string }>) => {
+    const taskAssignees = assignees.filter((row) => row.requirement_id === requirementId);
+    return taskAssignees.length === 0 || taskAssignees.some((row) => row.traveler_id === travelerId);
+  },
+  requirementAudienceLabel: (requirementId: string, assignees: Array<{ requirement_id: string; traveler_id: string }>, travelers: Array<{ id: string; display_name: string }>) => {
+    const names = assignees.filter((row) => row.requirement_id === requirementId).map((row) => travelers.find((traveler) => traveler.id === row.traveler_id)?.display_name).filter(Boolean);
+    return names.join(", ");
+  }
+}));
 vi.mock("../features/workspace/WorkspaceForms", () => ({
   AddRequirementForm: ({ requirement, onClose }: { requirement?: Requirement; onClose: () => void }) => (
     <section aria-label={requirement ? "Edit task" : "Add task"}>
@@ -87,6 +98,7 @@ function renderPage(initialEntry: string | { pathname: string; state: unknown } 
 describe("readiness checklist interactions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.focusedTravelerId = null;
     mocks.getTrip.mockResolvedValue(trip);
     mocks.listRequirements.mockResolvedValue([requirement]);
     mocks.listItinerary.mockResolvedValue([]);
@@ -128,6 +140,29 @@ describe("readiness checklist interactions", () => {
     await user.click(screen.getByRole("button", { name: "Add task" }));
 
     expect(await screen.findByRole("region", { name: "Add task" })).toBeInTheDocument();
+  });
+
+  it("shows everyone tasks plus the selected traveler's tasks and identifies their audience", async () => {
+    mocks.focusedTravelerId = "asha";
+    mocks.listTravelers.mockResolvedValue([
+      { id: "asha", trip_id: trip.id, display_name: "Asha", is_minor: false, created_at: "" },
+      { id: "ravi", trip_id: trip.id, display_name: "Ravi", is_minor: false, created_at: "" }
+    ]);
+    mocks.listRequirements.mockResolvedValue([
+      { ...requirement, id: "everyone-task", title: "Check all passports" },
+      { ...requirement, id: "asha-task", title: "Pack Asha medicine" },
+      { ...requirement, id: "ravi-task", title: "Pack Ravi medicine" }
+    ]);
+    mocks.listTripRequirementAssignees.mockResolvedValue([
+      { id: "a", requirement_id: "asha-task", traveler_id: "asha" },
+      { id: "r", requirement_id: "ravi-task", traveler_id: "ravi" }
+    ]);
+    renderPage();
+
+    expect(await screen.findByText("Check all passports")).toBeInTheDocument();
+    expect(screen.getByText("Pack Asha medicine")).toBeInTheDocument();
+    expect(screen.queryByText("Pack Ravi medicine")).not.toBeInTheDocument();
+    expect(screen.getByText("Asha")).toBeInTheDocument();
   });
 
   it("omits due date and notes when a task does not have them", async () => {

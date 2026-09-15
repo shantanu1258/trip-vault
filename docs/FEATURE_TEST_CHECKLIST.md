@@ -23,7 +23,8 @@ For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it includes 
 - [ ] Open Create trip and confirm Start initially suggests 15 days from today and End seven days after Start. Change Start and confirm the untouched End follows; edit End deliberately, change Start again, and confirm the chosen End is preserved.
 - [ ] Create a trip, add three travelers, click its card, and confirm Timeline opens first.
 - [ ] Open Add Event and confirm the order is Flight, Hotel, Activity, Bus, Cab, Ferry/Boat, Train, Meal, Preparation, Other transport, and Custom.
-- [ ] Add three tasks: Checklist only, On a date, and **3 days before** a selected flight. Confirm the latter two appear as compact checkbox rows inside the same connected timeline while checklist-only remains in **Tasks & readiness**.
+- [ ] Add three tasks: Checklist only, On a date, and **3 days before** a selected flight. Leave one as the default **Everyone**, assign one to traveler A, and assign one to traveler B. Confirm the scheduled tasks appear as compact checkbox rows inside the same connected timeline while checklist-only remains in **Tasks & readiness**. Confirm only specifically assigned rows show traveler names; the Everyone row shows no audience label.
+- [ ] Switch the trip from Everyone to traveler A. Confirm Everyone tasks and traveler A tasks remain in the readiness summary, checklist, search, alerts, and timeline while traveler B-only tasks disappear immediately. Switch to traveler B and confirm the inverse. Add a new traveler and confirm an Everyone task applies without editing it.
 - [ ] Let the linked task become due, reopen the trip, and confirm it is the highlighted actionable row. Check it off in the timeline and confirm an in-app success message appears, its highlight disappears, the next event becomes active, and its derived alert disappears.
 - [ ] Open **Tasks & readiness** and confirm pending and completed tasks remain visible. Reopen a completed task, then archive it; confirm both actions show in-app feedback and Archive removes it from the list, timeline, and alerts.
 - [ ] Add an activity, meal, and custom event; include a map link and attach several documents to one event.
@@ -100,7 +101,8 @@ For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it includes 
 - [ ] Create a non-traveling helper invitation and confirm it joins without being assigned as a traveler.
 - [ ] Confirm a used, revoked, expired, or regenerated code cannot be reused.
 - [ ] Use the floating People control to switch between Everyone and each traveler without another permission prompt.
-- [ ] In Everyone, confirm all events/reservations/readiness/costs/documents appear. Select traveler A and confirm shared plus A's records remain while traveler B-only records disappear, including inside an opened event.
+- [ ] In Everyone, confirm all events/reservations/readiness/costs/documents appear. Select traveler A and confirm shared plus A's records remain while traveler B-only records disappear, including inside an opened event. Confirm the readiness checklist and timeline show names on selected-traveler tasks and no audience text on Everyone tasks.
+- [ ] Open the public demo, switch among Everyone, Sam, and Leela, and confirm person-specific readiness tasks filter immediately, Everyone tasks remain, the readiness count recalculates, and checking a demo task updates both the row and summary.
 - [ ] Reopen the trip and confirm its last traveler selection is restored without changing the signed-in account or role.
 - [ ] After account B has joined one trip, create another trip, choose B under Known account, and confirm B sees Accept/Decline on Home and cannot open the new trip before accepting.
 - [ ] Repeat the known-account offer as a non-traveling helper and confirm acceptance creates no traveler assignment.

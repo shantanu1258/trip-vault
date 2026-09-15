@@ -818,6 +818,8 @@ The timing-shape constraint permits exactly one scheduling mode. A relative task
 |---|---|---|
 | `requirement_id` | UUID | Parent requirement |
 | `traveler_id` | UUID | Traveler affected, including a managed traveler without an account |
+
+Audience uses sparse assignment semantics: zero active assignee rows means **Everyone**, while one or more rows means **Selected travelers**. New tasks default to Everyone, so travelers added later inherit them without a backfill. Editing a task from Everyone to Selected creates the chosen rows; returning it to Everyone removes them. An older task that explicitly names every existing traveler remains selected-to-those-travelers until an editor changes it.
 | `completed_at` | Timestamp, nullable | Optional per-person completion |
 | `updated_at` | Timestamp | Change detection |
 
@@ -1497,7 +1499,7 @@ No gradients should be used. Decorative elements must not compete with urgent tr
 - A relative card and its detail sheet say **Before {anchor title}** or **After {anchor title}**. Sorting forms stable **before group → anchor → after group** clusters; equal siblings retain their stored start/sort-key/ID order instead of relying on a non-transitive pairwise comparison.
 - Relative placement is independent from schedule precision. The edit form always keeps Position and Event, then offers a separate responsive schedule block for an optional start, optional end, and optional duration in minutes, hours, or days. Relation-only and duration-only records are valid, and a later edit may add a real start/end without changing the anchor.
 - A relative row without a real start retains the anchor's non-null instant only for storage and grouping. The UI leaves Start blank, never marks that row Current, omits it from calendar export, and creates a later generic booking with null schedule fields. A planned duration may still appear on the timeline and detail sheet.
-- Everyone shows the complete trip. Traveler focus retains shared events and the selected person's assigned events, reservations, linked costs, readiness, seats, and documents while hiding records assigned only to someone else.
+- Everyone shows the complete trip. Traveler focus retains shared events and the selected person's assigned events, reservations, linked costs, seats, and documents while hiding records assigned only to someone else. For readiness, an empty `requirement_assignees` set is the shared Everyone case; a selected traveler sees those tasks plus tasks with their own assignee row.
 - The floating control group opens Add Event, People & sharing/current member, or the active-event jump. Creation controls are hidden from Viewers.
 - Search matches timeline titles, booking/provider data, PNRs, airport codes/names, documents, travelers, readiness items, and related metadata after two characters, returning at most 40 results.
 - Details view keeps the existing sectioned experience: Overview, Reservations, Costs, People, Readiness, Documents, Archived, Offline, Travel data, and Notes. Home and the trip header show one compact per-currency cost line; either cost line deep-links to this itemized Costs section.
@@ -1752,7 +1754,7 @@ Implementation rules:
 
 `/preview` loads a deterministic local-only fixture called **Mediterranean Summer**. It is public because it contains no real data, never reads Supabase, and cannot be mistaken for an authenticated shared trip. A **Reset demo** action deletes its temporary browser changes and reloads the bundled baseline.
 
-The fixture contains four stops, flights, hotels, ground transport, activities, readiness checks, manual reminders, and six membership/traveler cases: an owner-traveler, editor-traveler, viewer-traveler, managed parent, managed child, and non-traveling collaborator. A demo clock can switch between planning, D-1, travel-day, in-trip, and completed states without changing the real device clock.
+The fixture contains four stops, flights, hotels, ground transport, activities, readiness checks, manual reminders, and six membership/traveler cases: an owner-traveler, editor-traveler, viewer-traveler, managed parent, managed child, and non-traveling collaborator. A demo clock can switch between planning, D-1, travel-day, in-trip, and completed states without changing the real device clock. Its traveler focus mirrors the real workspace: Everyone tasks and person-specific tasks are distinguished, readiness totals recalculate for the chosen traveler, and scheduled tasks appear in the connected timeline rather than an older static preview.
 
 | Sample asset | Format | Visibility demonstrated | Target size |
 |---|---|---|---:|

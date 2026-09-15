@@ -312,11 +312,9 @@ export function AddRequirementForm({ trip, travelers = [], requirement, preferre
     if (timingMode === "relative" && (!Number.isFinite(offsetValue) || offsetValue < 0)) { setMessage("Enter a valid non-negative offset."); return; }
     const offsetMultiplier = offsetUnit === "weeks" ? 10_080 : offsetUnit === "days" ? 1_440 : offsetUnit === "hours" ? 60 : 1;
     if (requirement && !assignees.isSuccess) { setMessage("Wait for this task to finish loading, then try again."); return; }
-    const travelerIds = requirement
-      ? assignees.data
-      : preferredTravelerId
-        ? [preferredTravelerId]
-        : travelers.map((traveler) => traveler.id);
+    const participantScope = String(form.get("participantScope") ?? "everyone");
+    const travelerIds = participantScope === "selected" ? form.getAll("travelerIds").map(String) : [];
+    if (participantScope === "selected" && travelerIds.length === 0) { setMessage("Select at least one traveler for this task."); return; }
     mutation.mutate({
       tripId: trip.id,
       type: requirement?.type ?? "custom",
@@ -344,6 +342,7 @@ export function AddRequirementForm({ trip, travelers = [], requirement, preferre
       <label className="form-label">When should it appear?<select className="form-input" name="timingMode" value={timingMode} onChange={(event) => setTimingMode(event.target.value as typeof timingMode)}><option value="unscheduled">Checklist only</option><option value="date_only">On a date</option><option value="relative">Before or after an event</option></select></label>
       {timingMode === "date_only" && <label className="form-label">Date<input className="form-input" type="date" name="dueDate" defaultValue={requirement?.due_date ?? ""} /></label>}
       {timingMode === "relative" && <fieldset className="rounded-2xl border border-line p-4"><legend className="px-1 text-sm font-extrabold">Timeline position</legend><div className="mt-2 grid gap-4 sm:grid-cols-2"><label className="form-label">Position<select className="form-input" name="relativePosition" defaultValue={requirement?.relative_position ?? "before"}><option value="before">Before</option><option value="after">After</option></select></label><label className="form-label">Event<select className="form-input" name="anchorItineraryItemId" defaultValue={requirement?.anchor_itinerary_item_id ?? ""}><option value="">Select an event</option>{anchorOptions.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><label className="form-label">How long?<input className="form-input" type="number" name="offsetValue" min="0" step="1" defaultValue={initialOffsetValue} /></label><label className="form-label">Unit<select className="form-input" name="offsetUnit" defaultValue={initialOffsetUnit}><option value="minutes">Minutes</option><option value="hours">Hours</option><option value="days">Days</option><option value="weeks">Weeks</option></select></label></div>{itinerary.isLoading && <p className="mt-3 text-xs text-muted">Loading trip events…</p>}{itinerary.isSuccess && !anchorOptions.length && <p className="mt-3 text-xs font-bold text-warning">Add a dated trip event before linking this task.</p>}</fieldset>}
+      {requirement && !assignees.isSuccess ? <p className="rounded-2xl bg-elevated p-4 text-sm text-muted">Loading who this task is for…</p> : <ParticipantSelector key={requirement ? `requirement:${assignees.data?.slice().sort().join(":") || "everyone"}` : `new:${preferredTravelerId ?? "everyone"}`} travelers={travelers} scopeName="participantScope" initialScope={requirement ? assignees.data?.length ? "selected" : "everyone" : "everyone"} selectedTravelerIds={requirement ? assignees.data ?? [] : preferredTravelerId ? [preferredTravelerId] : undefined} />}
       <label className="form-label">Notes (optional)<textarea className="form-input min-h-20 resize-y" name="notes" placeholder="Add a useful detail or reminder" defaultValue={requirement?.notes ?? ""} /></label>
       {(message || mutation.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{message || getErrorMessage(mutation.error)}</p>}
       <button className="primary-button w-full" disabled={mutation.isPending || Boolean(requirement && !assignees.isSuccess)}>{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />} {requirement ? "Save task" : "Add task"}</button>

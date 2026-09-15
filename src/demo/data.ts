@@ -4,7 +4,7 @@ import hotelConfirmationUrl from "../../output/pdf/demo-hotel-confirmation.pdf?u
 import insuranceUrl from "../../output/pdf/demo-insurance-summary.pdf?url";
 import museumTicketUrl from "../../output/pdf/demo-museum-ticket.pdf?url";
 import waiverUrl from "../../output/pdf/demo-entry-waiver.pdf?url";
-import type { DemoDocument, DemoEvent, DemoPhase, DemoTraveler } from "./types";
+import type { DemoDocument, DemoEvent, DemoPhase, DemoTask, DemoTraveler } from "./types";
 
 export const demoDocuments: DemoDocument[] = [
   {
@@ -136,6 +136,33 @@ export const demoEvents: DemoEvent[] = [
     note: "Offline address saved. Water-bus route copied into notes.",
     travelerIds: ["sam", "mia", "noah", "leela", "ari"],
     documentIds: []
+  }
+];
+
+export const demoTasks: DemoTask[] = [
+  {
+    id: "passports",
+    title: "Check passports and visas",
+    status: "complete",
+    travelerIds: [],
+    anchorEventId: "flight-out",
+    scheduleLabel: "3 days before Fly to Rome"
+  },
+  {
+    id: "leela-medicine",
+    title: "Pack Leela's medicines",
+    status: "to_check",
+    travelerIds: ["leela"],
+    anchorEventId: "flight-out",
+    scheduleLabel: "1 day before Fly to Rome"
+  },
+  {
+    id: "photo-ids",
+    title: "Keep photo IDs ready",
+    status: "to_check",
+    travelerIds: [],
+    anchorEventId: "colosseum",
+    scheduleLabel: "2 hours before Colosseum evening tour"
   }
 ];
 

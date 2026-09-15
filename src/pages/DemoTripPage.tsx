@@ -21,7 +21,7 @@ import { Link } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { DocumentChip } from "../components/DocumentChip";
 import { FocusSurface } from "../components/FocusSurface";
-import { demoDocuments, demoEvents, demoPhaseCopy, demoTravelers, documentById } from "../demo/data";
+import { demoDocuments, demoEvents, demoPhaseCopy, demoTasks, demoTravelers, documentById } from "../demo/data";
 import type { DemoEvent, DemoPhase } from "../demo/types";
 import { database } from "../lib/local-db/database";
 
@@ -76,8 +76,15 @@ function EventDetails({ event, onClose }: { event: DemoEvent; onClose: () => voi
 export function DemoTripPage() {
   const [phase, setPhase] = useState<DemoPhase>("travelday");
   const [selectedEvent, setSelectedEvent] = useState<DemoEvent | null>(null);
+  const [focusedTravelerId, setFocusedTravelerId] = useState<string | null>(null);
+  const [taskStatuses, setTaskStatuses] = useState<Record<string, "to_check" | "complete">>(() => Object.fromEntries(demoTasks.map((task) => [task.id, task.status])));
   const copy = demoPhaseCopy[phase];
-  const activeEvent = demoEvents.find((event) => event.id === copy.activeEventId) ?? demoEvents[0];
+  const visibleEvents = useMemo(() => focusedTravelerId ? demoEvents.filter((event) => event.travelerIds.includes(focusedTravelerId)) : demoEvents, [focusedTravelerId]);
+  const visibleTasks = useMemo(() => focusedTravelerId ? demoTasks.filter((task) => task.travelerIds.length === 0 || task.travelerIds.includes(focusedTravelerId)) : demoTasks, [focusedTravelerId]);
+  const activeEvent = visibleEvents.find((event) => event.id === copy.activeEventId) ?? visibleEvents[0] ?? demoEvents[0];
+  const completedTasks = visibleTasks.filter((task) => taskStatuses[task.id] === "complete").length;
+  const readinessPercent = visibleTasks.length ? Math.round(completedTasks / visibleTasks.length * 100) : 100;
+  const focusName = focusedTravelerId ? demoTravelers.find((traveler) => traveler.id === focusedTravelerId)?.name ?? "Selected traveler" : "Everyone";
   const urgentDocuments = useMemo(
     () => activeEvent.documentIds.slice(0, 3).flatMap((id) => {
       const document = documentById.get(id);
@@ -97,7 +104,11 @@ export function DemoTripPage() {
     database.settings.put({ key: "demo-phase", value: next, updatedAt: new Date().toISOString() }).catch(() => undefined);
   };
 
-  const resetDemo = () => choosePhase("travelday");
+  const resetDemo = () => {
+    choosePhase("travelday");
+    setFocusedTravelerId(null);
+    setTaskStatuses(Object.fromEntries(demoTasks.map((task) => [task.id, task.status])));
+  };
 
   return (
     <AppShell demo>
@@ -129,6 +140,14 @@ export function DemoTripPage() {
           </div>
         </section>
 
+        <section className="mt-3" aria-label="View demo as traveler">
+          <p className="mb-2 text-xs font-bold text-muted">Showing tasks and trip details for <strong className="text-ink">{focusName}</strong></p>
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            <button type="button" onClick={() => setFocusedTravelerId(null)} className={`tap-target shrink-0 rounded-full border px-4 text-xs font-extrabold ${focusedTravelerId === null ? "border-brand bg-brand text-surface" : "border-line bg-surface text-muted"}`}>Everyone</button>
+            {demoTravelers.filter((traveler) => traveler.role !== "Non-travelling collaborator").map((traveler) => <button key={traveler.id} type="button" onClick={() => setFocusedTravelerId(traveler.id)} className={`tap-target shrink-0 rounded-full border px-4 text-xs font-extrabold ${focusedTravelerId === traveler.id ? "border-brand bg-brand text-surface" : "border-line bg-surface text-muted"}`}>{traveler.name}</button>)}
+          </div>
+        </section>
+
         <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(18rem,.8fr)]">
           <div className="relative overflow-hidden rounded-[2rem] bg-brand p-6 text-surface shadow-focus sm:p-8">
             <div className="absolute right-[-3rem] top-[-3rem] size-44 rounded-full border-[2rem] border-coral/20" aria-hidden="true" />
@@ -149,10 +168,10 @@ export function DemoTripPage() {
 
           <aside className="surface-card p-5 sm:p-6">
             <div className="flex items-start justify-between">
-              <div><p className="eyebrow">Trip readiness</p><p className="mt-2 font-display text-2xl font-black">92%</p></div>
+              <div><p className="eyebrow">Trip readiness</p><p className="mt-2 font-display text-2xl font-black">{completedTasks} of {visibleTasks.length} done</p><p className="mt-1 text-xs text-muted">For {focusName}</p></div>
               <span className="grid size-11 place-items-center rounded-2xl bg-brand-soft text-success"><Check className="size-5" /></span>
             </div>
-            <div className="mt-5 h-2 overflow-hidden rounded-full bg-line"><div className="h-full w-[92%] rounded-full bg-success" /></div>
+            <div className="mt-5 h-2 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-success transition-[width]" style={{ width: `${readinessPercent}%` }} /></div>
             <div className="mt-5 grid grid-cols-2 gap-2 text-xs">
               <div className="rounded-2xl bg-elevated p-3"><span className="font-black">6</span><span className="ml-1 text-muted">people</span></div>
               <div className="rounded-2xl bg-elevated p-3"><span className="font-black">6</span><span className="ml-1 text-muted">documents</span></div>
@@ -188,14 +207,27 @@ export function DemoTripPage() {
           </div>
 
           <div className="relative mt-5 space-y-4 before:absolute before:bottom-8 before:left-[2.95rem] before:top-8 before:w-px before:bg-line sm:before:left-[4.25rem]">
-            {demoEvents.map((event) => {
+            {visibleEvents.map((event) => {
               const active = event.id === copy.activeEventId;
+              const tasks = visibleTasks.filter((task) => task.anchorEventId === event.id);
               const documents = event.documentIds.flatMap((id) => {
                 const document = documentById.get(id);
                 return document ? [document] : [];
               });
               return (
-                <div key={event.id} className="relative grid grid-cols-[4.25rem_minmax(0,1fr)] gap-3 sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:gap-5">
+                <div key={event.id} className="contents">
+                {tasks.map((task) => {
+                  const done = taskStatuses[task.id] === "complete";
+                  const taskAudience = demoTravelers.filter((traveler) => task.travelerIds.includes(traveler.id)).map((traveler) => traveler.name).join(", ");
+                  return <div key={task.id} className="relative grid grid-cols-[4.25rem_minmax(0,1fr)] gap-3 sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:gap-5">
+                    <div className="relative z-10 flex justify-center pt-5"><span className={`block size-3 rounded-full border-[3px] border-canvas ${done ? "bg-line" : "bg-brand"}`} /></div>
+                    <div className="flex min-h-16 items-center gap-3 rounded-2xl border border-line bg-elevated px-3 py-2 sm:px-4">
+                      <input type="checkbox" className="size-5 shrink-0 accent-brand" checked={done} aria-label={`${done ? "Mark as not done" : "Mark as done"}: ${task.title}`} onChange={(event) => setTaskStatuses((statuses) => ({ ...statuses, [task.id]: event.target.checked ? "complete" : "to_check" }))} />
+                      <span className="min-w-0 flex-1"><strong className={`block text-sm ${done ? "text-muted line-through" : "text-ink"}`}>{task.title}</strong><span className="mt-0.5 block text-xs text-muted">{task.scheduleLabel}{taskAudience ? ` · ${taskAudience}` : ""}{done ? " · Done" : " · Readiness task"}</span></span>
+                    </div>
+                  </div>;
+                })}
+                <div className="relative grid grid-cols-[4.25rem_minmax(0,1fr)] gap-3 sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:gap-5">
                   <div className="relative z-10 pt-5 text-center">
                     <p className={`text-sm font-black ${active ? "text-coral" : "text-ink"}`}>{event.timeLabel}</p>
                     <p className="mt-1 text-[0.65rem] font-bold text-muted">{event.dateLabel}</p>
@@ -224,6 +256,7 @@ export function DemoTripPage() {
                       </div>
                     )}
                   </FocusSurface>
+                </div>
                 </div>
               );
             })}

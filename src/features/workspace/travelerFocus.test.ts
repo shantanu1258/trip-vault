@@ -18,14 +18,14 @@ describe("traveler-focused trip workspace", () => {
       bookings: [booking("shared-booking"), booking("asha-booking"), booking("ravi-booking")],
       bookingTravelers: [{ id: "a", booking_id: "asha-booking", traveler_id: "asha" }, { id: "r", booking_id: "ravi-booking", traveler_id: "ravi" }],
       costs: [cost("shared-cost", "shared", "shared-booking"), { ...cost("asha-cost", "asha-event"), participants: [{ traveler_id: "asha", share_amount_minor: null }] }, { ...cost("ravi-on-shared", "shared", "shared-booking"), participants: [{ traveler_id: "ravi", share_amount_minor: null }] }, cost("ravi-cost", "ravi-event"), cost("unlinked")],
-      requirements: [requirement("asha-ready"), requirement("ravi-ready")],
+      requirements: [requirement("everyone-ready"), requirement("asha-ready"), requirement("ravi-ready")],
       requirementAssignees: [{ id: "a", requirement_id: "asha-ready", traveler_id: "asha" }, { id: "r", requirement_id: "ravi-ready", traveler_id: "ravi" }],
       documents: [document("shared-doc", "shared", []), document("asha-doc", "selected", ["asha"]), document("ravi-doc", "selected", ["ravi"]), document("unassigned-doc", "unassigned", [])]
     });
     expect(result.itinerary.map((item) => item.id)).toEqual(["shared", "asha-event"]);
     expect(result.bookings.map((item) => item.id)).toEqual(["shared-booking", "asha-booking"]);
     expect(result.costs.map((item) => item.id)).toEqual(["shared-cost", "asha-cost"]);
-    expect(result.requirements.map((item) => item.id)).toEqual(["asha-ready"]);
+    expect(result.requirements.map((item) => item.id)).toEqual(["everyone-ready", "asha-ready"]);
     expect(result.documents.map((item) => item.id)).toEqual(["shared-doc", "asha-doc"]);
   });
 });

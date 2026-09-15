@@ -34,7 +34,7 @@ import { EventDocuments, EventDocumentShortcut } from "../features/workspace/Eve
 import { AddActivityBookingForm, canAddEventBooking } from "../features/workspace/AddActivityBookingForm";
 import type { DocumentKind } from "../features/workspace/documentModel";
 import { JourneyTravelerBadges } from "../features/workspace/JourneyTravelerDetails";
-import { filterTravelerWorkspace, readTravelerFocus, writeTravelerFocus } from "../features/workspace/travelerFocus";
+import { filterTravelerWorkspace, readTravelerFocus, requirementAudienceLabel, writeTravelerFocus } from "../features/workspace/travelerFocus";
 import { resolveBoardingInstant } from "../features/workspace/flight";
 import { TripAirlinesPanel } from "../features/workspace/TripAirlinesPanel";
 import {
@@ -309,7 +309,7 @@ export function TripPage() {
   const role = members.find((member) => member.user_id === userId)?.role as MemberRole | undefined; const editable = role === "owner" || role === "editor"; const isOwner = role === "owner";
   const itinerary = itineraryQuery.data ?? []; const costs = costsQuery.data ?? []; const bookings = bookingsQuery.data ?? []; const flights = flightsQuery.data ?? []; const journeys = journeysQuery.data ?? []; const documents = documentsQuery.data ?? []; const requirements = requirementsQuery.data ?? [];
   const participantRows = participantsQuery.data ?? [];
-  const focusedWorkspace = useMemo(() => filterTravelerWorkspace({ travelerId: focusedTravelerId, itinerary, participants: participantRows, bookings, bookingTravelers: bookingTravelersQuery.data ?? [], costs, requirements, requirementAssignees: requirementAssigneesQuery.data ?? [], documents }), [focusedTravelerId, itinerary, participantRows, bookings, bookingTravelersQuery.data, costs, requirements, requirementAssigneesQuery.data, documents]);
+  const focusedWorkspace = useMemo(() => filterTravelerWorkspace({ travelerId: focusedTravelerId, itinerary, participants: participantRows, bookings, bookingTravelers: bookingTravelersQuery.data ?? [], costs, requirements: focusedTravelerId && !requirementAssigneesQuery.isSuccess ? [] : requirements, requirementAssignees: requirementAssigneesQuery.data ?? [], documents }), [focusedTravelerId, itinerary, participantRows, bookings, bookingTravelersQuery.data, costs, requirements, requirementAssigneesQuery.data, requirementAssigneesQuery.isSuccess, documents]);
   const visibleItinerary = useMemo(() => sortTimelineItems(focusedWorkspace.itinerary), [focusedWorkspace.itinerary]); const visibleBookings = focusedWorkspace.bookings; const visibleCosts = focusedWorkspace.costs; const visibleRequirements = focusedWorkspace.requirements; const focusedDocuments = focusedWorkspace.documents;
   const viewingItinerary = viewingItineraryId ? visibleItinerary.find((item) => item.id === viewingItineraryId) : undefined;
   const viewingItineraryIndex = viewingItinerary ? itinerary.findIndex((item) => item.id === viewingItinerary.id) : -1;
@@ -466,6 +466,7 @@ export function TripPage() {
               if (entry.kind === "requirement") {
                 const item = entry.requirement;
                 const done = ["complete", "not_required"].includes(item.status);
+                const audience = requirementAudienceLabel(item.id, requirementAssigneesQuery.data ?? [], travelers);
                 return <Fragment key={entry.id}>
                   {phase !== previousPhase && <div id={`timeline-phase-${phase}`} className={`${index ? "pt-7" : ""} relative z-10 pb-3 pl-6 sm:pl-[10.5rem]`}><span className={`inline-flex rounded-full px-3 py-1.5 text-[.65rem] font-black uppercase tracking-[.14em] ${current ? "bg-coral text-white" : "border border-line bg-surface text-muted"}`}>{current ? "Needs attention" : phaseLabels[phase]}</span></div>}
                   {showDate && <h3 className={`${index ? "pt-3" : ""} pb-3 pl-6 text-sm font-black sm:pl-[10.5rem]`}>{formatItineraryDate(entry.startsAt, entry.timezone)}</h3>}
@@ -475,7 +476,7 @@ export function TripPage() {
                     <span className={`z-10 mt-2 hidden size-10 place-items-center rounded-full border-4 border-surface sm:grid ${current ? "bg-coral text-white shadow-focus" : done || phase === "past" ? "bg-line text-muted" : "bg-brand-soft text-brand"}`}><Check className="size-4" /></span>
                     <div className={`flex min-h-16 items-center gap-3 rounded-2xl border px-3 py-2 transition sm:px-4 ${current ? "border-coral bg-coral/10 shadow-focus" : "border-line bg-elevated"}`}>
                       <input type="checkbox" className="relative z-10 size-5 shrink-0 accent-brand" checked={done} disabled={!editable || updateTimelineRequirement.isPending} aria-label={`${done ? "Mark as not done" : "Mark as done"}: ${item.title}`} onChange={(event) => updateTimelineRequirement.mutate({ requirement: item, status: event.target.checked ? "complete" : "to_check" })} />
-                      <Link to={`/trips/${trip.id}/readiness`} state={childNavigationState} className="min-w-0 flex-1 rounded-lg focus-visible:ring-2 focus-visible:ring-brand"><strong className={`block truncate text-sm ${done ? "text-muted line-through" : "text-ink"}`}>{item.title}</strong><span className="mt-0.5 block text-xs text-muted">{entry.scheduleLabel}{done ? " · Done" : " · Readiness task"}</span></Link>
+                      <Link to={`/trips/${trip.id}/readiness`} state={childNavigationState} className="min-w-0 flex-1 rounded-lg focus-visible:ring-2 focus-visible:ring-brand"><strong className={`block truncate text-sm ${done ? "text-muted line-through" : "text-ink"}`}>{item.title}</strong><span className="mt-0.5 block text-xs text-muted">{entry.scheduleLabel}{audience ? ` · ${audience}` : ""}{done ? " · Done" : " · Readiness task"}</span></Link>
                       {current && !done && <span className="shrink-0 rounded-full bg-coral px-2 py-1 text-[.6rem] font-black uppercase text-white">Next</span>}
                     </div>
                   </div>

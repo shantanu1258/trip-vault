@@ -22,7 +22,7 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 - Open a trip directly into one chronological timeline and position it at the single current/next event.
 - Keep Before/After placement independent from optional schedule detail: a relative event may have no time, a duration only, or a real start/end added later without losing its anchor.
 - On a fresh authenticated launch, open the eligible current trip using saved focus or a deterministic overlap fallback; an explicit move to Home remains on Home.
-- Keep one derived readiness card above the timeline; represent other dated pre-trip work as `preparation` events.
+- Keep one derived readiness card above the timeline; readiness tasks default to Everyone, may target selected travelers, and scheduled tasks appear as compact timeline rows for the relevant audience.
 - Create Flight, Hotel, Activity, Bus, Cab, Ferry/Boat, Train, Meal, Preparation, Other transport, and Custom events from one Add Event flow, in that order.
 - Ask Direct or Connecting for Flight, Single or Connecting service for Train/Bus/Ferry, and no route-structure question for Cab; store one or several ordered legs and show every stop in the route summary.
 - Ask an event-appropriate Plan/Walk-up/Booked question before revealing booking-only fields; Flight is always booked, Hotel defaults to booked, and the other eligible forms begin in their non-booked choice and can gain booking details later without duplicating their timeline identity.
@@ -411,7 +411,7 @@ When no trip is current, the Home page emphasizes the next upcoming trip and its
 | RDY-002 | Essential shortcut mockup | P0 | Prototype | Demonstrates context-sensitive visa, passport, ticket, hotel, insurance, and transfer bubbles |
 | RDY-003 | Missing-item warning mockup | P0 | Prototype | Demonstrates a prominent but calm warning with a direct resolution action |
 | RDY-004 | Trip requirements checklist | P0 | MVP | User can create visa, passport, insurance, check-in, payment, packing, or custom requirements; Owner/Editor can activate a requirement card to edit it while status, guidance, document, and Archive controls remain independent, and Viewer cards remain static |
-| RDY-005 | Assign requirement to traveler | P1 | MVP | A requirement applies to the whole trip or selected traveler profiles, including those managed without accounts |
+| RDY-005 | Assign requirement to traveler | P0 | MVP | A new requirement defaults to Everyone and may instead target one or more traveler profiles, including those managed without accounts; traveler focus retains Everyone tasks plus that person's tasks and hides tasks assigned only to somebody else |
 | RDY-006 | Link requirement to document | P0 | MVP | Requirement can open its current authorized document version in one action |
 | RDY-007 | Task scheduling | P0 | MVP | A task may stay checklist-only, use a date, or use a minute/hour/day/week offset before or after a selected dated event |
 | RDY-008 | Passport and visa expiry warning | P0 | MVP | User-entered expiry is compared with trip dates and a configurable validity buffer without claiming legal advice |
@@ -547,7 +547,7 @@ The MVP is ready for private travel use only when:
 33. A stay confirmation can be shared, a boarding pass or visa can target one or more travelers, and an unnamed admission ticket can remain unassigned without changing who may open it.
 34. Opening a document immediately shows the verified local PDF/image in-app, or retrieves and caches it once; PDF page/zoom/fit and image zoom controls remain available, device Open is the fallback, and metadata/destructive actions remain behind Info.
 35. Uploading the same bytes twice in one trip offers the existing Vault document instead of storing a duplicate.
-36. Selecting one traveler consistently hides another traveler's assigned events, bookings, readiness, costs, seats, and documents while retaining records shared with everyone.
+36. Selecting one traveler consistently hides another traveler's assigned events, bookings, readiness, costs, seats, and documents while retaining records shared with everyone; readiness rows show traveler names only when specifically assigned and leave the audience label empty for Everyone.
 37. An owner can offer a later trip to a previously associated account, and no membership exists until that account accepts from Home.
 38. An owner/editor can add a missing flight connection after creation and see the complete route and seats at the top of Flight details.
 39. If a document's cloud upload or trip association is interrupted, the file remains visible only to its signed-in owner in Profile and can be retried or associated without reselecting the bytes. Only a never-attempted pending upload can be discarded offline; attempted/cloud-backed unassociated files require an online delete, and associated originals use the Vault lifecycle.

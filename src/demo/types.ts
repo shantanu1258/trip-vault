@@ -31,3 +31,12 @@ export type DemoTraveler = {
   role: string;
   color: string;
 };
+
+export type DemoTask = {
+  id: string;
+  title: string;
+  status: "to_check" | "complete";
+  travelerIds: string[];
+  anchorEventId: string;
+  scheduleLabel: string;
+};

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ArrowLeft, CalendarDays, MessageSquareText, Pencil, Plus } from "lucide-react";
+import { Archive, ArrowLeft, CalendarDays, MessageSquareText, Pencil, Plus, UsersRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
@@ -10,7 +10,7 @@ import { archiveRequirement, listMembers, listRequirements, listTravelers, listT
 import { AddRequirementForm } from "../features/workspace/WorkspaceForms";
 import { type Requirement, type RequirementStatus } from "../features/workspace/types";
 import { localProfileId } from "../features/sync/localSync";
-import { readTravelerFocus } from "../features/workspace/travelerFocus";
+import { readTravelerFocus, requirementAudienceLabel, requirementMatchesTraveler } from "../features/workspace/travelerFocus";
 import { tripReturnNavigation } from "../features/trips/navigation";
 
 export function ReadinessPage() {
@@ -38,7 +38,11 @@ export function ReadinessPage() {
     },
     onSettled: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ["requirements", tripId] }), queryClient.invalidateQueries({ queryKey: ["alerts"] })]); }
   });
-  const trip = tripQuery.data; const visibleRequirements = focusedTravelerId ? (query.data ?? []).filter((item) => assigneesQuery.data?.some((row) => row.requirement_id === item.id && row.traveler_id === focusedTravelerId)) : query.data ?? []; const resolved = visibleRequirements.filter((item) => ["complete", "not_required"].includes(item.status)).length;
+  const trip = tripQuery.data;
+  const visibleRequirements = focusedTravelerId
+    ? assigneesQuery.isSuccess ? (query.data ?? []).filter((item) => requirementMatchesTraveler(item.id, focusedTravelerId, assigneesQuery.data)) : []
+    : query.data ?? [];
+  const resolved = visibleRequirements.filter((item) => ["complete", "not_required"].includes(item.status)).length;
   const role = membersQuery.data?.find((member) => member.user_id === userId)?.role; const editable = role === "owner" || role === "editor";
   const returnNavigation = tripReturnNavigation(locationState, tripId);
   const archive = useMutation({ mutationFn: archiveRequirement, onSuccess: async (_data, item) => { setStatusMessage(`${item.title} archived. It has been removed from timeline highlights and alerts.`); await Promise.all([queryClient.invalidateQueries({ queryKey: ["requirements", tripId] }), queryClient.invalidateQueries({ queryKey: ["alerts"] })]); } });
@@ -76,6 +80,7 @@ export function ReadinessPage() {
                 {visibleRequirements.map((item) => {
                   const done = ["complete", "not_required"].includes(item.status);
                   const schedule = trip ? requirementTimelineSchedule(item, itineraryQuery.data ?? [], trip.primary_timezone) : null;
+                  const audience = requirementAudienceLabel(item.id, assigneesQuery.data ?? [], travelersQuery.data ?? []);
                   return (
                     <li key={item.id} className="flex items-center gap-1 px-2 py-1 sm:px-3">
                       <label className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1 hover:bg-elevated ${editable ? "cursor-pointer" : "cursor-default"}`}>
@@ -91,6 +96,7 @@ export function ReadinessPage() {
                           <strong className={`block truncate text-sm leading-5 ${done ? "text-muted line-through" : "text-ink"}`}>{item.title}</strong>
                           <span className="flex min-w-0 items-center gap-2 overflow-hidden text-[0.7rem] leading-4 text-muted">
                             <span className={`shrink-0 font-bold ${done ? "text-success" : "text-muted"}`}>{done ? "Done" : "Not done"}</span>
+                            {audience && <span className="inline-flex min-w-0 items-center gap-1" title={audience}><UsersRound aria-hidden="true" className="size-3 shrink-0" /><span className="truncate">{audience}</span></span>}
                             {schedule && (
                               <time className="inline-flex shrink-0 items-center gap-1" dateTime={schedule.startsAt}>
                                 <CalendarDays aria-hidden="true" className="size-3" /> {schedule.label}

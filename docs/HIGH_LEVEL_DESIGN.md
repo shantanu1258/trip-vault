@@ -280,6 +280,8 @@ This automatic routing runs only at the root fresh-launch entry. It prefers a sa
 6. The trip receives a timestamped readiness result.
 7. A document-version change marks the current manifest stale. Booking, itinerary, and generic journey-leg freshness still require the HLD-042 follow-up and manual airplane-mode verification.
 
+Trip-planning readiness is audience-aware independently of offline-pack readiness. A task defaults to Everyone, may target selected traveler profiles, and stays visible to the whole-trip view. Selecting one traveler is a presentation filter: it retains Everyone tasks plus that traveler's tasks in the checklist, summary, alerts, and timeline while excluding tasks assigned only to other travelers. It never changes membership or authorization.
+
 ### 8.5 Join with a one-time code
 
 1. The owner creates or selects a traveler, or chooses **Non-traveling collaborator**.

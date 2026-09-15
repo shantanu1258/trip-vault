@@ -191,8 +191,25 @@ describe("Upload document flow", () => {
       officialGuidanceUrl: undefined,
       linkedDocumentId: undefined,
       notes: "Pack one charger per traveler",
-      travelerIds: ["asha", "ravi"]
+      travelerIds: []
     }));
+  });
+
+  it("defaults readiness to everyone and can limit it to selected travelers", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><AddRequirementForm trip={trip} travelers={travelers} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    expect(screen.getByRole("radio", { name: "Everyone" })).toBeChecked();
+    await user.click(screen.getByRole("radio", { name: "Selected travelers" }));
+    await user.click(screen.getByRole("checkbox", { name: "Ravi" }));
+    await user.type(screen.getByLabelText("Task"), "Ravi passport check");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+
+    await waitFor(() => expect(mocks.addRequirement).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Ravi passport check",
+      travelerIds: ["ravi"]
+    })));
   });
 
   it("adds a readiness task a chosen offset before a dated event", async () => {
