@@ -4322,3 +4322,19 @@ grant execute on function public.update_document_visibility(uuid, public.documen
 commit;
 
 notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- 202609150003_optional_expense_splitting.sql
+-- ============================================================================
+
+begin;
+
+alter table public.trips
+  add column if not exists expense_splitting_enabled boolean not null default false;
+
+comment on column public.trips.expense_splitting_enabled is
+  'Whether cost forms expose payer and participant split controls for this trip.';
+
+commit;
+
+notify pgrst, 'reload schema';

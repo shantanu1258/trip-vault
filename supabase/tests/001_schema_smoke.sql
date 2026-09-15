@@ -405,6 +405,17 @@ begin
   ) then
     raise exception 'Trip expense payer support is missing';
   end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'trips'
+      and column_name = 'expense_splitting_enabled'
+      and data_type = 'boolean'
+      and is_nullable = 'NO'
+      and coalesce(column_default, '') ilike '%false%'
+  ) then
+    raise exception 'Optional trip expense splitting setting is missing or has the wrong default';
+  end if;
   if not exists (select 1 from pg_trigger where tgname = 'trip_date_bounds_include_itinerary' and not tgisinternal) then
     raise exception 'Trip date changes are not protected by timeline bounds';
   end if;

@@ -23,6 +23,7 @@ export type Trip = {
   end_date: string;
   primary_timezone: string;
   base_currency: string;
+  expense_splitting_enabled?: boolean;
   status: TripStatus;
   version?: number;
   created_at: string;

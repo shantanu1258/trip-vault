@@ -25,6 +25,7 @@ import type { Booking } from "../workspace/types";
 
 const itinerarySelect = "id,trip_id,booking_id,title,event_type,starts_at,ends_at,timezone,location,notes,applies_to_all_travelers,is_all_day,completed_at,timing_mode,scheduled_date,anchor_itinerary_item_id,relative_position,has_explicit_start_time,duration_minutes,event_status,sort_key,version,created_at,updated_at,deleted_at";
 const costSelect = "id,trip_id,booking_id,itinerary_item_id,title,category,amount_minor,currency_code,payment_status,paid_by_traveler_id,notes,version,created_at,updated_at,deleted_at,trip_cost_participants(traveler_id,share_amount_minor)";
+const tripSelect = "id,title,destination_summary,start_date,end_date,primary_timezone,base_currency,expense_splitting_enabled,status,version,created_at,updated_at,deleted_at";
 
 type CostResponse = TripCost & { trip_cost_participants?: Array<{ traveler_id: string; share_amount_minor: number | null }> };
 
@@ -133,7 +134,7 @@ export async function listTrips(includeArchived = false): Promise<Trip[]> {
     await retryQueuedTripDocumentCleanup(profileId);
   }
   const trips = await networkWithCache("trips", async () => {
-    let query = client().from("trips").select("id,title,destination_summary,start_date,end_date,primary_timezone,base_currency,status,version,created_at,updated_at,deleted_at").is("deleted_at", null);
+    let query = client().from("trips").select(tripSelect).is("deleted_at", null);
     if (!includeArchived) query = query.neq("status", "archived");
     const { data, error } = await query.order("start_date", { ascending: true });
     if (error) throw error;
@@ -146,7 +147,7 @@ export async function listDeletedTrips(): Promise<Trip[]> {
   if (!navigator.onLine) return [];
   const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString();
   const { data, error } = await client().from("trips")
-    .select("id,title,destination_summary,start_date,end_date,primary_timezone,base_currency,status,version,created_at,updated_at,deleted_at")
+    .select(tripSelect)
     .not("deleted_at", "is", null).gte("deleted_at", cutoff).order("deleted_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as Trip[];
@@ -159,7 +160,7 @@ export async function getTrip(tripId: string): Promise<Trip> {
   }
   const { data, error } = await client()
     .from("trips")
-    .select("id,title,destination_summary,start_date,end_date,primary_timezone,base_currency,status,version,created_at,updated_at,deleted_at")
+    .select(tripSelect)
     .eq("id", tripId)
     .is("deleted_at", null)
     .single();
@@ -171,7 +172,7 @@ export async function createTrip(input: CreateTripInput): Promise<Trip> {
   const userId = await currentUserId();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const trip: Trip = { id, title: input.title, destination_summary: input.destination, start_date: input.startDate, end_date: input.endDate, primary_timezone: input.timezone, base_currency: input.baseCurrency, status: statusForDates(input.startDate, input.endDate), created_at: now, updated_at: now };
+  const trip: Trip = { id, title: input.title, destination_summary: input.destination, start_date: input.startDate, end_date: input.endDate, primary_timezone: input.timezone, base_currency: input.baseCurrency, expense_splitting_enabled: false, status: statusForDates(input.startDate, input.endDate), created_at: now, updated_at: now };
   const row = { ...trip, created_by: userId };
   if (!navigator.onLine) { await queueCreate({ entityType: "trips", table: "trips", row }); return trip; }
   // Do not request the inserted row in this call. The trip's SELECT policy is
@@ -222,9 +223,25 @@ export async function updateTrip(input: UpdateTripInput): Promise<Trip> {
   }
   let request = client().from("trips").update(patch).eq("id", input.id);
   if (input.version !== undefined) request = request.eq("version", input.version);
-  const { data, error } = await request.select("id,title,destination_summary,start_date,end_date,primary_timezone,base_currency,status,version,created_at,updated_at,deleted_at").maybeSingle();
+  const { data, error } = await request.select(tripSelect).maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("This trip changed on another device. Refresh it before saving again.");
+  await cacheEntity("trips", data as Trip);
+  return data as Trip;
+}
+
+export async function updateTripExpenseSplitting(trip: Trip, enabled: boolean): Promise<Trip> {
+  const patch = { expense_splitting_enabled: enabled };
+  if (!navigator.onLine) {
+    const updated = { ...trip, ...patch, version: (trip.version ?? 1) + 1, updated_at: new Date().toISOString() };
+    await queueUpdate({ entityType: "trips", table: "trips", row: updated, patch, baseVersion: trip.version });
+    return updated;
+  }
+  let request = client().from("trips").update(patch).eq("id", trip.id);
+  if (trip.version !== undefined) request = request.eq("version", trip.version);
+  const { data, error } = await request.select(tripSelect).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("This trip changed on another device. Refresh before changing expense splitting.");
   await cacheEntity("trips", data as Trip);
   return data as Trip;
 }
@@ -240,7 +257,7 @@ export async function restoreTrip(trip: Trip) {
 export async function deleteTripRecoverably(trip: Trip) {
   if (!navigator.onLine) throw new Error("Moving a trip to Recently deleted requires a connection.");
   const { data, error } = await client().from("trips").update({ deleted_at: new Date().toISOString() }).eq("id", trip.id).eq("version", trip.version ?? 1)
-    .select("id,title,destination_summary,start_date,end_date,primary_timezone,base_currency,status,version,created_at,updated_at,deleted_at").maybeSingle();
+    .select(tripSelect).maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("This trip changed on another device. Refresh before deleting it.");
   return data as Trip;
@@ -251,7 +268,7 @@ export async function restoreDeletedTrip(trip: Trip) {
   const deletedAt = trip.deleted_at ? new Date(trip.deleted_at).getTime() : 0;
   if (!deletedAt || deletedAt < Date.now() - 30 * 86_400_000) throw new Error("This trip is outside the 30-day recovery window.");
   const { data, error } = await client().from("trips").update({ deleted_at: null }).eq("id", trip.id).eq("version", trip.version ?? 1)
-    .select("id,title,destination_summary,start_date,end_date,primary_timezone,base_currency,status,version,created_at,updated_at,deleted_at").maybeSingle();
+    .select(tripSelect).maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("This trip changed on another device. Refresh before restoring it.");
   await cacheEntity("trips", data as Trip);

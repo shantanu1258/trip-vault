@@ -131,7 +131,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | TRP-011 | Multiple destinations | P1 | MVP | Itinerary supports multiple stops without forcing the trip summary into one city |
 | TRP-012 | Cover image | P2 | Later | User can choose a safe stock, generated, or uploaded trip image |
 | TRP-013 | Trip expense summary | P0 | MVP | Home and the trip header show compact readable per-currency totals; activating either opens the itemized Trip expenses section, whose whole expense rows open one read-first detail sheet for every trip role with amount, status, category, payer, event/booking linkage, participant shares, and notes; missing cost and explicit Free remain different states |
-| TRP-014 | Trip-scoped equal splitting | P0 | MVP | A cost records one traveler payer and selected traveler participants, conserves every minor unit in an equal split, and derives balances separately per currency; Balances by currency stays hidden until the member enables Show balances |
+| TRP-014 | Optional trip-scoped equal splitting | P0 | MVP | Expense splitting is disabled per trip by default, so cost forms apply costs equally to everyone without showing participant controls; enabling it in Trip details exposes participant selection for new and existing costs. A cost may record one traveler payer, conserves every minor unit in an equal split, and derives balances separately per currency; Balances by currency stays hidden until the member enables Show balances |
 
 ## 6. Home Dashboard and Itinerary
 

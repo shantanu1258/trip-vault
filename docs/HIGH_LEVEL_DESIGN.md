@@ -65,7 +65,7 @@ The primary trip experience is a chronological projection over itinerary events 
 | Automatic support for every email provider | Manual entry and upload establish the core model first |
 | Provider-blind end-to-end encryption | Key recovery, sharing, search, and previews require a separate product decision |
 | Guaranteed background work on every mobile browser | Browser support is inconsistent; foreground resume is the reliable baseline |
-| Standalone expense-splitting platform | Trip-scoped payer, participants, equal splits, and per-currency balances are supported; an independent Splitwise-style product remains later |
+| Standalone expense-splitting platform | Trip-scoped payer, participants, equal splits, and per-currency balances are supported behind a per-trip opt-in control; ordinary cost entry defaults silently to everyone, while an independent Splitwise-style product remains later |
 | Native iOS and Android applications | The installable PWA is the first delivery format |
 | Commercial or public product | Billing, subscriptions, public acquisition, organization tenancy, commercial support, and commercialization are outside the permanent product scope |
 

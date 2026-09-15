@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   listItinerary: vi.fn(),
   listItineraryParticipantIds: vi.fn(),
   updateItineraryItem: vi.fn(),
+  addTripCost: vi.fn(),
   clearDraft: vi.fn()
 }));
 
@@ -22,7 +23,7 @@ vi.mock("../timeline/TimingFields", () => ({
 vi.mock("../workspace/api", () => ({ listItineraryParticipantIds: mocks.listItineraryParticipantIds }));
 vi.mock("./api", () => ({
   addItineraryItem: vi.fn(),
-  addTripCost: vi.fn(),
+  addTripCost: mocks.addTripCost,
   archiveTrip: vi.fn(),
   deleteTripPermanently: vi.fn(),
   deleteTripRecoverably: vi.fn(),
@@ -32,7 +33,7 @@ vi.mock("./api", () => ({
   updateTripCost: vi.fn()
 }));
 
-import { AddItineraryForm } from "./TripForms";
+import { AddCostForm, AddItineraryForm } from "./TripForms";
 
 const trip: Trip = {
   id: "trip-1",
@@ -100,5 +101,35 @@ describe("AddItineraryForm participant scope", () => {
 
     expect(screen.getByText(/Open the hotel booking to edit both milestones safely/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+  });
+});
+
+describe("AddCostForm optional expense splitting", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.addTripCost.mockResolvedValue({ id: "cost-1" });
+  });
+
+  it("hides traveler splitting and applies a new cost to everyone when disabled", async () => {
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><AddCostForm trip={{ ...trip, expense_splitting_enabled: false }} travelers={travelers} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    expect(screen.queryByRole("radio", { name: "Selected travelers" })).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText(/What was it for/i), "Airport transfer");
+    await user.type(screen.getByLabelText("Amount"), "1200");
+    await user.click(screen.getByRole("button", { name: "Save cost" }));
+
+    await waitFor(() => expect(mocks.addTripCost).toHaveBeenCalledWith(expect.objectContaining({
+      tripId: trip.id,
+      participantTravelerIds: ["asha", "ravi"]
+    })));
+  });
+
+  it("shows traveler controls when expense splitting is enabled", () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><AddCostForm trip={{ ...trip, expense_splitting_enabled: true }} travelers={travelers} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    expect(screen.getByRole("radio", { name: "Selected travelers" })).toBeInTheDocument();
   });
 });

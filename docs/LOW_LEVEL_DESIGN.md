@@ -856,7 +856,7 @@ Trip totals group non-refunded costs by currency. Every Add Event path may creat
 | `share_amount_minor` | Big integer, nullable | Explicit minor-unit share; null currently means derive an equal split |
 | `updated_at` | Timestamp | Change detection |
 
-Primary key: `(cost_id, traveler_id)`. The current trip companion divides equal shares deterministically in minor currency units, assigns any remainder in stable traveler order, and derives per-currency balances from source costs. It never combines currencies or stores mutable running balances as authoritative data.
+Primary key: `(cost_id, traveler_id)`. `trips.expense_splitting_enabled` is a non-null boolean that defaults to false. When false, Add/Edit Cost hides participant controls and writes every active traveler as an equal participant for new costs; editing an existing cost preserves its saved participants. When true, the form exposes participant selection. The current trip companion divides equal shares deterministically in minor currency units, assigns any remainder in stable traveler order, and derives per-currency balances from source costs. It never combines currencies or stores mutable running balances as authoritative data.
 
 #### `reminders`
 
