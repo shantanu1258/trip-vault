@@ -75,6 +75,7 @@ export const demoTravelers: DemoTraveler[] = [
 export const demoEvents: DemoEvent[] = [
   {
     id: "flight-out",
+    type: "flight",
     dayLabel: "Day 1",
     dateLabel: "18 Jun",
     timeLabel: "06:40",
@@ -88,6 +89,7 @@ export const demoEvents: DemoEvent[] = [
   },
   {
     id: "hotel-rome",
+    type: "hotel",
     dayLabel: "Day 1",
     dateLabel: "18 Jun",
     timeLabel: "15:00",
@@ -100,6 +102,7 @@ export const demoEvents: DemoEvent[] = [
   },
   {
     id: "colosseum",
+    type: "activity",
     dayLabel: "Day 2",
     dateLabel: "19 Jun",
     timeLabel: "16:30",
@@ -113,6 +116,7 @@ export const demoEvents: DemoEvent[] = [
   },
   {
     id: "train-florence",
+    type: "train",
     dayLabel: "Day 4",
     dateLabel: "21 Jun",
     timeLabel: "09:10",
@@ -126,6 +130,7 @@ export const demoEvents: DemoEvent[] = [
   },
   {
     id: "venice-walk",
+    type: "activity",
     dayLabel: "Day 7",
     dateLabel: "24 Jun",
     timeLabel: "18:00",
@@ -167,7 +172,7 @@ export const demoTasks: DemoTask[] = [
 ];
 
 export const demoPhaseCopy: Record<DemoPhase, { label: string; sublabel: string; activeEventId: string | null }> = {
-  planning: { label: "Planning", sublabel: "42 days to departure", activeEventId: "hotel-rome" },
+  planning: { label: "Planning", sublabel: "42 days to departure", activeEventId: "flight-out" },
   predeparture: { label: "Tomorrow", sublabel: "Ready offline - checked 8 min ago", activeEventId: "flight-out" },
   travelday: { label: "Travel day", sublabel: "Boarding in 48 minutes", activeEventId: "flight-out" },
   intrip: { label: "In Rome", sublabel: "Next activity in 1 hr 20 min", activeEventId: "colosseum" },

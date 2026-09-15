@@ -78,12 +78,13 @@ describe("Trip Vault", () => {
       </MemoryRouter>
     );
 
-    await user.click(await screen.findByRole("button", { name: /open what i need/i }));
+    await user.click(await screen.findByRole("button", { name: /open details for fly to rome/i }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /sign in to add/i })).toHaveAttribute("href", "/sign-in");
+    expect(screen.getByRole("link", { name: "Sign in to add" })).toHaveAttribute("href", "/sign-in");
     expect(screen.getAllByRole("link", { name: /flight ticket|boarding pass/i }).length).toBeGreaterThan(0);
-    await user.click(screen.getByRole("button", { name: /close event details/i }));
+    await user.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /full itinerary/i })).toHaveAttribute("href", "#full-itinerary");
+    expect(screen.getByRole("button", { name: "Timeline" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Trip details" })).toBeInTheDocument();
   });
 });

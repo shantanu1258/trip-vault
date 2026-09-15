@@ -12,6 +12,7 @@ export type DemoDocument = {
 
 export type DemoEvent = {
   id: string;
+  type: "flight" | "hotel" | "activity" | "train";
   dayLabel: string;
   dateLabel: string;
   timeLabel: string;

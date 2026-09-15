@@ -33,6 +33,18 @@ export function AppShell({ children, demo = false }: { children: ReactNode; demo
     window.addEventListener("offline", update);
     return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); };
   }, []);
+  const openTripSearch = () => {
+    if (!demo && activeTripId) {
+      navigate(`/trips/${activeTripId}`, {
+        replace: location.pathname === `/trips/${activeTripId}` && new URLSearchParams(location.search).get("view") !== "details",
+        state: tripIntentNavigationState(location.state, activeTripId, "search", { view: "timeline" })
+      });
+      return;
+    }
+    const region = document.getElementById("trip-search");
+    region?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.requestAnimationFrame(() => region?.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true }));
+  };
   return (
     <div className="min-h-dvh bg-canvas text-ink">
       <header className="sticky top-0 z-40 border-b border-line/80 bg-canvas/95 backdrop-blur-md">
@@ -42,14 +54,11 @@ export function AppShell({ children, demo = false }: { children: ReactNode; demo
             {demo && <span className="hidden rounded-full bg-brand-soft px-3 py-1.5 text-xs font-bold text-brand sm:inline">Safe demo</span>}
             {!online && <span className="hidden items-center gap-1.5 rounded-full bg-warning/10 px-3 py-2 text-xs font-bold text-warning sm:inline-flex"><WifiOff className="size-3.5" /> Offline</span>}
             {!demo && <SyncStatus />}
-            {!demo && activeTripId && <button
+            {(demo || activeTripId) && <button
               type="button"
               aria-label="Search this trip"
               className="tap-target grid size-11 place-items-center rounded-2xl border border-line bg-surface text-muted transition-colors hover:border-brand/40 hover:text-brand"
-              onClick={() => navigate(`/trips/${activeTripId}`, {
-                replace: location.pathname === `/trips/${activeTripId}` && new URLSearchParams(location.search).get("view") !== "details",
-                state: tripIntentNavigationState(location.state, activeTripId, "search", { view: "timeline" })
-              })}
+              onClick={openTripSearch}
             ><Search className="size-5" aria-hidden="true" /></button>}
             <NavLink
               to="/alerts"
@@ -73,7 +82,7 @@ export function AppShell({ children, demo = false }: { children: ReactNode; demo
                 to={to}
                 className={({ isActive }) =>
                   `flex min-h-12 items-center gap-3 rounded-2xl px-4 text-sm font-bold transition-colors ${
-                    isActive ? "bg-brand text-surface" : "text-muted hover:bg-surface hover:text-ink"
+                    (demo ? to === "/trips" : isActive) ? "bg-brand text-surface" : "text-muted hover:bg-surface hover:text-ink"
                   }`
                 }
               >
@@ -94,14 +103,14 @@ export function AppShell({ children, demo = false }: { children: ReactNode; demo
               key={to}
               to={to}
               className={({ isActive }) =>
-                `tap-target flex flex-col items-center justify-center gap-1 rounded-xl text-[0.65rem] font-bold ${
-                  isActive ? "text-brand" : "text-muted"
+                  `tap-target flex flex-col items-center justify-center gap-1 rounded-xl text-[0.65rem] font-bold ${
+                    (demo ? to === "/trips" : isActive) ? "text-brand" : "text-muted"
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  <span className={`grid size-8 place-items-center rounded-xl ${isActive ? "bg-brand-soft" : ""}`}>
+                  <span className={`grid size-8 place-items-center rounded-xl ${(demo ? to === "/trips" : isActive) ? "bg-brand-soft" : ""}`}>
                     <Icon className="size-[1.15rem]" aria-hidden="true" />
                   </span>
                   {label}

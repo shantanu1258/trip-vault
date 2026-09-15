@@ -12,16 +12,21 @@ vi.mock("../lib/local-db/database", () => ({
 import { DemoTripPage } from "./DemoTripPage";
 
 describe("current demo readiness", () => {
-  it("defaults to everyone and immediately filters person-specific tasks", async () => {
+  it("defaults to everyone and immediately filters after the People switch", async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><DemoTripPage /></MemoryRouter>);
 
     expect(screen.getByText("Pack Leela's medicines")).toBeInTheDocument();
     expect(screen.getByText("Check passports and visas")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Sam Shah" }));
+    await user.click(screen.getByRole("button", { name: "People and sharing · Everyone" }));
+    await user.click(screen.getByRole("button", { name: "Show Sam Shah's trip information" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText("Pack Leela's medicines")).not.toBeInTheDocument();
     expect(screen.getByText("Check passports and visas")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Leela Devi" }));
+    expect(screen.getByRole("heading", { name: "Sam Shah's timeline" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "People and sharing · Sam Shah" }));
+    await user.click(screen.getByRole("button", { name: "Show Leela Devi's trip information" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByText("Pack Leela's medicines")).toBeInTheDocument();
   });
 
@@ -29,8 +34,8 @@ describe("current demo readiness", () => {
     const user = userEvent.setup();
     render(<MemoryRouter><DemoTripPage /></MemoryRouter>);
 
-    expect(screen.getByText("1 of 3 done")).toBeInTheDocument();
+    expect(screen.getByText("1 of 3 tasks done")).toBeInTheDocument();
     await user.click(screen.getByRole("checkbox", { name: "Mark as done: Pack Leela's medicines" }));
-    expect(screen.getByText("2 of 3 done")).toBeInTheDocument();
+    expect(screen.getByText("2 of 3 tasks done")).toBeInTheDocument();
   });
 });
