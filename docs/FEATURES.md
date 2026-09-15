@@ -290,6 +290,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | COL-016 | External public link | Explore | Not planned | Real trip details and documents are never exposed through an unauthenticated public link |
 | COL-017 | Traveler roster mockup | P0 | Prototype | Demonstrates claimed, unclaimed, managed, and non-traveling collaborator states without implying every traveler has an account |
 | COL-018 | Link account to traveler | P0 | MVP | Successful targeted code redemption links the signed-in account to exactly one intended traveler in that trip |
+| COL-019 | Edit traveler name | P0 | MVP | Owner/Editor can edit a trip traveler profile from People & sharing without changing the linked signed-in member's account display name; the edit action remains separate from the fast traveler-focus action |
 | COL-019 | Non-traveling collaborator | P1 | MVP | Owner can generate the same kind of code for an Editor or Viewer who can help without appearing in bookings or traveler counts |
 | COL-020 | Managed traveler | P0 | MVP | Owner or Editor can manage a child, elderly parent, or other traveler without creating an account; a persistent Everyone/traveler switcher preselects that person in new bookings, itinerary items, requirements, and documents |
 | COL-021 | Itinerary participants | P0 | MVP | Each itinerary item applies to everyone or selected traveler profiles, independently from account membership |

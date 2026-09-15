@@ -318,6 +318,8 @@ After a device has been authenticated and its trip data and documents have been 
 4. Home shows the recipient a pending offer with Accept and Decline actions.
 5. Accepting atomically creates active membership and the optional traveler link; declining creates neither.
 
+Trip-local traveler identity remains separate from account identity. An Owner or Editor may correct a traveler profile name from People & sharing because that name drives trip assignments, seats, documents, and readiness. The associated signed-in member alone controls their account display name from Profile; editing either name never silently overwrites the other.
+
 ### 8.8 Publish application metadata
 
 Administrator configuration is an online-only workflow. The Admin console never presents an offline edit as saved and never queues a publish or rollback for later replay.

@@ -265,7 +265,7 @@ export async function deleteTripPermanently(trip: Trip) {
   if (membershipError) throw membershipError;
   if (membership?.role !== "owner") throw new Error("Only the trip owner can permanently delete this trip.");
   const { data: versions, error: versionError } = await client().from("document_versions")
-    .select("id,storage_bucket,storage_path,source_upload_id,documents!inner(trip_id)")
+    .select("id,storage_bucket,storage_path,source_upload_id,documents!document_versions_document_id_fkey!inner(trip_id)")
     .eq("documents.trip_id", trip.id);
   if (versionError) throw versionError;
   const ownedInboxVersions = (versions ?? []).filter((version) =>

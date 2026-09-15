@@ -1179,13 +1179,15 @@ Because every accepted file is smaller than 5 MB, MVP retries the individual imm
 
 Successful association also reconciles the device cache immediately: the returned document ID replaces the pending association state, retry/error flags are cleared, and the outbox entry is removed. A later server refresh reads associated receipts as reconciliation evidence before filtering them from the visible inbox. The merge permits local overlay only for genuinely pending work or a receipt absent from the server, so an associated cloud row suppresses a stale unassociated local row instead of letting it reappear.
 
+People & sharing treats a traveler profile name and an account profile name as separate records. Owner/Editor can use the pencil action on a traveler card to edit `travelers.display_name` (and its managed-child flag); selecting the rest of that card still switches traveler focus and closes the sheet immediately. Editing a traveler never updates `profiles.display_name`. A signed-in member controls that account-level name from Profile. Closing the traveler editor returns to People & sharing.
+
 Inbox deletion distinguishes local cancellation from cloud cleanup. Offline, the app may discard only a pending upload whose queued first attempt still has `attemptCount = 0`. If an attempt has started, a receipt may already exist remotely even when the client saw a failure, so deleting only the local copy could make the item reappear. Any attempted, finalized, or otherwise cloud-backed upload therefore requires an online Storage-and-receipt delete. Association blocks inbox deletion entirely; the user must use the Vault document lifecycle.
 
 ### 7.3.1 Permanent trip purge
 
 Permanent purge is an owner-only, online testing action. It is split at the Postgres/Storage transaction boundary:
 
-1. The client first records the owner's associated `account-documents` paths and source upload IDs because those records will be removed by the trip cascade.
+1. The client first records the owner's associated `account-documents` paths and source upload IDs because those records will be removed by the trip cascade. Its PostgREST embed names `document_versions_document_id_fkey` explicitly because `documents.current_version_id` creates a second relationship between the same two tables.
 2. The `delete_trip_permanently` security-definer function locks the trip and its documents, inserts every distinct legacy `trip-documents` path into `trip_storage_cleanup_queue`, and deletes the trip in the same database transaction. Queue rows have no trip foreign key and survive commit.
 3. If the RPC returns an error after the server may have committed, the client probes the trip. A confirmed absence is treated as committed deletion; a still-present trip preserves the original failure.
 4. After commit, the client reads its queue rows, removes those exact legacy Storage objects, and deletes only queue rows whose Storage removal succeeded. Queue authorization is path-specific and additionally rejects any path reused by a live document version.

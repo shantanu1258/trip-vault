@@ -272,7 +272,7 @@ describe("trip summary interactions", () => {
 
     await userEvent.click(peopleTarget);
     const peopleSheet = screen.getByRole("region", { name: "People & sharing" });
-    await userEvent.click(within(peopleSheet).getByRole("button", { name: /Shubham/ }));
+    await userEvent.click(within(peopleSheet).getByRole("button", { name: "Show Shubham's trip information" }));
 
     await waitFor(() => expect(screen.queryByRole("region", { name: "People & sharing" })).not.toBeInTheDocument());
     await waitFor(() => expect(peopleTarget).toHaveFocus());
@@ -281,6 +281,23 @@ describe("trip summary interactions", () => {
 
     scrollTo.mockRestore();
     Object.defineProperty(window, "scrollY", { configurable: true, value: 0 });
+  });
+
+  it("opens the traveler-name editor from People and returns to People on back", async () => {
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listTravelers.mockResolvedValue(expenseTravelers);
+    mocks.listMembers.mockResolvedValue([{ user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: null, display_name: "Shantanu" }]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1?view=details"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open People & sharing" }));
+    await userEvent.click(within(screen.getByRole("region", { name: "People & sharing" })).getByRole("button", { name: "Edit Shubham" }));
+    expect(screen.queryByRole("region", { name: "People & sharing" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Edit traveler" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Traveler name")).toHaveValue("Shubham");
+
+    await userEvent.click(within(screen.getByRole("region", { name: "Edit traveler" })).getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("region", { name: "People & sharing" })).toBeInTheDocument();
   });
 
   it("switches from details to the timeline and focuses search for an explicit header intent", async () => {

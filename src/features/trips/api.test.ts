@@ -33,8 +33,8 @@ vi.mock("./participantSync", () => ({
   queueBookingParticipantSync: vi.fn()
 }));
 
-import { cleanupQueuedTripDocuments, createTrip, linkBookingToItineraryItem } from "./api";
-import type { ItineraryItem } from "./types";
+import { cleanupQueuedTripDocuments, createTrip, deleteTripPermanently, linkBookingToItineraryItem } from "./api";
+import type { ItineraryItem, Trip } from "./types";
 
 describe("trip creation", () => {
   beforeEach(() => {
@@ -63,6 +63,27 @@ describe("trip creation", () => {
     }));
     expect(trip).toEqual(expect.objectContaining({ version: 1, deleted_at: null }));
     expect(mocks.cacheEntity).toHaveBeenCalledWith("trips", trip);
+  });
+});
+
+describe("temporary permanent trip deletion", () => {
+  it("selects document versions through the parent-document relationship explicitly", async () => {
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
+    mocks.localProfileId.mockResolvedValue("owner-user");
+    const relationshipError = new Error("stop after checking the relationship");
+    const versionSelect = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: relationshipError }) });
+    mocks.from.mockImplementation((table: string) => {
+      if (table === "trip_members") return { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { role: "owner" }, error: null }) }) }) }) };
+      if (table === "document_versions") return { select: versionSelect };
+      throw new Error(`Unexpected table ${table}`);
+    });
+    const trip: Trip = {
+      id: "trip-1", title: "Test trip", destination_summary: "Dubai", start_date: "2026-09-20", end_date: "2026-09-25",
+      primary_timezone: "Asia/Kolkata", base_currency: "INR", status: "upcoming", created_at: "", updated_at: ""
+    };
+
+    await expect(deleteTripPermanently(trip)).rejects.toThrow(relationshipError);
+    expect(versionSelect).toHaveBeenCalledWith("id,storage_bucket,storage_path,source_upload_id,documents!document_versions_document_id_fkey!inner(trip_id)");
   });
 });
 
