@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
-  ArrowLeft,
   Download,
   ExternalLink,
   FileCheck2,
@@ -14,6 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
+import { TripBackLink } from "../components/TripBackLink";
 import { ActionPanel } from "../components/ActionPanel";
 import {
   DocumentVisibilityBadge,
@@ -271,14 +271,7 @@ export function DocumentPage() {
   return (
     <AppShell>
       <div className="document-page mx-auto min-w-0 max-w-6xl">
-        <Link
-          replace
-          className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted"
-          to={returnNavigation.href}
-          state={returnNavigation.state}
-        >
-          <ArrowLeft className="size-4" /> Back to trip
-        </Link>
+        <TripBackLink {...returnNavigation} />
         {query.isLoading && <LoadingCard label="Loading document" />}
         {query.error && <ErrorCard error={query.error} />}
         {document && (

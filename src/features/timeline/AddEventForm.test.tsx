@@ -173,13 +173,15 @@ const linkedFlight = {
 function renderForm(
   withTravelers: Traveler[] = [],
   tripValue: Trip = trip,
-  documentToAttach?: { id: string; title: string }
+  documentToAttach?: { id: string; title: string },
+  initialType?: import("../trips/types").TimelineEventType
 ) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } }
   });
   const onClose = vi.fn();
   const onAddDocument = vi.fn();
+  const onTypeChange = vi.fn();
   const user = userEvent.setup();
   render(
     <QueryClientProvider client={client}>
@@ -187,12 +189,14 @@ function renderForm(
         trip={tripValue}
         travelers={withTravelers}
         documentToAttach={documentToAttach}
+        initialType={initialType}
         onClose={onClose}
+        onTypeChange={onTypeChange}
         onAddDocument={onAddDocument}
       />
     </QueryClientProvider>
   );
-  return { user, onClose, onAddDocument };
+  return { user, onClose, onTypeChange, onAddDocument };
 }
 
 describe("event form architecture", () => {
@@ -237,6 +241,15 @@ describe("event form architecture", () => {
       "TrainRail plan, ticket, or connection",
       "MealLunch, dinner, or reservation"
     ]);
+  });
+
+  it("opens a URL-selected type directly and reports a return to the type chooser", async () => {
+    const { user, onTypeChange } = renderForm([], trip, undefined, "flight");
+
+    expect(screen.getByRole("region", { name: "Add Flight" })).toBeInTheDocument();
+    expect(screen.queryByText("Direct or connected flights")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Change event type" }));
+    expect(onTypeChange).toHaveBeenCalledWith(null);
   });
 
   it("links a previously uploaded document after its new event is saved", async () => {

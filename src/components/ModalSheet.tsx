@@ -6,15 +6,17 @@ export function ModalSheet({
   title,
   eyebrow,
   onClose,
+  manageHistory = true,
   children
 }: {
   title: string;
   eyebrow: string;
   onClose: () => void;
+  manageHistory?: boolean;
   children: ReactNode;
 }) {
   const titleId = useId();
-  useModalHistory(onClose);
+  useModalHistory(onClose, manageHistory);
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();

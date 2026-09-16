@@ -86,6 +86,7 @@ import {
 import { AddCostForm, AddItineraryForm, TripSettingsForm } from "../features/trips/TripForms";
 import {
   isJourneyEventType,
+  timelineEventTypes,
   type EventStatus,
   type ItineraryItem,
   type TimelineEventType,
@@ -95,12 +96,14 @@ import {
 import { calculateTripBalances } from "../features/trips/expenses";
 import {
   consumeTripNavigationIntent,
+  isTripRouteModal,
   isTripNavigationIntentConsumed,
   readTripEntry,
   readTripNavigationIntent,
   tripChildNavigationState,
   tripEntryNavigationState,
   tripIntentNavigationState,
+  tripRouteModalNavigationState,
   type TripView
 } from "../features/trips/navigation";
 import { CostDetailsSheet, TripExpensesSheet } from "../features/trips/TripExpenses";
@@ -841,7 +844,8 @@ export function EventDetailsSheet({
   onUploadDocument,
   onStatus,
   onMoveUp,
-  onMoveDown
+  onMoveDown,
+  routeBacked = false
 }: {
   item: ItineraryItem;
   itinerary?: ItineraryItem[];
@@ -868,6 +872,7 @@ export function EventDetailsSheet({
   onStatus: (status: EventStatus) => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  routeBacked?: boolean;
 }) {
   const Icon = iconFor[item.event_type ?? "custom"];
   const map = mapsUrl(item.location);
@@ -883,6 +888,7 @@ export function EventDetailsSheet({
       eyebrow={(item.event_type ?? "event").replaceAll("_", " ")}
       title={item.title}
       onClose={onClose}
+      manageHistory={!routeBacked}
     >
       <div className="mt-5 flex items-start gap-4 rounded-2xl bg-elevated p-4">
         <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
@@ -997,6 +1003,7 @@ export function EventDetailsSheet({
         canEdit={editable}
         onUpload={onUploadDocument}
         travelerId={focusedTravelerId}
+        navigationState={navigationState}
       />
       {editable && item.timing_mode !== "relative" && (canMoveUp || canMoveDown) && (
         <div className="mt-5 flex gap-2">
@@ -1204,6 +1211,11 @@ export function TripPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const view: TripView = searchParams.get("view") === "details" ? "details" : "timeline";
   const requestedForm = openFormFromQuery(searchParams.get("add"));
+  const routedEventId = searchParams.get("event");
+  const requestedEventType = searchParams.get("eventType");
+  const routedEventType = timelineEventTypes.includes(requestedEventType as TimelineEventType)
+    ? (requestedEventType as TimelineEventType)
+    : null;
   const requestedSection = searchParams.get("section");
   const [openForm, setOpenForm] = useState<OpenForm>(requestedForm);
   const [userId, setUserId] = useState("");
@@ -1213,7 +1225,6 @@ export function TripPage() {
   const [editingCost, setEditingCost] = useState<TripCost | null>(null);
   const [editingTraveler, setEditingTraveler] = useState<Traveler | null>(null);
   const [editingNote, setEditingNote] = useState<TripNote | null>(null);
-  const [viewingItineraryId, setViewingItineraryId] = useState<string | null>(null);
   const [showingExpenses, setShowingExpenses] = useState(false);
   const [viewingCost, setViewingCost] = useState<TripCost | null>(null);
   const [costReturnEventId, setCostReturnEventId] = useState<string | null>(null);
@@ -1243,7 +1254,12 @@ export function TripPage() {
   const returningToEntry =
     Boolean(readTripEntry(location.state, tripId)) ||
     Boolean(navigationIntent && isTripNavigationIntentConsumed(navigationIntent));
-  const childNavigationState = tripChildNavigationState(location.state, tripId, view);
+  const childNavigationState = tripChildNavigationState(
+    location.state,
+    tripId,
+    view,
+    `${location.pathname}${location.search}`
+  );
   useEffect(() => {
     void localProfileId().then((id) => setUserId(id ?? ""));
   }, []);
@@ -1253,6 +1269,7 @@ export function TripPage() {
   }, [tripId]);
   useEffect(() => {
     if (requestedForm) setOpenForm(requestedForm);
+    else setOpenForm((current) => (current === "event" ? null : current));
   }, [requestedForm]);
   useLayoutEffect(() => {
     positioned.current = false;
@@ -1388,8 +1405,8 @@ export function TripPage() {
   const visibleCosts = focusedWorkspace.costs;
   const visibleRequirements = focusedWorkspace.requirements;
   const focusedDocuments = focusedWorkspace.documents;
-  const viewingItinerary = viewingItineraryId
-    ? visibleItinerary.find((item) => item.id === viewingItineraryId)
+  const viewingItinerary = routedEventId
+    ? visibleItinerary.find((item) => item.id === routedEventId)
     : undefined;
   const viewingItineraryIndex = viewingItinerary
     ? itinerary.findIndex((item) => item.id === viewingItinerary.id)
@@ -1551,11 +1568,56 @@ export function TripPage() {
       setFocusedTravelerId(null);
   }, [focusedTravelerId, travelersQuery.data, travelers]);
 
+  const closeRouteModal = (keys: string[]) => {
+    if (isTripRouteModal(location.state, tripId)) {
+      navigate(-1);
+      return;
+    }
+    const next = new URLSearchParams(searchParams);
+    keys.forEach((key) => next.delete(key));
+    setSearchParams(next, {
+      replace: true,
+      state: tripEntryNavigationState(location.state, tripId, view)
+    });
+  };
+  const openEvent = (itemId: string) => {
+    saveScroll(tripId, view);
+    const next = new URLSearchParams(searchParams);
+    next.delete("add");
+    next.delete("eventType");
+    next.set("event", itemId);
+    setSearchParams(next, {
+      state: tripRouteModalNavigationState(location.state, tripId, view)
+    });
+  };
+  const openAddEvent = () => {
+    saveScroll(tripId, view);
+    setOpenForm("event");
+    const next = new URLSearchParams(searchParams);
+    next.delete("event");
+    next.delete("eventType");
+    next.set("add", "event");
+    setSearchParams(next, {
+      state: tripRouteModalNavigationState(location.state, tripId, view)
+    });
+  };
+  const changeAddEventType = (nextType: TimelineEventType | null) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("add", "event");
+    if (nextType) next.set("eventType", nextType);
+    else next.delete("eventType");
+    setSearchParams(next, { replace: true, state: location.state });
+  };
+
   const chooseTraveler = (id: string | null) => {
     saveScroll(tripId, view);
     setFocusedTravelerId(id);
     writeTravelerFocus(tripId, id);
-    setViewingItineraryId(null);
+    if (routedEventId) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("event");
+      setSearchParams(next, { replace: true, state: location.state });
+    }
     setShowingExpenses(false);
     setViewingCost(null);
     setCostReturnEventId(null);
@@ -1593,13 +1655,19 @@ export function TripPage() {
     });
   };
   const closeForm = () => {
+    const closingRouteEvent = openForm === "event" && requestedForm === "event";
     setOpenForm(null);
     setCostTargetItem(null);
     setDocumentTargetItem(null);
     setDocumentToAttach(null);
+    if (closingRouteEvent) {
+      closeRouteModal(["add", "eventType"]);
+      return;
+    }
     if (!searchParams.has("add")) return;
     const next = new URLSearchParams(searchParams);
     next.delete("add");
+    next.delete("eventType");
     setSearchParams(next, {
       replace: true,
       state: tripEntryNavigationState(location.state, tripId, view)
@@ -1638,8 +1706,7 @@ export function TripPage() {
     setViewingCost(null);
     setCostReturnEventId(null);
     setCostReturnsToExpenses(false);
-    if (returnEventId) setViewingItineraryId(returnEventId);
-    else if (returnToExpenses) setShowingExpenses(true);
+    if (!returnEventId && returnToExpenses) setShowingExpenses(true);
   };
   const editTimelineItem = (item: ItineraryItem) => {
     const linkedBooking = item.booking_id
@@ -1649,7 +1716,6 @@ export function TripPage() {
       linkedBooking?.type === "hotel" &&
       (item.event_type === "hotel_check_in" || item.event_type === "hotel_check_out")
     ) {
-      setViewingItineraryId(null);
       setEditingBooking(linkedBooking);
       return;
     }
@@ -2176,7 +2242,7 @@ export function TripPage() {
                               <button
                                 type="button"
                                 className="absolute inset-0 z-10 cursor-pointer rounded-[1.6rem] focus-visible:ring-2 focus-visible:ring-brand"
-                                onClick={() => setViewingItineraryId(item.id)}
+                                onClick={() => openEvent(item.id)}
                                 aria-label={`Open details for ${item.title}`}
                               />
                               <span
@@ -2282,7 +2348,7 @@ export function TripPage() {
                       <button
                         type="button"
                         disabled={!editable}
-                        onClick={() => setOpenForm("event")}
+                        onClick={openAddEvent}
                         className="w-full rounded-2xl border border-dashed border-line p-8 text-sm text-muted"
                       >
                         {editable
@@ -2317,7 +2383,7 @@ export function TripPage() {
                 navigationState={childNavigationState}
                 online={navigator.onLine}
                 onOpenSettings={() => setOpenForm("settings")}
-                onAddEvent={() => setOpenForm("event")}
+                onAddEvent={openAddEvent}
                 onOpenExpenses={openExpenses}
                 onAddCost={() => {
                   setCostTargetItem(null);
@@ -2355,7 +2421,7 @@ export function TripPage() {
               {editable && (
                 <button
                   type="button"
-                  onClick={() => setOpenForm("event")}
+                  onClick={openAddEvent}
                   className="primary-button min-h-11 whitespace-nowrap px-3 sm:px-4"
                   aria-label="Add event"
                 >
@@ -2458,83 +2524,91 @@ export function TripPage() {
           }
         />
       )}
-      {trip && viewingItinerary && (
-        <EventDetailsSheet
-          item={viewingItinerary}
-          itinerary={visibleItinerary}
-          tripId={trip.id}
-          booking={
-            viewingItinerary.booking_id
-              ? visibleBookings.find((booking) => booking.id === viewingItinerary.booking_id)
-              : undefined
-          }
-          flights={flights}
-          flightTravelers={flightTravelers}
-          journeys={journeys}
-          travelerIds={participantRows
-            .filter((row) => row.itinerary_item_id === viewingItinerary.id)
-            .map((row) => row.traveler_id)}
-          travelers={travelers}
-          costs={visibleCosts}
-          focusedTravelerId={focusedTravelerId}
-          navigationState={childNavigationState}
-          editable={editable}
-          canMoveUp={
-            viewingItinerary.timing_mode !== "relative" &&
-            viewingItineraryIndex > 0 &&
-            itinerary[viewingItineraryIndex - 1]?.starts_at === viewingItinerary.starts_at
-          }
-          canMoveDown={
-            viewingItinerary.timing_mode !== "relative" &&
-            viewingItineraryIndex >= 0 &&
-            itinerary[viewingItineraryIndex + 1]?.starts_at === viewingItinerary.starts_at
-          }
-          onClose={() => setViewingItineraryId(null)}
-          onEdit={() => editTimelineItem(viewingItinerary)}
-          onArchive={async () => {
-            if (
-              await confirm({
-                title: "Archive event?",
-                message: `Archive ${viewingItinerary.title}? ${viewingItinerary.booking_id ? "Its complete booking group leaves the timeline." : "It leaves the timeline."} Linked documents and costs remain.`,
-                confirmLabel: "Archive",
-                tone: "danger"
-              })
-            ) {
-              setViewingItineraryId(null);
-              archiveItinerary.mutate(viewingItinerary);
+      {trip &&
+        viewingItinerary &&
+        !editingBooking &&
+        !editingItinerary &&
+        !eventBookingTarget &&
+        !viewingCost &&
+        openForm === null && (
+          <EventDetailsSheet
+            item={viewingItinerary}
+            itinerary={visibleItinerary}
+            tripId={trip.id}
+            booking={
+              viewingItinerary.booking_id
+                ? visibleBookings.find((booking) => booking.id === viewingItinerary.booking_id)
+                : undefined
             }
-          }}
-          onAddBooking={() => setEventBookingTarget(viewingItinerary)}
-          onAddCost={() => {
-            setCostTargetItem(viewingItinerary);
-            setOpenForm("cost");
-          }}
-          onViewCost={(cost) => {
-            setCostReturnEventId(viewingItinerary.id);
-            setCostReturnsToExpenses(false);
-            setViewingItineraryId(null);
-            setViewingCost(cost);
-          }}
-          onUploadDocument={() => {
-            const travelerIds = participantRows
+            flights={flights}
+            flightTravelers={flightTravelers}
+            journeys={journeys}
+            travelerIds={participantRows
               .filter((row) => row.itinerary_item_id === viewingItinerary.id)
-              .map((row) => row.traveler_id);
-            setDocumentTargetItem({
-              ...viewingItinerary,
-              assignmentPreset: {
-                mode: viewingItinerary.applies_to_all_travelers ? "shared" : "selected",
-                travelerIds
+              .map((row) => row.traveler_id)}
+            travelers={travelers}
+            costs={visibleCosts}
+            focusedTravelerId={focusedTravelerId}
+            navigationState={childNavigationState}
+            editable={editable}
+            canMoveUp={
+              viewingItinerary.timing_mode !== "relative" &&
+              viewingItineraryIndex > 0 &&
+              itinerary[viewingItineraryIndex - 1]?.starts_at === viewingItinerary.starts_at
+            }
+            canMoveDown={
+              viewingItinerary.timing_mode !== "relative" &&
+              viewingItineraryIndex >= 0 &&
+              itinerary[viewingItineraryIndex + 1]?.starts_at === viewingItinerary.starts_at
+            }
+            onClose={() => closeRouteModal(["event"])}
+            onEdit={() => editTimelineItem(viewingItinerary)}
+            onArchive={async () => {
+              if (
+                await confirm({
+                  title: "Archive event?",
+                  message: `Archive ${viewingItinerary.title}? ${viewingItinerary.booking_id ? "Its complete booking group leaves the timeline." : "It leaves the timeline."} Linked documents and costs remain.`,
+                  confirmLabel: "Archive",
+                  tone: "danger"
+                })
+              ) {
+                closeRouteModal(["event"]);
+                archiveItinerary.mutate(viewingItinerary);
               }
-            });
-            setOpenForm("document");
-          }}
-          onStatus={(status) => updateEventStatus.mutate({ item: viewingItinerary, status })}
-          onMoveUp={() => reorderItinerary.mutate({ itemId: viewingItinerary.id, direction: "up" })}
-          onMoveDown={() =>
-            reorderItinerary.mutate({ itemId: viewingItinerary.id, direction: "down" })
-          }
-        />
-      )}
+            }}
+            onAddBooking={() => setEventBookingTarget(viewingItinerary)}
+            onAddCost={() => {
+              setCostTargetItem(viewingItinerary);
+              setOpenForm("cost");
+            }}
+            onViewCost={(cost) => {
+              setCostReturnEventId(viewingItinerary.id);
+              setCostReturnsToExpenses(false);
+              setViewingCost(cost);
+            }}
+            onUploadDocument={() => {
+              const travelerIds = participantRows
+                .filter((row) => row.itinerary_item_id === viewingItinerary.id)
+                .map((row) => row.traveler_id);
+              setDocumentTargetItem({
+                ...viewingItinerary,
+                assignmentPreset: {
+                  mode: viewingItinerary.applies_to_all_travelers ? "shared" : "selected",
+                  travelerIds
+                }
+              });
+              setOpenForm("document");
+            }}
+            onStatus={(status) => updateEventStatus.mutate({ item: viewingItinerary, status })}
+            onMoveUp={() =>
+              reorderItinerary.mutate({ itemId: viewingItinerary.id, direction: "up" })
+            }
+            onMoveDown={() =>
+              reorderItinerary.mutate({ itemId: viewingItinerary.id, direction: "down" })
+            }
+            routeBacked
+          />
+        )}
       {viewingCost && (
         <CostDetailsSheet
           cost={viewingCost}
@@ -2570,7 +2644,10 @@ export function TripPage() {
           travelers={travelers}
           preferredTravelerId={focusedTravelerId ?? undefined}
           documentToAttach={documentToAttach ?? undefined}
+          initialType={routedEventType}
+          routeBacked
           onClose={closeForm}
+          onTypeChange={changeAddEventType}
           onAddDocument={async (saved, handoff) => {
             const assignmentPreset: DocumentAssignmentPreset = {
               mode: saved.participantScope === "everyone" ? "shared" : "selected",
@@ -2707,7 +2784,7 @@ export function TripPage() {
             editable && !documentTargetItem
               ? async (document) => {
                   setDocumentToAttach(document);
-                  setOpenForm("event");
+                  openAddEvent();
                 }
               : undefined
           }

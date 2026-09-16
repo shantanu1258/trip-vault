@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   CalendarDays,
   Clipboard,
   Clock3,
@@ -17,6 +16,7 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
+import { TripBackLink } from "../components/TripBackLink";
 import { DocumentVisibilityBadge } from "../components/DocumentVisibilityBadge";
 import { ErrorCard, LoadingCard } from "../components/TripUi";
 import {
@@ -52,7 +52,8 @@ export function BookingPage() {
   const confirm = useConfirmDialog();
   const { tripId = "", bookingId = "" } = useParams();
   const navigate = useNavigate();
-  const locationState = useLocation().state;
+  const currentLocation = useLocation();
+  const locationState = currentLocation.state;
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [editingLeg, setEditingLeg] = useState<
@@ -93,7 +94,8 @@ export function BookingPage() {
   const nestedNavigationState = tripChildNavigationState(
     locationState,
     tripId,
-    returnNavigation.view
+    returnNavigation.view,
+    `${currentLocation.pathname}${currentLocation.search}`
   );
   const archive = useMutation({
     mutationFn: () => archiveBooking(booking!),
@@ -136,13 +138,7 @@ export function BookingPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl">
-        <Link
-          className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted"
-          to={returnNavigation.href}
-          state={returnNavigation.state}
-        >
-          <ArrowLeft className="size-4" /> Back to trip
-        </Link>
+        <TripBackLink {...returnNavigation} />
         {query.isLoading && <LoadingCard label="Loading booking" />}
         {query.error && <ErrorCard error={query.error} />}
         {booking && (

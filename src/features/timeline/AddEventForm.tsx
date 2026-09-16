@@ -14,7 +14,7 @@ import {
   Ship,
   TrainFront
 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { FileDropzone } from "../../components/FileDropzone";
 import { ModalSheet } from "../../components/ModalSheet";
 import { suppressRealtimeRefresh } from "../sync/RealtimeRefresh";
@@ -400,14 +400,20 @@ export function AddEventForm({
   travelers,
   preferredTravelerId,
   documentToAttach,
+  initialType,
+  routeBacked = false,
   onClose,
+  onTypeChange,
   onAddDocument
 }: {
   trip: Trip;
   travelers: Traveler[];
   preferredTravelerId?: string;
   documentToAttach?: { id: string; title: string };
+  initialType?: TimelineEventType | null;
+  routeBacked?: boolean;
   onClose: () => void;
+  onTypeChange?: (type: TimelineEventType | null) => void;
   onAddDocument?: (event: SavedEvent, handoff?: DocumentHandoff) => void | Promise<void>;
 }) {
   const queryClient = useQueryClient();
@@ -415,7 +421,7 @@ export function AddEventForm({
     queryKey: ["itinerary", trip.id],
     queryFn: () => listItinerary(trip.id)
   });
-  const [type, setType] = useState<TimelineEventType | null>(null);
+  const [type, setType] = useState<TimelineEventType | null>(initialType ?? null);
   const flightsQuery = useQuery({
     queryKey: ["flights", trip.id],
     queryFn: () => listFlightLegsForTrip(trip.id),
@@ -442,6 +448,7 @@ export function AddEventForm({
     status: "idle" | "saving" | "saved" | "error";
     message?: string;
   }>({ status: "idle" });
+  useEffect(() => setType(initialType ?? null), [initialType]);
   const allocationTravelers =
     participantChoice.scope === "everyone"
       ? travelers
@@ -1086,6 +1093,7 @@ export function AddEventForm({
   };
   const selectType = (next: TimelineEventType) => {
     setType(next);
+    onTypeChange?.(next);
     setLegKeys([crypto.randomUUID()]);
     setJourneyScope("domestic");
     setJourneyStructure("direct");
@@ -1097,7 +1105,12 @@ export function AddEventForm({
   };
   if (saved)
     return (
-      <ModalSheet eyebrow={trip.title} title="Added to timeline" onClose={onClose}>
+      <ModalSheet
+        eyebrow={trip.title}
+        title="Added to timeline"
+        onClose={onClose}
+        manageHistory={!routeBacked}
+      >
         <div className="mt-6 rounded-[2rem] border border-success/30 bg-success/10 p-6 text-center">
           <span className="mx-auto grid size-14 place-items-center rounded-full bg-success text-white">
             <Check className="size-6" />
@@ -1194,6 +1207,7 @@ export function AddEventForm({
         type ? `Add ${choices.find((choice) => choice.type === type)?.label}` : "Add to timeline"
       }
       onClose={onClose}
+      manageHistory={!routeBacked}
     >
       {!type ? (
         <>
@@ -1227,7 +1241,10 @@ export function AddEventForm({
         <form className="mt-5 space-y-5" onSubmit={submit}>
           <button
             type="button"
-            onClick={() => setType(null)}
+            onClick={() => {
+              setType(null);
+              onTypeChange?.(null);
+            }}
             className="inline-flex items-center gap-1 text-sm font-extrabold text-brand"
           >
             <ChevronLeft className="size-4" /> Change event type

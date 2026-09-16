@@ -11,6 +11,7 @@ export type TripNavigationIntent = {
 export type TripReturnContext = {
   tripId: string;
   view: TripView;
+  path?: string;
 };
 
 type TripEntry = {
@@ -22,6 +23,7 @@ type NavigationEnvelope = {
   intent?: TripNavigationIntent;
   returnTo?: TripReturnContext;
   entry?: TripEntry;
+  routeModal?: { tripId: string };
 };
 
 const navigationKey = "__tripVaultNavigation";
@@ -51,9 +53,45 @@ function intentToken() {
   return `${Date.now().toString(36)}-${intentSequence.toString(36)}`;
 }
 
-export function tripChildNavigationState(state: unknown, tripId: string, view: TripView) {
+function safeTripPath(path: unknown, tripId: string) {
+  if (typeof path !== "string") return undefined;
+  const prefix = `/trips/${encodeURIComponent(tripId)}`;
+  return path === prefix || path.startsWith(`${prefix}?`) || path.startsWith(`${prefix}/`)
+    ? path
+    : undefined;
+}
+
+export function tripChildNavigationState(
+  state: unknown,
+  tripId: string,
+  view: TripView,
+  returnPath?: string
+) {
   const current = readEnvelope(state);
-  return withEnvelope(state, { ...current, returnTo: { tripId, view }, intent: undefined });
+  const existingReturn =
+    current.returnTo?.tripId === tripId && isTripView(current.returnTo.view)
+      ? current.returnTo
+      : undefined;
+  const path = safeTripPath(returnPath, tripId);
+  return withEnvelope(state, {
+    ...current,
+    returnTo: path ? { tripId, view, path } : (existingReturn ?? { tripId, view }),
+    intent: undefined
+  });
+}
+
+export function tripRouteModalNavigationState(state: unknown, tripId: string, view: TripView) {
+  const current = readEnvelope(state);
+  return withEnvelope(state, {
+    ...current,
+    returnTo: { tripId, view },
+    routeModal: { tripId },
+    intent: undefined
+  });
+}
+
+export function isTripRouteModal(state: unknown, tripId: string) {
+  return readEnvelope(state).routeModal?.tripId === tripId;
 }
 
 export function tripIntentNavigationState(
@@ -89,7 +127,9 @@ export function readTripNavigationIntent(
 
 export function readTripReturnContext(state: unknown, tripId: string): TripReturnContext | null {
   const context = readEnvelope(state).returnTo;
-  return context?.tripId === tripId && isTripView(context.view) ? context : null;
+  if (context?.tripId !== tripId || !isTripView(context.view)) return null;
+  const path = safeTripPath(context.path, tripId);
+  return path ? { ...context, path } : { tripId, view: context.view };
 }
 
 export function readTripEntry(state: unknown, tripId: string): TripEntry | null {
@@ -120,8 +160,9 @@ export function tripReturnHref(tripId: string, view: TripView) {
 export function tripReturnNavigation(state: unknown, tripId: string) {
   const context = readTripReturnContext(state, tripId) ?? { tripId, view: "timeline" as const };
   return {
-    href: tripReturnHref(tripId, context.view),
+    href: context.path ?? tripReturnHref(tripId, context.view),
     state: tripIntentNavigationState(state, tripId, "restore", { view: context.view }),
-    view: context.view
+    view: context.view,
+    historyBack: Boolean(context.path)
   };
 }

@@ -64,12 +64,14 @@ export function EventDocuments({
   item,
   canEdit,
   onUpload,
-  travelerId
+  travelerId,
+  navigationState
 }: {
   item: ItineraryItem;
   canEdit: boolean;
   onUpload?: () => void;
   travelerId?: string | null;
+  navigationState?: unknown;
 }) {
   const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
@@ -174,6 +176,7 @@ export function EventDocuments({
                 <Link
                   className="tap-target min-w-0 flex-1 px-3 py-2.5 text-xs font-bold"
                   to={`/trips/${item.trip_id}/documents/${link.document_id}`}
+                  state={navigationState}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <FileText className="size-3.5 shrink-0 text-brand" />

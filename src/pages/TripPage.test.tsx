@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ItineraryItem, Trip, TripCost } from "../features/trips/types";
-import { tripIntentNavigationState } from "../features/trips/navigation";
+import { tripIntentNavigationState, tripReturnNavigation } from "../features/trips/navigation";
+import { TripBackLink } from "../components/TripBackLink";
 import { CostDetailsSheet, TripExpensesContent } from "../features/trips/TripExpenses";
 import type {
   Booking,
@@ -65,8 +66,14 @@ vi.mock("../components/ModalSheet", () => ({
 vi.mock("../features/readiness/OfflinePackControl", () => ({ OfflinePackControl: () => null }));
 vi.mock("../features/timeline/AddEventForm", () => ({
   AddEventForm: ({
+    initialType,
+    onClose,
+    onTypeChange,
     onAddDocument
   }: {
+    initialType?: string | null;
+    onClose: () => void;
+    onTypeChange?: (type: "flight" | null) => void;
     onAddDocument?: (
       saved: {
         title: string;
@@ -78,7 +85,13 @@ vi.mock("../features/timeline/AddEventForm", () => ({
       handoff?: { file?: File; kind?: "flight_ticket" }
     ) => void | Promise<void>;
   }) => (
-    <section aria-label="Add event test form">
+    <section aria-label="Add event test form" data-event-type={initialType ?? "choose"}>
+      <button type="button" onClick={() => onTypeChange?.("flight")}>
+        Choose flight type for test
+      </button>
+      <button type="button" onClick={onClose}>
+        Close add event route
+      </button>
       <button
         type="button"
         onClick={() =>
@@ -132,7 +145,17 @@ vi.mock("../features/trips/api", async () => {
   };
 });
 vi.mock("../features/workspace/EventDocuments", () => ({
-  EventDocuments: () => null,
+  EventDocuments: ({
+    item,
+    navigationState
+  }: {
+    item: ItineraryItem;
+    navigationState?: unknown;
+  }) => (
+    <Link to={`/trips/${item.trip_id}/documents/event-document`} state={navigationState}>
+      Open event document
+    </Link>
+  ),
   EventDocumentShortcut: ({
     item,
     travelerId
@@ -307,6 +330,21 @@ const ownerTrip: Trip = {
   created_at: "2026-09-01T00:00:00.000Z",
   updated_at: "2026-09-01T00:00:00.000Z"
 };
+
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{`${location.pathname}${location.search}`}</output>;
+}
+
+function DocumentRouteProbe() {
+  const location = useLocation();
+  const navigation = tripReturnNavigation(location.state, "trip-1");
+  return (
+    <section aria-label="Document route">
+      <TripBackLink {...navigation} />
+    </section>
+  );
+}
 
 function renderDetails({
   item = activity,
@@ -956,6 +994,97 @@ describe("timeline event primary document", () => {
 
     await userEvent.click(cardTarget);
     expect(screen.getByRole("region", { name: "Museum visit" })).toBeInTheDocument();
+  });
+
+  it("restores the event modal after a document and then returns to the timeline", async () => {
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listItinerary.mockResolvedValue([activity]);
+    mocks.listTravelers.mockResolvedValue(expenseTravelers);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1"]}>
+          <LocationProbe />
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+            <Route path="/trips/:tripId/documents/:documentId" element={<DocumentRouteProbe />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Open details for Museum visit" })
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1?event=activity-1");
+
+    const eventModal = screen.getByRole("region", { name: "Museum visit" });
+    await userEvent.click(within(eventModal).getByRole("link", { name: "Open event document" }));
+    expect(screen.getByRole("region", { name: "Document route" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(await screen.findByRole("region", { name: "Museum visit" })).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1?event=activity-1");
+
+    await userEvent.click(
+      within(screen.getByRole("region", { name: "Museum visit" })).getByRole("button", {
+        name: "Back"
+      })
+    );
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1"));
+    expect(screen.queryByRole("region", { name: "Museum visit" })).not.toBeInTheDocument();
+  });
+});
+
+describe("route-backed add event", () => {
+  it("puts the selected event type in the URL and closes back to the trip", async () => {
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listItinerary.mockResolvedValue([]);
+    mocks.listTravelers.mockResolvedValue(expenseTravelers);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1"]}>
+          <LocationProbe />
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add event" }));
+    expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1?add=event");
+    await userEvent.click(screen.getByRole("button", { name: "Choose flight type for test" }));
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/trips/trip-1?add=event&eventType=flight"
+    );
+    expect(screen.getByRole("region", { name: "Add event test form" })).toHaveAttribute(
+      "data-event-type",
+      "flight"
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Close add event route" }));
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1"));
+    expect(screen.queryByRole("region", { name: "Add event test form" })).not.toBeInTheDocument();
   });
 });
 

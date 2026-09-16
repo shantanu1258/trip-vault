@@ -93,11 +93,14 @@ export function ModalHistoryProvider({ children }: { children: ReactNode }) {
   return <ModalHistoryContext.Provider value={register}>{children}</ModalHistoryContext.Provider>;
 }
 
-export function useModalHistory(onClose: () => void) {
+export function useModalHistory(onClose: () => void, enabled = true) {
   const register = useContext(ModalHistoryContext);
   const closeRef = useRef(onClose);
   useLayoutEffect(() => {
     closeRef.current = onClose;
   }, [onClose]);
-  useLayoutEffect(() => register?.(() => closeRef.current()), [register]);
+  useLayoutEffect(
+    () => (enabled ? register?.(() => closeRef.current()) : undefined),
+    [enabled, register]
+  );
 }

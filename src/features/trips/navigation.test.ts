@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   consumeTripNavigationIntent,
+  isTripRouteModal,
   isTripNavigationIntentConsumed,
   readTripEntry,
   readTripNavigationIntent,
@@ -8,6 +9,7 @@ import {
   tripChildNavigationState,
   tripEntryNavigationState,
   tripIntentNavigationState,
+  tripRouteModalNavigationState,
   tripReturnHref,
   tripReturnNavigation
 } from "./navigation";
@@ -60,5 +62,41 @@ describe("trip navigation context", () => {
   it("builds stable return URLs for both trip views", () => {
     expect(tripReturnHref("trip-1", "timeline")).toBe("/trips/trip-1");
     expect(tripReturnHref("trip-1", "details")).toBe("/trips/trip-1?view=details");
+  });
+
+  it("returns child pages to the exact route that opened them", () => {
+    const eventPath = "/trips/trip-1?event=event-1";
+    const childState = tripChildNavigationState(null, "trip-1", "timeline", eventPath);
+
+    expect(tripReturnNavigation(childState, "trip-1")).toMatchObject({
+      href: eventPath,
+      view: "timeline",
+      historyBack: true
+    });
+  });
+
+  it("rejects a return path outside the current trip", () => {
+    const childState = tripChildNavigationState(
+      null,
+      "trip-1",
+      "timeline",
+      "/trips/another-trip?event=event-1"
+    );
+
+    expect(tripReturnNavigation(childState, "trip-1")).toMatchObject({
+      href: "/trips/trip-1",
+      historyBack: false
+    });
+  });
+
+  it("marks route-backed modal entries without losing their trip return view", () => {
+    const state = tripRouteModalNavigationState(null, "trip-1", "details");
+
+    expect(isTripRouteModal(state, "trip-1")).toBe(true);
+    expect(isTripRouteModal(state, "trip-2")).toBe(false);
+    expect(readTripReturnContext(state, "trip-1")).toEqual({
+      tripId: "trip-1",
+      view: "details"
+    });
   });
 });

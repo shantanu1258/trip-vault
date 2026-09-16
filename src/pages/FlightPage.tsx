@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Armchair,
-  ArrowLeft,
   Clock3,
   FileText,
   FileUp,
@@ -16,6 +15,7 @@ import {
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
+import { TripBackLink } from "../components/TripBackLink";
 import { DocumentVisibilityBadge } from "../components/DocumentVisibilityBadge";
 import { ModalSheet } from "../components/ModalSheet";
 import { ErrorCard, LoadingCard } from "../components/TripUi";
@@ -67,7 +67,8 @@ type FlightEditTarget =
 
 export function FlightPage() {
   const { tripId = "", flightLegId = "" } = useParams();
-  const locationState = useLocation().state;
+  const currentLocation = useLocation();
+  const locationState = currentLocation.state;
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [editTarget, setEditTarget] = useState<FlightEditTarget>("status");
@@ -178,7 +179,8 @@ export function FlightPage() {
   const nestedNavigationState = tripChildNavigationState(
     locationState,
     tripId,
-    returnNavigation.view
+    returnNavigation.view,
+    `${currentLocation.pathname}${currentLocation.search}`
   );
   const openEditor = (target: FlightEditTarget) => {
     setEditTarget(target);
@@ -280,13 +282,7 @@ export function FlightPage() {
   return (
     <AppShell>
       <div className="mx-auto min-w-0 max-w-4xl">
-        <Link
-          className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted"
-          to={returnNavigation.href}
-          state={returnNavigation.state}
-        >
-          <ArrowLeft className="size-4" /> Back to trip
-        </Link>
+        <TripBackLink {...returnNavigation} />
         {flightQuery.isLoading && <LoadingCard label="Loading flight" />}
         {flightQuery.error && <ErrorCard error={flightQuery.error} />}
         {flight && (
