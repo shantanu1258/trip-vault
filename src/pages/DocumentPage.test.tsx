@@ -87,9 +87,11 @@ describe("DocumentPage", () => {
     mocks.listDocumentVersions.mockResolvedValue([]);
     mocks.listDocumentAccessUserIds.mockResolvedValue([]);
     mocks.updateDocumentDetails.mockImplementation(
-      async ({ document, title, assignmentMode, travelerIds }) => ({
+      async ({ document, title, category, purpose, assignmentMode, travelerIds }) => ({
         ...document,
         title,
+        category,
+        purpose,
         assignment_mode: assignmentMode,
         traveler_ids: travelerIds
       })
@@ -224,6 +226,7 @@ describe("DocumentPage", () => {
       await screen.findByRole("button", { name: "Document information and actions" })
     );
     await user.click(await screen.findByRole("button", { name: "Edit" }));
+    await user.selectOptions(screen.getByLabelText("Document type"), "activity_ticket");
     const title = screen.getByLabelText("Title");
     await user.clear(title);
     await user.type(title, "Dubai flight tickets");
@@ -233,12 +236,14 @@ describe("DocumentPage", () => {
     expect(mocks.updateDocumentDetails).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Dubai flight tickets",
+        category: "activity",
+        purpose: "activity_ticket",
         assignmentMode: "selected",
         travelerIds: ["traveler-1", "traveler-2"]
       })
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Document title and travelers updated"
+      "Document type, title, and travelers updated"
     );
   });
 });

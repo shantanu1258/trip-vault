@@ -2489,10 +2489,13 @@ export async function updateDocumentVisibility(input: {
 export async function updateDocumentDetails(input: {
   document: VaultDocument;
   title: string;
+  category: DocumentCategory;
+  purpose: DocumentPurpose;
   assignmentMode: DocumentAssignmentMode;
   travelerIds?: string[];
 }) {
-  if (!navigator.onLine) throw new Error("Connect to change this document's title or travelers.");
+  if (!navigator.onLine)
+    throw new Error("Connect to change this document's type, title, or travelers.");
   const actor = await userId();
   const title = input.title.trim();
   if (!title) throw new Error("Add a document title.");
@@ -2509,6 +2512,8 @@ export async function updateDocumentDetails(input: {
       : [];
   const patch = {
     title,
+    category: input.category,
+    purpose: input.purpose,
     assignment_mode: input.assignmentMode,
     traveler_id: travelerIds.length === 1 ? travelerIds[0] : null
   };
@@ -2548,6 +2553,8 @@ export async function updateDocumentDetails(input: {
         .from("documents")
         .update({
           title: input.document.title,
+          category: input.document.category,
+          purpose: input.document.purpose,
           assignment_mode: previousMode,
           traveler_id: previousTravelerIds.length === 1 ? previousTravelerIds[0] : null
         })

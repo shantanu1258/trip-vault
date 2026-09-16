@@ -26,7 +26,14 @@ import { useConfirmDialog } from "../components/ConfirmDialogProvider";
 import { ErrorCard, LoadingCard } from "../components/TripUi";
 import { localProfileId } from "../features/sync/localSync";
 import { tripReturnNavigation } from "../features/trips/navigation";
-import { documentAssignmentLabel, documentPurposeLabel } from "../features/workspace/documentModel";
+import {
+  documentAssignmentLabel,
+  documentKind,
+  documentKindFor,
+  documentKinds,
+  documentPurposeLabel,
+  type DocumentKind
+} from "../features/workspace/documentModel";
 import {
   archiveDocument,
   downloadDocumentVersion,
@@ -83,6 +90,7 @@ export function DocumentPage() {
   const [showInfo, setShowInfo] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+  const [kindDraft, setKindDraft] = useState<DocumentKind>("other");
   const [assignmentModeDraft, setAssignmentModeDraft] = useState<DocumentAssignmentMode>("shared");
   const [selectedTravelerIds, setSelectedTravelerIds] = useState<string[]>([]);
   const [editingVisibility, setEditingVisibility] = useState(false);
@@ -133,16 +141,20 @@ export function DocumentPage() {
       updateDocumentDetails({
         document: document!,
         title: titleDraft,
+        category: documentKind(kindDraft).category,
+        purpose: documentKind(kindDraft).purpose,
         assignmentMode: assignmentModeDraft,
         travelerIds: selectedTravelerIds
       }),
     onSuccess: async (updated) => {
       queryClient.setQueryData(["document", documentId], updated);
       setEditingDetails(false);
-      setFileMessage("Document title and travelers updated.");
+      setFileMessage("Document type, title, and travelers updated.");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["documents", tripId] }),
-        queryClient.invalidateQueries({ queryKey: ["documents"] })
+        queryClient.invalidateQueries({ queryKey: ["documents"] }),
+        queryClient.invalidateQueries({ queryKey: ["event-documents"] }),
+        queryClient.invalidateQueries({ queryKey: ["trip-event-documents", tripId] })
       ]);
     }
   });
@@ -177,6 +189,7 @@ export function DocumentPage() {
     if (!document) return;
     setVisibilityDraft(document.visibility);
     setTitleDraft(document.title);
+    setKindDraft(documentKindFor(document));
     setAssignmentModeDraft(
       document.assignment_mode ?? (document.traveler_id ? "selected" : "shared")
     );
@@ -394,6 +407,10 @@ export function DocumentPage() {
                     </dd>
                   </div>
                   <div>
+                    <dt className="text-xs font-bold text-muted">Type</dt>
+                    <dd className="mt-1 font-bold">{documentPurposeLabel(document.purpose)}</dd>
+                  </div>
+                  <div>
                     <dt className="text-xs font-bold text-muted">For</dt>
                     <dd className="mt-1 font-bold">
                       {documentAssignmentLabel(document, travelerNames)}
@@ -430,8 +447,8 @@ export function DocumentPage() {
                 </dl>
                 {canManage && (
                   <ActionPanel
-                    title="Document title and travelers"
-                    description="Correct the generated name or reassign who this file is for."
+                    title="Document type, title and travelers"
+                    description="Correct what this file is, its generated name, or who it is for."
                     editing={editingDetails}
                     onToggle={() => {
                       setEditingDetails((value) => !value);
@@ -446,10 +463,31 @@ export function DocumentPage() {
                       }}
                     >
                       <label className="form-label">
-                        Title
+                        <span>
+                          <span className="required-mark mr-0.5 text-danger">*</span>Document type
+                        </span>
+                        <select
+                          required
+                          aria-label="Document type"
+                          className="form-input"
+                          value={kindDraft}
+                          onChange={(event) => setKindDraft(event.target.value as DocumentKind)}
+                        >
+                          {documentKinds.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label} — {option.hint}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="form-label">
+                        <span>
+                          <span className="required-mark mr-0.5 text-danger">*</span>Title
+                        </span>
                         <input
                           autoFocus
                           required
+                          aria-label="Title"
                           className="form-input"
                           value={titleDraft}
                           onChange={(event) => setTitleDraft(event.target.value)}

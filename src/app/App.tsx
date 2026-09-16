@@ -36,6 +36,7 @@ export function App() {
       <Route path="/admin/airlines" element={<AdminPage section="airlines" />} />
       <Route path="/admin/airports" element={<AdminPage section="airports" />} />
       <Route path="/admin/vendors" element={<AdminPage section="vendors" />} />
+      <Route path="/admin/operators" element={<AdminPage section="operators" />} />
       <Route path="/admin/suggestions" element={<AdminPage section="suggestions" />} />
       <Route path="/admin/defaults" element={<AdminPage section="defaults" />} />
       <Route path="/admin/appearance" element={<AdminPage section="appearance" />} />

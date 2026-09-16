@@ -136,13 +136,13 @@ export function EventDocuments({
 
   return (
     <div className="mt-4 border-t border-line pt-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="flex items-center gap-2 text-xs font-bold text-muted">
           <Paperclip className="size-4" /> {visibleLinks.length} document
           {visibleLinks.length === 1 ? "" : "s"}
         </p>
         {canEdit && (
-          <div className="flex items-center">
+          <div className="flex flex-wrap items-center gap-1">
             {onUpload && (
               <button
                 type="button"
@@ -171,30 +171,35 @@ export function EventDocuments({
             return (
               <div
                 key={link.document_id}
-                className="flex min-w-0 items-center rounded-xl border border-line bg-surface/70"
+                className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface/70"
               >
                 <Link
-                  className="tap-target min-w-0 flex-1 px-3 py-2.5 text-xs font-bold"
+                  className="tap-target block min-w-0 flex-1 px-3 py-3 text-xs font-bold"
                   to={`/trips/${item.trip_id}/documents/${link.document_id}`}
                   state={navigationState}
                 >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <FileText className="size-3.5 shrink-0 text-brand" />
-                    <span className="min-w-0 flex-1 truncate">
+                  <span className="flex min-w-0 items-start gap-2">
+                    <FileText className="mt-0.5 size-3.5 shrink-0 text-brand" />
+                    <span className="min-w-0 flex-1 break-words leading-5 [overflow-wrap:anywhere]">
                       {link.label || link.document.title}
+                    </span>
+                  </span>
+                  <span className="mt-2 flex min-w-0 flex-wrap items-center gap-2 pl-5">
+                    <span className="text-[.65rem] font-medium text-muted">
+                      {documentPurposeLabel(link.document.purpose)}
+                      {link.inherited ? " · booking document" : ""}
+                      {link.document.sync_state === "queued"
+                        ? " · saved on device, cloud pending"
+                        : ""}
                     </span>
                     <DocumentVisibilityBadge visibility={link.document.visibility} />
                   </span>
-                  <span className="mt-1 block pl-5 text-[.65rem] font-medium text-muted">
-                    {documentPurposeLabel(link.document.purpose)}
-                    {link.inherited ? " · booking document" : ""}
-                    {link.document.sync_state === "queued"
-                      ? " · saved on device, cloud pending"
-                      : ""}
-                  </span>
                 </Link>
                 {canEdit && !link.inherited && (
-                  <div className="flex shrink-0">
+                  <div
+                    className="flex shrink-0 justify-end border-t border-line"
+                    aria-label={`Actions for ${link.document.title}`}
+                  >
                     <button
                       disabled={explicitIndex === 0 || reorderMutation.isPending}
                       type="button"
@@ -206,7 +211,7 @@ export function EventDocuments({
                         ];
                         reorderMutation.mutate(ids);
                       }}
-                      className="tap-target grid min-h-9 min-w-8 place-items-center border-l border-line text-muted disabled:opacity-30"
+                      className="tap-target grid min-h-10 min-w-11 place-items-center border-l border-line text-muted disabled:opacity-30"
                       aria-label={`Move ${link.document.title} earlier`}
                     >
                       <ArrowUp className="size-3" />
@@ -224,7 +229,7 @@ export function EventDocuments({
                         ];
                         reorderMutation.mutate(ids);
                       }}
-                      className="tap-target grid min-h-9 min-w-8 place-items-center border-l border-line text-muted disabled:opacity-30"
+                      className="tap-target grid min-h-10 min-w-11 place-items-center border-l border-line text-muted disabled:opacity-30"
                       aria-label={`Move ${link.document.title} later`}
                     >
                       <ArrowDown className="size-3" />
@@ -242,7 +247,7 @@ export function EventDocuments({
                         )
                           unlinkMutation.mutate(link.document_id);
                       }}
-                      className="tap-target grid min-h-9 min-w-8 place-items-center border-l border-line text-muted hover:text-danger"
+                      className="tap-target grid min-h-10 min-w-11 place-items-center border-l border-line text-muted hover:text-danger"
                       aria-label={`Unlink ${link.document.title}`}
                     >
                       <Trash2 className="size-3.5" />
@@ -290,8 +295,8 @@ export function EventDocuments({
                       className="size-4"
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <strong className="min-w-0 flex-1 truncate text-sm">
+                      <span className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center">
+                        <strong className="min-w-0 flex-1 break-words text-sm [overflow-wrap:anywhere]">
                           {document.title}
                         </strong>
                         <DocumentVisibilityBadge visibility={document.visibility} />

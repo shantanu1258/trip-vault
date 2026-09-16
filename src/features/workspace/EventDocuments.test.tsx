@@ -6,19 +6,22 @@ import type { ItineraryItem } from "../trips/types";
 import type { EventDocumentLink, VaultDocument } from "./types";
 
 const mocks = vi.hoisted(() => ({
-  listEventDocumentLinks: vi.fn(),
-  listVaultDocuments: vi.fn()
-}));
-
-vi.mock("./api", () => ({
   attachDocumentsToEvent: vi.fn(),
-  listEventDocumentLinks: mocks.listEventDocumentLinks,
-  listVaultDocuments: mocks.listVaultDocuments,
+  listEventDocumentLinks: vi.fn(),
+  listVaultDocuments: vi.fn(),
   reorderEventDocuments: vi.fn(),
   unlinkDocumentFromEvent: vi.fn()
 }));
 
-import { EventDocumentShortcut } from "./EventDocuments";
+vi.mock("./api", () => ({
+  attachDocumentsToEvent: mocks.attachDocumentsToEvent,
+  listEventDocumentLinks: mocks.listEventDocumentLinks,
+  listVaultDocuments: mocks.listVaultDocuments,
+  reorderEventDocuments: mocks.reorderEventDocuments,
+  unlinkDocumentFromEvent: mocks.unlinkDocumentFromEvent
+}));
+
+import { EventDocuments, EventDocumentShortcut } from "./EventDocuments";
 
 const item: ItineraryItem = {
   id: "event-1",
@@ -83,6 +86,17 @@ function renderShortcut(travelerId?: string) {
   );
 }
 
+function renderDocuments() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <EventDocuments item={item} canEdit />
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
 describe("timeline primary document shortcut", () => {
   beforeEach(() => {
     mocks.listEventDocumentLinks.mockReset().mockResolvedValue([]);
@@ -139,5 +153,28 @@ describe("timeline primary document shortcut", () => {
     expect(
       await screen.findByRole("link", { name: "Open Ticket: Shared operator ticket" })
     ).toHaveAttribute("href", "/trips/trip-1/documents/booking-ticket");
+  });
+});
+
+describe("event document cards", () => {
+  beforeEach(() => {
+    mocks.listEventDocumentLinks.mockReset().mockResolvedValue([]);
+    mocks.listVaultDocuments.mockReset().mockResolvedValue([]);
+  });
+
+  it("gives a long document name its own wrapping row above visibility and actions", async () => {
+    const longTitle =
+      "Universal Studios and Oceanarium family activity booking confirmation for everyone";
+    mocks.listEventDocumentLinks.mockResolvedValue([
+      link(document({ id: "long-document", title: longTitle }), 0)
+    ]);
+
+    renderDocuments();
+
+    const title = await screen.findByText(longTitle);
+    expect(title).toHaveClass("break-words", "[overflow-wrap:anywhere]");
+    expect(title).not.toHaveClass("truncate");
+    expect(title.closest("a")?.parentElement).toHaveClass("flex-col", "overflow-hidden");
+    expect(screen.getByLabelText(`Actions for ${longTitle}`)).toHaveClass("border-t");
   });
 });

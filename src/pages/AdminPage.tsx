@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  BusFront,
   CheckCircle2,
   Database,
   History,
@@ -14,14 +15,13 @@ import {
   ServerOff,
   ShieldCheck,
   Store,
-  Trash2,
-  X
+  Trash2
 } from "lucide-react";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
-import { Brand } from "../components/Brand";
-import { ThemeToggle } from "../components/ThemeToggle";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useConfirmDialog } from "../components/ConfirmDialogProvider";
 import { TimeZoneAutocomplete } from "../components/TimeZoneAutocomplete";
+import { ProgressiveList } from "../components/ProgressiveList";
 import {
   createConfigDraft,
   defaultDarkTokens,
@@ -55,79 +55,105 @@ import {
   validateCatalogAssetPath,
   validateThemeTokens
 } from "../features/admin/validation";
+import {
+  mergeAdminAirlines,
+  mergeAdminAirports,
+  mergeAdminVendors,
+  type AdminAirlineEntry,
+  type AdminAirportEntry,
+  type AdminVendorEntry,
+  type CatalogEntrySource
+} from "../features/admin/catalogEntries";
+import {
+  AdminField,
+  AdminCatalogSearch,
+  AdminFormIntro,
+  AdminPageHeader,
+  AdminQueryState,
+  AdminShell,
+  type AdminNavigationItem
+} from "../features/admin/AdminUi";
 import { getErrorMessage } from "../features/trips/presentation";
 import { isValidTimeZone } from "../features/trips/validation";
 import { isSupabaseConfigured, supabase } from "../lib/supabase/client";
+import starterJourneyOperators from "../features/metadata/starter-journey-operators.json";
 
 export type AdminSection =
   | "overview"
   | "airlines"
   | "airports"
   | "vendors"
+  | "operators"
   | "suggestions"
   | "defaults"
   | "appearance"
   | "releases";
 
-const navigation: { section: AdminSection; label: string; icon: typeof Plane; path: string }[] = [
-  { section: "overview", label: "Overview", icon: ShieldCheck, path: "/admin" },
-  { section: "airlines", label: "Airlines", icon: Plane, path: "/admin/airlines" },
-  { section: "airports", label: "Airports", icon: Database, path: "/admin/airports" },
-  { section: "vendors", label: "Booking vendors", icon: Store, path: "/admin/vendors" },
-  { section: "suggestions", label: "Suggestions", icon: Inbox, path: "/admin/suggestions" },
-  { section: "defaults", label: "Defaults", icon: Save, path: "/admin/defaults" },
-  { section: "appearance", label: "Appearance", icon: Palette, path: "/admin/appearance" },
-  { section: "releases", label: "Releases", icon: History, path: "/admin/releases" }
+const navigation: Array<AdminNavigationItem & { section: AdminSection }> = [
+  {
+    section: "overview",
+    label: "Overview",
+    description: "Start a draft and understand what is live.",
+    icon: ShieldCheck,
+    path: "/admin"
+  },
+  {
+    section: "airlines",
+    label: "Airlines",
+    description: "Names, codes, links, and public artwork.",
+    icon: Plane,
+    path: "/admin/airlines"
+  },
+  {
+    section: "airports",
+    label: "Airports",
+    description: "Airport codes, cities, coordinates, and time zones.",
+    icon: Database,
+    path: "/admin/airports"
+  },
+  {
+    section: "vendors",
+    label: "Booking vendors",
+    description: "Websites and agents used to make bookings.",
+    icon: Store,
+    path: "/admin/vendors"
+  },
+  {
+    section: "operators",
+    label: "Journey operators",
+    description: "Train, bus, ferry, and cab providers shown in journey forms.",
+    icon: BusFront,
+    path: "/admin/operators"
+  },
+  {
+    section: "suggestions",
+    label: "Suggestions",
+    description: "Review new public metadata entered through Other.",
+    icon: Inbox,
+    path: "/admin/suggestions"
+  },
+  {
+    section: "defaults",
+    label: "Defaults",
+    description: "Safe JSON defaults used by supported app features.",
+    icon: Save,
+    path: "/admin/defaults"
+  },
+  {
+    section: "appearance",
+    label: "Appearance",
+    description: "Light and dark semantic color palettes.",
+    icon: Palette,
+    path: "/admin/appearance"
+  },
+  {
+    section: "releases",
+    label: "Releases",
+    description: "Publish a draft or inspect audited history.",
+    icon: History,
+    path: "/admin/releases"
+  }
 ];
-
-function AdminShell({ online, children }: { online: boolean; children: ReactNode }) {
-  return (
-    <div className="min-h-dvh bg-canvas text-ink">
-      <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-8">
-          <Brand />
-          <div className="flex items-center gap-2">
-            <span className="hidden rounded-full bg-brand-soft px-3 py-2 text-xs font-bold text-brand sm:inline">
-              Administrator
-            </span>
-            <ThemeToggle />
-          </div>
-        </div>
-      </header>
-      <div className="mx-auto grid max-w-7xl lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8 lg:px-8">
-        <aside className="py-5 lg:py-8">
-          <nav className="flex gap-2 overflow-auto lg:block lg:space-y-1">
-            {navigation.map(({ label, icon: Icon, path }) => (
-              <NavLink
-                end={path === "/admin"}
-                key={path}
-                to={path}
-                className={({ isActive }) =>
-                  `tap-target flex shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-bold lg:w-full ${isActive ? "bg-brand text-surface" : "text-muted hover:bg-surface"}`
-                }
-              >
-                <Icon className="size-4" />
-                {label}
-              </NavLink>
-            ))}
-          </nav>
-        </aside>
-        <main className="min-w-0 px-5 pb-12 lg:px-0 lg:pt-8">
-          {!online && (
-            <div className="mb-5 flex gap-3 rounded-2xl border border-warning/30 bg-warning/10 p-4">
-              <ServerOff className="size-5 shrink-0 text-warning" />
-              <div>
-                <p className="font-extrabold">Read-only while offline</p>
-                <p className="mt-1 text-sm text-muted">Admin changes are never queued.</p>
-              </div>
-            </div>
-          )}
-          {children}
-        </main>
-      </div>
-    </div>
-  );
-}
 
 export function AdminPage({ section = "overview" }: { section?: AdminSection }) {
   const navigate = useNavigate();
@@ -181,7 +207,7 @@ export function AdminPage({ section = "overview" }: { section?: AdminSection }) 
       </div>
     );
   return (
-    <AdminShell online={online}>
+    <AdminShell online={online} navigation={navigation}>
       <AdminContent section={section} online={online} />
     </AdminShell>
   );
@@ -210,6 +236,7 @@ function AdminContent({ section, online }: { section: AdminSection; online: bool
     );
   if (section === "releases") return <Releases online={online} releases={releases.data ?? []} />;
   if (section === "suggestions") return <Suggestions online={online} />;
+  if (section === "operators") return <JourneyOperators />;
   if (!editableRelease)
     return (
       <section className="surface-card p-7">
@@ -222,27 +249,67 @@ function AdminContent({ section, online }: { section: AdminSection; online: bool
         </Link>
       </section>
     );
-  if (section === "airlines") return <Airlines online={online} release={editableRelease} />;
-  if (section === "airports") return <Airports online={online} release={editableRelease} />;
-  if (section === "vendors") return <Vendors online={online} release={editableRelease} />;
-  if (section === "defaults") return <Defaults online={online} release={editableRelease} />;
-  return <Appearance online={online} release={editableRelease} />;
-}
-
-function Header({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
+  const content =
+    section === "airlines" ? (
+      <Airlines online={online} release={editableRelease} />
+    ) : section === "airports" ? (
+      <Airports online={online} release={editableRelease} />
+    ) : section === "vendors" ? (
+      <Vendors online={online} release={editableRelease} />
+    ) : section === "defaults" ? (
+      <Defaults online={online} release={editableRelease} />
+    ) : (
+      <Appearance online={online} release={editableRelease} />
+    );
   return (
-    <header>
-      <p className="eyebrow">{eyebrow}</p>
-      <h1 className="mt-2 font-display text-3xl font-black tracking-[-.04em]">{title}</h1>
-      <p className="mt-2 text-sm leading-6 text-muted">{text}</p>
-    </header>
+    <>
+      <ReleaseContext release={editableRelease} />
+      {content}
+    </>
   );
 }
+
 function AdminError({ error }: { error: unknown }) {
   return (
     <p role="alert" className="rounded-2xl bg-danger/10 p-4 text-sm font-bold text-danger">
       {getErrorMessage(error)}
     </p>
+  );
+}
+
+function revealAdminEditor() {
+  window.requestAnimationFrame(() => {
+    const editor = document.querySelector<HTMLElement>("[data-admin-editor]");
+    if (typeof editor?.scrollIntoView !== "function") return;
+    editor.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  });
+}
+
+function ReleaseContext({ release }: { release: ConfigRelease }) {
+  const editable = release.status === "draft";
+  return (
+    <div
+      className={`mb-5 flex flex-col gap-3 rounded-2xl border p-4 text-sm sm:flex-row sm:items-center sm:justify-between ${editable ? "border-success/30 bg-success/10" : "border-warning/30 bg-warning/10"}`}
+    >
+      <div>
+        <strong className={editable ? "text-success" : "text-warning"}>
+          {editable ? "Editing the open draft" : "Viewing the published release"}
+        </strong>
+        <p className="mt-1 text-xs leading-5 text-muted">
+          {editable
+            ? "Saved changes remain private until the full release is published."
+            : "Create a draft from Overview before changing this configuration."}
+        </p>
+      </div>
+      {!editable && (
+        <Link to="/admin" className="secondary-button shrink-0 justify-center">
+          Go to overview
+        </Link>
+      )}
+    </div>
   );
 }
 
@@ -265,7 +332,7 @@ function Overview({
   });
   return (
     <>
-      <Header
+      <AdminPageHeader
         eyebrow="Application configuration"
         title="Admin overview"
         text="Configuration authority is separate from trip access. Every change is online-only and release-based."
@@ -286,16 +353,22 @@ function Overview({
         </p>
         {!draft && (
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-            <input
-              className="form-input mt-0"
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder="What will this release change?"
-            />
+            <AdminField
+              className="flex-1"
+              label="Draft summary"
+              hint="A short description helps identify this release later."
+            >
+              <input
+                className="form-input"
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="For example: add India travel catalogs"
+              />
+            </AdminField>
             <button
               disabled={!online || mutation.isPending}
               onClick={() => mutation.mutate()}
-              className="primary-button shrink-0"
+              className="primary-button shrink-0 sm:self-start sm:mt-7"
             >
               <Plus className="size-4" /> Create draft
             </button>
@@ -307,6 +380,51 @@ function Overview({
             Edit draft
           </Link>
         )}
+      </section>
+      <section className="mt-7">
+        <h2 className="font-display text-xl font-black">What you can manage</h2>
+        <p className="mt-2 text-sm text-muted">
+          Catalog and appearance changes stay in the draft until you publish the complete release.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {navigation.slice(1).map(({ path, label, description, icon: Icon }) => (
+            <Link
+              key={path}
+              to={path}
+              className="surface-card group flex min-w-0 items-start gap-3 p-4 transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft"
+            >
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
+                <Icon className="size-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <strong className="block break-words">{label}</strong>
+                <span className="mt-1 block text-xs leading-5 text-muted">{description}</span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
+      <section className="surface-card mt-7 p-5 sm:p-6">
+        <h2 className="font-display text-xl font-black">How changes go live</h2>
+        <ol className="mt-4 grid gap-3 sm:grid-cols-3">
+          {[
+            ["1", "Create one draft", "A draft safely copies the current published configuration."],
+            [
+              "2",
+              "Review every section",
+              "Catalogs, defaults, and themes are saved into that draft."
+            ],
+            ["3", "Publish once", "The complete configuration becomes live as one audited release."]
+          ].map(([step, title, detail]) => (
+            <li key={step} className="rounded-2xl bg-elevated p-4">
+              <span className="grid size-8 place-items-center rounded-full bg-brand text-sm font-black text-surface">
+                {step}
+              </span>
+              <strong className="mt-3 block">{title}</strong>
+              <span className="mt-1 block text-xs leading-5 text-muted">{detail}</span>
+            </li>
+          ))}
+        </ol>
       </section>
     </>
   );
@@ -320,16 +438,27 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CatalogSourceBadge({ source }: { source: CatalogEntrySource }) {
+  return (
+    <span
+      className={`rounded-full px-2 py-1 text-[0.65rem] font-black uppercase tracking-wide ${source === "release" ? "bg-success/10 text-success" : "bg-brand-soft text-brand"}`}
+    >
+      {source === "release" ? "Release" : "Built in"}
+    </span>
+  );
+}
+
 function Airlines({ online, release }: { online: boolean; release: ConfigRelease }) {
   const client = useQueryClient();
+  const confirm = useConfirmDialog();
   const query = useQuery({
     queryKey: ["admin-airlines", release.id],
     queryFn: () => listAirlines(release.id)
   });
   const [message, setMessage] = useState("");
-  const [editing, setEditing] = useState<Awaited<ReturnType<typeof listAirlines>>[number] | null>(
-    null
-  );
+  const [search, setSearch] = useState("");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editing, setEditing] = useState<AdminAirlineEntry | null>(null);
   const save = useMutation({
     mutationFn: async ({
       entry,
@@ -354,12 +483,31 @@ function Airlines({ online, release }: { online: boolean; release: ConfigRelease
       await client.invalidateQueries({ queryKey: ["admin-airlines", release.id] });
       setMessage("");
       setEditing(null);
+      setEditorOpen(false);
     }
   });
   const remove = useMutation({
     mutationFn: deleteAirline,
     onSuccess: () => client.invalidateQueries({ queryKey: ["admin-airlines", release.id] })
   });
+  const allAirlines = useMemo(
+    () => mergeAdminAirlines(query.data ?? [], release.id),
+    [query.data, release.id]
+  );
+  const visibleAirlines = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return allAirlines;
+    return allAirlines.filter((item) =>
+      [item.name, item.stable_key, item.iata_code, item.icao_code, ...item.aliases]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(needle))
+    );
+  }, [allAirlines, search]);
+  const editAirline = (item: AdminAirlineEntry) => {
+    setEditing(item);
+    setEditorOpen(true);
+    revealAdminEditor();
+  };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -411,7 +559,7 @@ function Airlines({ online, release }: { online: boolean; release: ConfigRelease
     }
     save.mutate({
       entry: {
-        id: editing?.id,
+        id: editing?.catalog_source === "release" ? editing.id : undefined,
         config_release_id: release.id,
         stable_key: stable,
         name,
@@ -437,162 +585,237 @@ function Airlines({ online, release }: { online: boolean; release: ConfigRelease
   };
   return (
     <>
-      <Header
+      <AdminPageHeader
         eyebrow={`Release ${release.status}`}
         title="Airline catalog"
-        text="Add or edit names, codes, aliases, safe action links, assets, ordering, enabled state, and card color."
-      />
-      <form
-        key={editing?.id ?? "new"}
-        onSubmit={submit}
-        className="surface-card mt-6 grid gap-3 p-5 sm:grid-cols-2"
-      >
-        <div className="flex items-center justify-between sm:col-span-2">
-          <h2 className="font-display text-lg font-black">
-            {editing ? `Edit ${editing.name}` : "Add airline"}
-          </h2>
-          {editing && (
+        text="Review every airline available in trip forms. Release entries can be edited directly; built-in entries can be copied into the draft and customized."
+        action={
+          release.status === "draft" ? (
             <button
               type="button"
-              className="tap-target grid size-9 place-items-center"
-              onClick={() => setEditing(null)}
-              aria-label="Cancel editing"
+              className="primary-button"
+              aria-expanded={editorOpen}
+              aria-controls="airline-editor"
+              onClick={() => {
+                setEditing(null);
+                setMessage("");
+                setEditorOpen(true);
+                revealAdminEditor();
+              }}
             >
-              <X className="size-4" />
+              <Plus className="size-4" /> Add airline
             </button>
-          )}
-        </div>
-        <input
-          className="form-input mt-0"
-          name="name"
-          placeholder="Airline name"
-          defaultValue={editing?.name}
-          required
-        />
-        <input
-          className="form-input mt-0"
-          name="stableKey"
-          placeholder="stable-key"
-          defaultValue={editing?.stable_key}
-          required
-        />
-        <div className="grid grid-cols-2 gap-3">
-          <input
-            className="form-input mt-0 uppercase"
-            name="iata"
-            maxLength={2}
-            placeholder="IATA"
-            defaultValue={editing?.iata_code ?? ""}
-          />
-          <input
-            className="form-input mt-0 uppercase"
-            name="icao"
-            maxLength={3}
-            placeholder="ICAO"
-            defaultValue={editing?.icao_code ?? ""}
-          />
-        </div>
-        <input
-          className="form-input mt-0"
-          name="aliases"
-          placeholder="Aliases, comma separated"
-          defaultValue={editing?.aliases.join(", ")}
-        />
-        <input
-          className="form-input mt-0"
-          name="checkIn"
-          placeholder="Check-in https://..."
-          defaultValue={editing?.check_in_url_template ?? ""}
-        />
-        <input
-          className="form-input mt-0"
-          name="manage"
-          placeholder="Manage booking https://..."
-          defaultValue={editing?.manage_booking_url_template ?? ""}
-        />
-        <input
-          className="form-input mt-0"
-          name="status"
-          placeholder="Official status https://..."
-          defaultValue={editing?.status_url_template ?? ""}
-        />
-        <input
-          className="form-input mt-0"
-          name="tracker"
-          placeholder="Tracker https://.../{flightNumber}"
-          defaultValue={editing?.tracker_url_template ?? ""}
-        />
-        <input
-          className="form-input mt-0"
-          name="logo"
-          placeholder="Existing logo asset path (optional)"
-          defaultValue={editing?.logo_asset_path ?? ""}
-        />
-        <input
-          className="form-input mt-0"
-          name="banner"
-          placeholder="Existing banner asset path (optional)"
-          defaultValue={editing?.banner_asset_path ?? ""}
-        />
-        <label className="form-label">
-          Upload logo
-          <input
-            className="form-input file:mr-2 file:rounded-lg file:border-0 file:bg-brand-soft file:px-2 file:py-1 file:font-bold"
-            type="file"
-            name="logoFile"
-            accept="image/png,image/jpeg,image/webp"
-          />
-        </label>
-        <label className="form-label">
-          Upload banner
-          <input
-            className="form-input file:mr-2 file:rounded-lg file:border-0 file:bg-brand-soft file:px-2 file:py-1 file:font-bold"
-            type="file"
-            name="bannerFile"
-            accept="image/png,image/jpeg,image/webp"
-          />
-        </label>
-        <p className="-mt-1 text-xs text-muted sm:col-span-2">
-          Uploaded catalog artwork is public, immutable, and limited to 2 MB. Never upload personal
-          trip images here.
-        </p>
-        <div className="grid grid-cols-2 gap-3">
-          <input
-            className="form-input mt-0"
-            name="color"
-            placeholder="#142f31"
-            defaultValue={editing?.brand_color ?? ""}
-          />
-          <input
-            className="form-input mt-0"
-            name="sortOrder"
-            type="number"
-            min="0"
-            defaultValue={editing?.sort_order ?? query.data?.length ?? 0}
-          />
-        </div>
-        <label className="flex items-center gap-2 rounded-xl border border-line px-3 text-sm font-bold">
-          <input type="checkbox" name="enabled" defaultChecked={editing?.is_enabled ?? true} />{" "}
-          Enabled in pickers
-        </label>
-        {(message || save.error) && (
-          <p role="alert" className="text-sm font-bold text-danger sm:col-span-2">
-            {message || getErrorMessage(save.error)}
-          </p>
-        )}
-        <button
-          disabled={!online || release.status !== "draft" || save.isPending}
-          className="primary-button sm:col-span-2"
+          ) : undefined
+        }
+      />
+      {release.status === "draft" && editorOpen && (
+        <form
+          id="airline-editor"
+          data-admin-editor
+          key={editing ? `${editing.catalog_source}:${editing.id}` : "new"}
+          onSubmit={submit}
+          className="surface-card mt-6 grid scroll-mt-28 gap-4 p-5 sm:grid-cols-2"
         >
-          <Save className="size-4" />{" "}
-          {save.isPending ? "Saving…" : editing ? "Save airline" : "Add airline"}
-        </button>
-      </form>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        {query.data?.map((item) => (
+          <AdminFormIntro
+            title={
+              editing?.catalog_source === "built_in"
+                ? `Customize ${editing.name}`
+                : editing
+                  ? `Edit ${editing.name}`
+                  : "Add airline"
+            }
+            description={
+              editing?.catalog_source === "built_in"
+                ? "Saving creates a release-owned copy; the built-in fallback remains unchanged."
+                : "Required fields are marked with an asterisk. Links and artwork are optional."
+            }
+            onCancel={() => {
+              setEditing(null);
+              setMessage("");
+              setEditorOpen(false);
+            }}
+          />
+          <AdminField label="Airline name" required>
+            <input
+              className="form-input"
+              name="name"
+              placeholder="For example: Air India"
+              defaultValue={editing?.name}
+              required
+            />
+          </AdminField>
+          <AdminField
+            label="Stable key"
+            required
+            hint="Permanent lowercase identifier; use letters, numbers, hyphens, or underscores."
+          >
+            <input
+              className="form-input"
+              name="stableKey"
+              placeholder="air-india"
+              defaultValue={editing?.stable_key}
+              required
+            />
+          </AdminField>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <AdminField label="IATA code">
+              <input
+                className="form-input uppercase"
+                name="iata"
+                maxLength={2}
+                placeholder="AI"
+                defaultValue={editing?.iata_code ?? ""}
+              />
+            </AdminField>
+            <AdminField label="ICAO code">
+              <input
+                className="form-input uppercase"
+                name="icao"
+                maxLength={3}
+                placeholder="AIC"
+                defaultValue={editing?.icao_code ?? ""}
+              />
+            </AdminField>
+          </div>
+          <AdminField label="Aliases" hint="Separate alternative names with commas.">
+            <input
+              className="form-input"
+              name="aliases"
+              placeholder="AirIndia, Indian Airlines"
+              defaultValue={editing?.aliases.join(", ")}
+            />
+          </AdminField>
+          <AdminField label="Check-in link template">
+            <input
+              className="form-input"
+              name="checkIn"
+              placeholder="https://..."
+              defaultValue={editing?.check_in_url_template ?? ""}
+            />
+          </AdminField>
+          <AdminField label="Manage-booking link template">
+            <input
+              className="form-input"
+              name="manage"
+              placeholder="https://..."
+              defaultValue={editing?.manage_booking_url_template ?? ""}
+            />
+          </AdminField>
+          <AdminField label="Official status link template">
+            <input
+              className="form-input"
+              name="status"
+              placeholder="https://..."
+              defaultValue={editing?.status_url_template ?? ""}
+            />
+          </AdminField>
+          <AdminField
+            label="Flight tracker link template"
+            hint="May use supported placeholders such as {flightNumber}."
+          >
+            <input
+              className="form-input"
+              name="tracker"
+              placeholder="https://.../{flightNumber}"
+              defaultValue={editing?.tracker_url_template ?? ""}
+            />
+          </AdminField>
+          <AdminField label="Existing logo asset path">
+            <input
+              className="form-input"
+              name="logo"
+              placeholder="catalog/releases/..."
+              defaultValue={editing?.logo_asset_path ?? ""}
+            />
+          </AdminField>
+          <AdminField label="Existing banner asset path">
+            <input
+              className="form-input"
+              name="banner"
+              placeholder="catalog/releases/..."
+              defaultValue={editing?.banner_asset_path ?? ""}
+            />
+          </AdminField>
+          <AdminField label="Upload logo">
+            <input
+              className="form-input file:mr-2 file:rounded-lg file:border-0 file:bg-brand-soft file:px-2 file:py-1 file:font-bold"
+              type="file"
+              name="logoFile"
+              accept="image/png,image/jpeg,image/webp"
+            />
+          </AdminField>
+          <AdminField label="Upload banner">
+            <input
+              className="form-input file:mr-2 file:rounded-lg file:border-0 file:bg-brand-soft file:px-2 file:py-1 file:font-bold"
+              type="file"
+              name="bannerFile"
+              accept="image/png,image/jpeg,image/webp"
+            />
+          </AdminField>
+          <p className="-mt-1 text-xs text-muted sm:col-span-2">
+            Uploaded catalog artwork is public, immutable, and limited to 2 MB. Never upload
+            personal trip images here.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <AdminField label="Brand color">
+              <input
+                className="form-input"
+                name="color"
+                placeholder="#142f31"
+                defaultValue={editing?.brand_color ?? ""}
+              />
+            </AdminField>
+            <AdminField label="Picker order">
+              <input
+                className="form-input"
+                name="sortOrder"
+                type="number"
+                min="0"
+                defaultValue={editing?.sort_order ?? query.data?.length ?? 0}
+              />
+            </AdminField>
+          </div>
+          <label className="flex min-h-11 items-center gap-2 rounded-xl border border-line px-3 text-sm font-bold">
+            <input type="checkbox" name="enabled" defaultChecked={editing?.is_enabled ?? true} />{" "}
+            Enabled in pickers
+          </label>
+          {(message || save.error) && (
+            <p role="alert" className="text-sm font-bold text-danger sm:col-span-2">
+              {message || getErrorMessage(save.error)}
+            </p>
+          )}
+          <button
+            disabled={!online || save.isPending}
+            className="primary-button w-full sm:col-span-2"
+          >
+            <Save className="size-4" />{" "}
+            {save.isPending ? "Saving…" : editing ? "Save airline" : "Add airline"}
+          </button>
+        </form>
+      )}
+      <AdminQueryState
+        loading={query.isLoading}
+        error={query.error}
+        empty={!query.isLoading && !query.error && allAirlines.length === 0}
+        emptyMessage="No airlines are available."
+      />
+      {allAirlines.length > 0 && (
+        <AdminCatalogSearch
+          value={search}
+          onChange={setSearch}
+          count={visibleAirlines.length}
+          label="airlines"
+        />
+      )}
+      <ProgressiveList
+        items={visibleAirlines}
+        initialCount={12}
+        itemLabel="airlines"
+        getKey={(item) => `${item.catalog_source}:${item.id}`}
+        className="mt-5 grid gap-3 sm:grid-cols-2"
+        renderItem={(item) => (
           <article
-            className={`surface-card flex items-start gap-3 p-5 ${item.is_enabled ? "" : "opacity-60"}`}
-            key={item.id}
+            className={`surface-card flex h-full min-w-0 items-start gap-3 p-4 sm:p-5 ${item.is_enabled ? "" : "opacity-60"}`}
           >
             <span
               className="grid size-11 shrink-0 place-items-center rounded-xl text-xs font-black text-white"
@@ -601,58 +824,109 @@ function Airlines({ online, release }: { online: boolean; release: ConfigRelease
               {item.iata_code || item.name.slice(0, 2).toUpperCase()}
             </span>
             <div className="min-w-0 flex-1">
-              <h2 className="font-display text-lg font-black">{item.name}</h2>
-              <p className="text-xs text-muted">
-                {item.stable_key} · {item.is_enabled ? "enabled" : "disabled"}
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h2 className="break-words font-display text-lg font-black [overflow-wrap:anywhere]">
+                  {item.name}
+                </h2>
+                <CatalogSourceBadge source={item.catalog_source} />
+              </div>
+              <p className="break-all text-xs text-muted">
+                {item.stable_key} · {item.is_enabled ? "available" : "disabled"}
               </p>
             </div>
             <button
               disabled={!online || release.status !== "draft"}
-              onClick={() => setEditing(item)}
+              onClick={() => editAirline(item)}
               className="tap-target grid size-10 place-items-center text-muted hover:text-brand"
-              aria-label={`Edit ${item.name}`}
+              aria-label={`${item.catalog_source === "release" ? "Edit" : "Customize"} ${item.name}`}
             >
               <Pencil className="size-4" />
             </button>
-            <button
-              disabled={!online || release.status !== "draft"}
-              onClick={() =>
-                window.confirm(`Delete ${item.name} from this draft?`) && remove.mutate(item.id)
-              }
-              className="tap-target grid size-10 place-items-center text-muted hover:text-danger"
-              aria-label={`Delete ${item.name}`}
-            >
-              <Trash2 className="size-4" />
-            </button>
+            {item.catalog_source === "release" && (
+              <button
+                disabled={!online || release.status !== "draft"}
+                onClick={async () => {
+                  if (
+                    await confirm({
+                      title: `Delete ${item.name}?`,
+                      message:
+                        "This removes the release copy. The built-in fallback may become available again.",
+                      confirmLabel: "Delete airline",
+                      tone: "danger"
+                    })
+                  )
+                    remove.mutate(item.id);
+                }}
+                className="tap-target grid size-10 place-items-center text-muted hover:text-danger"
+                aria-label={`Delete ${item.name}`}
+              >
+                <Trash2 className="size-4" />
+              </button>
+            )}
           </article>
-        ))}
-      </div>
+        )}
+      />
+      {search && visibleAirlines.length === 0 && (
+        <p className="surface-card mt-3 border-dashed p-5 text-sm text-muted">
+          No airlines match “{search}”.
+        </p>
+      )}
+      {remove.error && <AdminError error={remove.error} />}
     </>
   );
 }
 
 function Airports({ online, release }: { online: boolean; release: ConfigRelease }) {
   const client = useQueryClient();
+  const confirm = useConfirmDialog();
   const query = useQuery({
     queryKey: ["admin-airports", release.id],
     queryFn: () => listAirports(release.id)
   });
   const [message, setMessage] = useState("");
-  const [editing, setEditing] = useState<Awaited<ReturnType<typeof listAirports>>[number] | null>(
-    null
-  );
+  const [search, setSearch] = useState("");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editing, setEditing] = useState<AdminAirportEntry | null>(null);
   const save = useMutation({
     mutationFn: saveAirport,
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["admin-airports", release.id] });
       setEditing(null);
       setMessage("");
+      setEditorOpen(false);
     }
   });
   const remove = useMutation({
     mutationFn: deleteAirport,
     onSuccess: () => client.invalidateQueries({ queryKey: ["admin-airports", release.id] })
   });
+  const allAirports = useMemo(
+    () => mergeAdminAirports(query.data ?? [], release.id),
+    [query.data, release.id]
+  );
+  const visibleAirports = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return allAirports;
+    return allAirports.filter((item) =>
+      [
+        item.name,
+        item.city,
+        item.country_code,
+        item.stable_key,
+        item.iata_code,
+        item.icao_code,
+        item.timezone,
+        ...item.aliases
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(needle))
+    );
+  }, [allAirports, search]);
+  const editAirport = (item: AdminAirportEntry) => {
+    setEditing(item);
+    setEditorOpen(true);
+    revealAdminEditor();
+  };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage("");
@@ -697,7 +971,7 @@ function Airports({ online, release }: { online: boolean; release: ConfigRelease
       return;
     }
     save.mutate({
-      id: editing?.id,
+      id: editing?.catalog_source === "release" ? editing.id : undefined,
       config_release_id: release.id,
       stable_key: stable,
       iata_code: iata || null,
@@ -718,176 +992,264 @@ function Airports({ online, release }: { online: boolean; release: ConfigRelease
   };
   return (
     <>
-      <Header
+      <AdminPageHeader
         eyebrow={`Release ${release.status}`}
         title="Airport catalog"
-        text="Add or edit names, codes, aliases, coordinates, ordering, enabled state, and IANA time zones."
-      />
-      <form
-        key={editing?.id ?? "new"}
-        onSubmit={submit}
-        className="surface-card mt-6 grid gap-3 p-5 sm:grid-cols-2"
-      >
-        <div className="flex items-center justify-between sm:col-span-2">
-          <h2 className="font-display text-lg font-black">
-            {editing ? `Edit ${editing.name}` : "Add airport"}
-          </h2>
-          {editing && (
+        text="Review every airport available in trip forms. Release entries can be edited directly; built-in entries can be copied into the draft and customized."
+        action={
+          release.status === "draft" ? (
             <button
               type="button"
-              className="tap-target grid size-9 place-items-center"
-              onClick={() => setEditing(null)}
-              aria-label="Cancel editing"
+              className="primary-button"
+              aria-expanded={editorOpen}
+              aria-controls="airport-editor"
+              onClick={() => {
+                setEditing(null);
+                setMessage("");
+                setEditorOpen(true);
+                revealAdminEditor();
+              }}
             >
-              <X className="size-4" />
+              <Plus className="size-4" /> Add airport
             </button>
-          )}
-        </div>
-        <input
-          className="form-input mt-0"
-          name="name"
-          placeholder="Airport name"
-          defaultValue={editing?.name}
-          required
-        />
-        <input
-          className="form-input mt-0"
-          name="city"
-          placeholder="City"
-          defaultValue={editing?.city}
-          required
-        />
-        <input
-          className="form-input mt-0"
-          name="stableKey"
-          placeholder="stable-key"
-          defaultValue={editing?.stable_key}
-          required
-        />
-        <input
-          className="form-input mt-0"
-          name="aliases"
-          placeholder="Aliases, comma separated"
-          defaultValue={editing?.aliases.join(", ")}
-        />
-        <div className="grid grid-cols-2 gap-3">
-          <input
-            className="form-input mt-0 uppercase"
-            name="iata"
-            placeholder="IATA"
-            maxLength={3}
-            defaultValue={editing?.iata_code ?? ""}
-          />
-          <input
-            className="form-input mt-0 uppercase"
-            name="icao"
-            placeholder="ICAO"
-            maxLength={4}
-            defaultValue={editing?.icao_code ?? ""}
-          />
-        </div>
-        <input
-          className="form-input mt-0 uppercase"
-          name="country"
-          placeholder="IN"
-          maxLength={2}
-          defaultValue={editing?.country_code}
-          required
-        />
-        <TimeZoneAutocomplete
-          className="form-input mt-0 sm:col-span-2"
-          name="timezone"
-          defaultValue={editing?.timezone}
-          required
-          aria-label="Airport time zone"
-        />
-        <div className="grid grid-cols-2 gap-3">
-          <input
-            className="form-input mt-0"
-            name="latitude"
-            type="number"
-            step="any"
-            placeholder="Latitude"
-            defaultValue={editing?.latitude ?? ""}
-          />
-          <input
-            className="form-input mt-0"
-            name="longitude"
-            type="number"
-            step="any"
-            placeholder="Longitude"
-            defaultValue={editing?.longitude ?? ""}
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <input
-            className="form-input mt-0"
-            name="sortOrder"
-            type="number"
-            min="0"
-            defaultValue={editing?.sort_order ?? query.data?.length ?? 0}
-          />
-          <label className="flex items-center gap-2 rounded-xl border border-line px-3 text-sm font-bold">
-            <input type="checkbox" name="enabled" defaultChecked={editing?.is_enabled ?? true} />{" "}
-            Enabled
-          </label>
-        </div>
-        {message && <p className="text-sm font-bold text-danger sm:col-span-2">{message}</p>}
-        <button
-          disabled={!online || release.status !== "draft" || save.isPending}
-          className="primary-button sm:col-span-2"
+          ) : undefined
+        }
+      />
+      {release.status === "draft" && editorOpen && (
+        <form
+          id="airport-editor"
+          data-admin-editor
+          key={editing ? `${editing.catalog_source}:${editing.id}` : "new"}
+          onSubmit={submit}
+          className="surface-card mt-6 grid scroll-mt-28 gap-4 p-5 sm:grid-cols-2"
         >
-          {editing ? "Save airport" : "Add airport"}
-        </button>
-      </form>
-      <div className="mt-5 space-y-3">
-        {query.data?.map((item) => (
-          <article
-            key={item.id}
-            className={`surface-card flex items-center gap-4 p-5 ${item.is_enabled ? "" : "opacity-60"}`}
+          <AdminFormIntro
+            title={
+              editing?.catalog_source === "built_in"
+                ? `Customize ${editing.name}`
+                : editing
+                  ? `Edit ${editing.name}`
+                  : "Add airport"
+            }
+            description={
+              editing?.catalog_source === "built_in"
+                ? "Saving creates a release-owned copy; the built-in fallback remains unchanged."
+                : "Codes and time zone drive simpler journey forms and correct international timing."
+            }
+            onCancel={() => {
+              setEditing(null);
+              setMessage("");
+              setEditorOpen(false);
+            }}
+          />
+          <AdminField label="Airport name" required>
+            <input
+              className="form-input"
+              name="name"
+              placeholder="For example: Indira Gandhi International Airport"
+              defaultValue={editing?.name}
+              required
+            />
+          </AdminField>
+          <AdminField label="City" required>
+            <input
+              className="form-input"
+              name="city"
+              placeholder="New Delhi"
+              defaultValue={editing?.city}
+              required
+            />
+          </AdminField>
+          <AdminField label="Stable key" required>
+            <input
+              className="form-input"
+              name="stableKey"
+              placeholder="del-indira-gandhi"
+              defaultValue={editing?.stable_key}
+              required
+            />
+          </AdminField>
+          <AdminField label="Aliases" hint="Separate alternative names with commas.">
+            <input
+              className="form-input"
+              name="aliases"
+              placeholder="Delhi Airport, IGI"
+              defaultValue={editing?.aliases.join(", ")}
+            />
+          </AdminField>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <AdminField label="IATA code">
+              <input
+                className="form-input uppercase"
+                name="iata"
+                placeholder="DEL"
+                maxLength={3}
+                defaultValue={editing?.iata_code ?? ""}
+              />
+            </AdminField>
+            <AdminField label="ICAO code">
+              <input
+                className="form-input uppercase"
+                name="icao"
+                placeholder="VIDP"
+                maxLength={4}
+                defaultValue={editing?.icao_code ?? ""}
+              />
+            </AdminField>
+          </div>
+          <AdminField label="Country code" required hint="Use the two-letter ISO code.">
+            <input
+              className="form-input uppercase"
+              name="country"
+              placeholder="IN"
+              maxLength={2}
+              defaultValue={editing?.country_code}
+              required
+            />
+          </AdminField>
+          <AdminField label="Airport time zone" required className="sm:col-span-2">
+            <TimeZoneAutocomplete
+              className="form-input"
+              name="timezone"
+              defaultValue={editing?.timezone}
+              required
+              aria-label="Airport time zone"
+            />
+          </AdminField>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <AdminField label="Latitude">
+              <input
+                className="form-input"
+                name="latitude"
+                type="number"
+                step="any"
+                placeholder="28.5562"
+                defaultValue={editing?.latitude ?? ""}
+              />
+            </AdminField>
+            <AdminField label="Longitude">
+              <input
+                className="form-input"
+                name="longitude"
+                type="number"
+                step="any"
+                placeholder="77.1000"
+                defaultValue={editing?.longitude ?? ""}
+              />
+            </AdminField>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <AdminField label="Picker order">
+              <input
+                className="form-input"
+                name="sortOrder"
+                type="number"
+                min="0"
+                defaultValue={editing?.sort_order ?? query.data?.length ?? 0}
+              />
+            </AdminField>
+            <label className="flex min-h-11 items-center gap-2 self-end rounded-xl border border-line px-3 text-sm font-bold">
+              <input type="checkbox" name="enabled" defaultChecked={editing?.is_enabled ?? true} />{" "}
+              Enabled
+            </label>
+          </div>
+          {message && <p className="text-sm font-bold text-danger sm:col-span-2">{message}</p>}
+          <button
+            disabled={!online || save.isPending}
+            className="primary-button w-full sm:col-span-2"
           >
-            <strong className="font-mono text-lg">{item.iata_code || "—"}</strong>
+            {editing ? "Save airport" : "Add airport"}
+          </button>
+        </form>
+      )}
+      <AdminQueryState
+        loading={query.isLoading}
+        error={query.error}
+        empty={!query.isLoading && !query.error && allAirports.length === 0}
+        emptyMessage="No airports are available."
+      />
+      {allAirports.length > 0 && (
+        <AdminCatalogSearch
+          value={search}
+          onChange={setSearch}
+          count={visibleAirports.length}
+          label="airports"
+        />
+      )}
+      <ProgressiveList
+        items={visibleAirports}
+        initialCount={16}
+        itemLabel="airports"
+        getKey={(item) => `${item.catalog_source}:${item.id}`}
+        className="mt-5 space-y-3"
+        renderItem={(item) => (
+          <article
+            className={`surface-card flex min-w-0 items-start gap-3 p-4 sm:items-center sm:gap-4 sm:p-5 ${item.is_enabled ? "" : "opacity-60"}`}
+          >
+            <strong className="shrink-0 font-mono text-lg">{item.iata_code || "—"}</strong>
             <div className="min-w-0 flex-1">
-              <p className="truncate font-bold">{item.name}</p>
-              <p className="text-xs text-muted">
-                {item.city} · {item.timezone} · {item.is_enabled ? "enabled" : "disabled"}
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <p className="break-words font-bold [overflow-wrap:anywhere]">{item.name}</p>
+                <CatalogSourceBadge source={item.catalog_source} />
+              </div>
+              <p className="mt-1 break-words text-xs leading-5 text-muted [overflow-wrap:anywhere]">
+                {item.city} · {item.country_code} · {item.timezone} ·{" "}
+                {item.is_enabled ? "available" : "disabled"}
               </p>
             </div>
             <button
               disabled={!online || release.status !== "draft"}
-              onClick={() => setEditing(item)}
+              onClick={() => editAirport(item)}
               className="tap-target grid size-10 place-items-center text-muted hover:text-brand"
-              aria-label={`Edit ${item.name}`}
+              aria-label={`${item.catalog_source === "release" ? "Edit" : "Customize"} ${item.name}`}
             >
               <Pencil className="size-4" />
             </button>
-            <button
-              disabled={!online || release.status !== "draft"}
-              onClick={() =>
-                window.confirm(`Delete ${item.name} from this draft?`) && remove.mutate(item.id)
-              }
-              className="tap-target grid size-10 place-items-center text-muted hover:text-danger"
-              aria-label={`Delete ${item.name}`}
-            >
-              <Trash2 className="size-4" />
-            </button>
+            {item.catalog_source === "release" && (
+              <button
+                disabled={!online || release.status !== "draft"}
+                onClick={async () => {
+                  if (
+                    await confirm({
+                      title: `Delete ${item.name}?`,
+                      message:
+                        "This removes the release copy. The built-in fallback may become available again.",
+                      confirmLabel: "Delete airport",
+                      tone: "danger"
+                    })
+                  )
+                    remove.mutate(item.id);
+                }}
+                className="tap-target grid size-10 place-items-center text-muted hover:text-danger"
+                aria-label={`Delete ${item.name}`}
+              >
+                <Trash2 className="size-4" />
+              </button>
+            )}
           </article>
-        ))}
-      </div>
+        )}
+      />
+      {search && visibleAirports.length === 0 && (
+        <p className="surface-card mt-3 border-dashed p-5 text-sm text-muted">
+          No airports match “{search}”.
+        </p>
+      )}
+      {(save.error || remove.error) && <AdminError error={save.error || remove.error} />}
     </>
   );
 }
 
 function Vendors({ online, release }: { online: boolean; release: ConfigRelease }) {
   const client = useQueryClient();
+  const confirm = useConfirmDialog();
   const query = useQuery({
     queryKey: ["admin-vendors", release.id],
     queryFn: () => listVendors(release.id)
   });
-  const [editing, setEditing] = useState<Awaited<ReturnType<typeof listVendors>>[number] | null>(
-    null
-  );
+  const [editing, setEditing] = useState<AdminVendorEntry | null>(null);
   const [message, setMessage] = useState("");
+  const [search, setSearch] = useState("");
+  const [editorOpen, setEditorOpen] = useState(false);
   const save = useMutation({
     mutationFn: async ({
       entry,
@@ -905,12 +1267,31 @@ function Vendors({ online, release }: { online: boolean; release: ConfigRelease 
       await client.invalidateQueries({ queryKey: ["admin-vendors", release.id] });
       setEditing(null);
       setMessage("");
+      setEditorOpen(false);
     }
   });
   const remove = useMutation({
     mutationFn: deleteVendor,
     onSuccess: () => client.invalidateQueries({ queryKey: ["admin-vendors", release.id] })
   });
+  const allVendors = useMemo(
+    () => mergeAdminVendors(query.data ?? [], release.id),
+    [query.data, release.id]
+  );
+  const visibleVendors = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return allVendors;
+    return allVendors.filter((item) =>
+      [item.name, item.stable_key, item.website_url, ...item.aliases]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(needle))
+    );
+  }, [allVendors, search]);
+  const editVendor = (item: AdminVendorEntry) => {
+    setEditing(item);
+    setEditorOpen(true);
+    revealAdminEditor();
+  };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage("");
@@ -948,7 +1329,7 @@ function Vendors({ online, release }: { online: boolean; release: ConfigRelease 
     }
     save.mutate({
       entry: {
-        id: editing?.id,
+        id: editing?.catalog_source === "release" ? editing.id : undefined,
         config_release_id: release.id,
         stable_key: stable,
         name,
@@ -967,105 +1348,163 @@ function Vendors({ online, release }: { online: boolean; release: ConfigRelease 
   };
   return (
     <>
-      <Header
+      <AdminPageHeader
         eyebrow={`Release ${release.status}`}
         title="Booking-vendor catalog"
-        text="Keep the service provider separate from the website or agent used to make the booking."
-      />
-      <form
-        key={editing?.id ?? "new"}
-        onSubmit={submit}
-        className="surface-card mt-6 grid gap-3 p-5 sm:grid-cols-2"
-      >
-        <div className="flex items-center justify-between sm:col-span-2">
-          <h2 className="font-display text-lg font-black">
-            {editing ? `Edit ${editing.name}` : "Add booking vendor"}
-          </h2>
-          {editing && (
+        text="Review every booking website or agent available in trip forms. Release entries can be edited directly; built-in entries can be copied into the draft and customized."
+        action={
+          release.status === "draft" ? (
             <button
               type="button"
-              className="tap-target grid size-9 place-items-center"
-              onClick={() => setEditing(null)}
-              aria-label="Cancel editing"
+              className="primary-button"
+              aria-expanded={editorOpen}
+              aria-controls="vendor-editor"
+              onClick={() => {
+                setEditing(null);
+                setMessage("");
+                setEditorOpen(true);
+                revealAdminEditor();
+              }}
             >
-              <X className="size-4" />
+              <Plus className="size-4" /> Add vendor
             </button>
-          )}
-        </div>
-        <input
-          required
-          className="form-input mt-0"
-          name="name"
-          placeholder="Booking.com"
-          defaultValue={editing?.name}
-        />
-        <input
-          required
-          className="form-input mt-0"
-          name="stableKey"
-          placeholder="booking-com"
-          defaultValue={editing?.stable_key}
-        />
-        <input
-          className="form-input mt-0"
-          name="aliases"
-          placeholder="Aliases, comma separated"
-          defaultValue={editing?.aliases.join(", ")}
-        />
-        <input
-          className="form-input mt-0"
-          name="website"
-          type="url"
-          placeholder="https://..."
-          defaultValue={editing?.website_url ?? ""}
-        />
-        <input
-          className="form-input mt-0"
-          name="logo"
-          placeholder="Existing logo asset path"
-          defaultValue={editing?.logo_asset_path ?? ""}
-        />
-        <label className="form-label">
-          Upload logo
-          <input
-            className="form-input"
-            name="logoFile"
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-          />
-        </label>
-        <input
-          className="form-input mt-0"
-          name="color"
-          placeholder="#003b95"
-          defaultValue={editing?.brand_color ?? ""}
-        />
-        <input
-          className="form-input mt-0"
-          name="sortOrder"
-          type="number"
-          min="0"
-          defaultValue={editing?.sort_order ?? query.data?.length ?? 0}
-        />
-        <label className="flex items-center gap-2 rounded-xl border border-line px-3 text-sm font-bold">
-          <input type="checkbox" name="enabled" defaultChecked={editing?.is_enabled ?? true} />{" "}
-          Enabled in pickers
-        </label>
-        {(message || save.error) && (
-          <p role="alert" className="text-sm font-bold text-danger sm:col-span-2">
-            {message || getErrorMessage(save.error)}
-          </p>
-        )}
-        <button
-          disabled={!online || release.status !== "draft" || save.isPending}
-          className="primary-button sm:col-span-2"
+          ) : undefined
+        }
+      />
+      {release.status === "draft" && editorOpen && (
+        <form
+          id="vendor-editor"
+          data-admin-editor
+          key={editing ? `${editing.catalog_source}:${editing.id}` : "new"}
+          onSubmit={submit}
+          className="surface-card mt-6 grid scroll-mt-28 gap-4 p-5 sm:grid-cols-2"
         >
-          <Save className="size-4" /> Save vendor
-        </button>
-      </form>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        {query.data?.map((vendor) => (
-          <article className="surface-card flex items-center gap-3 p-5" key={vendor.id}>
+          <AdminFormIntro
+            title={
+              editing?.catalog_source === "built_in"
+                ? `Customize ${editing.name}`
+                : editing
+                  ? `Edit ${editing.name}`
+                  : "Add booking vendor"
+            }
+            description={
+              editing?.catalog_source === "built_in"
+                ? "Saving creates a release-owned copy; the built-in fallback remains unchanged."
+                : "A booking vendor is the website or agent used to buy a reservation, not the operator providing the journey."
+            }
+            onCancel={() => {
+              setEditing(null);
+              setMessage("");
+              setEditorOpen(false);
+            }}
+          />
+          <AdminField label="Vendor name" required>
+            <input
+              required
+              className="form-input"
+              name="name"
+              placeholder="For example: Booking.com"
+              defaultValue={editing?.name}
+            />
+          </AdminField>
+          <AdminField label="Stable key" required>
+            <input
+              required
+              className="form-input"
+              name="stableKey"
+              placeholder="booking-com"
+              defaultValue={editing?.stable_key}
+            />
+          </AdminField>
+          <AdminField label="Aliases" hint="Separate alternative names with commas.">
+            <input
+              className="form-input"
+              name="aliases"
+              placeholder="Booking, Booking.com"
+              defaultValue={editing?.aliases.join(", ")}
+            />
+          </AdminField>
+          <AdminField label="Official website">
+            <input
+              className="form-input"
+              name="website"
+              type="url"
+              placeholder="https://..."
+              defaultValue={editing?.website_url ?? ""}
+            />
+          </AdminField>
+          <AdminField label="Existing logo asset path">
+            <input
+              className="form-input"
+              name="logo"
+              placeholder="catalog/releases/..."
+              defaultValue={editing?.logo_asset_path ?? ""}
+            />
+          </AdminField>
+          <AdminField label="Upload logo">
+            <input
+              className="form-input"
+              name="logoFile"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+            />
+          </AdminField>
+          <AdminField label="Brand color">
+            <input
+              className="form-input"
+              name="color"
+              placeholder="#003b95"
+              defaultValue={editing?.brand_color ?? ""}
+            />
+          </AdminField>
+          <AdminField label="Picker order">
+            <input
+              className="form-input"
+              name="sortOrder"
+              type="number"
+              min="0"
+              defaultValue={editing?.sort_order ?? query.data?.length ?? 0}
+            />
+          </AdminField>
+          <label className="flex min-h-11 items-center gap-2 rounded-xl border border-line px-3 text-sm font-bold">
+            <input type="checkbox" name="enabled" defaultChecked={editing?.is_enabled ?? true} />{" "}
+            Enabled in pickers
+          </label>
+          {(message || save.error) && (
+            <p role="alert" className="text-sm font-bold text-danger sm:col-span-2">
+              {message || getErrorMessage(save.error)}
+            </p>
+          )}
+          <button
+            disabled={!online || save.isPending}
+            className="primary-button w-full sm:col-span-2"
+          >
+            <Save className="size-4" /> Save vendor
+          </button>
+        </form>
+      )}
+      <AdminQueryState
+        loading={query.isLoading}
+        error={query.error}
+        empty={!query.isLoading && !query.error && allVendors.length === 0}
+        emptyMessage="No booking vendors are available."
+      />
+      {allVendors.length > 0 && (
+        <AdminCatalogSearch
+          value={search}
+          onChange={setSearch}
+          count={visibleVendors.length}
+          label="vendors"
+        />
+      )}
+      <ProgressiveList
+        items={visibleVendors}
+        initialCount={12}
+        itemLabel="booking vendors"
+        getKey={(vendor) => `${vendor.catalog_source}:${vendor.id}`}
+        className="mt-5 grid gap-3 sm:grid-cols-2"
+        renderItem={(vendor) => (
+          <article className="surface-card flex h-full min-w-0 items-start gap-3 p-4 sm:items-center sm:p-5">
             <span
               className="grid size-10 place-items-center rounded-xl text-xs font-black text-white"
               style={{ backgroundColor: vendor.brand_color ?? "#142f31" }}
@@ -1073,30 +1512,141 @@ function Vendors({ online, release }: { online: boolean; release: ConfigRelease 
               {vendor.name.slice(0, 2).toUpperCase()}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate font-bold">{vendor.name}</p>
-              <p className="truncate text-xs text-muted">{vendor.website_url ?? "No website"}</p>
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <p className="break-words font-bold [overflow-wrap:anywhere]">{vendor.name}</p>
+                <CatalogSourceBadge source={vendor.catalog_source} />
+              </div>
+              <p className="mt-1 break-all text-xs text-muted">
+                {vendor.website_url ?? "No website"}
+              </p>
             </div>
             <button
               disabled={!online || release.status !== "draft"}
-              onClick={() => setEditing(vendor)}
+              onClick={() => editVendor(vendor)}
               className="tap-target grid size-9 place-items-center"
-              aria-label={`Edit ${vendor.name}`}
+              aria-label={`${vendor.catalog_source === "release" ? "Edit" : "Customize"} ${vendor.name}`}
             >
               <Pencil className="size-4" />
             </button>
-            <button
-              disabled={!online || release.status !== "draft"}
-              onClick={() =>
-                window.confirm(`Delete ${vendor.name} from this draft?`) && remove.mutate(vendor.id)
-              }
-              className="tap-target grid size-9 place-items-center text-danger"
-              aria-label={`Delete ${vendor.name}`}
-            >
-              <Trash2 className="size-4" />
-            </button>
+            {vendor.catalog_source === "release" && (
+              <button
+                disabled={!online || release.status !== "draft"}
+                onClick={async () => {
+                  if (
+                    await confirm({
+                      title: `Delete ${vendor.name}?`,
+                      message:
+                        "This removes the release copy. The built-in fallback may become available again.",
+                      confirmLabel: "Delete vendor",
+                      tone: "danger"
+                    })
+                  )
+                    remove.mutate(vendor.id);
+                }}
+                className="tap-target grid size-9 place-items-center text-danger"
+                aria-label={`Delete ${vendor.name}`}
+              >
+                <Trash2 className="size-4" />
+              </button>
+            )}
           </article>
-        ))}
+        )}
+      />
+      {search && visibleVendors.length === 0 && (
+        <p className="surface-card mt-3 border-dashed p-5 text-sm text-muted">
+          No booking vendors match “{search}”.
+        </p>
+      )}
+      {remove.error && <AdminError error={remove.error} />}
+    </>
+  );
+}
+
+type JourneyOperatorMode = "all" | "train" | "bus" | "ferry" | "cab";
+
+function JourneyOperators() {
+  const [search, setSearch] = useState("");
+  const [mode, setMode] = useState<JourneyOperatorMode>("all");
+  const visibleOperators = useMemo(() => {
+    const needle = search.trim().toLocaleLowerCase();
+    return starterJourneyOperators.filter(
+      (operator) =>
+        (mode === "all" || operator.mode === mode) &&
+        (!needle ||
+          [operator.name, operator.mode, operator.region, operator.aliases].some((value) =>
+            value.toLocaleLowerCase().includes(needle)
+          ))
+    );
+  }, [mode, search]);
+  return (
+    <>
+      <AdminPageHeader
+        eyebrow="Built-in catalog"
+        title="Journey operator catalog"
+        text="These are the train, bus, ferry, and cab providers currently offered by the trip forms. They remain read-only here until journey operators become release-managed metadata."
+      />
+      <div className="surface-card mt-6 grid min-w-0 gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_12rem] sm:p-5">
+        <AdminField label="Search journey operators">
+          <input
+            className="form-input"
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search name, region, or alias"
+          />
+        </AdminField>
+        <AdminField label="Journey type">
+          <select
+            className="form-input"
+            value={mode}
+            onChange={(event) => setMode(event.target.value as JourneyOperatorMode)}
+          >
+            <option value="all">All journey types</option>
+            <option value="train">Train</option>
+            <option value="bus">Bus</option>
+            <option value="ferry">Ferry</option>
+            <option value="cab">Cab</option>
+          </select>
+        </AdminField>
       </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-muted">
+        <span>
+          {visibleOperators.length} {visibleOperators.length === 1 ? "operator" : "operators"}
+        </span>
+        <CatalogSourceBadge source="built_in" />
+      </div>
+      <ProgressiveList
+        items={visibleOperators}
+        initialCount={16}
+        itemLabel="journey operators"
+        getKey={(operator) => `${operator.mode}:${operator.name}`}
+        className="mt-4 grid gap-3 sm:grid-cols-2"
+        empty={
+          <p className="surface-card mt-4 border-dashed p-5 text-sm text-muted">
+            No journey operators match these filters.
+          </p>
+        }
+        renderItem={(operator) => (
+          <article className="surface-card h-full min-w-0 p-4 sm:p-5">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h2 className="break-words font-display text-lg font-black [overflow-wrap:anywhere]">
+                {operator.name}
+              </h2>
+              <span className="rounded-full bg-elevated px-2 py-1 text-[0.65rem] font-black uppercase tracking-wide text-muted">
+                {operator.mode}
+              </span>
+            </div>
+            <p className="mt-2 break-words text-sm text-muted [overflow-wrap:anywhere]">
+              {operator.region}
+            </p>
+            {operator.aliases && (
+              <p className="mt-2 break-words text-xs leading-5 text-muted [overflow-wrap:anywhere]">
+                Also found as {operator.aliases}
+              </p>
+            )}
+          </article>
+        )}
+      />
     </>
   );
 }
@@ -1111,12 +1661,17 @@ function Suggestions({ online }: { online: boolean }) {
   });
   return (
     <>
-      <Header
+      <AdminPageHeader
         eyebrow="Privacy-safe review"
         title="Catalog suggestions"
         text="Only the entered public provider, airline, airport, or vendor metadata appears here—never trip names, dates, PNRs, travelers, or documents."
       />
-      {query.error && <AdminError error={query.error} />}
+      <AdminQueryState
+        loading={query.isLoading}
+        error={query.error}
+        empty={!query.isLoading && !query.error && query.data?.length === 0}
+        emptyMessage="No catalog suggestions need review."
+      />
       <div className="mt-6 space-y-3">
         {query.data?.map((item) => (
           <article
@@ -1136,22 +1691,31 @@ function Suggestions({ online }: { online: boolean }) {
               <p className="mt-1 text-xs text-muted">
                 Suggested {new Date(item.created_at).toLocaleDateString()}
               </p>
+              <details className="mt-3 rounded-xl bg-elevated p-3 text-xs">
+                <summary className="cursor-pointer font-bold text-brand">
+                  Review submitted details
+                </summary>
+                <p className="mt-2 break-all text-muted">Normalized: {item.normalized_value}</p>
+                <pre className="mt-2 max-w-full overflow-auto whitespace-pre-wrap break-words text-muted">
+                  {JSON.stringify(item.proposed_data, null, 2)}
+                </pre>
+              </details>
             </div>
             {item.status === "pending" && (
-              <div className="flex flex-wrap gap-2">
+              <div className="grid w-full gap-2 sm:w-auto sm:grid-cols-3">
                 <button
                   disabled={!online || review.isPending}
                   onClick={() => review.mutate({ id: item.id, status: "promoted" })}
                   className="secondary-button"
                 >
-                  Promoted
+                  Promote
                 </button>
                 <button
                   disabled={!online || review.isPending}
                   onClick={() => review.mutate({ id: item.id, status: "merged" })}
                   className="secondary-button"
                 >
-                  Merged
+                  Merge
                 </button>
                 <button
                   disabled={!online || review.isPending}
@@ -1164,10 +1728,8 @@ function Suggestions({ online }: { online: boolean }) {
             )}
           </article>
         ))}
-        {query.data?.length === 0 && (
-          <p className="surface-card border-dashed p-7 text-sm text-muted">No suggestions yet.</p>
-        )}
       </div>
+      {review.error && <AdminError error={review.error} />}
     </>
   );
 }
@@ -1200,33 +1762,57 @@ function Defaults({ online, release }: { online: boolean; release: ConfigRelease
   };
   return (
     <>
-      <Header
+      <AdminPageHeader
         eyebrow={`Release ${release.status}`}
         title="Travel defaults"
         text="Only code-defined namespaces and JSON values are accepted; no executable configuration or secrets."
       />
-      <form onSubmit={submit} className="surface-card mt-6 space-y-3 p-5">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <select className="form-input mt-0" name="namespace">
-            <option>booking</option>
-            <option>document</option>
-            <option>readiness</option>
-            <option>alerts</option>
-            <option>external_links</option>
-          </select>
-          <input
-            className="form-input mt-0"
-            name="key"
-            placeholder="reminder.days_before"
+      {release.status === "draft" && (
+        <form onSubmit={submit} className="surface-card mt-6 space-y-4 p-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <AdminField label="Feature area" required>
+              <select className="form-input" name="namespace" required>
+                <option>booking</option>
+                <option>document</option>
+                <option>readiness</option>
+                <option>alerts</option>
+                <option>external_links</option>
+              </select>
+            </AdminField>
+            <AdminField label="Default key" required hint="Must be a key supported by the app.">
+              <input
+                className="form-input"
+                name="key"
+                placeholder="reminder.days_before"
+                required
+              />
+            </AdminField>
+          </div>
+          <AdminField
+            label="JSON value"
             required
-          />
-        </div>
-        <textarea className="form-input mt-0 min-h-28 font-mono" name="value" defaultValue="{}" />
-        {message && <p className="text-sm font-bold text-danger">{message}</p>}
-        <button disabled={!online || release.status !== "draft"} className="primary-button">
-          Save default
-        </button>
-      </form>
+            hint="Enter valid JSON; strings need double quotes."
+          >
+            <textarea
+              className="form-input min-h-28 font-mono"
+              name="value"
+              defaultValue="{}"
+              required
+            />
+          </AdminField>
+          {message && <p className="text-sm font-bold text-danger">{message}</p>}
+          {save.error && <AdminError error={save.error} />}
+          <button disabled={!online || save.isPending} className="primary-button w-full sm:w-auto">
+            Save default
+          </button>
+        </form>
+      )}
+      <AdminQueryState
+        loading={query.isLoading}
+        error={query.error}
+        empty={!query.isLoading && !query.error && query.data?.length === 0}
+        emptyMessage="No travel defaults have been added to this release."
+      />
       <div className="mt-5 space-y-2">
         {query.data?.map((item) => (
           <div className="surface-card p-4" key={`${item.namespace}.${item.key}`}>
@@ -1271,14 +1857,30 @@ function Appearance({ online, release }: { online: boolean; release: ConfigRelea
   };
   return (
     <>
-      <Header
+      <AdminPageHeader
         eyebrow={`Release ${release.status}`}
         title="Light & dark appearance"
         text="Only allowlisted semantic colors are saved. Contrast is checked before the draft can be published."
       />
+      <AdminQueryState
+        loading={query.isLoading}
+        error={query.error}
+        empty={false}
+        emptyMessage=""
+      />
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
-        <TokenEditor title="Light" tokens={light} onChange={setLight} />
-        <TokenEditor title="Dark" tokens={dark} onChange={setDark} />
+        <TokenEditor
+          title="Light"
+          tokens={light}
+          onChange={setLight}
+          disabled={release.status !== "draft"}
+        />
+        <TokenEditor
+          title="Dark"
+          tokens={dark}
+          onChange={setDark}
+          disabled={release.status !== "draft"}
+        />
       </div>
       {message && (
         <p
@@ -1301,11 +1903,13 @@ function Appearance({ online, release }: { online: boolean; release: ConfigRelea
 function TokenEditor({
   title,
   tokens,
-  onChange
+  onChange,
+  disabled = false
 }: {
   title: string;
   tokens: ThemeTokens;
   onChange: (tokens: ThemeTokens) => void;
+  disabled?: boolean;
 }) {
   return (
     <section className="surface-card p-5">
@@ -1314,15 +1918,17 @@ function TokenEditor({
         {Object.entries(tokens).map(([key, value]) => (
           <label className="form-label capitalize" key={key}>
             {key}
-            <span className="mt-2 flex items-center gap-2">
+            <span className="mt-2 grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-2">
               <input
                 type="color"
+                disabled={disabled}
                 value={value}
                 onChange={(event) => onChange({ ...tokens, [key]: event.target.value })}
                 className="size-11 rounded-lg border border-line bg-transparent p-1"
               />
               <input
-                className="form-input mt-0 font-mono"
+                disabled={disabled}
+                className="form-input mt-0 min-w-0 font-mono"
                 value={value}
                 onChange={(event) =>
                   onChange({ ...tokens, [key]: event.target.value } as ThemeTokens)
@@ -1353,6 +1959,7 @@ function TokenEditor({
 
 function Releases({ online, releases }: { online: boolean; releases: ConfigRelease[] }) {
   const client = useQueryClient();
+  const confirm = useConfirmDialog();
   const audit = useQuery({ queryKey: ["admin-audit"], queryFn: getAdminAudit });
   const publish = useMutation({
     mutationFn: publishRelease,
@@ -1370,19 +1977,24 @@ function Releases({ online, releases }: { online: boolean; releases: ConfigRelea
   });
   return (
     <>
-      <Header
+      <AdminPageHeader
         eyebrow="Immutable history"
         title="Releases"
         text="Publish a complete draft atomically or roll a prior version forward as a new audited release."
       />
+      {releases.length === 0 && (
+        <p className="surface-card mt-6 border-dashed p-6 text-sm text-muted">
+          No releases exist yet. Return to Overview and create the first configuration draft.
+        </p>
+      )}
       <div className="mt-6 space-y-3">
         {releases.map((release) => (
           <article
             key={release.id}
             className="surface-card flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center"
           >
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
                 <span
                   className={`rounded-full px-2.5 py-1 text-xs font-black capitalize ${release.status === "published" ? "bg-success/10 text-success" : "bg-brand-soft text-brand"}`}
                 >
@@ -1394,7 +2006,7 @@ function Releases({ online, releases }: { online: boolean; releases: ConfigRelea
                     : "Unpublished draft"}
                 </strong>
               </div>
-              <p className="mt-2 text-sm text-muted">
+              <p className="mt-2 break-words text-sm text-muted [overflow-wrap:anywhere]">
                 {release.change_note || "No change note"} ·{" "}
                 {new Date(release.created_at).toLocaleString()}
               </p>
@@ -1402,16 +2014,36 @@ function Releases({ online, releases }: { online: boolean; releases: ConfigRelea
             {release.status === "draft" ? (
               <button
                 disabled={!online || publish.isPending}
-                onClick={() => publish.mutate(release.id)}
-                className="primary-button"
+                onClick={async () => {
+                  if (
+                    await confirm({
+                      title: "Publish this configuration?",
+                      message:
+                        "Airlines, airports, booking vendors, defaults, and both themes in this draft will become live together.",
+                      confirmLabel: "Publish release"
+                    })
+                  )
+                    publish.mutate(release.id);
+                }}
+                className="primary-button w-full sm:w-auto"
               >
                 Publish
               </button>
             ) : release.version_number && release.status !== "published" ? (
               <button
                 disabled={!online || rollback.isPending}
-                onClick={() => rollback.mutate(release.id)}
-                className="secondary-button"
+                onClick={async () => {
+                  if (
+                    await confirm({
+                      title: `Roll forward version ${release.version_number}?`,
+                      message:
+                        "This creates a new audited release from the selected historical version; it does not erase history.",
+                      confirmLabel: "Create rollback release"
+                    })
+                  )
+                    rollback.mutate(release.id);
+                }}
+                className="secondary-button w-full justify-center sm:w-auto"
               >
                 <RotateCcw className="size-4" /> Roll back to this
               </button>
@@ -1424,6 +2056,12 @@ function Releases({ online, releases }: { online: boolean; releases: ConfigRelea
       {(publish.error || rollback.error) && <AdminError error={publish.error || rollback.error} />}
       <section className="mt-8">
         <h2 className="font-display text-xl font-black">Audit history</h2>
+        <AdminQueryState
+          loading={audit.isLoading}
+          error={audit.error}
+          empty={!audit.isLoading && !audit.error && audit.data?.length === 0}
+          emptyMessage="No administrator actions have been recorded yet."
+        />
         <div className="mt-3 space-y-2">
           {audit.data?.map((event) => (
             <div className="rounded-2xl border border-line bg-surface p-4" key={event.id}>

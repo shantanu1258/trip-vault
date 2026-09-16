@@ -2,7 +2,7 @@ import { database } from "../../lib/local-db/database";
 import { supabase } from "../../lib/supabase/client";
 import { isValidTimeZone } from "../trips/validation";
 import { validateActionUrl, validateThemeTokens } from "../admin/validation";
-import type { AirlineEntry, AirportEntry, ThemeTokens } from "../admin/api";
+import type { AirlineEntry, AirportEntry, ThemeTokens, VendorEntry } from "../admin/api";
 import starterAirlines from "./starter-airlines.json";
 import starterAirports from "./starter-airports.json";
 import starterVendors from "./starter-vendors.json";
@@ -68,19 +68,16 @@ export async function refreshPublishedConfiguration() {
         .from("airline_catalog_entries")
         .select("*")
         .eq("config_release_id", release.id)
-        .eq("is_enabled", true)
         .order("sort_order"),
       supabase
         .from("airport_catalog_entries")
         .select("*")
         .eq("config_release_id", release.id)
-        .eq("is_enabled", true)
         .order("sort_order"),
       supabase
         .from("booking_vendor_catalog_entries")
         .select("*")
         .eq("config_release_id", release.id)
-        .eq("is_enabled", true)
         .order("sort_order"),
       supabase.from("metadata_defaults").select("*").eq("config_release_id", release.id),
       supabase
@@ -183,25 +180,44 @@ export async function listAvailableAirlines(): Promise<AvailableAirline[]> {
       .equals([PUBLIC_PROFILE, "airline-catalog"])
       .toArray()
   ).map((row) => row.data as AirlineEntry);
-  const mapped = published.map((airline) => ({
-    stableKey: airline.stable_key,
-    name: airline.name,
-    iataCode: airline.iata_code,
-    icaoCode: airline.icao_code,
-    checkInUrlTemplate: airline.check_in_url_template,
-    manageBookingUrlTemplate: airline.manage_booking_url_template,
-    statusUrlTemplate: airline.status_url_template,
-    trackerUrlTemplate: airline.tracker_url_template,
-    brandColor: airline.brand_color,
-    logoAssetPath: airline.logo_asset_path,
-    bannerAssetPath: airline.banner_asset_path,
-    sourceVersion: version
-  }));
-  const names = new Set(mapped.map((airline) => airline.name.toLocaleLowerCase()));
+  return mergeAvailableAirlines(published, version);
+}
+
+export function mergeAvailableAirlines(
+  published: AirlineEntry[],
+  version: number
+): AvailableAirline[] {
+  const overridden = new Set(
+    published
+      .flatMap((airline) => [airline.stable_key, airline.name, airline.iata_code ?? ""])
+      .filter(Boolean)
+      .map((value) => value.toLocaleLowerCase())
+  );
+  const mapped = published
+    .filter((airline) => airline.is_enabled)
+    .map((airline) => ({
+      stableKey: airline.stable_key,
+      name: airline.name,
+      iataCode: airline.iata_code,
+      icaoCode: airline.icao_code,
+      checkInUrlTemplate: airline.check_in_url_template,
+      manageBookingUrlTemplate: airline.manage_booking_url_template,
+      statusUrlTemplate: airline.status_url_template,
+      trackerUrlTemplate: airline.tracker_url_template,
+      brandColor: airline.brand_color,
+      logoAssetPath: airline.logo_asset_path,
+      bannerAssetPath: airline.banner_asset_path,
+      sourceVersion: version
+    }));
   return [
     ...mapped,
     ...starterAirlines
-      .filter((airline) => !names.has(airline.name.toLocaleLowerCase()))
+      .filter(
+        (airline) =>
+          ![airline.stableKey, airline.name, airline.iataCode].some((value) =>
+            overridden.has(value.toLocaleLowerCase())
+          )
+      )
       .map((airline) => ({
         stableKey: airline.stableKey,
         name: airline.name,
@@ -227,24 +243,33 @@ export async function listAvailableAirports(): Promise<AvailableAirport[]> {
       .equals([PUBLIC_PROFILE, "airport-catalog"])
       .toArray()
   ).map((row) => row.data as AirportEntry);
-  const mapped = published.map((airport) => ({
-    stableKey: airport.stable_key,
-    iataCode: airport.iata_code,
-    icaoCode: airport.icao_code,
-    name: airport.name,
-    city: airport.city,
-    countryCode: airport.country_code,
-    timezone: airport.timezone,
-    latitude: airport.latitude,
-    longitude: airport.longitude,
-    sourceVersion: version
-  }));
+  return mergeAvailableAirports(published, version);
+}
+
+export function mergeAvailableAirports(
+  published: AirportEntry[],
+  version: number
+): AvailableAirport[] {
   const keys = new Set(
-    mapped
-      .flatMap((airport) => [airport.stableKey, airport.iataCode ?? ""])
+    published
+      .flatMap((airport) => [airport.stable_key, airport.iata_code ?? ""])
       .filter(Boolean)
       .map((value) => value.toLocaleLowerCase())
   );
+  const mapped = published
+    .filter((airport) => airport.is_enabled)
+    .map((airport) => ({
+      stableKey: airport.stable_key,
+      iataCode: airport.iata_code,
+      icaoCode: airport.icao_code,
+      name: airport.name,
+      city: airport.city,
+      countryCode: airport.country_code,
+      timezone: airport.timezone,
+      latitude: airport.latitude,
+      longitude: airport.longitude,
+      sourceVersion: version
+    }));
   return [
     ...mapped,
     ...starterAirports
@@ -270,29 +295,38 @@ export async function listAvailableVendors(): Promise<AvailableVendor[]> {
       .where("[profileId+entityType]")
       .equals([PUBLIC_PROFILE, "vendor-catalog"])
       .toArray()
-  ).map(
-    (row) =>
-      row.data as {
-        stable_key: string;
-        name: string;
-        website_url: string | null;
-        brand_color: string | null;
-        logo_asset_path: string | null;
-      }
+  ).map((row) => row.data as VendorEntry);
+  return mergeAvailableVendors(published, version);
+}
+
+export function mergeAvailableVendors(
+  published: VendorEntry[],
+  version: number
+): AvailableVendor[] {
+  const overridden = new Set(
+    published
+      .flatMap((vendor) => [vendor.stable_key, vendor.name])
+      .map((value) => value.toLocaleLowerCase())
   );
-  const mapped = published.map((vendor) => ({
-    stableKey: vendor.stable_key,
-    name: vendor.name,
-    websiteUrl: vendor.website_url,
-    brandColor: vendor.brand_color,
-    logoAssetPath: vendor.logo_asset_path,
-    sourceVersion: version
-  }));
-  const names = new Set(mapped.map((vendor) => vendor.name.toLocaleLowerCase()));
+  const mapped = published
+    .filter((vendor) => vendor.is_enabled)
+    .map((vendor) => ({
+      stableKey: vendor.stable_key,
+      name: vendor.name,
+      websiteUrl: vendor.website_url,
+      brandColor: vendor.brand_color,
+      logoAssetPath: vendor.logo_asset_path,
+      sourceVersion: version
+    }));
   return [
     ...mapped,
     ...starterVendors
-      .filter((vendor) => !names.has(vendor.name.toLocaleLowerCase()))
+      .filter(
+        (vendor) =>
+          ![vendor.stableKey, vendor.name].some((value) =>
+            overridden.has(value.toLocaleLowerCase())
+          )
+      )
       .map((vendor) => ({ ...vendor, logoAssetPath: null, sourceVersion: 0 }))
   ];
 }

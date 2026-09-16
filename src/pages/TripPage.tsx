@@ -3,28 +3,21 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
-  BedDouble,
-  Bus,
   CalendarClock,
   CalendarPlus,
-  CarTaxiFront,
   Check,
   ChevronRight,
-  CookingPot,
   Download,
-  Ship,
   LocateFixed,
   Info,
   MapPin,
   NotebookPen,
   Pencil,
-  Plane,
   Plus,
   ReceiptIndianRupee,
   Search,
   ShieldCheck,
   TicketCheck,
-  TrainFront,
   Trash2,
   UserPlus,
   UsersRound,
@@ -35,6 +28,7 @@ import {
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
+import { EventTypeIcon } from "../components/EventTypeIcon";
 import { FocusSurface } from "../components/FocusSurface";
 import { ModalSheet } from "../components/ModalSheet";
 import { useConfirmDialog } from "../components/ConfirmDialogProvider";
@@ -190,21 +184,6 @@ function openFormFromQuery(value: string | null): OpenForm {
     return value as Exclude<OpenForm, "event" | null>;
   return null;
 }
-
-const iconFor: Record<TimelineEventType, typeof Plane> = {
-  flight: Plane,
-  train: TrainFront,
-  bus: Bus,
-  ferry: Ship,
-  cab: CarTaxiFront,
-  hotel_check_in: BedDouble,
-  hotel_check_out: BedDouble,
-  transport: CarTaxiFront,
-  meal: CookingPot,
-  activity: MapPin,
-  preparation: ShieldCheck,
-  custom: CalendarClock
-};
 
 type TripScrollSnapshot = { y: number; anchorId?: string; anchorOffset?: number };
 
@@ -874,7 +853,6 @@ export function EventDetailsSheet({
   onMoveDown: () => void;
   routeBacked?: boolean;
 }) {
-  const Icon = iconFor[item.event_type ?? "custom"];
   const map = mapsUrl(item.location);
   const end = eventEndDetails(item);
   const endTimeZone = eventEndTimeZone(item, flights, journeys);
@@ -891,9 +869,7 @@ export function EventDetailsSheet({
       manageHistory={!routeBacked}
     >
       <div className="mt-5 flex items-start gap-4 rounded-2xl bg-elevated p-4">
-        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
-          <Icon className="size-5" />
-        </span>
+        <EventTypeIcon type={item.event_type ?? "custom"} className="size-11 rounded-xl" />
         <div className="min-w-0">
           <p className="text-sm font-black">
             {timingLabel ?? formatEventTime(item.starts_at, item.timezone)}
@@ -2173,7 +2149,6 @@ export function TripPage() {
                         );
                       }
                       const item = entry.item;
-                      const Icon = iconFor[item.event_type ?? "custom"];
                       const booking = item.booking_id
                         ? visibleBookings.find((row) => row.id === item.booking_id)
                         : undefined;
@@ -2230,11 +2205,11 @@ export function TripPage() {
                             >
                               {compactTimingLabel}
                             </time>
-                            <span
-                              className={`z-10 mt-3 hidden size-10 place-items-center rounded-full border-4 border-surface sm:grid ${current ? "bg-coral text-white shadow-focus" : phase === "past" ? "bg-line text-muted" : "bg-brand-soft text-brand"}`}
-                            >
-                              <Icon className="size-4" />
-                            </span>
+                            <EventTypeIcon
+                              type={item.event_type ?? "custom"}
+                              iconClassName="size-4"
+                              className={`z-10 mt-3 hidden size-10 rounded-full border-4 border-surface sm:grid ${current ? "shadow-focus ring-2 ring-coral/40" : phase === "past" ? "opacity-60" : ""}`}
+                            />
                             <FocusSurface
                               active={current}
                               className={`group p-4 pr-16 hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft sm:p-5 ${current ? "bg-coral/10" : "bg-elevated"}`}
@@ -2245,11 +2220,11 @@ export function TripPage() {
                                 onClick={() => openEvent(item.id)}
                                 aria-label={`Open details for ${item.title}`}
                               />
-                              <span
-                                className={`absolute right-4 top-4 grid size-10 place-items-center rounded-xl sm:hidden ${current ? "bg-coral text-white" : phase === "past" ? "bg-line/70 text-muted" : "bg-brand-soft text-brand"}`}
-                              >
-                                <Icon className="size-4" />
-                              </span>
+                              <EventTypeIcon
+                                type={item.event_type ?? "custom"}
+                                iconClassName="size-4"
+                                className={`absolute right-4 top-4 size-10 rounded-xl sm:hidden ${current ? "ring-2 ring-coral/40" : phase === "past" ? "opacity-60" : ""}`}
+                              />
                               <time
                                 className={`text-xs font-black sm:hidden ${current ? "text-coral" : "text-muted"}`}
                               >

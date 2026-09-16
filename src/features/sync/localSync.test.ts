@@ -4,6 +4,7 @@ import {
   associatedAccountDocumentUpload,
   classifySyncError,
   ensureAccountDocumentStored,
+  groupSyncIssues,
   isDuplicateKeyError,
   isDuplicateStorageObjectError,
   isParticipantScopeMismatchError,
@@ -39,6 +40,36 @@ describe("foreground synchronization", () => {
     expect(
       orderOutbox([operation("a", ["b"]), operation("b", ["a"])]).map((item) => item.operationId)
     ).toEqual(["a", "b"]));
+  it("groups repeated failures for one logical entity while keeping conflicts separate", () => {
+    const issues = [
+      {
+        ...operation("link-1"),
+        entityType: "event-documents:event-1",
+        lastErrorCode: "permission"
+      },
+      {
+        ...operation("link-2"),
+        entityType: "event-documents:event-1",
+        lastErrorCode: "permission"
+      },
+      {
+        ...operation("link-3"),
+        entityType: "event-documents:event-2",
+        lastErrorCode: "permission"
+      },
+      { ...operation("conflict-1"), entityType: "notes:trip-1", lastErrorCode: "conflict" },
+      { ...operation("conflict-2"), entityType: "notes:trip-1", lastErrorCode: "conflict" }
+    ].map((issue) => ({ ...issue, localValue: null }));
+
+    const groups = groupSyncIssues(issues);
+
+    expect(groups.map((group) => group.issues.map((issue) => issue.operationId))).toEqual([
+      ["link-1", "link-2"],
+      ["link-3"],
+      ["conflict-1"],
+      ["conflict-2"]
+    ]);
+  });
   it("upgrades legacy journey details before the stricter shape constraint", () => {
     const train = {
       ...operation("train"),

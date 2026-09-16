@@ -1,20 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  BedDouble,
-  Bus,
-  CalendarPlus,
-  CarTaxiFront,
-  Check,
-  ChevronLeft,
-  CircleEllipsis,
-  CookingPot,
-  Loader2,
-  MapPinned,
-  Plane,
-  Ship,
-  TrainFront
-} from "lucide-react";
+import { CalendarPlus, Check, ChevronLeft, Loader2 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { EventTypeIcon } from "../../components/EventTypeIcon";
 import { FileDropzone } from "../../components/FileDropzone";
 import { ModalSheet } from "../../components/ModalSheet";
 import { suppressRealtimeRefresh } from "../sync/RealtimeRefresh";
@@ -75,39 +62,35 @@ import {
 import { readEventTiming, TimingFields } from "./TimingFields";
 import { upsertById } from "../queries/cache";
 
-type Choice = { type: TimelineEventType; label: string; hint: string; icon: typeof Plane };
+type Choice = { type: TimelineEventType; label: string; hint: string };
 const choices: Choice[] = [
-  { type: "flight", label: "Flight", hint: "Direct or connected flights", icon: Plane },
+  { type: "flight", label: "Flight", hint: "Direct or connected flights" },
   {
     type: "hotel_check_in",
     label: "Hotel",
-    hint: "A stay with check-in and checkout",
-    icon: BedDouble
+    hint: "A stay with check-in and checkout"
   },
   {
     type: "activity",
     label: "Activity",
-    hint: "Visit, tour, ticket, or free time",
-    icon: MapPinned
+    hint: "Visit, tour, ticket, or free time"
   },
-  { type: "bus", label: "Bus", hint: "Coach, shuttle, or local bus", icon: Bus },
-  { type: "cab", label: "Cab", hint: "Local ride, transfer, or outstation", icon: CarTaxiFront },
-  { type: "ferry", label: "Ferry / boat", hint: "Passenger or vehicle sailing", icon: Ship },
-  { type: "train", label: "Train", hint: "Rail plan, ticket, or connection", icon: TrainFront },
-  { type: "meal", label: "Meal", hint: "Lunch, dinner, or reservation", icon: CookingPot },
+  { type: "bus", label: "Bus", hint: "Coach, shuttle, or local bus" },
+  { type: "cab", label: "Cab", hint: "Local ride, transfer, or outstation" },
+  { type: "ferry", label: "Ferry / boat", hint: "Passenger or vehicle sailing" },
+  { type: "train", label: "Train", hint: "Rail plan, ticket, or connection" },
+  { type: "meal", label: "Meal", hint: "Lunch, dinner, or reservation" },
   {
     type: "preparation",
     label: "Preparation",
-    hint: "A dated or flexible pre-trip task",
-    icon: CalendarPlus
+    hint: "A dated or flexible pre-trip task"
   },
   {
     type: "transport",
     label: "Other transport",
-    hint: "Metro, rental, transfer, or walk",
-    icon: CarTaxiFront
+    hint: "Metro, rental, transfer, or walk"
   },
-  { type: "custom", label: "Other", hint: "Anything else on the timeline", icon: CircleEllipsis }
+  { type: "custom", label: "Other", hint: "Anything else on the timeline" }
 ];
 
 function text(form: FormData, name: string) {
@@ -1219,16 +1202,17 @@ export function AddEventForm({
             </p>
           )}
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            {choices.map(({ type: choiceType, label, hint, icon: Icon }) => (
+            {choices.map(({ type: choiceType, label, hint }) => (
               <button
                 key={choiceType}
                 type="button"
                 onClick={() => selectType(choiceType)}
                 className="group flex min-h-24 items-center gap-4 rounded-2xl border border-line bg-elevated p-4 text-left transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft"
               >
-                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand transition group-hover:scale-105">
-                  <Icon className="size-5" />
-                </span>
+                <EventTypeIcon
+                  type={choiceType}
+                  className="size-11 rounded-xl transition group-hover:scale-105"
+                />
                 <span>
                   <strong className="block font-display text-base font-black">{label}</strong>
                   <span className="mt-1 block text-xs leading-5 text-muted">{hint}</span>

@@ -8,18 +8,24 @@ import { DocumentVisibilityBadge } from "./DocumentVisibilityBadge";
 type TripDocumentRowProps = {
   document: VaultDocument;
   travelers: Traveler[];
-  to: string;
+  to?: string;
+  onClick?: () => void;
   state?: unknown;
   context?: string;
 };
 
-export function TripDocumentRow({ document, travelers, to, state, context }: TripDocumentRowProps) {
-  return (
-    <Link
-      to={to}
-      state={state}
-      className="group grid min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_auto] items-start gap-3 rounded-xl border border-line bg-elevated p-3.5 transition hover:border-brand/40 hover:shadow-soft"
-    >
+export function TripDocumentRow({
+  document,
+  travelers,
+  to,
+  onClick,
+  state,
+  context
+}: TripDocumentRowProps) {
+  const className =
+    "group grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_auto] items-start gap-3 rounded-xl border border-line bg-elevated p-3.5 text-left transition hover:border-brand/40 hover:shadow-soft";
+  const content = (
+    <>
       <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand">
         {document.current_version ? (
           <FileCheck2 className="size-4" />
@@ -47,6 +53,20 @@ export function TripDocumentRow({ document, travelers, to, state, context }: Tri
         </span>
       </span>
       <ChevronRight className="mt-3 size-4 shrink-0 text-muted transition-transform group-hover:translate-x-0.5" />
-    </Link>
+    </>
+  );
+
+  if (to) {
+    return (
+      <Link to={to} state={state} className={className}>
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <button type="button" onClick={onClick} className={className}>
+      {content}
+    </button>
   );
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   documentAssignmentLabel,
   documentKind,
+  documentKindFor,
   documentMatchesTraveler,
   documentPurposeLabel,
   findDuplicateDocument,
@@ -53,6 +54,9 @@ describe("document model", () => {
     expect(documentKind("boarding_pass").defaultAssignment).toBe("selected");
     expect(documentKind("activity_ticket").defaultAssignment).toBe("unassigned");
     expect(documentPurposeLabel("meal_voucher")).toBe("Meal voucher");
+    expect(
+      documentKindFor(vaultDocument({ category: "activity", purpose: "activity_ticket" }))
+    ).toBe("activity_ticket");
   });
 
   it("shows shared documents for every traveler but not unassigned tickets", () => {

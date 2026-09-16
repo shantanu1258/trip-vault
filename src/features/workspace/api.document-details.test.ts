@@ -72,12 +72,16 @@ describe("document detail edits", () => {
     const updated = await updateDocumentDetails({
       document,
       title: "  Dubai flight tickets  ",
+      category: "activity",
+      purpose: "activity_ticket",
       assignmentMode: "selected",
       travelerIds: ["traveler-1", "traveler-2", "traveler-2"]
     });
 
     expect(mocks.documentUpdate).toHaveBeenCalledWith({
       title: "Dubai flight tickets",
+      category: "activity",
+      purpose: "activity_ticket",
       assignment_mode: "selected",
       traveler_id: null
     });
@@ -88,6 +92,8 @@ describe("document detail edits", () => {
     ]);
     expect(updated).toMatchObject({
       title: "Dubai flight tickets",
+      category: "activity",
+      purpose: "activity_ticket",
       assignment_mode: "selected",
       traveler_id: null,
       traveler_ids: ["traveler-1", "traveler-2"]
@@ -107,6 +113,8 @@ describe("document detail edits", () => {
       updateDocumentDetails({
         document,
         title: "Ticket",
+        category: "flight",
+        purpose: "ticket",
         assignmentMode: "selected",
         travelerIds: []
       })

@@ -1,6 +1,5 @@
 import {
   ArrowLeft,
-  BedDouble,
   CalendarClock,
   CalendarPlus,
   Check,
@@ -11,50 +10,47 @@ import {
   Info,
   LocateFixed,
   MapPin,
-  Plane,
   Plus,
   RotateCcw,
   Search,
   ShieldCheck,
-  TrainFront,
   UsersRound,
-  WalletCards,
   WifiOff,
   X
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
+import { EventTypeIcon } from "../components/EventTypeIcon";
 import { FocusSurface } from "../components/FocusSurface";
 import { ModalSheet } from "../components/ModalSheet";
+import { TripDocumentRow } from "../components/TripDocumentRow";
+import { CompactCostTotal, CostTotals } from "../components/TripUi";
+import { demoEvents, demoPhaseCopy, demoTasks, demoTravelers, documentById } from "../demo/data";
 import {
-  demoDocuments,
-  demoEvents,
-  demoPhaseCopy,
-  demoTasks,
-  demoTravelers,
-  documentById
-} from "../demo/data";
+  demoBookingById,
+  demoBookings,
+  demoCosts,
+  demoDocumentsForTraveler,
+  demoTravelersAsTravelers
+} from "../demo/model";
 import type { DemoEvent, DemoPhase, DemoTask } from "../demo/types";
+import { ReservationRow } from "../features/trips/TripDetailsCards";
+import { TripDetailsSection } from "../features/trips/TripDetailsSection";
+import { CostDetailsSheet, TripExpensesSheet } from "../features/trips/TripExpenses";
+import { calculateTripBalances } from "../features/trips/expenses";
+import type { TimelineEventType, TripCost } from "../features/trips/types";
 import { database } from "../lib/local-db/database";
 
 const phases: DemoPhase[] = ["planning", "predeparture", "travelday", "intrip", "completed"];
 const phaseLabels = { past: "Past", current: "Happening now", future: "Upcoming" } as const;
-const iconFor: Record<DemoEvent["type"], typeof Plane> = {
-  flight: Plane,
-  hotel: BedDouble,
-  activity: MapPin,
-  train: TrainFront
-};
-const sampleCosts = [
-  { id: "flight", title: "Aster Air flights", payer: "Sam Shah", amount: "€2,340.00" },
-  { id: "hotel", title: "Casa Bellora", payer: "Mia Kapoor", amount: "€1,860.00" },
-  { id: "activity", title: "Colosseum evening tour", payer: "Sam Shah", amount: "€660.00" }
-];
-
 type DemoView = "timeline" | "details";
 type DemoSheet = "people" | "readiness" | "expenses" | null;
 type EventPhase = keyof typeof phaseLabels;
+
+function demoTimelineEventType(type: DemoEvent["type"]): TimelineEventType {
+  return type === "hotel" ? "hotel_check_in" : type;
+}
 
 function demoEventPhase(
   event: DemoEvent,
@@ -94,12 +90,29 @@ function DemoDocumentLink({ documentId }: { documentId: string }) {
   );
 }
 
-function EventDetails({ event, onClose }: { event: DemoEvent; onClose: () => void }) {
-  const Icon = iconFor[event.type];
-  const documents = event.documentIds.flatMap((id) => {
-    const document = documentById.get(id);
-    return document ? [document] : [];
-  });
+function EventDetails({
+  event,
+  visibleDocumentIds,
+  focusedTravelerId,
+  onClose
+}: {
+  event: DemoEvent;
+  visibleDocumentIds: Set<string>;
+  focusedTravelerId: string | null;
+  onClose: () => void;
+}) {
+  const documents = event.documentIds
+    .filter((id) => visibleDocumentIds.has(id))
+    .flatMap((id) => {
+      const document = documentById.get(id);
+      return document ? [document] : [];
+    });
+  const travelers = demoTravelers.filter(
+    (traveler) =>
+      event.travelerIds.includes(traveler.id) &&
+      (!focusedTravelerId || traveler.id === focusedTravelerId)
+  );
+  const booking = demoBookingById.get(event.id);
   return (
     <ModalSheet
       eyebrow={event.type === "hotel" ? "Hotel" : event.type}
@@ -107,9 +120,7 @@ function EventDetails({ event, onClose }: { event: DemoEvent; onClose: () => voi
       onClose={onClose}
     >
       <div className="mt-5 flex items-start gap-4 rounded-2xl bg-elevated p-4">
-        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
-          <Icon className="size-5" />
-        </span>
+        <EventTypeIcon type={demoTimelineEventType(event.type)} className="size-11 rounded-xl" />
         <div className="min-w-0">
           <p className="text-sm font-black">
             {event.dayLabel}, {event.dateLabel} · {event.timeLabel}
@@ -138,27 +149,36 @@ function EventDetails({ event, onClose }: { event: DemoEvent; onClose: () => voi
       <p className="mt-4 whitespace-pre-wrap rounded-xl bg-elevated p-3 text-sm leading-6 text-muted">
         {event.note}
       </p>
-      <div className="mt-4 rounded-2xl border border-line bg-surface/70 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-[.65rem] font-black uppercase tracking-[.12em] text-muted">
-              {event.type} booking
-            </p>
-            <p className="mt-1 font-bold">{event.eyebrow}</p>
-            {event.type === "flight" && (
-              <>
-                <p className="mt-1 font-black text-brand">DEL → FCO</p>
-                <p className="mt-1 text-xs text-muted">
-                  <strong className="text-ink">PNR:</strong> SAMPLE7
-                </p>
-              </>
-            )}
+      {booking ? (
+        <div className="mt-4 rounded-2xl border border-line bg-surface/70 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[.65rem] font-black uppercase tracking-[.12em] text-muted">
+                {event.type} booking
+              </p>
+              <p className="mt-1 font-bold">{event.eyebrow}</p>
+              {event.type === "flight" && (
+                <>
+                  <p className="mt-1 font-black text-brand">DEL → FCO</p>
+                  <p className="mt-1 text-xs text-muted">
+                    <strong className="text-ink">PNR:</strong> SAMPLE7
+                  </p>
+                </>
+              )}
+            </div>
+            <span className="rounded-full bg-brand-soft px-3 py-2 text-xs font-bold text-brand">
+              Sample booking
+            </span>
           </div>
-          <span className="rounded-full bg-brand-soft px-3 py-2 text-xs font-bold text-brand">
-            Sample booking
-          </span>
         </div>
-      </div>
+      ) : (
+        <div className="mt-4 rounded-2xl border border-line bg-surface/70 p-4">
+          <p className="text-sm font-extrabold">Planned without a booking</p>
+          <p className="mt-1 text-xs leading-5 text-muted">
+            A booking can be attached later without recreating this timeline event.
+          </p>
+        </div>
+      )}
       <div className="mt-4 rounded-2xl border border-warning/20 bg-warning/5 p-4">
         <p className="text-sm font-extrabold">Want to change this sample?</p>
         <p className="mt-1 text-xs leading-5 text-muted">
@@ -185,16 +205,14 @@ function EventDetails({ event, onClose }: { event: DemoEvent; onClose: () => voi
       <div className="mt-6 border-t border-line pt-5">
         <p className="eyebrow">Travelers</p>
         <div className="mt-3 flex flex-wrap gap-2">
-          {demoTravelers
-            .filter((traveler) => event.travelerIds.includes(traveler.id))
-            .map((traveler) => (
-              <span
-                key={traveler.id}
-                className="rounded-full bg-brand-soft px-3 py-1.5 text-xs font-bold text-brand"
-              >
-                {traveler.name}
-              </span>
-            ))}
+          {travelers.map((traveler) => (
+            <span
+              key={traveler.id}
+              className="rounded-full bg-brand-soft px-3 py-1.5 text-xs font-bold text-brand"
+            >
+              {traveler.name}
+            </span>
+          ))}
         </div>
       </div>
     </ModalSheet>
@@ -305,101 +323,11 @@ function ReadinessSheet({
   );
 }
 
-function ExpensesSheet({ onClose }: { onClose: () => void }) {
-  const [showBalances, setShowBalances] = useState(false);
-  return (
-    <ModalSheet eyebrow="Mediterranean Summer" title="Trip expenses" onClose={onClose}>
-      <div className="mt-5 rounded-2xl bg-elevated p-4">
-        <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[.12em] text-muted">
-          <WalletCards className="size-4" /> Total trip cost
-        </p>
-        <strong className="mt-2 block font-display text-2xl">€4,860.00</strong>
-      </div>
-      <label className="mt-4 flex items-center gap-3 rounded-xl border border-line p-3 text-sm font-bold">
-        <input
-          type="checkbox"
-          checked={showBalances}
-          onChange={(event) => setShowBalances(event.target.checked)}
-          className="size-5 accent-brand"
-        />{" "}
-        Show balances
-      </label>
-      {showBalances && (
-        <div className="mt-4 rounded-2xl border border-line p-4">
-          <p className="eyebrow">Balances by currency</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <p className="rounded-xl bg-elevated p-3 text-sm">
-              Sam <strong className="float-right text-success">gets €240</strong>
-            </p>
-            <p className="rounded-xl bg-elevated p-3 text-sm">
-              Mia <strong className="float-right text-warning">owes €240</strong>
-            </p>
-          </div>
-        </div>
-      )}
-      <div className="mt-5 space-y-2">
-        {sampleCosts.map((cost) => (
-          <div
-            key={cost.id}
-            className="flex flex-wrap items-center gap-2 rounded-xl bg-elevated p-3 text-sm"
-          >
-            <strong className="min-w-0 flex-1">{cost.title}</strong>
-            <span className="text-muted">Paid by {cost.payer}</span>
-            <strong>{cost.amount}</strong>
-          </div>
-        ))}
-      </div>
-      <Link to="/sign-in" className="secondary-button mt-5 w-full">
-        <Plus className="size-4" /> Sign in to add an expense
-      </Link>
-    </ModalSheet>
-  );
-}
-
-function DemoSection({
-  id,
-  eyebrow,
-  title,
-  action,
-  onActivate,
-  children
-}: {
-  id: string;
-  eyebrow: string;
-  title: string;
-  action?: ReactNode;
-  onActivate?: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <section
-      id={id}
-      className={`surface-card group relative scroll-mt-28 p-5 sm:p-6 ${onActivate ? "transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft" : ""}`}
-    >
-      {onActivate && (
-        <button
-          type="button"
-          className="absolute inset-0 z-10 rounded-[inherit] focus-visible:ring-2 focus-visible:ring-brand"
-          onClick={onActivate}
-          aria-label={`Open ${title}`}
-        />
-      )}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="eyebrow">{eyebrow}</p>
-          <h2 className="mt-1 font-display text-2xl font-black">{title}</h2>
-        </div>
-        {action && <div className="relative z-20">{action}</div>}
-      </div>
-      <div className="mt-5">{children}</div>
-    </section>
-  );
-}
-
 export function DemoTripPage() {
   const [phase, setPhase] = useState<DemoPhase>("travelday");
   const [view, setView] = useState<DemoView>("timeline");
   const [selectedEvent, setSelectedEvent] = useState<DemoEvent | null>(null);
+  const [selectedCost, setSelectedCost] = useState<TripCost | null>(null);
   const [sheet, setSheet] = useState<DemoSheet>(null);
   const [focusedTravelerId, setFocusedTravelerId] = useState<string | null>(null);
   const [taskStatuses, setTaskStatuses] = useState<Record<string, "to_check" | "complete">>(() =>
@@ -423,6 +351,34 @@ export function DemoTripPage() {
           )
         : demoTasks,
     [focusedTravelerId]
+  );
+  const visibleDocuments = useMemo(
+    () => demoDocumentsForTraveler(focusedTravelerId),
+    [focusedTravelerId]
+  );
+  const visibleDocumentIds = useMemo(
+    () => new Set(visibleDocuments.map((document) => document.id)),
+    [visibleDocuments]
+  );
+  const visibleCosts = useMemo(
+    () =>
+      focusedTravelerId
+        ? demoCosts.filter((cost) =>
+            cost.participants?.some((participant) => participant.traveler_id === focusedTravelerId)
+          )
+        : demoCosts,
+    [focusedTravelerId]
+  );
+  const visibleBalances = useMemo(
+    () =>
+      calculateTripBalances(visibleCosts).filter(
+        (balance) => !focusedTravelerId || balance.travelerId === focusedTravelerId
+      ),
+    [focusedTravelerId, visibleCosts]
+  );
+  const visibleReservations = useMemo(
+    () => visibleEvents.filter((event) => demoBookingById.has(event.id)),
+    [visibleEvents]
   );
   const activeEvent =
     visibleEvents.find((event) => event.id === copy.activeEventId) ?? visibleEvents[0];
@@ -448,7 +404,7 @@ export function DemoTripPage() {
           detail: `${event.type} · ${event.location}`,
           type: "event" as const
         })),
-      ...demoDocuments
+      ...visibleDocuments
         .filter((document) =>
           `${document.title} ${document.purpose}`.toLowerCase().includes(needle)
         )
@@ -467,6 +423,7 @@ export function DemoTripPage() {
           type: "task" as const
         })),
       ...demoTravelers
+        .filter((traveler) => traveler.role !== "Non-travelling collaborator")
         .filter((traveler) => traveler.name.toLowerCase().includes(needle))
         .map((traveler) => ({
           id: traveler.id,
@@ -475,7 +432,7 @@ export function DemoTripPage() {
           type: "traveler" as const
         }))
     ];
-  }, [query, visibleEvents, visibleTasks]);
+  }, [query, visibleDocuments, visibleEvents, visibleTasks]);
 
   useEffect(() => {
     database.settings
@@ -498,6 +455,9 @@ export function DemoTripPage() {
     setView("timeline");
     setFocusedTravelerId(null);
     setQuery("");
+    setSelectedEvent(null);
+    setSelectedCost(null);
+    setSheet(null);
     setTaskStatuses(Object.fromEntries(demoTasks.map((task) => [task.id, task.status])));
   };
   const scrollToEvent = (id: string) =>
@@ -605,9 +565,7 @@ export function DemoTripPage() {
             className="mt-4 inline-flex max-w-full items-center gap-2 rounded-xl bg-surface/10 px-3 py-2 text-left transition hover:bg-surface/15"
             aria-label="Open trip expenses"
           >
-            <WalletCards className="size-4 shrink-0" />
-            <span className="font-bold text-surface/70">Total trip cost</span>
-            <strong className="truncate font-display text-base text-surface">€4,860.00</strong>
+            <CompactCostTotal costs={visibleCosts} emptyText="Add your first trip cost" inverse />
             <ChevronRight className="size-4 shrink-0 text-surface/60" />
           </button>
         </header>
@@ -753,8 +711,10 @@ export function DemoTripPage() {
                     ? demoEventPhase(visibleEvents[index - 1], phase, activeEvent)
                     : null;
                   const current = phase !== "completed" && event.id === activeEvent?.id;
-                  const Icon = iconFor[event.type];
                   const tasks = visibleTasks.filter((task) => task.anchorEventId === event.id);
+                  const visibleDocumentCount = event.documentIds.filter((id) =>
+                    visibleDocumentIds.has(id)
+                  ).length;
                   return (
                     <Fragment key={event.id}>
                       {eventPhase !== previous && (
@@ -839,11 +799,11 @@ export function DemoTripPage() {
                         >
                           {event.timeLabel}
                         </time>
-                        <span
-                          className={`z-10 mt-3 hidden size-10 place-items-center rounded-full border-4 border-surface sm:grid ${current ? "bg-coral text-white shadow-focus" : eventPhase === "past" ? "bg-line text-muted" : "bg-brand-soft text-brand"}`}
-                        >
-                          <Icon className="size-4" />
-                        </span>
+                        <EventTypeIcon
+                          type={demoTimelineEventType(event.type)}
+                          iconClassName="size-4"
+                          className={`z-10 mt-3 hidden size-10 rounded-full border-4 border-surface sm:grid ${current ? "shadow-focus ring-2 ring-coral/40" : eventPhase === "past" ? "opacity-60" : ""}`}
+                        />
                         <FocusSurface
                           active={current}
                           className={`group p-4 pr-16 hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft sm:p-5 ${current ? "bg-coral/10" : "bg-elevated"}`}
@@ -854,11 +814,11 @@ export function DemoTripPage() {
                             onClick={() => setSelectedEvent(event)}
                             aria-label={`Open details for ${event.title}`}
                           />
-                          <span
-                            className={`absolute right-4 top-4 grid size-10 place-items-center rounded-xl sm:hidden ${current ? "bg-coral text-white" : eventPhase === "past" ? "bg-line/70 text-muted" : "bg-brand-soft text-brand"}`}
-                          >
-                            <Icon className="size-4" />
-                          </span>
+                          <EventTypeIcon
+                            type={demoTimelineEventType(event.type)}
+                            iconClassName="size-4"
+                            className={`absolute right-4 top-4 size-10 rounded-xl sm:hidden ${current ? "ring-2 ring-coral/40" : eventPhase === "past" ? "opacity-60" : ""}`}
+                          />
                           <time
                             className={`text-xs font-black sm:hidden ${current ? "text-coral" : "text-muted"}`}
                           >
@@ -891,11 +851,11 @@ export function DemoTripPage() {
                             <MapPin className="mt-0.5 size-4 shrink-0" />
                             {event.location}
                           </p>
-                          {event.documentIds.length > 0 && (
+                          {visibleDocumentCount > 0 && (
                             <div className="relative z-20 mt-3 flex items-center gap-1.5 text-xs font-extrabold text-brand">
                               <FileText className="size-4" />
-                              {event.documentIds.length} document
-                              {event.documentIds.length === 1 ? "" : "s"}
+                              {visibleDocumentCount} document
+                              {visibleDocumentCount === 1 ? "" : "s"}
                             </div>
                           )}
                           <span className="mt-4 flex items-center justify-end gap-1 text-xs font-extrabold text-brand">
@@ -931,7 +891,7 @@ export function DemoTripPage() {
                 </a>
               ))}
             </nav>
-            <DemoSection id="demo-overview" eyebrow="Overview" title="Trip information">
+            <TripDetailsSection id="demo-overview" eyebrow="Overview" title="Trip information">
               <dl className="grid gap-4 text-sm sm:grid-cols-2">
                 <div>
                   <dt className="text-muted">Destination</dt>
@@ -950,61 +910,54 @@ export function DemoTripPage() {
                   <dd className="mt-1 font-bold">Europe/Rome</dd>
                 </div>
               </dl>
-            </DemoSection>
-            <DemoSection
+            </TripDetailsSection>
+            <TripDetailsSection
               id="demo-reservations"
               eyebrow="Bookings"
               title={focusedTraveler ? `${focusedTraveler.name}'s reservations` : "Reservations"}
+              count={visibleReservations.length}
               action={
                 <Link to="/sign-in" className="secondary-button">
                   <Plus className="size-4" /> Add
                 </Link>
               }
             >
-              <div className="grid gap-3 sm:grid-cols-2">
-                {visibleEvents
-                  .filter((event) => event.documentIds.length || event.type === "train")
-                  .map((event) => (
-                    <button
+              <div className="space-y-2">
+                {visibleReservations.map((event) => {
+                  const booking = demoBookingById.get(event.id);
+                  return booking ? (
+                    <ReservationRow
                       key={event.id}
-                      type="button"
+                      booking={booking}
+                      route={event.location.replace(" -> ", " → ")}
+                      documentCount={
+                        event.documentIds.filter((id) => visibleDocumentIds.has(id)).length
+                      }
                       onClick={() => setSelectedEvent(event)}
-                      className="group relative rounded-2xl border border-line bg-elevated p-4 text-left transition hover:-translate-y-0.5 hover:border-brand/40"
-                    >
-                      <p className="text-xs font-bold uppercase tracking-[.12em] text-muted">
-                        {event.type} booking
-                      </p>
-                      <p className="mt-2 font-display text-lg font-black text-brand">
-                        {event.title}
-                      </p>
-                      <p className="mt-1 text-xs text-muted">{event.eyebrow}</p>
-                      <ChevronRight className="absolute bottom-4 right-4 size-4 text-muted" />
-                    </button>
-                  ))}
+                    />
+                  ) : null;
+                })}
               </div>
-            </DemoSection>
-            <DemoSection
+            </TripDetailsSection>
+            <TripDetailsSection
               id="demo-costs"
               eyebrow="Money"
               title={focusedTraveler ? `${focusedTraveler.name}'s trip costs` : "Trip expenses"}
+              count={visibleCosts.length}
               onActivate={() => setSheet("expenses")}
+              activateLabel="Open itemized trip expenses"
               action={
                 <Link to="/sign-in" className="secondary-button">
                   <Plus className="size-4" /> Add
                 </Link>
               }
             >
-              <div className="rounded-2xl bg-elevated p-4">
-                <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[.12em] text-muted">
-                  <WalletCards className="size-4" /> Total trip cost
-                </p>
-                <strong className="mt-2 block font-display text-xl">€4,860.00</strong>
-              </div>
+              <CostTotals costs={visibleCosts} />
               <span className="mt-3 flex items-center justify-end gap-1 text-xs font-extrabold text-brand">
                 View itemized expenses <ChevronRight className="size-4" />
               </span>
-            </DemoSection>
-            <DemoSection
+            </TripDetailsSection>
+            <TripDetailsSection
               id="demo-people"
               eyebrow="People & sharing"
               title={focusedTraveler?.name ?? "Everyone"}
@@ -1023,8 +976,8 @@ export function DemoTripPage() {
                 Switch between the complete trip and one person's relevant timeline, reservations,
                 readiness, and documents.
               </p>
-            </DemoSection>
-            <DemoSection
+            </TripDetailsSection>
+            <TripDetailsSection
               id="demo-readiness"
               eyebrow="Tasks"
               title="Tasks & readiness"
@@ -1043,11 +996,12 @@ export function DemoTripPage() {
                 {completedTasks} of {visibleTasks.length} tasks done. Scheduled tasks also appear in
                 the timeline.
               </p>
-            </DemoSection>
-            <DemoSection
+            </TripDetailsSection>
+            <TripDetailsSection
               id="demo-documents"
               eyebrow="Vault"
               title="Documents"
+              count={visibleDocuments.length}
               action={
                 <Link to="/sign-in" className="secondary-button">
                   <Plus className="size-4" /> Upload
@@ -1055,15 +1009,26 @@ export function DemoTripPage() {
               }
             >
               <p className="text-sm text-muted">
-                {demoDocuments.length} sample documents in this trip
+                {visibleDocuments.length} sample document
+                {visibleDocuments.length === 1 ? "" : "s"}
+                {focusedTraveler ? ` for ${focusedTraveler.name}` : " in this trip"}
               </p>
-              <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">
-                {demoDocuments.map((document) => (
-                  <DemoDocumentLink key={document.id} documentId={document.id} />
+              <div className="mt-3 space-y-2">
+                {visibleDocuments.map((document) => (
+                  <TripDocumentRow
+                    key={document.id}
+                    document={document}
+                    travelers={demoTravelersAsTravelers}
+                    context="Available offline"
+                    onClick={() => {
+                      const url = documentById.get(document.id)?.url;
+                      if (url) window.open(url, "_blank", "noopener,noreferrer");
+                    }}
+                  />
                 ))}
               </div>
-            </DemoSection>
-            <DemoSection id="demo-offline" eyebrow="On this device" title="Offline pack">
+            </TripDetailsSection>
+            <TripDetailsSection id="demo-offline" eyebrow="On this device" title="Offline pack">
               <div className="flex items-start gap-3 rounded-xl bg-success/10 p-4">
                 <WifiOff className="mt-0.5 size-5 text-success" />
                 <div>
@@ -1073,15 +1038,15 @@ export function DemoTripPage() {
                   </p>
                 </div>
               </div>
-            </DemoSection>
-            <DemoSection id="demo-notes" eyebrow="Useful details" title="Notes">
+            </TripDetailsSection>
+            <TripDetailsSection id="demo-notes" eyebrow="Useful details" title="Notes">
               <div className="rounded-xl bg-elevated p-4">
                 <p className="font-bold">Arrival plan</p>
                 <p className="mt-2 text-sm text-muted">
                   Mia has the apartment access instructions. Sam will arrange the airport transfer.
                 </p>
               </div>
-            </DemoSection>
+            </TripDetailsSection>
           </main>
         )}
 
@@ -1137,7 +1102,12 @@ export function DemoTripPage() {
       </div>
 
       {selectedEvent && (
-        <EventDetails event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+        <EventDetails
+          event={selectedEvent}
+          visibleDocumentIds={visibleDocumentIds}
+          focusedTravelerId={focusedTravelerId}
+          onClose={() => setSelectedEvent(null)}
+        />
       )}
       {sheet === "people" && (
         <PeopleSheet
@@ -1159,7 +1129,34 @@ export function DemoTripPage() {
           onClose={() => setSheet(null)}
         />
       )}
-      {sheet === "expenses" && <ExpensesSheet onClose={() => setSheet(null)} />}
+      {sheet === "expenses" && (
+        <TripExpensesSheet
+          title={focusedTraveler ? `${focusedTraveler.name}'s trip expenses` : "Trip expenses"}
+          costs={visibleCosts}
+          balances={visibleBalances}
+          travelers={demoTravelersAsTravelers}
+          onClose={() => setSheet(null)}
+          onViewCost={(cost) => {
+            setSheet(null);
+            setSelectedCost(cost);
+          }}
+        />
+      )}
+      {selectedCost && (
+        <CostDetailsSheet
+          cost={selectedCost}
+          travelers={demoTravelersAsTravelers}
+          itinerary={[]}
+          bookings={demoBookings}
+          editable={false}
+          onClose={() => {
+            setSelectedCost(null);
+            setSheet("expenses");
+          }}
+          onEdit={() => undefined}
+          onArchive={() => undefined}
+        />
+      )}
     </AppShell>
   );
 }

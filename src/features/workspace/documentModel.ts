@@ -150,6 +150,16 @@ export function documentKind(value: DocumentKind) {
   return documentKinds.find((option) => option.value === value) ?? documentKinds.at(-1)!;
 }
 
+export function documentKindFor(
+  document: Pick<VaultDocument, "category" | "purpose">
+): DocumentKind {
+  return (
+    documentKinds.find(
+      (option) => option.category === document.category && option.purpose === document.purpose
+    )?.value ?? "other"
+  );
+}
+
 export function suggestedDocumentTitle(
   kind: DocumentKind,
   assignmentMode: DocumentAssignmentMode,

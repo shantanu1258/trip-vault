@@ -35,6 +35,57 @@
   --shadow-color: 0 0 0;
 }
 
+:root,
+[data-theme="light"] {
+  --event-flight: 29 78 216;
+  --event-flight-soft: 219 234 254;
+  --event-train: 67 56 202;
+  --event-train-soft: 224 231 255;
+  --event-bus: 3 105 161;
+  --event-bus-soft: 224 242 254;
+  --event-ferry: 14 116 144;
+  --event-ferry-soft: 207 250 254;
+  --event-cab: 2 132 199;
+  --event-cab-soft: 224 242 254;
+  --event-transport: 8 145 178;
+  --event-transport-soft: 207 250 254;
+  --event-hotel: 126 34 206;
+  --event-hotel-soft: 243 232 255;
+  --event-activity: 190 24 93;
+  --event-activity-soft: 252 231 243;
+  --event-meal: 194 65 12;
+  --event-meal-soft: 255 237 213;
+  --event-preparation: 21 128 61;
+  --event-preparation-soft: 220 252 231;
+  --event-custom: 71 85 105;
+  --event-custom-soft: 241 245 249;
+}
+
+[data-theme="dark"] {
+  --event-flight: 147 197 253;
+  --event-flight-soft: 30 58 95;
+  --event-train: 165 180 252;
+  --event-train-soft: 49 46 129;
+  --event-bus: 125 211 252;
+  --event-bus-soft: 12 74 110;
+  --event-ferry: 103 232 249;
+  --event-ferry-soft: 22 78 99;
+  --event-cab: 125 211 252;
+  --event-cab-soft: 12 74 110;
+  --event-transport: 103 232 249;
+  --event-transport-soft: 22 78 99;
+  --event-hotel: 216 180 254;
+  --event-hotel-soft: 88 28 135;
+  --event-activity: 249 168 212;
+  --event-activity-soft: 131 24 67;
+  --event-meal: 253 186 116;
+  --event-meal-soft: 124 45 18;
+  --event-preparation: 134 239 172;
+  --event-preparation-soft: 20 83 45;
+  --event-custom: 203 213 225;
+  --event-custom-soft: 51 65 85;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -89,6 +140,69 @@ textarea:focus-visible {
 }
 
 @layer components {
+  .event-type-icon {
+    display: grid;
+    flex: none;
+    place-items: center;
+    background: rgb(var(--event-icon-soft));
+    color: rgb(var(--event-icon));
+  }
+
+  .event-type-icon--flight {
+    --event-icon: var(--event-flight);
+    --event-icon-soft: var(--event-flight-soft);
+  }
+
+  .event-type-icon--train {
+    --event-icon: var(--event-train);
+    --event-icon-soft: var(--event-train-soft);
+  }
+
+  .event-type-icon--bus {
+    --event-icon: var(--event-bus);
+    --event-icon-soft: var(--event-bus-soft);
+  }
+
+  .event-type-icon--ferry {
+    --event-icon: var(--event-ferry);
+    --event-icon-soft: var(--event-ferry-soft);
+  }
+
+  .event-type-icon--cab {
+    --event-icon: var(--event-cab);
+    --event-icon-soft: var(--event-cab-soft);
+  }
+
+  .event-type-icon--transport {
+    --event-icon: var(--event-transport);
+    --event-icon-soft: var(--event-transport-soft);
+  }
+
+  .event-type-icon--hotel {
+    --event-icon: var(--event-hotel);
+    --event-icon-soft: var(--event-hotel-soft);
+  }
+
+  .event-type-icon--activity {
+    --event-icon: var(--event-activity);
+    --event-icon-soft: var(--event-activity-soft);
+  }
+
+  .event-type-icon--meal {
+    --event-icon: var(--event-meal);
+    --event-icon-soft: var(--event-meal-soft);
+  }
+
+  .event-type-icon--preparation {
+    --event-icon: var(--event-preparation);
+    --event-icon-soft: var(--event-preparation-soft);
+  }
+
+  .event-type-icon--custom {
+    --event-icon: var(--event-custom);
+    --event-icon-soft: var(--event-custom-soft);
+  }
+
   .surface-card {
     @apply min-w-0 rounded-[1.65rem] border border-line bg-surface shadow-soft;
   }

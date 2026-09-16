@@ -52,4 +52,61 @@ describe("current demo readiness", () => {
     );
     expect(screen.getByText("2 of 3 tasks done")).toBeInTheDocument();
   });
+
+  it("uses the shared trip-detail rows, traveler document filtering, and expense sheet", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <DemoTripPage />
+      </MemoryRouter>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Trip details" }));
+    expect(screen.getByRole("heading", { name: "Reservations" })).toBeInTheDocument();
+    expect(screen.getByText("DEL T3 → FCO T1")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "People and sharing · Everyone" }));
+    await user.click(screen.getByRole("button", { name: "Show Leela Devi's trip information" }));
+    expect(screen.getByText("3 sample documents for Leela Devi")).toBeInTheDocument();
+    expect(screen.getByText("Casa Bellora confirmation")).toBeInTheDocument();
+    expect(screen.queryByText("Boarding pass - Sam")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Leela Devi's trip costs" })).toBeInTheDocument();
+    expect(screen.getByText("2", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getAllByText("€4,200.00").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "Open itemized trip expenses" }));
+    expect(screen.getByRole("heading", { name: "Leela Devi's trip expenses" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Review every expense and choose whether traveler balances should be calculated."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Show balances" })).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Show balances" }));
+    expect(screen.getByText("owes €840.00")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "View details for Aster Air flights" })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "View details for Colosseum evening tour" })
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "View details for Aster Air flights" }));
+    expect(screen.getByRole("heading", { name: "Aster Air flights" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("heading", { name: "Leela Devi's trip expenses" })).toBeInTheDocument();
+  });
+
+  it("shows a planned event without pretending it already has a booking", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <DemoTripPage />
+      </MemoryRouter>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open details for Venice sunset walk" }));
+    expect(screen.getByText("Planned without a booking")).toBeInTheDocument();
+    expect(screen.queryByText("Sample booking")).not.toBeInTheDocument();
+  });
 });

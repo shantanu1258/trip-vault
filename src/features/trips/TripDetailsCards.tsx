@@ -86,22 +86,22 @@ function reservationDate(booking: Booking) {
 export function ReservationRow({
   booking,
   href,
+  onClick,
   route,
   documentCount = 0,
   navigationState
 }: {
   booking: Booking;
-  href: string;
+  href?: string;
+  onClick?: () => void;
   route?: string;
   documentCount?: number;
   navigationState?: unknown;
 }) {
-  return (
-    <Link
-      to={href}
-      state={navigationState}
-      className="group grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-xl border border-line bg-elevated p-3.5 transition hover:border-brand/40 hover:shadow-soft"
-    >
+  const className =
+    "group grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-xl border border-line bg-elevated p-3.5 text-left transition hover:border-brand/40 hover:shadow-soft";
+  const content = (
+    <>
       <span className="min-w-0">
         <span className="block text-[.65rem] font-black uppercase tracking-[.13em] text-muted">
           {booking.type.replaceAll("_", " ")}
@@ -129,7 +129,21 @@ export function ReservationRow({
         </span>
       </span>
       <ChevronRight className="mt-6 size-4 shrink-0 text-muted transition-transform group-hover:translate-x-0.5" />
-    </Link>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link to={href} state={navigationState} className={className}>
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <button type="button" className={className} onClick={onClick}>
+      {content}
+    </button>
   );
 }
 

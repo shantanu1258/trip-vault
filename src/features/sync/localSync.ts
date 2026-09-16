@@ -660,6 +660,45 @@ export function associatedAccountDocumentUpload(
 
 export type SyncIssue = OutboxOperation & { localValue: unknown; serverValue?: unknown };
 
+export type SyncIssueGroup = {
+  key: string;
+  entityType: string;
+  lastErrorCode?: string;
+  issues: SyncIssue[];
+  attemptCount: number;
+};
+
+function syncIssueGroupKey(
+  issue: Pick<OutboxOperation, "operationId" | "entityType" | "lastErrorCode">
+) {
+  // Conflicts need an individual choice between the local and cloud values.
+  // Other failures for the same logical entity can be resolved as one batch.
+  return issue.lastErrorCode === "conflict"
+    ? `conflict:${issue.operationId}`
+    : `${issue.entityType}:${issue.lastErrorCode ?? "failed"}`;
+}
+
+export function groupSyncIssues(issues: SyncIssue[]): SyncIssueGroup[] {
+  const groups = new Map<string, SyncIssueGroup>();
+  for (const issue of issues) {
+    const key = syncIssueGroupKey(issue);
+    const group = groups.get(key);
+    if (group) {
+      group.issues.push(issue);
+      group.attemptCount = Math.max(group.attemptCount, issue.attemptCount);
+      continue;
+    }
+    groups.set(key, {
+      key,
+      entityType: issue.entityType,
+      lastErrorCode: issue.lastErrorCode,
+      issues: [issue],
+      attemptCount: issue.attemptCount
+    });
+  }
+  return [...groups.values()];
+}
+
 export async function listSyncIssues(): Promise<SyncIssue[]> {
   const profileId = await localProfileId();
   if (!profileId) return [];
@@ -685,10 +724,11 @@ export async function getSyncSummary() {
   const profileId = await localProfileId();
   if (!profileId) return { pending: 0, issues: 0, conflicts: 0 };
   const operations = await database.outbox.where("profileId").equals(profileId).toArray();
+  const failed = operations.filter((operation) => operation.lastErrorCode);
   return {
     pending: operations.length,
-    issues: operations.filter((operation) => operation.lastErrorCode).length,
-    conflicts: operations.filter((operation) => operation.lastErrorCode === "conflict").length
+    issues: new Set(failed.map(syncIssueGroupKey)).size,
+    conflicts: failed.filter((operation) => operation.lastErrorCode === "conflict").length
   };
 }
 
@@ -757,6 +797,40 @@ export async function resolveSyncIssue(
       nextAttemptAt: undefined,
       attemptCount: 0
     });
+  await syncOutbox();
+}
+
+export async function resolveSyncIssueGroup(
+  operationIds: string[],
+  resolution: "retry" | "discard"
+) {
+  const profileId = await localProfileId();
+  if (!profileId) return;
+  const operations = (await database.outbox.bulkGet([...new Set(operationIds)])).filter(
+    (operation): operation is OutboxOperation =>
+      Boolean(operation && operation.profileId === profileId)
+  );
+  if (resolution === "discard") {
+    for (const operation of operations) {
+      if (operation.operation === "create" || operation.operation === "upsert")
+        await database.entities.delete([
+          operation.profileId,
+          operation.entityType,
+          operation.entityId
+        ]);
+      await discardOperationTree(operation.operationId);
+    }
+    return;
+  }
+  await Promise.all(
+    operations.map((operation) =>
+      database.outbox.update(operation.operationId, {
+        lastErrorCode: undefined,
+        nextAttemptAt: undefined,
+        attemptCount: 0
+      })
+    )
+  );
   await syncOutbox();
 }
 
