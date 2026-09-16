@@ -21,6 +21,7 @@ vi.mock("../trips/api", () => ({ addItineraryItem: mocks.addItineraryItem, addTr
 vi.mock("../workspace/api", () => ({ addBookedTimelineEvent: mocks.addBookedTimelineEvent, addFlightBooking: mocks.addFlightBooking, addJourneyBooking: mocks.addJourneyBooking, listFlightLegsForTrip: mocks.listFlightLegsForTrip, saveOptionalCostForCreatedEvent: mocks.saveOptionalCostForCreatedEvent, suggestCatalogValue: mocks.suggestCatalogValue }));
 
 import { AddEventForm, assertSequentialConnectionTimes } from "./AddEventForm";
+import { suggestedFlightLocalTime } from "./JourneyEventFields";
 
 const trip: Trip = { id: "trip-1", title: "Autumn trip", destination_summary: "Singapore", start_date: "2026-09-26", end_date: "2026-10-12", primary_timezone: "Asia/Kolkata", base_currency: "INR", status: "upcoming", created_at: "2026-09-01T00:00:00.000Z", updated_at: "2026-09-01T00:00:00.000Z" };
 const travelers: Traveler[] = [{ id: "traveler-1", trip_id: trip.id, display_name: "Shantanu", is_minor: false, created_at: "2026-09-01T00:00:00.000Z" }];
@@ -110,6 +111,8 @@ describe("event form architecture", () => {
     expect(screen.getAllByLabelText("Flight number")).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Add connecting flight" })).toBeInTheDocument();
     expect(() => assertSequentialConnectionTimes([{ departureAt: "2026-09-26T02:00:00.000Z", arrivalAt: "2026-09-26T05:00:00.000Z" }, { departureAt: "2026-09-26T05:00:00.000Z", arrivalAt: "2026-09-26T08:00:00.000Z" }], "flight")).toThrow("Connection 2 must depart after the previous flight arrives.");
+    expect(suggestedFlightLocalTime("2026-09-26T12:00", "Asia/Dubai", "Asia/Dubai", 120)).toBe("2026-09-26T14:00");
+    expect(suggestedFlightLocalTime("2026-09-26T14:00", "Asia/Dubai", "Asia/Singapore", 180)).toBe("2026-09-26T21:00");
   });
 
   it("uses a compact domestic bus form, optional arrival, and per-traveler seats", async () => {

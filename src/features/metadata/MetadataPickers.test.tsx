@@ -60,6 +60,15 @@ describe("travel metadata pickers", () => {
     expect(container.querySelector<HTMLInputElement>('input[name="departureNameSource"]')?.value).toBe("other");
   });
 
+  it("prefills a connection airport from the previous flight arrival", async () => {
+    const dubai = { stableKey: "dxb", name: "Dubai International Airport", city: "Dubai", countryCode: "AE", timezone: "Asia/Dubai", iataCode: "DXB", icaoCode: null, latitude: null, longitude: null, sourceVersion: 1 };
+    const { container } = renderPicker(<AirportPicker name="departureName" codeName="departureCode" countryName="departureCountry" timezoneName="departureTimezone" label="From airport" defaultTimezone="Asia/Kolkata" initialAirport={dubai} />);
+
+    await waitFor(() => expect(screen.getByLabelText("From airport code")).toHaveValue("DXB"));
+    expect(container.querySelector<HTMLInputElement>('input[name="departureName"]')?.value).toBe("Dubai International Airport");
+    expect(container.querySelector<HTMLInputElement>('input[name="departureTimezone"]')?.value).toBe("Asia/Dubai");
+  });
+
   it("filters a domestic destination to the origin country and keeps its fallback time zone hidden", async () => {
     const { user, container } = renderPicker(<AirportPicker name="arrivalName" codeName="arrivalCode" countryName="arrivalCountry" timezoneName="arrivalTimezone" label="To airport" defaultTimezone="Asia/Kolkata" countryFilter="IN" showManualTimezone={false} />);
     await user.click(screen.getByRole("button", { name: "Choose to airport" }));

@@ -1,15 +1,27 @@
 import { Plus, Trash2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { TimeZoneAutocomplete } from "../../components/TimeZoneAutocomplete";
 import { RequiredMark } from "../../components/RequiredMark";
 import { AirlinePicker } from "../metadata/AirlinePicker";
 import { AirportPicker } from "../metadata/AirportPicker";
+import type { AvailableAirport } from "../metadata/publishedConfig";
 import { JourneyOperatorPicker } from "../metadata/JourneyOperatorPicker";
 import type { Trip } from "../trips/types";
-import { localDateTimeMinusMinutes } from "../trips/validation";
+import { isoToLocalDateTime, localDateTimeMinusMinutes, localDateTimeToIso } from "../trips/validation";
 import type { FlightLeg, JourneyMode, JourneyScope, ReservationState, Traveler } from "../workspace/types";
 
 export type RouteStructure = "direct" | "connecting";
+export type FlightLegDraft = { arrivalAirport: AvailableAirport | null; arrivalLocal: string };
+
+export function suggestedFlightLocalTime(local: string, fromTimeZone: string, toTimeZone: string, minutesLater: number) {
+  if (!local || !fromTimeZone || !toTimeZone) return "";
+  try {
+    const instant = localDateTimeToIso(local, fromTimeZone, "earlier");
+    return isoToLocalDateTime(new Date(Date.parse(instant) + minutesLater * 60_000).toISOString(), toTimeZone);
+  } catch {
+    return "";
+  }
+}
 
 function OccurrenceSelect({ name }: { name: string }) {
   return <select className="form-input" name={name} defaultValue="automatic" aria-label="Repeated clock time choice"><option value="automatic">Automatic (usual)</option><option value="earlier">Earlier occurrence</option><option value="later">Later occurrence</option></select>;
@@ -34,20 +46,38 @@ function TravelerAllocationFields({ prefix, travelers, mode, showSeatAndCabin = 
   return <details className="mt-4 rounded-xl border border-line/80 p-3"><summary className="cursor-pointer text-xs font-black uppercase tracking-[.1em] text-muted">Traveler ticket details</summary><p className="mt-2 text-xs leading-5 text-muted">Only fill details already shown on the ticket. They can be updated later.</p><div className="mt-3 space-y-3">{travelers.map((traveler) => <fieldset key={traveler.id} className="rounded-xl bg-elevated p-3"><legend className="px-1 text-sm font-extrabold">{traveler.display_name}</legend><div className="mt-2 grid gap-3 sm:grid-cols-3">{showSeatAndCabin && <label className="form-label text-xs">{seatLabel}<input className="form-input" name={`${prefix}.traveler.${traveler.id}.seat`} placeholder={mode === "ferry" ? "Enter the assigned seat" : "Enter the seat or berth, if assigned"} /></label>}{mode === "flight" && <label className="form-label text-xs">Boarding group<input className="form-input" name={`${prefix}.traveler.${traveler.id}.group`} placeholder="Enter the boarding group, if provided" /></label>}<label className="form-label text-xs">{mode === "flight" ? "Passenger ticket number" : "Passenger reference"}<input className="form-input" name={`${prefix}.traveler.${traveler.id}.reference`} placeholder="Enter the passenger-specific reference, if provided" /></label>{mode === "train" && <label className="form-label text-xs">Coach<input className="form-input" name={`${prefix}.traveler.${traveler.id}.coach`} placeholder="Enter the coach, if provided" /></label>}{mode === "ferry" && showSeatAndCabin && <label className="form-label text-xs">Cabin<input className="form-input" name={`${prefix}.traveler.${traveler.id}.coach`} placeholder="Enter the cabin, if provided" /></label>}</div></fieldset>)}</div></details>;
 }
 
-export function FlightLegFields({ index, trip, scope, travelers, direct, removable, onRemove }: { index: number; trip: Trip; scope: JourneyScope; travelers: Traveler[]; direct: boolean; removable: boolean; onRemove: () => void }) {
+export function FlightLegFields({ index, trip, scope, travelers, direct, removable, previousLeg, onArrivalChange, onRemove }: { index: number; trip: Trip; scope: JourneyScope; travelers: Traveler[]; direct: boolean; removable: boolean; previousLeg?: FlightLegDraft; onArrivalChange?: (value: FlightLegDraft) => void; onRemove: () => void }) {
   const prefix = `flight.${index}`;
-  const [departure, setDeparture] = useState(`${trip.start_date}T09:00`);
+  const connectionDeparture = previousLeg?.arrivalAirport ? suggestedFlightLocalTime(previousLeg.arrivalLocal, previousLeg.arrivalAirport.timezone, previousLeg.arrivalAirport.timezone, 120) : "";
+  const [departure, setDeparture] = useState(connectionDeparture || `${trip.start_date}T09:00`);
+  const [departureEdited, setDepartureEdited] = useState(false);
+  const [departureAirport, setDepartureAirport] = useState<AvailableAirport | null>(previousLeg?.arrivalAirport ?? null);
+  const [arrivalAirport, setArrivalAirport] = useState<AvailableAirport | null>(null);
+  const [arrival, setArrival] = useState(`${trip.start_date}T12:00`);
+  const [arrivalEdited, setArrivalEdited] = useState(false);
   const [boardingLead, setBoardingLead] = useState("");
   const [departureCountry, setDepartureCountry] = useState("");
   const international = scope === "international";
   const calculatedBoarding = boardingLead ? localDateTimeMinusMinutes(departure, Number(boardingLead)) : "";
+  useEffect(() => {
+    if (!previousLeg) return;
+    setDepartureAirport(previousLeg.arrivalAirport);
+    if (!departureEdited && connectionDeparture) setDeparture(connectionDeparture);
+  }, [connectionDeparture, departureEdited, previousLeg?.arrivalAirport]);
+  useEffect(() => {
+    if (arrivalEdited || !arrivalAirport) return;
+    const departureTimeZone = departureAirport?.timezone ?? (international ? "" : trip.primary_timezone);
+    const suggestion = suggestedFlightLocalTime(departure, departureTimeZone, arrivalAirport.timezone, 180);
+    if (suggestion) setArrival(suggestion);
+  }, [arrivalAirport, arrivalEdited, departure, departureAirport, international, trip.primary_timezone]);
+  useEffect(() => { onArrivalChange?.({ arrivalAirport, arrivalLocal: arrival }); }, [arrival, arrivalAirport]);
   return <fieldset className="rounded-2xl border border-line p-4">
     <div className="flex items-center justify-between"><legend className="font-display text-lg font-black">{direct ? "Flight details" : index ? `Connection ${index + 1}` : "First flight"}</legend>{removable && <button type="button" className="tap-target grid size-9 place-items-center text-danger" onClick={onRemove} aria-label={`Remove flight leg ${index + 1}`}><Trash2 className="size-4" /></button>}</div>
     <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Airline<RequiredMark /><AirlinePicker name={`${prefix}.airline`} /></label><label className="form-label">Flight number<RequiredMark /><input className="form-input uppercase" name={`${prefix}.number`} placeholder="Enter the number printed on the ticket" required /></label></div>
-    <div className="mt-4"><AirportPicker name={`${prefix}.departureName`} codeName={`${prefix}.departureCode`} timezoneName={`${prefix}.departureTimezone`} countryName={`${prefix}.departureCountry`} label="From airport" defaultTimezone={trip.primary_timezone} showManualTimezone={international} onCountryChange={setDepartureCountry} /></div>
-    <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Departure (airport local time)<RequiredMark /><input className="form-input" type="datetime-local" name={`${prefix}.departureAt`} min={`${trip.start_date}T00:00`} max={`${trip.end_date}T23:59`} value={departure} onChange={(event) => setDeparture(event.target.value)} required /></label>{international ? <label className="form-label">If the departure clock repeats<OccurrenceSelect name={`${prefix}.departureOccurrence`} /></label> : <input type="hidden" name={`${prefix}.departureOccurrence`} value="earlier" />}</div>
-    <div className="mt-4"><AirportPicker name={`${prefix}.arrivalName`} codeName={`${prefix}.arrivalCode`} timezoneName={`${prefix}.arrivalTimezone`} countryName={`${prefix}.arrivalCountry`} label="To airport" defaultTimezone={trip.primary_timezone} countryFilter={international ? undefined : departureCountry} showManualTimezone={international} /></div>
-    <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Arrival (airport local time)<RequiredMark /><input className="form-input" type="datetime-local" name={`${prefix}.arrivalAt`} min={`${trip.start_date}T00:00`} max={`${trip.end_date}T23:59`} defaultValue={`${trip.start_date}T12:00`} required /></label>{international ? <label className="form-label">If the arrival clock repeats<OccurrenceSelect name={`${prefix}.arrivalOccurrence`} /></label> : <input type="hidden" name={`${prefix}.arrivalOccurrence`} value="earlier" />}</div>
+    <div className="mt-4"><AirportPicker name={`${prefix}.departureName`} codeName={`${prefix}.departureCode`} timezoneName={`${prefix}.departureTimezone`} countryName={`${prefix}.departureCountry`} label="From airport" defaultTimezone={trip.primary_timezone} showManualTimezone={international} initialAirport={previousLeg?.arrivalAirport} onAirportChange={setDepartureAirport} onCountryChange={setDepartureCountry} /></div>
+    <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Departure (airport local time)<RequiredMark /><input className="form-input" type="datetime-local" name={`${prefix}.departureAt`} min={`${trip.start_date}T00:00`} max={`${trip.end_date}T23:59`} value={departure} onChange={(event) => { setDepartureEdited(true); setDeparture(event.target.value); }} required /></label>{international ? <label className="form-label">If the departure clock repeats<OccurrenceSelect name={`${prefix}.departureOccurrence`} /></label> : <input type="hidden" name={`${prefix}.departureOccurrence`} value="earlier" />}</div>
+    <div className="mt-4"><AirportPicker name={`${prefix}.arrivalName`} codeName={`${prefix}.arrivalCode`} timezoneName={`${prefix}.arrivalTimezone`} countryName={`${prefix}.arrivalCountry`} label="To airport" defaultTimezone={trip.primary_timezone} countryFilter={international ? undefined : departureCountry} showManualTimezone={international} onAirportChange={setArrivalAirport} /></div>
+    <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="form-label">Arrival (airport local time)<RequiredMark /><input className="form-input" type="datetime-local" name={`${prefix}.arrivalAt`} min={`${trip.start_date}T00:00`} max={`${trip.end_date}T23:59`} value={arrival} onChange={(event) => { setArrivalEdited(true); setArrival(event.target.value); }} required /></label>{international ? <label className="form-label">If the arrival clock repeats<OccurrenceSelect name={`${prefix}.arrivalOccurrence`} /></label> : <input type="hidden" name={`${prefix}.arrivalOccurrence`} value="earlier" />}</div>
     <details className="mt-4 rounded-xl border border-line/80 p-3"><summary className="cursor-pointer text-xs font-black uppercase tracking-[.1em] text-muted">Boarding, terminal, and gate</summary><div className="mt-3 grid gap-4 sm:grid-cols-3"><label className="form-label">Boarding lead (minutes)<input className="form-input" type="number" min="0" max="360" name={`${prefix}.boardingLead`} value={boardingLead} onChange={(event) => setBoardingLead(event.target.value)} placeholder="Enter minutes before departure" /></label><label className="form-label">Exact boarding time (optional)<input className="form-input" type="datetime-local" name={`${prefix}.boardingAt`} /></label>{international ? <label className="form-label">If the boarding clock repeats<OccurrenceSelect name={`${prefix}.boardingOccurrence`} /></label> : <input type="hidden" name={`${prefix}.boardingOccurrence`} value="earlier" />}<label className="form-label">Departure terminal<input className="form-input" name={`${prefix}.departureTerminal`} placeholder="Enter the terminal shown on the ticket" /></label><label className="form-label">Departure gate<input className="form-input" name={`${prefix}.departureGate`} placeholder="Enter the gate when known" /></label><label className="form-label">Arrival terminal<input className="form-input" name={`${prefix}.arrivalTerminal`} placeholder="Enter the arrival terminal when known" /></label></div>{calculatedBoarding && <p className="mt-3 rounded-xl bg-brand-soft px-3 py-2 text-xs font-bold text-brand">Calculated boarding time: {calculatedBoarding.replace("T", " ")} at the departure airport. An exact time overrides this.</p>}{international && <RepeatedClockHelp />}</details>
     <TravelerAllocationFields prefix={prefix} travelers={travelers} mode="flight" />
   </fieldset>;
