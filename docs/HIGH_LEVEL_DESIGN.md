@@ -22,7 +22,7 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 | Area | Current state |
 |---|---|
 | Application | Timeline-first React PWA plus progressive event forms and in-app document preview are implemented in the local working tree |
-| Automated verification | Verified local baseline: 78 Vitest files and 425 tests pass; type-check, formatting check, and production build pass; remote SQL, Storage, and device acceptance remain separate release gates |
+| Automated verification | Verified local baseline: 78 Vitest files and 426 tests pass; type-check, formatting check, and production build pass; remote SQL, Storage, and device acceptance remain separate release gates |
 | Existing Supabase project | Apply every not-yet-run migration in filename order through the single new tail `202609140001_event_form_data_model.sql`, then run the schema smoke test |
 | Fresh Supabase project | Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`, which already includes the `202609140001` schema contract; after bootstrapping an active `app_admins` row, run `202609130002_regional_travel_catalog.sql` and then `202609130005_booking_vendor_catalog_additions.sql` before the smoke test |
 | Cloudflare | Workers Static Assets configuration exists; the post-push live deployment is not verified here |

@@ -124,10 +124,10 @@ export function TripCard({ trip, emphasized = false }: { trip: Trip; emphasized?
   return (
     <Link
       to={`/trips/${trip.id}`}
-      className={`group block rounded-[1.6rem] border bg-surface p-5 shadow-soft transition-transform duration-200 ease-settle hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 ${emphasized ? "border-coral shadow-focus motion-safe:scale-[1.01]" : "border-line"}`}
+      className={`group block min-w-0 max-w-full overflow-hidden rounded-[1.6rem] border bg-surface p-5 shadow-soft transition-transform duration-200 ease-settle hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 ${emphasized ? "border-coral shadow-focus motion-safe:scale-[1.01]" : "border-line"}`}
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`rounded-full px-2.5 py-1 text-[0.62rem] font-black uppercase tracking-[0.13em] ${phase === "current" ? "bg-coral/15 text-coral" : "bg-brand-soft text-brand"}`}
@@ -138,12 +138,14 @@ export function TripCard({ trip, emphasized = false }: { trip: Trip; emphasized?
               {formatDateRange(trip.start_date, trip.end_date)}
             </span>
           </div>
-          <h2 className="mt-3 truncate font-display text-2xl font-black tracking-[-0.035em]">
+          <h2 className="mt-3 whitespace-normal break-words font-display text-2xl font-black tracking-[-0.035em] [overflow-wrap:anywhere]">
             {trip.title}
           </h2>
-          <p className="mt-2 flex items-center gap-2 text-sm text-muted">
+          <p className="mt-2 flex min-w-0 items-start gap-2 text-sm text-muted">
             <MapPin className="size-4 shrink-0" />
-            {trip.destination_summary}
+            <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+              {trip.destination_summary}
+            </span>
           </p>
         </div>
         <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-brand-soft text-brand transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none">

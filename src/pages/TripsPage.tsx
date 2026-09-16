@@ -51,7 +51,7 @@ export function TripsPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto min-w-0 max-w-5xl overflow-x-clip">
         <PageHeader
           eyebrow="Your journeys"
           title="Trips"
@@ -74,11 +74,11 @@ export function TripsPage() {
               const matches = trips.filter((trip) => tripPhase(trip) === phase);
               if (!matches.length) return null;
               return (
-                <section key={phase}>
+                <section className="min-w-0" key={phase}>
                   <h2 className="eyebrow mb-3 capitalize">
                     {phase === "past" ? "Past trips" : `${phase} trips`}
                   </h2>
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid min-w-0 gap-4 md:grid-cols-2">
                     {matches.map((trip) => (
                       <TripCard key={trip.id} trip={trip} emphasized={phase === "current"} />
                     ))}
@@ -91,9 +91,9 @@ export function TripsPage() {
         {archived.length > 0 && (
           <section className="mt-8">
             <h2 className="eyebrow mb-3">Archived trips</h2>
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid min-w-0 gap-4 md:grid-cols-2">
               {archived.map((trip) => (
-                <div key={trip.id}>
+                <div className="min-w-0" key={trip.id}>
                   <TripCard trip={trip} />
                   <button
                     type="button"
@@ -112,11 +112,18 @@ export function TripsPage() {
           <section className="mt-8 border-t border-line pt-7">
             <h2 className="eyebrow">Recently deleted</h2>
             <p className="mt-2 text-sm text-muted">Recoverable for 30 days from deletion.</p>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
               {deletedQuery.data?.map((trip) => (
-                <article className="surface-card p-5" key={trip.id}>
-                  <h3 className="font-display text-xl font-black">{trip.title}</h3>
-                  <p className="mt-1 text-sm text-muted">{trip.destination_summary}</p>
+                <article
+                  className="surface-card min-w-0 max-w-full overflow-hidden p-5"
+                  key={trip.id}
+                >
+                  <h3 className="break-words font-display text-xl font-black [overflow-wrap:anywhere]">
+                    {trip.title}
+                  </h3>
+                  <p className="mt-1 break-words text-sm text-muted [overflow-wrap:anywhere]">
+                    {trip.destination_summary}
+                  </p>
                   <button
                     type="button"
                     disabled={restoreDeleted.isPending}

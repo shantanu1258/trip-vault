@@ -1901,7 +1901,7 @@ Rules:
 | Check | Last verified | Result |
 |---|---|---|
 | `npm run typecheck` | 2026-09-16 | Pass |
-| `npm test` | 2026-09-16 | Pass: 78 files, 425 tests |
+| `npm test` | 2026-09-16 | Pass: 78 files, 426 tests |
 | `npm run build` | 2026-09-16 | Pass; only the existing chunk-size and dynamic-import advisories remain |
 | `npm run format:check` | 2026-09-16 | Pass |
 | `supabase/tests/001_schema_smoke.sql` | Current local SQL includes booking-vendor, trip-cleanup, relative-event timing, reservation/scope, ground-detail, allocation, optional-arrival, and hotel-RPC assertions | Rerun remotely after the single new tail `202609140001_event_form_data_model.sql` |
