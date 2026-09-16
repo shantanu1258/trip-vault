@@ -144,6 +144,9 @@ describe("home trip expenses", () => {
     expect(featuredCardTarget).toHaveAttribute("href", "/trips/trip-1");
     expect(explicitOpen).toHaveAttribute("href", "/trips/trip-1");
     expect(featuredCardTarget.contains(explicitOpen)).toBe(false);
+    expect(
+      featuredCardTarget.parentElement?.querySelector('[data-event-type="activity"]')
+    ).toHaveAttribute("data-event-tone", "activity");
 
     const readinessTarget = screen.getByRole("link", { name: "Open trip readiness" });
     const readinessCard = readinessTarget.closest(".surface-card");

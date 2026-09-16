@@ -16,6 +16,7 @@ describe("EventTypeIcon", () => {
     for (const type of timelineEventTypes) {
       const icon = document.querySelector(`[data-event-type="${type}"]`);
       expect(icon).toHaveAttribute("data-event-tone", eventIconTone(type));
+      expect(icon).toHaveClass(`event-type-icon--${eventIconTone(type)}`);
       expect(icon).toHaveAttribute("aria-hidden", "true");
     }
   });

@@ -413,6 +413,37 @@ function renderDetails({
 }
 
 describe("trip overview card", () => {
+  it("shows event-specific colored icons in the actual Trip Details next-up list", async () => {
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listItinerary.mockResolvedValue([activity]);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1?view=details"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const nextUp = (await screen.findByRole("heading", { name: "Next up" })).closest("section");
+    expect(nextUp).not.toBeNull();
+    expect(nextUp?.querySelector('[data-event-type="activity"]')).toHaveAttribute(
+      "data-event-tone",
+      "activity"
+    );
+  });
+
   it("lets the owner open Trip settings from the card body without nesting interactive controls", async () => {
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listMembers.mockResolvedValue([

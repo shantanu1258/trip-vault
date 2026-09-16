@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   ArrowRight,
   Check,
-  Clock3,
   CloudDownload,
   FileCheck2,
   MapPin,
@@ -18,6 +17,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
+import { EventTypeIcon } from "../components/EventTypeIcon";
 import {
   CompactCostTotal,
   ErrorCard,
@@ -374,7 +374,11 @@ export function HomePage() {
                         {formatEventTime(nextItem.starts_at, nextItem.timezone)}
                       </p>
                     </div>
-                    <Clock3 className="size-5 shrink-0" />
+                    <EventTypeIcon
+                      type={nextItem.event_type ?? "custom"}
+                      className="size-10 rounded-xl"
+                      iconClassName="size-4"
+                    />
                   </div>
                 </div>
               ) : (

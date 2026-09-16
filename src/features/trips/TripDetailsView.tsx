@@ -1,6 +1,7 @@
 import { ChevronRight, Plus, RotateCcw, Settings, UsersRound } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { EventTypeIcon } from "../../components/EventTypeIcon";
 import { ProgressiveList } from "../../components/ProgressiveList";
 import { TripDocumentRow } from "../../components/TripDocumentRow";
 import { CostTotals } from "../../components/TripUi";
@@ -212,8 +213,13 @@ export function TripDetailsView(props: TripDetailsViewProps) {
                   view: "timeline",
                   targetId: item.id
                 })}
-                className="group grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-3 py-2.5 hover:bg-elevated"
+                className="group grid min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto_auto] items-center gap-3 px-3 py-2.5 hover:bg-elevated"
               >
+                <EventTypeIcon
+                  type={item.event_type ?? "custom"}
+                  className="size-8 rounded-lg"
+                  iconClassName="size-3.5"
+                />
                 <strong className="min-w-0 whitespace-normal break-words text-sm [overflow-wrap:anywhere]">
                   {item.title}
                 </strong>
