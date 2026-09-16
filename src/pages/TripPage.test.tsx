@@ -586,9 +586,61 @@ describe("trip summary interactions", () => {
     expect(
       await screen.findByText("3 days before Museum visit · Readiness task")
     ).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("checkbox", { name: "Mark as done: Prepare Bali visa" })
+    const taskCheckbox = screen.getByRole("checkbox", {
+      name: "Mark as done: Prepare Bali visa"
+    });
+    const taskCard = taskCheckbox.parentElement;
+    const taskRow = taskCard?.parentElement;
+    expect(taskRow?.previousElementSibling?.previousElementSibling).toHaveClass("xl:pl-[10.5rem]");
+    expect(taskRow?.previousElementSibling?.previousElementSibling).not.toHaveClass(
+      "sm:pl-[10.5rem]"
     );
+    expect(taskRow?.previousElementSibling).toHaveClass("xl:pl-[10.5rem]");
+    expect(taskRow?.previousElementSibling).not.toHaveClass("sm:pl-[10.5rem]");
+    expect(taskRow).toHaveClass("xl:grid-cols-[6rem_2.5rem_minmax(0,1fr)]", "xl:gap-4", "xl:pl-0");
+    expect(taskRow).not.toHaveClass(
+      "sm:grid-cols-[6rem_2.5rem_minmax(0,1fr)]",
+      "sm:gap-4",
+      "sm:pl-0"
+    );
+    expect(taskRow?.children[0]).toHaveClass("xl:hidden");
+    expect(taskRow?.children[0]).not.toHaveClass("sm:hidden");
+    expect(taskRow?.children[1]).toHaveClass("xl:block");
+    expect(taskRow?.children[1]).not.toHaveClass("sm:block");
+    expect(taskRow?.children[2]).toHaveClass("xl:grid");
+    expect(taskRow?.children[2]).not.toHaveClass("sm:grid");
+    expect(taskCard).toHaveClass("xl:px-4");
+    expect(taskCard).not.toHaveClass("sm:px-4");
+
+    const eventCard = screen
+      .getByRole("button", { name: "Open details for Museum visit" })
+      .closest("article");
+    const eventRow = eventCard?.parentElement;
+    const timeline = eventRow?.parentElement;
+    expect(timeline).toHaveClass("xl:before:left-[8.25rem]");
+    expect(timeline).not.toHaveClass("sm:before:left-[8.25rem]");
+    expect(eventRow?.previousElementSibling).toHaveClass("xl:pl-[10.5rem]");
+    expect(eventRow?.previousElementSibling).not.toHaveClass("sm:pl-[10.5rem]");
+    expect(eventRow).toHaveClass("xl:grid-cols-[6rem_2.5rem_minmax(0,1fr)]", "xl:gap-4", "xl:pl-0");
+    expect(eventRow).not.toHaveClass(
+      "sm:grid-cols-[6rem_2.5rem_minmax(0,1fr)]",
+      "sm:gap-4",
+      "sm:pl-0"
+    );
+    expect(eventRow?.children[0]).toHaveClass("xl:hidden");
+    expect(eventRow?.children[0]).not.toHaveClass("sm:hidden");
+    expect(eventRow?.children[1]).toHaveClass("xl:block");
+    expect(eventRow?.children[1]).not.toHaveClass("sm:block");
+    expect(eventRow?.children[2]).toHaveClass("xl:grid");
+    expect(eventRow?.children[2]).not.toHaveClass("sm:grid");
+    expect(eventCard).toHaveClass("pr-16", "xl:p-5");
+    expect(eventCard).not.toHaveClass("sm:p-5");
+    expect(eventCard?.querySelector('[data-event-type="activity"]')).toHaveClass("xl:hidden");
+    expect(eventCard?.querySelector('[data-event-type="activity"]')).not.toHaveClass("sm:hidden");
+    expect(eventCard?.querySelector("time")).toHaveClass("xl:hidden");
+    expect(eventCard?.querySelector("time")).not.toHaveClass("sm:hidden");
+
+    await userEvent.click(taskCheckbox);
     await waitFor(() =>
       expect(mocks.updateRequirementStatus).toHaveBeenCalledWith("visa-task", "complete", "trip-1")
     );

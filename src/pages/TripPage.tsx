@@ -2047,7 +2047,7 @@ export function TripPage() {
                       ))}
                     </nav>
                   )}
-                  <div className="relative mt-6 before:absolute before:bottom-5 before:left-1 before:top-5 before:w-px before:bg-line sm:before:left-[8.25rem]">
+                  <div className="relative mt-6 before:absolute before:bottom-5 before:left-1 before:top-5 before:w-px before:bg-line xl:before:left-[8.25rem]">
                     {timelineEntries.map((entry, index, entries) => {
                       const current = activeTimelineEntry?.id === entry.id;
                       const phase = timelineEntryPhase(entry);
@@ -2071,7 +2071,7 @@ export function TripPage() {
                             {phase !== previousPhase && (
                               <div
                                 id={`timeline-phase-${phase}`}
-                                className={`${index ? "pt-7" : ""} relative z-10 pb-3 pl-6 sm:pl-[10.5rem]`}
+                                className={`${index ? "pt-7" : ""} relative z-10 pb-3 pl-6 xl:pl-[10.5rem]`}
                               >
                                 <span
                                   className={`inline-flex rounded-full px-3 py-1.5 text-[.65rem] font-black uppercase tracking-[.14em] ${current ? "bg-coral text-white" : "border border-line bg-surface text-muted"}`}
@@ -2082,7 +2082,7 @@ export function TripPage() {
                             )}
                             {showDate && (
                               <h3
-                                className={`${index ? "pt-3" : ""} pb-3 pl-6 text-sm font-black sm:pl-[10.5rem]`}
+                                className={`${index ? "pt-3" : ""} pb-3 pl-6 text-sm font-black xl:pl-[10.5rem]`}
                               >
                                 {formatItineraryDate(entry.startsAt, entry.timezone)}
                               </h3>
@@ -2090,24 +2090,24 @@ export function TripPage() {
                             <div
                               id={`timeline-${entry.id}`}
                               data-trip-scroll-anchor="timeline"
-                              className="relative mb-3 grid scroll-mt-28 grid-cols-1 pl-5 sm:grid-cols-[6rem_2.5rem_minmax(0,1fr)] sm:gap-4 sm:pl-0"
+                              className="relative mb-3 grid scroll-mt-28 grid-cols-1 pl-5 xl:grid-cols-[6rem_2.5rem_minmax(0,1fr)] xl:gap-4 xl:pl-0"
                             >
                               <span
                                 aria-hidden="true"
-                                className={`absolute left-[-0.05rem] top-5 z-10 size-2.5 rounded-full ring-4 ring-surface sm:hidden ${current ? "bg-coral" : done || phase === "past" ? "bg-line" : "bg-brand"}`}
+                                className={`absolute left-[-0.05rem] top-5 z-10 size-2.5 rounded-full ring-4 ring-surface xl:hidden ${current ? "bg-coral" : done || phase === "past" ? "bg-line" : "bg-brand"}`}
                               />
                               <time
-                                className={`hidden pt-3 text-right text-xs font-black sm:block ${current ? "text-coral" : "text-muted"}`}
+                                className={`hidden pt-3 text-right text-xs font-black xl:block ${current ? "text-coral" : "text-muted"}`}
                               >
                                 {formatEventTime(entry.startsAt, entry.timezone).split(",").at(-1)}
                               </time>
                               <span
-                                className={`z-10 mt-2 hidden size-10 place-items-center rounded-full border-4 border-surface sm:grid ${current ? "bg-coral text-white shadow-focus" : done || phase === "past" ? "bg-line text-muted" : "bg-brand-soft text-brand"}`}
+                                className={`z-10 mt-2 hidden size-10 place-items-center rounded-full border-4 border-surface xl:grid ${current ? "bg-coral text-white shadow-focus" : done || phase === "past" ? "bg-line text-muted" : "bg-brand-soft text-brand"}`}
                               >
                                 <Check className="size-4" />
                               </span>
                               <div
-                                className={`flex min-h-16 items-center gap-3 rounded-2xl border px-3 py-2 transition sm:px-4 ${current ? "border-coral bg-coral/10 shadow-focus" : "border-line bg-elevated"}`}
+                                className={`flex min-h-16 items-center gap-3 rounded-2xl border px-3 py-2 transition xl:px-4 ${current ? "border-coral bg-coral/10 shadow-focus" : "border-line bg-elevated"}`}
                               >
                                 <input
                                   type="checkbox"
@@ -2175,7 +2175,7 @@ export function TripPage() {
                           {phase !== previousPhase && (
                             <div
                               id={`timeline-phase-${phase}`}
-                              className={`${index ? "pt-7" : ""} relative z-10 pb-3 pl-6 sm:pl-[10.5rem]`}
+                              className={`${index ? "pt-7" : ""} relative z-10 pb-3 pl-6 xl:pl-[10.5rem]`}
                             >
                               <span
                                 className={`inline-flex rounded-full px-3 py-1.5 text-[.65rem] font-black uppercase tracking-[.14em] ${phase === "current" ? "bg-coral text-white" : "border border-line bg-surface text-muted"}`}
@@ -2186,7 +2186,7 @@ export function TripPage() {
                           )}
                           {item.timing_mode !== "unscheduled" && showDate && (
                             <h3
-                              className={`${index ? "pt-3" : ""} pb-3 pl-6 text-sm font-black sm:pl-[10.5rem]`}
+                              className={`${index ? "pt-3" : ""} pb-3 pl-6 text-sm font-black xl:pl-[10.5rem]`}
                             >
                               {formatItineraryDate(item.starts_at, item.timezone)}
                             </h3>
@@ -2194,25 +2194,25 @@ export function TripPage() {
                           <div
                             id={`timeline-${item.id}`}
                             data-trip-scroll-anchor="timeline"
-                            className="relative mb-4 grid scroll-mt-28 grid-cols-1 pl-5 sm:grid-cols-[6rem_2.5rem_minmax(0,1fr)] sm:gap-4 sm:pl-0"
+                            className="relative mb-4 grid scroll-mt-28 grid-cols-1 pl-5 xl:grid-cols-[6rem_2.5rem_minmax(0,1fr)] xl:gap-4 xl:pl-0"
                           >
                             <span
                               aria-hidden="true"
-                              className={`absolute left-[-0.05rem] top-6 z-10 size-2.5 rounded-full ring-4 ring-surface sm:hidden ${current ? "bg-coral" : phase === "past" ? "bg-line" : "bg-brand"}`}
+                              className={`absolute left-[-0.05rem] top-6 z-10 size-2.5 rounded-full ring-4 ring-surface xl:hidden ${current ? "bg-coral" : phase === "past" ? "bg-line" : "bg-brand"}`}
                             />
                             <time
-                              className={`hidden pt-4 text-right text-xs font-black sm:block ${current ? "text-coral" : "text-muted"}`}
+                              className={`hidden pt-4 text-right text-xs font-black xl:block ${current ? "text-coral" : "text-muted"}`}
                             >
                               {compactTimingLabel}
                             </time>
                             <EventTypeIcon
                               type={item.event_type ?? "custom"}
                               iconClassName="size-4"
-                              className={`z-10 mt-3 hidden size-10 rounded-full border-4 border-surface sm:grid ${current ? "shadow-focus ring-2 ring-coral/40" : phase === "past" ? "opacity-60" : ""}`}
+                              className={`z-10 mt-3 hidden size-10 rounded-full border-4 border-surface xl:grid ${current ? "shadow-focus ring-2 ring-coral/40" : phase === "past" ? "opacity-60" : ""}`}
                             />
                             <FocusSurface
                               active={current}
-                              className={`group p-4 pr-16 hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft sm:p-5 ${current ? "bg-coral/10" : "bg-elevated"}`}
+                              className={`group p-4 pr-16 hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft xl:p-5 ${current ? "bg-coral/10" : "bg-elevated"}`}
                             >
                               <button
                                 type="button"
@@ -2223,10 +2223,10 @@ export function TripPage() {
                               <EventTypeIcon
                                 type={item.event_type ?? "custom"}
                                 iconClassName="size-4"
-                                className={`absolute right-4 top-4 size-10 rounded-xl sm:hidden ${current ? "ring-2 ring-coral/40" : phase === "past" ? "opacity-60" : ""}`}
+                                className={`absolute right-4 top-4 size-10 rounded-xl xl:hidden ${current ? "ring-2 ring-coral/40" : phase === "past" ? "opacity-60" : ""}`}
                               />
                               <time
-                                className={`text-xs font-black sm:hidden ${current ? "text-coral" : "text-muted"}`}
+                                className={`text-xs font-black xl:hidden ${current ? "text-coral" : "text-muted"}`}
                               >
                                 {compactTimingLabel}
                               </time>
@@ -2392,7 +2392,7 @@ export function TripPage() {
             <p className="sr-only" role="status" aria-live="polite">
               {travelerAnnouncement}
             </p>
-            <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-line bg-surface/95 p-2 shadow-focus backdrop-blur sm:bottom-6">
+            <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-line bg-surface/95 p-2 shadow-focus backdrop-blur lg:bottom-6">
               {editable && (
                 <button
                   type="button"
