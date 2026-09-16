@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ItineraryItem } from "../trips/types";
@@ -160,9 +161,10 @@ describe("event document cards", () => {
   beforeEach(() => {
     mocks.listEventDocumentLinks.mockReset().mockResolvedValue([]);
     mocks.listVaultDocuments.mockReset().mockResolvedValue([]);
+    mocks.reorderEventDocuments.mockReset().mockResolvedValue(undefined);
   });
 
-  it("gives a long document name its own wrapping row above visibility and actions", async () => {
+  it("uses a compact horizontal tablet row without hiding a long document name", async () => {
     const longTitle =
       "Universal Studios and Oceanarium family activity booking confirmation for everyone";
     mocks.listEventDocumentLinks.mockResolvedValue([
@@ -174,7 +176,53 @@ describe("event document cards", () => {
     const title = await screen.findByText(longTitle);
     expect(title).toHaveClass("break-words", "[overflow-wrap:anywhere]");
     expect(title).not.toHaveClass("truncate");
-    expect(title.closest("a")?.parentElement).toHaveClass("flex-col", "overflow-hidden");
-    expect(screen.getByLabelText(`Actions for ${longTitle}`)).toHaveClass("border-t");
+    const documentLink = title.closest("a");
+    expect(documentLink?.parentElement).toHaveClass("flex-col", "sm:flex-row", "overflow-hidden");
+    expect(documentLink).toHaveClass("py-2", "sm:items-center");
+
+    const visibility = screen.getByLabelText("Visible to all signed-in trip members");
+    const detailsAndActions = visibility.parentElement?.parentElement;
+    expect(detailsAndActions).toHaveClass("border-t", "sm:border-l", "sm:border-t-0");
+    expect(detailsAndActions).toHaveTextContent("Ticket");
+    expect(detailsAndActions).toHaveTextContent("Trip members");
+
+    const actions = screen.getByRole("group", { name: `Actions for ${longTitle}` });
+    expect(actions.parentElement).toBe(detailsAndActions);
+    const earlier = screen.getByRole("button", { name: `Move ${longTitle} earlier` });
+    const later = screen.getByRole("button", { name: `Move ${longTitle} later` });
+    expect(earlier).toBeDisabled();
+    expect(later).toBeDisabled();
+    expect(earlier.parentElement).toHaveClass("sm:flex-col", "sm:divide-y");
+    expect(earlier).toHaveClass("sm:flex-1", "sm:min-h-6");
+    expect(screen.getByRole("button", { name: `Unlink ${longTitle}` })).toBeInTheDocument();
+  });
+
+  it("keeps sequencing controls working when multiple documents are attached", async () => {
+    const firstTitle = "Bus ticket";
+    const secondTitle = "Hotel voucher";
+    mocks.listEventDocumentLinks.mockResolvedValue([
+      link(document({ id: "bus-ticket", title: firstTitle }), 0),
+      link(document({ id: "hotel-voucher", title: secondTitle }), 1)
+    ]);
+
+    const user = userEvent.setup();
+    renderDocuments();
+
+    expect(
+      await screen.findByRole("button", { name: `Move ${firstTitle} earlier` })
+    ).toBeDisabled();
+    const moveFirstLater = screen.getByRole("button", { name: `Move ${firstTitle} later` });
+    expect(moveFirstLater).toBeEnabled();
+    expect(screen.getByRole("button", { name: `Move ${secondTitle} earlier` })).toBeEnabled();
+    expect(screen.getByRole("button", { name: `Move ${secondTitle} later` })).toBeDisabled();
+
+    await user.click(moveFirstLater);
+
+    await waitFor(() =>
+      expect(mocks.reorderEventDocuments).toHaveBeenCalledWith(item.id, [
+        "hotel-voucher",
+        "bus-ticket"
+      ])
+    );
   });
 });

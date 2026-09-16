@@ -136,13 +136,13 @@ export function EventDocuments({
 
   return (
     <div className="mt-4 border-t border-line pt-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p className="flex items-center gap-2 text-xs font-bold text-muted">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="mr-auto flex items-center gap-2 text-xs font-bold text-muted">
           <Paperclip className="size-4" /> {visibleLinks.length} document
           {visibleLinks.length === 1 ? "" : "s"}
         </p>
         {canEdit && (
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1 sm:flex-nowrap">
             {onUpload && (
               <button
                 type="button"
@@ -163,28 +163,29 @@ export function EventDocuments({
         )}
       </div>
       {visibleLinks.length > 0 && (
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <div className="mt-3 grid gap-2">
           {visibleLinks.map((link) => {
             const explicitIndex = explicitLinks.findIndex(
               (row) => row.document_id === link.document_id
             );
+            const documentTitle = link.label || link.document.title;
             return (
               <div
                 key={link.document_id}
-                className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface/70"
+                className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface/70 sm:flex-row sm:items-stretch"
               >
                 <Link
-                  className="tap-target block min-w-0 flex-1 px-3 py-3 text-xs font-bold"
+                  className="tap-target flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-xs font-bold sm:items-center"
                   to={`/trips/${item.trip_id}/documents/${link.document_id}`}
                   state={navigationState}
                 >
-                  <span className="flex min-w-0 items-start gap-2">
-                    <FileText className="mt-0.5 size-3.5 shrink-0 text-brand" />
-                    <span className="min-w-0 flex-1 break-words leading-5 [overflow-wrap:anywhere]">
-                      {link.label || link.document.title}
-                    </span>
+                  <FileText className="mt-0.5 size-3.5 shrink-0 text-brand sm:mt-0" />
+                  <span className="min-w-0 flex-1 break-words leading-5 [overflow-wrap:anywhere]">
+                    {documentTitle}
                   </span>
-                  <span className="mt-2 flex min-w-0 flex-wrap items-center gap-2 pl-5">
+                </Link>
+                <div className="flex min-w-0 items-stretch border-t border-line sm:border-l sm:border-t-0">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 px-3 py-1 sm:flex-none sm:flex-nowrap sm:px-2">
                     <span className="text-[.65rem] font-medium text-muted">
                       {documentPurposeLabel(link.document.purpose)}
                       {link.inherited ? " · booking document" : ""}
@@ -193,67 +194,70 @@ export function EventDocuments({
                         : ""}
                     </span>
                     <DocumentVisibilityBadge visibility={link.document.visibility} />
-                  </span>
-                </Link>
-                {canEdit && !link.inherited && (
-                  <div
-                    className="flex shrink-0 justify-end border-t border-line"
-                    aria-label={`Actions for ${link.document.title}`}
-                  >
-                    <button
-                      disabled={explicitIndex === 0 || reorderMutation.isPending}
-                      type="button"
-                      onClick={() => {
-                        const ids = explicitLinks.map((row) => row.document_id);
-                        [ids[explicitIndex - 1], ids[explicitIndex]] = [
-                          ids[explicitIndex],
-                          ids[explicitIndex - 1]
-                        ];
-                        reorderMutation.mutate(ids);
-                      }}
-                      className="tap-target grid min-h-10 min-w-11 place-items-center border-l border-line text-muted disabled:opacity-30"
-                      aria-label={`Move ${link.document.title} earlier`}
-                    >
-                      <ArrowUp className="size-3" />
-                    </button>
-                    <button
-                      disabled={
-                        explicitIndex === explicitLinks.length - 1 || reorderMutation.isPending
-                      }
-                      type="button"
-                      onClick={() => {
-                        const ids = explicitLinks.map((row) => row.document_id);
-                        [ids[explicitIndex], ids[explicitIndex + 1]] = [
-                          ids[explicitIndex + 1],
-                          ids[explicitIndex]
-                        ];
-                        reorderMutation.mutate(ids);
-                      }}
-                      className="tap-target grid min-h-10 min-w-11 place-items-center border-l border-line text-muted disabled:opacity-30"
-                      aria-label={`Move ${link.document.title} later`}
-                    >
-                      <ArrowDown className="size-3" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (
-                          await confirm({
-                            title: "Unlink document?",
-                            message: `Unlink ${link.document.title} from this event? The Vault document will remain.`,
-                            confirmLabel: "Unlink",
-                            tone: "danger"
-                          })
-                        )
-                          unlinkMutation.mutate(link.document_id);
-                      }}
-                      className="tap-target grid min-h-10 min-w-11 place-items-center border-l border-line text-muted hover:text-danger"
-                      aria-label={`Unlink ${link.document.title}`}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
                   </div>
-                )}
+                  {canEdit && !link.inherited && (
+                    <div
+                      className="ml-auto flex shrink-0 border-l border-line"
+                      aria-label={`Actions for ${documentTitle}`}
+                      role="group"
+                    >
+                      <div className="flex divide-x divide-line sm:flex-col sm:divide-x-0 sm:divide-y">
+                        <button
+                          disabled={explicitIndex === 0 || reorderMutation.isPending}
+                          type="button"
+                          onClick={() => {
+                            const ids = explicitLinks.map((row) => row.document_id);
+                            [ids[explicitIndex - 1], ids[explicitIndex]] = [
+                              ids[explicitIndex],
+                              ids[explicitIndex - 1]
+                            ];
+                            reorderMutation.mutate(ids);
+                          }}
+                          className="tap-target grid size-11 place-items-center text-muted disabled:opacity-30 sm:h-auto sm:min-h-6 sm:w-8 sm:min-w-8 sm:flex-1"
+                          aria-label={`Move ${documentTitle} earlier`}
+                        >
+                          <ArrowUp className="size-3" />
+                        </button>
+                        <button
+                          disabled={
+                            explicitIndex === explicitLinks.length - 1 || reorderMutation.isPending
+                          }
+                          type="button"
+                          onClick={() => {
+                            const ids = explicitLinks.map((row) => row.document_id);
+                            [ids[explicitIndex], ids[explicitIndex + 1]] = [
+                              ids[explicitIndex + 1],
+                              ids[explicitIndex]
+                            ];
+                            reorderMutation.mutate(ids);
+                          }}
+                          className="tap-target grid size-11 place-items-center text-muted disabled:opacity-30 sm:h-auto sm:min-h-6 sm:w-8 sm:min-w-8 sm:flex-1"
+                          aria-label={`Move ${documentTitle} later`}
+                        >
+                          <ArrowDown className="size-3" />
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (
+                            await confirm({
+                              title: "Unlink document?",
+                              message: `Unlink ${link.document.title} from this event? The Vault document will remain.`,
+                              confirmLabel: "Unlink",
+                              tone: "danger"
+                            })
+                          )
+                            unlinkMutation.mutate(link.document_id);
+                        }}
+                        className="tap-target grid size-11 place-items-center border-l border-line text-muted hover:text-danger sm:h-auto sm:self-stretch"
+                        aria-label={`Unlink ${documentTitle}`}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
