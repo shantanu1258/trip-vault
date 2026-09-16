@@ -266,19 +266,26 @@ for each row execute function public.enforce_explicit_participant_row();
 -- child rows remain safe rather than committing a contradictory state.
 create or replace function public.canonicalize_parent_participant_scope()
 returns trigger language plpgsql security definer set search_path = public as $function$
+declare row_data jsonb := to_jsonb(new);
 begin
-  if tg_table_name = 'bookings' and new.participant_scope = 'everyone' then
-    delete from public.booking_travelers assignment
-    where assignment.booking_id = new.id;
-    delete from public.flight_leg_travelers allocation
-    using public.flight_legs leg
-    where allocation.flight_leg_id = leg.id and leg.booking_id = new.id;
-    delete from public.journey_leg_travelers allocation
-    using public.journey_legs leg
-    where allocation.journey_leg_id = leg.id and leg.booking_id = new.id;
-  elsif tg_table_name = 'itinerary_items' and new.applies_to_all_travelers then
-    delete from public.itinerary_participants assignment
-    where assignment.itinerary_item_id = new.id;
+  if tg_table_name = 'bookings' then
+    if coalesce(row_data->>'participant_scope', '') = 'everyone' then
+      delete from public.booking_travelers assignment
+      where assignment.booking_id = new.id;
+      delete from public.flight_leg_travelers allocation
+      using public.flight_legs leg
+      where allocation.flight_leg_id = leg.id and leg.booking_id = new.id;
+      delete from public.journey_leg_travelers allocation
+      using public.journey_legs leg
+      where allocation.journey_leg_id = leg.id and leg.booking_id = new.id;
+    end if;
+  elsif tg_table_name = 'itinerary_items' then
+    if coalesce((row_data->>'applies_to_all_travelers')::boolean, false) then
+      delete from public.itinerary_participants assignment
+      where assignment.itinerary_item_id = new.id;
+    end if;
+  else
+    raise exception 'Unexpected participant-scope parent trigger table: %', tg_table_name;
   end if;
   return new;
 end

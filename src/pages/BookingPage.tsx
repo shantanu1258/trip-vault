@@ -45,6 +45,7 @@ import { EditJourneyLegForm } from "../features/workspace/EditJourneyLegForm";
 import { readTravelerFocus } from "../features/workspace/travelerFocus";
 import { tripChildNavigationState, tripReturnNavigation } from "../features/trips/navigation";
 import { useConfirmDialog } from "../components/ConfirmDialogProvider";
+import { WhatsAppIcon } from "../components/WhatsAppIcon";
 import { tripQueries } from "../features/queries/tripQueries";
 
 export function BookingPage() {
@@ -287,7 +288,7 @@ export function BookingPage() {
                         target="_blank"
                         rel="noreferrer"
                       >
-                        WhatsApp
+                        <WhatsAppIcon /> WhatsApp
                       </a>
                     </div>
                   )}

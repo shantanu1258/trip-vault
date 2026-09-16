@@ -850,7 +850,10 @@ describe("Upload document flow", () => {
         <QueryClientProvider client={queryClient}>
           <EditBookingForm
             trip={trip}
-            booking={booking("flight")}
+            booking={{
+              ...booking("flight"),
+              details: { map_url: "https://maps.app.goo.gl/airport-terminal" }
+            }}
             travelers={travelers}
             selectedTravelerIds={[]}
             onClose={vi.fn()}
@@ -866,8 +869,57 @@ describe("Upload document flow", () => {
     expect(screen.queryByLabelText("Starts")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Ends")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Location")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Google Maps link (optional)")).toHaveValue(
+      "https://maps.app.goo.gl/airport-terminal"
+    );
     expect(screen.queryByLabelText("Contact name")).not.toBeInTheDocument();
     expect(screen.queryByText("Booking time zone")).not.toBeInTheDocument();
+  });
+
+  it("lets a non-journey booking correct both its location and Maps link", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false }, queries: { retry: false } }
+    });
+    const user = userEvent.setup();
+    const existing = {
+      ...booking("activity"),
+      location: {
+        label: "Old museum entrance",
+        address: "Old museum entrance",
+        map_url: "https://maps.app.goo.gl/old-entrance"
+      }
+    };
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <EditBookingForm
+            trip={trip}
+            booking={existing}
+            travelers={travelers}
+            selectedTravelerIds={[]}
+            onClose={vi.fn()}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+
+    const location = screen.getByLabelText("Location");
+    const mapUrl = screen.getByLabelText("Google Maps link (optional)");
+    await user.clear(location);
+    await user.type(location, "Correct museum entrance");
+    await user.clear(mapUrl);
+    await user.type(mapUrl, "https://maps.app.goo.gl/correct-entrance");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(mocks.updateBooking).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "booking-activity",
+          location: "Correct museum entrance",
+          mapUrl: "https://maps.app.goo.gl/correct-entrance"
+        })
+      )
+    );
   });
 
   it("does not let a flight edit remove its required PNR", async () => {
@@ -1054,6 +1106,10 @@ describe("Upload document flow", () => {
     expect(await screen.findByLabelText("Check-in date")).toHaveValue("2026-09-27");
     expect(screen.getByLabelText("Printed check-in time (optional)")).toHaveValue("");
     expect(screen.getByLabelText("Printed checkout time (optional)")).toHaveValue("10:00");
+    const mapUrl = screen.getByLabelText("Google Maps link (optional)");
+    expect(mapUrl).toHaveValue("https://maps.app.goo.gl/hotel");
+    await user.clear(mapUrl);
+    await user.type(mapUrl, "https://maps.app.goo.gl/corrected-hotel");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() =>
@@ -1067,7 +1123,7 @@ describe("Upload document flow", () => {
           hotelCheckoutHasTime: true,
           bookingDetails: { room_type: "Family suite" },
           notes: "Late arrival",
-          mapUrl: "https://maps.app.goo.gl/hotel",
+          mapUrl: "https://maps.app.goo.gl/corrected-hotel",
           participantScope: "selected",
           travelerIds: ["asha"]
         })

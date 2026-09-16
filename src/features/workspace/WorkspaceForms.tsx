@@ -83,6 +83,13 @@ const bookingSchema = z
     endsAt: z.string().optional(),
     timezone: z.string().trim().optional(),
     location: z.string().trim().max(220).optional(),
+    mapUrl: z
+      .string()
+      .trim()
+      .url("Use a complete Google Maps address.")
+      .refine((value) => value.startsWith("https://"), "Use a secure Google Maps address.")
+      .or(z.literal(""))
+      .optional(),
     notes: z.string().trim().max(2000).optional(),
     journeyScope: z.enum(["domestic", "international"]).optional(),
     bookedViaName: z.string().trim().max(160).optional(),
@@ -124,6 +131,23 @@ type BookingEditMutationInput = UpdateBookingInput & {
   hotelCheckInHasTime?: boolean;
   hotelCheckoutHasTime?: boolean;
 };
+
+function BookingMapUrlField({ booking }: { booking: Booking }) {
+  const legacyDetailsMapUrl =
+    typeof booking.details.map_url === "string" ? booking.details.map_url : "";
+  return (
+    <label className="form-label">
+      Google Maps link (optional)
+      <input
+        className="form-input"
+        name="mapUrl"
+        type="url"
+        defaultValue={booking.location?.map_url ?? legacyDetailsMapUrl}
+        placeholder="Paste the Google Maps place or directions link"
+      />
+    </label>
+  );
+}
 
 function hasPrintedHotelTime(item: import("../trips/types").ItineraryItem | undefined) {
   if (!item) return true;
@@ -379,7 +403,7 @@ export function EditBookingForm({
         ...(isHotel
           ? {
               bookingDetails: preservedBookingDetails,
-              mapUrl: booking.location?.map_url,
+              mapUrl: parsed.data.mapUrl || undefined,
               hotelCheckInHasTime: form.get("checkInHasTime") === "yes",
               hotelCheckoutHasTime: form.get("checkoutHasTime") === "yes"
             }
@@ -499,6 +523,7 @@ export function EditBookingForm({
                 placeholder="Enter the property name or full address"
               />
             </label>
+            <BookingMapUrlField booking={booking} />
           </>
         ) : isJourney ? (
           <>
@@ -513,6 +538,7 @@ export function EditBookingForm({
               value={isoToLocalDateTime(booking.end_at, timezone)}
             />
             <input type="hidden" name="location" value="" />
+            <BookingMapUrlField booking={booking} />
           </>
         ) : (
           <>
@@ -545,6 +571,7 @@ export function EditBookingForm({
                 placeholder="Enter the place name or full address"
               />
             </label>
+            <BookingMapUrlField booking={booking} />
           </>
         )}
         <div className="grid gap-4 sm:grid-cols-2">

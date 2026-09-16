@@ -8,6 +8,7 @@ import type {
   VaultDocument
 } from "../workspace/types";
 import { localDateTimeToIso } from "../trips/validation";
+import { formatDurationBetween, formatDurationMinutes } from "../../lib/formatDuration";
 
 export type TimelineSearchGroup = "Timeline" | "Bookings" | "Documents" | "Travelers" | "Readiness";
 export type TimelineSearchResult = {
@@ -156,18 +157,7 @@ export function sortTimelineItems(items: ItineraryItem[]) {
 }
 
 function readinessOffsetLabel(minutes: number) {
-  const safe = Math.max(0, Math.round(minutes));
-  const units = [
-    { minutes: 10_080, singular: "week", plural: "weeks" },
-    { minutes: 1_440, singular: "day", plural: "days" },
-    { minutes: 60, singular: "hour", plural: "hours" },
-    { minutes: 1, singular: "minute", plural: "minutes" }
-  ];
-  const unit =
-    units.find((candidate) => safe >= candidate.minutes && safe % candidate.minutes === 0) ??
-    units.at(-1)!;
-  const value = safe / unit.minutes;
-  return safe === 0 ? "Immediately" : `${value} ${value === 1 ? unit.singular : unit.plural}`;
+  return formatDurationMinutes(minutes, { style: "long", zeroLabel: "Immediately" });
 }
 
 export function requirementTimelineSchedule(
@@ -292,30 +282,12 @@ export function resolveCurrentTimelineItem(items: ItineraryItem[], now = new Dat
 }
 
 export function durationLabel(minutes: number) {
-  const safeMinutes = Math.max(0, Math.round(minutes));
-  const showWeeks = safeMinutes > 10_080;
-  const showDays = safeMinutes > 1_440;
-  const weeks = showWeeks ? Math.floor(safeMinutes / 10_080) : 0;
-  const afterWeeks = showWeeks ? safeMinutes % 10_080 : safeMinutes;
-  const days = showDays ? Math.floor(afterWeeks / 1_440) : 0;
-  const afterDays = showDays ? afterWeeks % 1_440 : afterWeeks;
-  const hours = Math.floor(afterDays / 60);
-  const remainder = safeMinutes % 60;
-  return (
-    [
-      weeks ? `${weeks}w` : "",
-      days ? `${days}d` : "",
-      hours ? `${hours}h` : "",
-      remainder ? `${remainder}m` : ""
-    ]
-      .filter(Boolean)
-      .join(" ") || "0m"
-  );
+  return formatDurationMinutes(minutes);
 }
 
 export function journeyDuration(start: string, end: string | null | undefined) {
   if (!end) return "Duration not available";
-  return durationLabel((new Date(end).getTime() - new Date(start).getTime()) / 60_000);
+  return formatDurationBetween(start, end);
 }
 
 export function plannedDurationLabel(item: ItineraryItem) {

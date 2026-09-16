@@ -2,6 +2,7 @@ import { CalendarDays, ChevronRight, FileText, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { phoneActionUrls } from "../timeline/model";
 import type { Booking, FlightLeg, TripNote } from "../workspace/types";
+import { WhatsAppIcon } from "../../components/WhatsAppIcon";
 
 export function indexFirstFlightByBooking(flights: FlightLeg[]) {
   const result = new Map<string, FlightLeg>();
@@ -53,12 +54,12 @@ export function ReservationCard({
             Call
           </a>
           <a
-            className="text-xs font-extrabold text-success"
+            className="inline-flex items-center gap-1 text-xs font-extrabold text-success"
             href={phone.whatsapp}
             target="_blank"
             rel="noreferrer"
           >
-            WhatsApp
+            <WhatsAppIcon className="size-3.5" /> WhatsApp
           </a>
         </div>
       )}

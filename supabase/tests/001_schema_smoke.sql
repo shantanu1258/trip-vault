@@ -186,7 +186,10 @@ begin
   if strpos(parent_scope_definition, 'delete from public.booking_travelers') = 0
     or strpos(parent_scope_definition, 'delete from public.flight_leg_travelers') = 0
     or strpos(parent_scope_definition, 'delete from public.journey_leg_travelers') = 0
-    or strpos(parent_scope_definition, 'delete from public.itinerary_participants') = 0 then
+    or strpos(parent_scope_definition, 'delete from public.itinerary_participants') = 0
+    or strpos(parent_scope_definition, 'to_jsonb(new)') = 0
+    or strpos(parent_scope_definition, 'new.participant_scope') > 0
+    or strpos(parent_scope_definition, 'new.applies_to_all_travelers') > 0 then
     raise exception 'Parent-side participant scope canonicalization is incomplete';
   end if;
   if to_regprocedure('public.valid_journey_leg_details(public.journey_mode,jsonb)') is null then

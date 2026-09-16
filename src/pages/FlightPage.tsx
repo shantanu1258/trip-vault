@@ -56,6 +56,7 @@ import { readTravelerFocus } from "../features/workspace/travelerFocus";
 import { AddFlightConnectionForm } from "../features/workspace/AddFlightConnectionForm";
 import { tripChildNavigationState, tripReturnNavigation } from "../features/trips/navigation";
 import { tripQueries } from "../features/queries/tripQueries";
+import { WhatsAppIcon } from "../components/WhatsAppIcon";
 
 type FlightEditTarget =
   | "status"
@@ -452,7 +453,7 @@ export function FlightPage() {
                           target="_blank"
                           rel="noreferrer"
                         >
-                          WhatsApp
+                          <WhatsAppIcon /> WhatsApp
                         </a>
                       </>
                     )}

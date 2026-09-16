@@ -74,6 +74,10 @@ describe("flight presentation", () => {
     expect(flightCountdown({ ...flight, status: "landed" }, new Date("2026-09-10T00:00:00Z"))).toBe(
       "Landed"
     ));
+  it("uses days and weeks in long flight countdowns", () => {
+    expect(flightCountdown(flight, new Date("2026-09-09T09:59:00Z"))).toBe("1d 1m to departure");
+    expect(flightCountdown(flight, new Date("2026-09-01T09:00:00Z"))).toBe("1w 2d 1h to departure");
+  });
   it("constructs a safely encoded public tracker URL", () =>
     expect(trackerUrl("AV 218")).toBe("https://www.flightaware.com/live/flight/AV218"));
   it("calculates boarding from the departure lead unless an exact time was supplied", () => {

@@ -1,4 +1,5 @@
 import type { FlightLeg, FlightTraveler, Traveler, VaultDocument } from "./types";
+import { formatDurationMinutes } from "../../lib/formatDuration";
 
 export function primaryFlightDocument(documents: VaultDocument[]) {
   return (
@@ -35,9 +36,7 @@ export function flightCountdown(flight: FlightLeg, now = new Date()) {
   );
   if (minutes <= 0) return "Departure time passed";
   if (minutes < 60) return `${minutes} min to departure`;
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return `${hours}h${remainder ? ` ${remainder}m` : ""} to departure`;
+  return `${formatDurationMinutes(minutes)} to departure`;
 }
 
 export function trackerUrl(flightNumber: string) {

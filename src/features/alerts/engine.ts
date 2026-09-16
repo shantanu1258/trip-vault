@@ -3,6 +3,7 @@ import type { FlightLeg, Requirement } from "../workspace/types";
 import type { VaultDocument } from "../workspace/types";
 import { delayMinutes, effectiveDeparture } from "../workspace/flight";
 import { requirementTimelineSchedule } from "../timeline/model";
+import { formatDurationMinutes } from "../../lib/formatDuration";
 
 export type DerivedAlert = {
   key: string;
@@ -58,7 +59,7 @@ export function deriveAlerts(
       alerts.push({
         key: `flight-delayed:${flight.id}:${flight.estimated_departure_at}`,
         tripId,
-        title: `${flight.flight_number} delayed ${delayMinutes(flight)} min`,
+        title: `${flight.flight_number} delayed ${formatDurationMinutes(delayMinutes(flight), { style: "long" })}`,
         detail: flight.status_note || "Updated manually by a traveler.",
         group: groupForDate(new Date(effectiveDeparture(flight)), now),
         target: tripId ? `/trips/${tripId}/flights/${flight.id}` : undefined
@@ -73,7 +74,7 @@ export function deriveAlerts(
         key: `flight-approaching:${flight.id}:${effectiveDeparture(flight)}`,
         tripId,
         title: `${flight.flight_number} departs soon`,
-        detail: `${Math.ceil(minutes)} minutes until the current departure time.`,
+        detail: `${formatDurationMinutes(Math.ceil(minutes), { style: "long" })} until the current departure time.`,
         group: minutes <= 90 ? "today" : "upcoming",
         target: tripId ? `/trips/${tripId}/flights/${flight.id}` : undefined
       });

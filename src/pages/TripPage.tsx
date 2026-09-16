@@ -38,6 +38,7 @@ import { AppShell } from "../components/AppShell";
 import { FocusSurface } from "../components/FocusSurface";
 import { ModalSheet } from "../components/ModalSheet";
 import { useConfirmDialog } from "../components/ConfirmDialogProvider";
+import { WhatsAppIcon } from "../components/WhatsAppIcon";
 import { CompactCostTotal, ErrorCard, LoadingCard } from "../components/TripUi";
 import { AddEventForm } from "../features/timeline/AddEventForm";
 import {
@@ -656,12 +657,12 @@ function BookingContact({
             {booking.contact_name ? ` ${booking.contact_name}` : ""}
           </a>
           <a
-            className="font-extrabold text-success"
+            className="inline-flex items-center gap-1 font-extrabold text-success"
             href={phone.whatsapp}
             target="_blank"
             rel="noreferrer"
           >
-            WhatsApp
+            <WhatsAppIcon className="size-3.5" /> WhatsApp
           </a>
         </>
       )}
