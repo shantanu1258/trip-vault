@@ -1,5 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Armchair, ArrowLeft, Clock3, FileText, FileUp, Luggage, Phone, Plane, Plus, Radar, Save, UserRound } from "lucide-react";
+import {
+  Armchair,
+  ArrowLeft,
+  Clock3,
+  FileText,
+  FileUp,
+  Luggage,
+  Phone,
+  Plane,
+  Plus,
+  Radar,
+  Save,
+  UserRound
+} from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
@@ -8,58 +21,168 @@ import { ModalSheet } from "../components/ModalSheet";
 import { ErrorCard, LoadingCard } from "../components/TripUi";
 import { localDateTimeToIso } from "../features/trips/validation";
 import { getErrorMessage } from "../features/trips/presentation";
-import { getBooking, getFlightLeg, listBookingTravelerIds, listFlightLegsForBooking, listFlightTravelers, listTripAirlines, updateFlightLeg } from "../features/workspace/api";
-import { delayMinutes, flightCountdown, flightSeatLabels, primaryFlightDocument, resolveBoardingInstant, toDateTimeLocal, trackerUrl } from "../features/workspace/flight";
+import {
+  getBooking,
+  getFlightLeg,
+  listBookingTravelerIds,
+  listFlightLegsForBooking,
+  listFlightTravelers,
+  listTripAirlines,
+  updateFlightLeg
+} from "../features/workspace/api";
+import {
+  delayMinutes,
+  flightCountdown,
+  flightSeatLabels,
+  primaryFlightDocument,
+  resolveBoardingInstant,
+  toDateTimeLocal,
+  trackerUrl
+} from "../features/workspace/flight";
 import { flightStatuses } from "../features/workspace/types";
 import { UploadDocumentForm } from "../features/workspace/WorkspaceForms";
 import { FlightTravelerDetails } from "../features/workspace/FlightTravelerDetails";
 import { SafeExternalAction } from "../components/SafeExternalAction";
 import { expandActionUrl, validateActionUrl } from "../features/admin/validation";
 import { localProfileId } from "../features/sync/localSync";
-import { arrivalDayOffset, journeyDuration, journeyRoute, phoneActionUrls } from "../features/timeline/model";
+import {
+  arrivalDayOffset,
+  journeyDuration,
+  journeyRoute,
+  phoneActionUrls
+} from "../features/timeline/model";
 import { documentMatchesTraveler } from "../features/workspace/documentModel";
 import { readTravelerFocus } from "../features/workspace/travelerFocus";
 import { AddFlightConnectionForm } from "../features/workspace/AddFlightConnectionForm";
 import { tripChildNavigationState, tripReturnNavigation } from "../features/trips/navigation";
 import { tripQueries } from "../features/queries/tripQueries";
 
-type FlightEditTarget = "status" | "scheduledDeparture" | "scheduledArrival" | "boardingAt" | "arrivalTerminal";
+type FlightEditTarget =
+  | "status"
+  | "scheduledDeparture"
+  | "scheduledArrival"
+  | "boardingAt"
+  | "arrivalTerminal";
 
 export function FlightPage() {
-  const { tripId = "", flightLegId = "" } = useParams(); const locationState = useLocation().state; const queryClient = useQueryClient(); const [editing, setEditing] = useState(false); const [editTarget, setEditTarget] = useState<FlightEditTarget>("status"); const [editMessage, setEditMessage] = useState(""); const [uploading, setUploading] = useState(false); const [addingConnection, setAddingConnection] = useState(false); const [userId, setUserId] = useState("");
-  useEffect(() => { void localProfileId().then((profileId) => setUserId(profileId ?? "")); }, []);
+  const { tripId = "", flightLegId = "" } = useParams();
+  const locationState = useLocation().state;
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [editTarget, setEditTarget] = useState<FlightEditTarget>("status");
+  const [editMessage, setEditMessage] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [addingConnection, setAddingConnection] = useState(false);
+  const [userId, setUserId] = useState("");
+  useEffect(() => {
+    void localProfileId().then((profileId) => setUserId(profileId ?? ""));
+  }, []);
   const tripQuery = useQuery({ ...tripQueries.trip(tripId), enabled: Boolean(tripId) });
   const travelersQuery = useQuery({ ...tripQueries.travelers(tripId), enabled: Boolean(tripId) });
   const membersQuery = useQuery({ ...tripQueries.members(tripId), enabled: Boolean(tripId) });
-  const airlinesQuery = useQuery({ queryKey: ["trip-airlines", tripId], queryFn: () => listTripAirlines(tripId), enabled: Boolean(tripId) });
-  const flightQuery = useQuery({ queryKey: ["flight", flightLegId], queryFn: () => getFlightLeg(flightLegId), enabled: Boolean(flightLegId) });
+  const airlinesQuery = useQuery({
+    queryKey: ["trip-airlines", tripId],
+    queryFn: () => listTripAirlines(tripId),
+    enabled: Boolean(tripId)
+  });
+  const flightQuery = useQuery({
+    queryKey: ["flight", flightLegId],
+    queryFn: () => getFlightLeg(flightLegId),
+    enabled: Boolean(flightLegId)
+  });
   const documentsQuery = useQuery({ ...tripQueries.documents(tripId), enabled: Boolean(tripId) });
   const flight = flightQuery.data;
-  const bookingQuery = useQuery({ queryKey: ["booking", flight?.booking_id], queryFn: () => getBooking(flight!.booking_id), enabled: Boolean(flight?.booking_id) });
-  const bookingTravelersQuery = useQuery({ queryKey: ["booking-traveler-ids", flight?.booking_id], queryFn: () => listBookingTravelerIds(flight!.booking_id, tripId), enabled: Boolean(flight?.booking_id && tripId) });
-  const flightTravelersQuery = useQuery({ queryKey: ["flight-travelers", flightLegId], queryFn: () => listFlightTravelers(flightLegId), enabled: Boolean(flightLegId) });
-  const connectionsQuery = useQuery({ queryKey: ["flight-legs", tripId, flight?.booking_id], queryFn: () => listFlightLegsForBooking(flight!.booking_id, tripId), enabled: Boolean(flight?.booking_id && tripId) });
+  const bookingQuery = useQuery({
+    queryKey: ["booking", flight?.booking_id],
+    queryFn: () => getBooking(flight!.booking_id),
+    enabled: Boolean(flight?.booking_id)
+  });
+  const bookingTravelersQuery = useQuery({
+    queryKey: ["booking-traveler-ids", flight?.booking_id],
+    queryFn: () => listBookingTravelerIds(flight!.booking_id, tripId),
+    enabled: Boolean(flight?.booking_id && tripId)
+  });
+  const flightTravelersQuery = useQuery({
+    queryKey: ["flight-travelers", flightLegId],
+    queryFn: () => listFlightTravelers(flightLegId),
+    enabled: Boolean(flightLegId)
+  });
+  const connectionsQuery = useQuery({
+    queryKey: ["flight-legs", tripId, flight?.booking_id],
+    queryFn: () => listFlightLegsForBooking(flight!.booking_id, tripId),
+    enabled: Boolean(flight?.booking_id && tripId)
+  });
   const booking = bookingQuery.data;
   const showTimeZoneControls = (booking?.journey_scope ?? flight?.journey_scope) !== "domestic";
   const role = membersQuery.data?.find((member) => member.user_id === userId)?.role;
   const editable = role === "owner" || role === "editor";
-  const airline = airlinesQuery.data?.find((item) => item.id === flight?.marketing_airline_id) ?? airlinesQuery.data?.find((item) => item.name === flight?.airline_name);
-  const actionValues: Record<string, string> = flight ? { flightNumber: flight.flight_number.replace(/\s+/g, ""), airlineCode: airline?.iata_code ?? "", departureDate: flight.scheduled_departure_at.slice(0, 10), bookingReference: booking?.reference_code ?? "", departureAirport: flight.departure_airport_code ?? flight.departure_airport_name, arrivalAirport: flight.arrival_airport_code ?? flight.arrival_airport_name } : {};
-  const actionUrl = (template?: string | null) => template && validateActionUrl(template) ? expandActionUrl(template, actionValues) : null;
+  const airline =
+    airlinesQuery.data?.find((item) => item.id === flight?.marketing_airline_id) ??
+    airlinesQuery.data?.find((item) => item.name === flight?.airline_name);
+  const actionValues: Record<string, string> = flight
+    ? {
+        flightNumber: flight.flight_number.replace(/\s+/g, ""),
+        airlineCode: airline?.iata_code ?? "",
+        departureDate: flight.scheduled_departure_at.slice(0, 10),
+        bookingReference: booking?.reference_code ?? "",
+        departureAirport: flight.departure_airport_code ?? flight.departure_airport_name,
+        arrivalAirport: flight.arrival_airport_code ?? flight.arrival_airport_name
+      }
+    : {};
+  const actionUrl = (template?: string | null) =>
+    template && validateActionUrl(template) ? expandActionUrl(template, actionValues) : null;
   const focusedTravelerId = readTravelerFocus(tripId);
-  const documents = (documentsQuery.data ?? []).filter((document) => (document.flight_leg_id === flightLegId || document.booking_id === flight?.booking_id) && (!focusedTravelerId || documentMatchesTraveler(document, focusedTravelerId)));
-  const primary = primaryFlightDocument(documents); const baggageTags = documents.filter((document) => document.purpose === "baggage_tag");
+  const documents = (documentsQuery.data ?? []).filter(
+    (document) =>
+      (document.flight_leg_id === flightLegId || document.booking_id === flight?.booking_id) &&
+      (!focusedTravelerId || documentMatchesTraveler(document, focusedTravelerId))
+  );
+  const primary = primaryFlightDocument(documents);
+  const baggageTags = documents.filter((document) => document.purpose === "baggage_tag");
   const phoneActions = booking?.contact_phone ? phoneActionUrls(booking.contact_phone) : null;
-  const boardingInstant = flight ? resolveBoardingInstant(flight.scheduled_departure_at, flight.boarding_at, flight.boarding_lead_minutes) : null;
+  const boardingInstant = flight
+    ? resolveBoardingInstant(
+        flight.scheduled_departure_at,
+        flight.boarding_at,
+        flight.boarding_lead_minutes
+      )
+    : null;
   const bookingTravelerIds = bookingTravelersQuery.data ?? [];
-  const bookingTravelers = bookingTravelerIds.length ? (travelersQuery.data ?? []).filter((traveler) => bookingTravelerIds.includes(traveler.id)) : travelersQuery.data ?? [];
-  const seats = flightSeatLabels(bookingTravelers, flightTravelersQuery.data ?? [], focusedTravelerId);
-  const dayOffset = flight ? arrivalDayOffset(flight.scheduled_departure_at, flight.departure_timezone, flight.scheduled_arrival_at, flight.arrival_timezone) : 0;
-  const connectionLegs = (connectionsQuery.data ?? (flight ? [flight] : [])).slice().sort((left, right) => left.segment_order - right.segment_order);
-  const fullRoute = journeyRoute(connectionLegs.map((leg) => ({ origin: leg.departure_airport_code || leg.departure_airport_name, destination: leg.arrival_airport_code || leg.arrival_airport_name })));
+  const bookingTravelers = bookingTravelerIds.length
+    ? (travelersQuery.data ?? []).filter((traveler) => bookingTravelerIds.includes(traveler.id))
+    : (travelersQuery.data ?? []);
+  const seats = flightSeatLabels(
+    bookingTravelers,
+    flightTravelersQuery.data ?? [],
+    focusedTravelerId
+  );
+  const dayOffset = flight
+    ? arrivalDayOffset(
+        flight.scheduled_departure_at,
+        flight.departure_timezone,
+        flight.scheduled_arrival_at,
+        flight.arrival_timezone
+      )
+    : 0;
+  const connectionLegs = (connectionsQuery.data ?? (flight ? [flight] : []))
+    .slice()
+    .sort((left, right) => left.segment_order - right.segment_order);
+  const fullRoute = journeyRoute(
+    connectionLegs.map((leg) => ({
+      origin: leg.departure_airport_code || leg.departure_airport_name,
+      destination: leg.arrival_airport_code || leg.arrival_airport_name
+    }))
+  );
   const returnNavigation = tripReturnNavigation(locationState, tripId);
-  const nestedNavigationState = tripChildNavigationState(locationState, tripId, returnNavigation.view);
-  const openEditor = (target: FlightEditTarget) => { setEditTarget(target); setEditing(true); };
+  const nestedNavigationState = tripChildNavigationState(
+    locationState,
+    tripId,
+    returnNavigation.view
+  );
+  const openEditor = (target: FlightEditTarget) => {
+    setEditTarget(target);
+    setEditing(true);
+  };
   useEffect(() => {
     if (!editing) return;
     const frame = window.requestAnimationFrame(() => {
@@ -69,7 +192,19 @@ export function FlightPage() {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [editing, editTarget]);
-  const mutation = useMutation({ mutationFn: updateFlightLeg, onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ["flight", flightLegId] }), queryClient.invalidateQueries({ queryKey: ["flights", tripId] }), queryClient.invalidateQueries({ queryKey: ["bookings", tripId] }), queryClient.invalidateQueries({ queryKey: ["itinerary", tripId] })]); setEditMessage(""); setEditing(false); } });
+  const mutation = useMutation({
+    mutationFn: updateFlightLeg,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["flight", flightLegId] }),
+        queryClient.invalidateQueries({ queryKey: ["flights", tripId] }),
+        queryClient.invalidateQueries({ queryKey: ["bookings", tripId] }),
+        queryClient.invalidateQueries({ queryKey: ["itinerary", tripId] })
+      ]);
+      setEditMessage("");
+      setEditing(false);
+    }
+  });
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!flight) return;
@@ -77,48 +212,654 @@ export function FlightPage() {
     const form = new FormData(event.currentTarget);
     const convert = (name: string, timezone: string) => {
       const value = String(form.get(name) ?? "");
-      const occurrence = (String(form.get(`${name}Occurrence`) ?? "automatic")) as "automatic" | "earlier" | "later";
+      const occurrence = String(form.get(`${name}Occurrence`) ?? "automatic") as
+        | "automatic"
+        | "earlier"
+        | "later";
       return value ? localDateTimeToIso(value, timezone, occurrence) : null;
     };
     try {
       const scheduledDeparture = convert("scheduledDeparture", flight.departure_timezone);
       const scheduledArrival = convert("scheduledArrival", flight.arrival_timezone);
-      if (!scheduledDeparture || !scheduledArrival) throw new Error("Scheduled departure and arrival are required.");
-      if (scheduledArrival <= scheduledDeparture) throw new Error("Arrival must be after departure after both local times are converted.");
-      const reordered = (connectionsQuery.data ?? [flight]).map((leg) => leg.id === flight.id ? { ...leg, scheduled_departure_at: scheduledDeparture, scheduled_arrival_at: scheduledArrival } : leg).sort((left, right) => left.segment_order - right.segment_order);
-      for (let index = 1; index < reordered.length; index += 1) if (reordered[index].scheduled_departure_at < reordered[index - 1].scheduled_arrival_at) throw new Error(`Connection ${index + 1} departs before the previous flight arrives.`);
+      if (!scheduledDeparture || !scheduledArrival)
+        throw new Error("Scheduled departure and arrival are required.");
+      if (scheduledArrival <= scheduledDeparture)
+        throw new Error("Arrival must be after departure after both local times are converted.");
+      const reordered = (connectionsQuery.data ?? [flight])
+        .map((leg) =>
+          leg.id === flight.id
+            ? {
+                ...leg,
+                scheduled_departure_at: scheduledDeparture,
+                scheduled_arrival_at: scheduledArrival
+              }
+            : leg
+        )
+        .sort((left, right) => left.segment_order - right.segment_order);
+      for (let index = 1; index < reordered.length; index += 1)
+        if (reordered[index].scheduled_departure_at < reordered[index - 1].scheduled_arrival_at)
+          throw new Error(`Connection ${index + 1} departs before the previous flight arrives.`);
       const boardingAt = convert("boardingAt", flight.departure_timezone);
-      if (boardingAt && boardingAt > scheduledDeparture) throw new Error("Boarding cannot be after departure.");
+      if (boardingAt && boardingAt > scheduledDeparture)
+        throw new Error("Boarding cannot be after departure.");
       const boardingLeadValue = String(form.get("boardingLeadMinutes") ?? "").trim();
       const boardingLeadMinutes = boardingLeadValue ? Number(boardingLeadValue) : null;
-      if (boardingLeadMinutes !== null && (!Number.isInteger(boardingLeadMinutes) || boardingLeadMinutes < 0 || boardingLeadMinutes > 360)) throw new Error("Boarding lead must be a whole number from 0 to 360 minutes.");
-      mutation.mutate({ id: flight.id, tripId, version: flight.version, status: String(form.get("status")) as never, scheduled_departure_at: scheduledDeparture, scheduled_arrival_at: scheduledArrival, estimated_departure_at: convert("estimatedDeparture", flight.departure_timezone), estimated_arrival_at: convert("estimatedArrival", flight.arrival_timezone), actual_departure_at: convert("actualDeparture", flight.departure_timezone), actual_arrival_at: convert("actualArrival", flight.arrival_timezone), boarding_at: boardingAt, boarding_lead_minutes: boardingLeadMinutes, departure_terminal: String(form.get("departureTerminal") ?? ""), departure_gate: String(form.get("departureGate") ?? ""), arrival_terminal: String(form.get("arrivalTerminal") ?? ""), arrival_gate: String(form.get("arrivalGate") ?? ""), baggage_claim: String(form.get("baggageClaim") ?? ""), status_note: String(form.get("statusNote") ?? "") });
-    } catch (error) { setEditMessage(getErrorMessage(error)); }
+      if (
+        boardingLeadMinutes !== null &&
+        (!Number.isInteger(boardingLeadMinutes) ||
+          boardingLeadMinutes < 0 ||
+          boardingLeadMinutes > 360)
+      )
+        throw new Error("Boarding lead must be a whole number from 0 to 360 minutes.");
+      mutation.mutate({
+        id: flight.id,
+        tripId,
+        version: flight.version,
+        status: String(form.get("status")) as never,
+        scheduled_departure_at: scheduledDeparture,
+        scheduled_arrival_at: scheduledArrival,
+        estimated_departure_at: convert("estimatedDeparture", flight.departure_timezone),
+        estimated_arrival_at: convert("estimatedArrival", flight.arrival_timezone),
+        actual_departure_at: convert("actualDeparture", flight.departure_timezone),
+        actual_arrival_at: convert("actualArrival", flight.arrival_timezone),
+        boarding_at: boardingAt,
+        boarding_lead_minutes: boardingLeadMinutes,
+        departure_terminal: String(form.get("departureTerminal") ?? ""),
+        departure_gate: String(form.get("departureGate") ?? ""),
+        arrival_terminal: String(form.get("arrivalTerminal") ?? ""),
+        arrival_gate: String(form.get("arrivalGate") ?? ""),
+        baggage_claim: String(form.get("baggageClaim") ?? ""),
+        status_note: String(form.get("statusNote") ?? "")
+      });
+    } catch (error) {
+      setEditMessage(getErrorMessage(error));
+    }
   };
 
-  return <AppShell><div className="mx-auto min-w-0 max-w-4xl"><Link className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted" to={returnNavigation.href} state={returnNavigation.state}><ArrowLeft className="size-4" /> Back to trip</Link>{flightQuery.isLoading && <LoadingCard label="Loading flight" />}{flightQuery.error && <ErrorCard error={flightQuery.error} />}{flight && <><section className={`page-enter mt-5 overflow-hidden rounded-[2rem] border shadow-focus ${flight.status === "cancelled" ? "border-danger bg-danger text-white" : flight.status === "delayed" ? "border-warning bg-brand text-surface" : "border-line bg-brand text-surface"}`}><div className="p-6 sm:p-8"><div className="flex items-center justify-between"><span className="rounded-full bg-surface/10 px-3 py-1.5 text-xs font-black uppercase tracking-[.14em]">{flight.status.replace("_", " ")}</span><Plane className="size-6" /></div><div className="mt-7 flex items-end justify-between gap-6"><div><p className="text-sm font-bold text-surface/65">{flight.airline_name} · {flight.flight_number}</p><h1 className="mt-2 font-display text-4xl font-black tracking-[-.045em]">{fullRoute}</h1></div></div>{connectionLegs.length > 1 && <div className="mt-5"><p className="text-[.65rem] font-black uppercase tracking-[.14em] text-surface/55">Connected journey</p><div className="mt-2 flex gap-2 overflow-auto pb-1">{connectionLegs.map((leg) => <Link key={leg.id} to={`/trips/${tripId}/flights/${leg.id}`} state={nestedNavigationState} className={`shrink-0 rounded-xl border px-3 py-2 text-xs ${leg.id === flight.id ? "border-coral bg-coral/25" : "border-surface/20 bg-surface/10"}`}><strong>{leg.departure_airport_code || leg.departure_airport_name} → {leg.arrival_airport_code || leg.arrival_airport_name}</strong><span className="mt-1 block text-surface/60">{leg.id === flight.id ? "Viewing now" : leg.segment_order < flight.segment_order ? "Earlier leg" : "Next leg"}</span></Link>)}</div></div>}{seats.length > 0 && <div className="mt-5 flex flex-wrap items-center gap-2"><Armchair className="size-4 text-surface/65" />{seats.map((seat) => <span key={seat.travelerId} className="rounded-full bg-surface/10 px-3 py-1.5 text-xs font-bold">{seat.travelerName} · {seat.seat ? `Seat ${seat.seat}` : "Seat not added"}</span>)}</div>}<p className="mt-6 flex items-center gap-2 font-bold"><Clock3 className="size-5" />{flightCountdown(flight)}</p>{delayMinutes(flight) > 0 && <p className="mt-2 text-sm text-warning">Manual estimate: {delayMinutes(flight)} minutes later than scheduled</p>}<div className="mt-6 flex flex-wrap gap-2">{editable && <button className="hero-action" onClick={() => openEditor("status")}>Update flight</button>}{editable && booking && <button className="hero-action" onClick={() => setAddingConnection(true)}><Plus className="size-4" /> Add connection</button>}<SafeExternalAction className="hero-action" href={actionUrl(airline?.tracker_url_template || airline?.status_url_template) ?? trackerUrl(flight.flight_number)}><Radar className="size-4" /> Public tracker</SafeExternalAction>{actionUrl(airline?.check_in_url_template) && <SafeExternalAction className="hero-action" href={actionUrl(airline?.check_in_url_template)!}>Check in</SafeExternalAction>}{actionUrl(airline?.manage_booking_url_template) && <SafeExternalAction className="hero-action" href={actionUrl(airline?.manage_booking_url_template)!}>Manage booking</SafeExternalAction>}{primary && <Link className="hero-action" to={`/trips/${tripId}/documents/${primary.id}`} state={nestedNavigationState}><FileText className="size-4" /> Open {primary.purpose === "boarding_pass" ? "boarding pass" : "ticket"}<DocumentVisibilityBadge className="ml-1" visibility={primary.visibility} /></Link>}</div></div></section>{booking && <section className="surface-card mt-5 p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="eyebrow">Booking</p><p className="mt-2 font-display text-xl font-black">PNR {booking.reference_code || "not added"}</p><p className="mt-1 text-sm text-muted">{booking.journey_scope ? `${booking.journey_scope} · ` : ""}{booking.booked_via_name ? `Booked via ${booking.booked_via_name}` : "Booked directly / source not added"}</p></div>{booking.booked_via_url && <a className="secondary-button" href={booking.booked_via_url} target="_blank" rel="noreferrer">Open booking</a>}</div>{booking.contact_phone && <div className="mt-4 flex flex-wrap items-center gap-2 text-sm"><Phone className="size-4 text-brand" /><strong>{booking.contact_name || booking.contact_phone}</strong>{phoneActions && <><a className="secondary-button" href={phoneActions.call}>Call</a><a className="secondary-button" href={phoneActions.whatsapp} target="_blank" rel="noreferrer">WhatsApp</a></>}</div>}</section>}<section className="mt-5 grid gap-4 sm:grid-cols-2"><Info label="Departure" value={new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: flight.departure_timezone }).format(new Date(flight.scheduled_departure_at))} detail={`${flight.departure_airport_name} · ${flight.departure_timezone}`} onEdit={editable ? () => openEditor("scheduledDeparture") : undefined} /><Info label="Arrival" value={`${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: flight.arrival_timezone }).format(new Date(flight.scheduled_arrival_at))}${dayOffset > 0 ? ` · +${dayOffset} day` : dayOffset < 0 ? ` · ${dayOffset} day` : ""}`} detail={`${flight.arrival_airport_name} · ${flight.arrival_timezone} · ${journeyDuration(flight.scheduled_departure_at, flight.scheduled_arrival_at)}`} onEdit={editable ? () => openEditor("scheduledArrival") : undefined} /><Info label="Boarding" value={boardingInstant ? new Intl.DateTimeFormat(undefined, { timeStyle: "short", timeZone: flight.departure_timezone }).format(new Date(boardingInstant)) : "Not added"} detail={`${flight.boarding_at ? "Exact boarding time" : flight.boarding_lead_minutes !== null && flight.boarding_lead_minutes !== undefined ? `${flight.boarding_lead_minutes} min before departure` : "No boarding lead"} · Terminal ${flight.departure_terminal || "—"} · Gate ${flight.departure_gate || "—"}`} onEdit={editable ? () => openEditor("boardingAt") : undefined} /><Info label="Arrival details" value={`Terminal ${flight.arrival_terminal || "—"}`} detail={`Gate ${flight.arrival_gate || "—"} · Baggage ${flight.baggage_claim || "—"}`} onEdit={editable ? () => openEditor("arrivalTerminal") : undefined} /></section>{flight.status === "landed" && <section className="surface-card mt-5 border-success/30 p-5"><p className="flex items-center gap-2 font-display text-xl font-black"><Luggage className="size-5 text-success" /> Baggage collection</p><p className="mt-2 text-sm text-muted">Claim: {flight.baggage_claim || "Not entered yet"}</p><div className="mt-3 flex flex-wrap gap-2">{baggageTags.map((tag) => <Link className="secondary-button" key={tag.id} to={`/trips/${tripId}/documents/${tag.id}`} state={nestedNavigationState}>{tag.short_label || tag.title}<DocumentVisibilityBadge visibility={tag.visibility} /></Link>)}</div></section>}<section className="surface-card mt-5 min-w-0 overflow-hidden p-5"><p className="eyebrow">Other flight documents</p><div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">{documents.filter((document) => document.id !== primary?.id).map((document) => <Link className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-line bg-elevated p-4 text-sm font-bold" to={`/trips/${tripId}/documents/${document.id}`} state={nestedNavigationState} key={document.id}><span className="flex min-w-0 max-w-full items-start gap-2"><span className="min-w-0 flex-1 whitespace-normal break-words [overflow-wrap:anywhere]">{document.title}</span><DocumentVisibilityBadge visibility={document.visibility} /></span><span className="mt-1 block text-xs capitalize text-muted">{document.purpose.replace("_", " ")}</span></Link>)}{documents.length === 0 && <p className="text-sm text-muted">No relevant ticket, boarding pass, or baggage tag is attached yet.</p>}</div></section><p className="mt-4 flex items-center gap-2 text-xs text-muted"><UserRound className="size-4" /> Updated by a traveler · {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(flight.status_updated_at))}</p></>}
-      {editing && editable && flight && <ModalSheet eyebrow={`${flight.airline_name} ${flight.flight_number}`} title="Manual flight update" onClose={() => { setEditMessage(""); setEditing(false); }}>
-        <form className="mt-6 space-y-5" onSubmit={submit}>
-          <label className="form-label">Status<select className="form-input capitalize" name="status" defaultValue={flight.status}>{flightStatuses.map((status) => <option key={status} value={status}>{status.replace("_", " ")}</option>)}</select></label>
-          <fieldset className="rounded-2xl border border-line p-4"><legend className="px-1 font-display text-lg font-black">Ticket schedule</legend><div className="mt-3 grid gap-4 sm:grid-cols-2"><ZonedEditField label="Scheduled departure" name="scheduledDeparture" value={toDateTimeLocal(flight.scheduled_departure_at, flight.departure_timezone)} timezone={flight.departure_timezone} showTimeZoneControls={showTimeZoneControls} required /><ZonedEditField label="Scheduled arrival" name="scheduledArrival" value={toDateTimeLocal(flight.scheduled_arrival_at, flight.arrival_timezone)} timezone={flight.arrival_timezone} showTimeZoneControls={showTimeZoneControls} required /></div></fieldset>
-          <fieldset className="rounded-2xl border border-line p-4"><legend className="px-1 font-display text-lg font-black">Manual estimates</legend><div className="mt-3 grid gap-4 sm:grid-cols-2"><ZonedEditField label="Estimated departure" name="estimatedDeparture" value={toDateTimeLocal(flight.estimated_departure_at, flight.departure_timezone)} timezone={flight.departure_timezone} showTimeZoneControls={showTimeZoneControls} /><ZonedEditField label="Estimated arrival" name="estimatedArrival" value={toDateTimeLocal(flight.estimated_arrival_at, flight.arrival_timezone)} timezone={flight.arrival_timezone} showTimeZoneControls={showTimeZoneControls} /><ZonedEditField label="Actual departure" name="actualDeparture" value={toDateTimeLocal(flight.actual_departure_at, flight.departure_timezone)} timezone={flight.departure_timezone} showTimeZoneControls={showTimeZoneControls} /><ZonedEditField label="Actual arrival" name="actualArrival" value={toDateTimeLocal(flight.actual_arrival_at, flight.arrival_timezone)} timezone={flight.arrival_timezone} showTimeZoneControls={showTimeZoneControls} /></div></fieldset>
-          <fieldset className="rounded-2xl border border-line p-4"><legend className="px-1 font-display text-lg font-black">Boarding</legend><div className="mt-3 grid gap-4 sm:grid-cols-2"><ZonedEditField label="Exact boarding time" name="boardingAt" value={toDateTimeLocal(flight.boarding_at, flight.departure_timezone)} timezone={flight.departure_timezone} showTimeZoneControls={showTimeZoneControls} /><label className="form-label">Boarding lead (minutes)<input className="form-input" type="number" min="0" max="360" name="boardingLeadMinutes" defaultValue={flight.boarding_lead_minutes ?? ""} placeholder="Enter minutes before scheduled departure" /></label></div><p className="mt-3 text-xs leading-5 text-muted">When no exact time is entered, Trip Vault automatically subtracts the lead from scheduled departure. An exact boarding time takes precedence.</p></fieldset>
-          <div className="grid grid-cols-2 gap-4"><label className="form-label">Departure terminal<input className="form-input" name="departureTerminal" defaultValue={flight.departure_terminal ?? ""} /></label><label className="form-label">Departure gate<input className="form-input" name="departureGate" defaultValue={flight.departure_gate ?? ""} /></label></div>
-          <div className="grid grid-cols-2 gap-4"><label className="form-label">Arrival terminal<input className="form-input" name="arrivalTerminal" defaultValue={flight.arrival_terminal ?? ""} /></label><label className="form-label">Arrival gate<input className="form-input" name="arrivalGate" defaultValue={flight.arrival_gate ?? ""} /></label></div>
-          <label className="form-label">Baggage claim<input className="form-input" name="baggageClaim" defaultValue={flight.baggage_claim ?? ""} /></label><label className="form-label">Status note<textarea className="form-input min-h-20" name="statusNote" defaultValue={flight.status_note ?? ""} /></label>
-          {(editMessage || mutation.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{editMessage || getErrorMessage(mutation.error)}</p>}<button className="primary-button w-full" disabled={mutation.isPending}><Save className="size-4" /> Save manual update</button>
-        </form>
-      </ModalSheet>}
-      {flight && <FlightTravelerDetails tripId={tripId} flightLegId={flight.id} travelers={focusedTravelerId ? bookingTravelers.filter((traveler) => traveler.id === focusedTravelerId) : bookingTravelers} canEdit={editable} />}
-      {flight && tripQuery.data && <button type="button" onClick={() => setUploading(true)} className="secondary-button mt-4"><FileUp className="size-4" /> {editable ? "Upload flight document" : "Upload my private document"}</button>}
-      {uploading && flight && tripQuery.data && <UploadDocumentForm trip={tripQuery.data} travelers={bookingTravelers} preferredTravelerId={focusedTravelerId ?? undefined} members={membersQuery.data ?? []} bookingId={flight.booking_id} flightLegId={flight.id} contextTitle={`${flight.departure_airport_code || flight.departure_airport_name} to ${flight.arrival_airport_code || flight.arrival_airport_name}`} privateOnly={!editable} onClose={() => setUploading(false)} />}
-      {addingConnection && flight && booking && tripQuery.data && <AddFlightConnectionForm trip={tripQuery.data} booking={booking} lastLeg={(connectionsQuery.data ?? [flight]).at(-1) ?? flight} onClose={() => setAddingConnection(false)} />}
-    </div></AppShell>;
+  return (
+    <AppShell>
+      <div className="mx-auto min-w-0 max-w-4xl">
+        <Link
+          className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted"
+          to={returnNavigation.href}
+          state={returnNavigation.state}
+        >
+          <ArrowLeft className="size-4" /> Back to trip
+        </Link>
+        {flightQuery.isLoading && <LoadingCard label="Loading flight" />}
+        {flightQuery.error && <ErrorCard error={flightQuery.error} />}
+        {flight && (
+          <>
+            <section
+              className={`page-enter mt-5 overflow-hidden rounded-[2rem] border shadow-focus ${flight.status === "cancelled" ? "border-danger bg-danger text-white" : flight.status === "delayed" ? "border-warning bg-brand text-surface" : "border-line bg-brand text-surface"}`}
+            >
+              <div className="p-6 sm:p-8">
+                <div className="flex items-center justify-between">
+                  <span className="rounded-full bg-surface/10 px-3 py-1.5 text-xs font-black uppercase tracking-[.14em]">
+                    {flight.status.replace("_", " ")}
+                  </span>
+                  <Plane className="size-6" />
+                </div>
+                <div className="mt-7 flex items-end justify-between gap-6">
+                  <div>
+                    <p className="text-sm font-bold text-surface/65">
+                      {flight.airline_name} · {flight.flight_number}
+                    </p>
+                    <h1 className="mt-2 font-display text-4xl font-black tracking-[-.045em]">
+                      {fullRoute}
+                    </h1>
+                  </div>
+                </div>
+                {connectionLegs.length > 1 && (
+                  <div className="mt-5">
+                    <p className="text-[.65rem] font-black uppercase tracking-[.14em] text-surface/55">
+                      Connected journey
+                    </p>
+                    <div className="mt-2 flex gap-2 overflow-auto pb-1">
+                      {connectionLegs.map((leg) => (
+                        <Link
+                          key={leg.id}
+                          to={`/trips/${tripId}/flights/${leg.id}`}
+                          state={nestedNavigationState}
+                          className={`shrink-0 rounded-xl border px-3 py-2 text-xs ${leg.id === flight.id ? "border-coral bg-coral/25" : "border-surface/20 bg-surface/10"}`}
+                        >
+                          <strong>
+                            {leg.departure_airport_code || leg.departure_airport_name} →{" "}
+                            {leg.arrival_airport_code || leg.arrival_airport_name}
+                          </strong>
+                          <span className="mt-1 block text-surface/60">
+                            {leg.id === flight.id
+                              ? "Viewing now"
+                              : leg.segment_order < flight.segment_order
+                                ? "Earlier leg"
+                                : "Next leg"}
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {seats.length > 0 && (
+                  <div className="mt-5 flex flex-wrap items-center gap-2">
+                    <Armchair className="size-4 text-surface/65" />
+                    {seats.map((seat) => (
+                      <span
+                        key={seat.travelerId}
+                        className="rounded-full bg-surface/10 px-3 py-1.5 text-xs font-bold"
+                      >
+                        {seat.travelerName} · {seat.seat ? `Seat ${seat.seat}` : "Seat not added"}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-6 flex items-center gap-2 font-bold">
+                  <Clock3 className="size-5" />
+                  {flightCountdown(flight)}
+                </p>
+                {delayMinutes(flight) > 0 && (
+                  <p className="mt-2 text-sm text-warning">
+                    Manual estimate: {delayMinutes(flight)} minutes later than scheduled
+                  </p>
+                )}
+                <div className="mt-6 flex flex-wrap gap-2">
+                  {editable && (
+                    <button className="hero-action" onClick={() => openEditor("status")}>
+                      Update flight
+                    </button>
+                  )}
+                  {editable && booking && (
+                    <button className="hero-action" onClick={() => setAddingConnection(true)}>
+                      <Plus className="size-4" /> Add connection
+                    </button>
+                  )}
+                  <SafeExternalAction
+                    className="hero-action"
+                    href={
+                      actionUrl(airline?.tracker_url_template || airline?.status_url_template) ??
+                      trackerUrl(flight.flight_number)
+                    }
+                  >
+                    <Radar className="size-4" /> Public tracker
+                  </SafeExternalAction>
+                  {actionUrl(airline?.check_in_url_template) && (
+                    <SafeExternalAction
+                      className="hero-action"
+                      href={actionUrl(airline?.check_in_url_template)!}
+                    >
+                      Check in
+                    </SafeExternalAction>
+                  )}
+                  {actionUrl(airline?.manage_booking_url_template) && (
+                    <SafeExternalAction
+                      className="hero-action"
+                      href={actionUrl(airline?.manage_booking_url_template)!}
+                    >
+                      Manage booking
+                    </SafeExternalAction>
+                  )}
+                  {primary && (
+                    <Link
+                      className="hero-action"
+                      to={`/trips/${tripId}/documents/${primary.id}`}
+                      state={nestedNavigationState}
+                    >
+                      <FileText className="size-4" /> Open{" "}
+                      {primary.purpose === "boarding_pass" ? "boarding pass" : "ticket"}
+                      <DocumentVisibilityBadge className="ml-1" visibility={primary.visibility} />
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </section>
+            {booking && (
+              <section className="surface-card mt-5 p-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="eyebrow">Booking</p>
+                    <p className="mt-2 font-display text-xl font-black">
+                      PNR {booking.reference_code || "not added"}
+                    </p>
+                    <p className="mt-1 text-sm text-muted">
+                      {booking.journey_scope ? `${booking.journey_scope} · ` : ""}
+                      {booking.booked_via_name
+                        ? `Booked via ${booking.booked_via_name}`
+                        : "Booked directly / source not added"}
+                    </p>
+                  </div>
+                  {booking.booked_via_url && (
+                    <a
+                      className="secondary-button"
+                      href={booking.booked_via_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open booking
+                    </a>
+                  )}
+                </div>
+                {booking.contact_phone && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+                    <Phone className="size-4 text-brand" />
+                    <strong>{booking.contact_name || booking.contact_phone}</strong>
+                    {phoneActions && (
+                      <>
+                        <a className="secondary-button" href={phoneActions.call}>
+                          Call
+                        </a>
+                        <a
+                          className="secondary-button"
+                          href={phoneActions.whatsapp}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          WhatsApp
+                        </a>
+                      </>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
+            <section className="mt-5 grid gap-4 sm:grid-cols-2">
+              <Info
+                label="Departure"
+                value={new Intl.DateTimeFormat(undefined, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                  timeZone: flight.departure_timezone
+                }).format(new Date(flight.scheduled_departure_at))}
+                detail={`${flight.departure_airport_name} · ${flight.departure_timezone}`}
+                onEdit={editable ? () => openEditor("scheduledDeparture") : undefined}
+              />
+              <Info
+                label="Arrival"
+                value={`${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: flight.arrival_timezone }).format(new Date(flight.scheduled_arrival_at))}${dayOffset > 0 ? ` · +${dayOffset} day` : dayOffset < 0 ? ` · ${dayOffset} day` : ""}`}
+                detail={`${flight.arrival_airport_name} · ${flight.arrival_timezone} · ${journeyDuration(flight.scheduled_departure_at, flight.scheduled_arrival_at)}`}
+                onEdit={editable ? () => openEditor("scheduledArrival") : undefined}
+              />
+              <Info
+                label="Boarding"
+                value={
+                  boardingInstant
+                    ? new Intl.DateTimeFormat(undefined, {
+                        timeStyle: "short",
+                        timeZone: flight.departure_timezone
+                      }).format(new Date(boardingInstant))
+                    : "Not added"
+                }
+                detail={`${flight.boarding_at ? "Exact boarding time" : flight.boarding_lead_minutes !== null && flight.boarding_lead_minutes !== undefined ? `${flight.boarding_lead_minutes} min before departure` : "No boarding lead"} · Terminal ${flight.departure_terminal || "—"} · Gate ${flight.departure_gate || "—"}`}
+                onEdit={editable ? () => openEditor("boardingAt") : undefined}
+              />
+              <Info
+                label="Arrival details"
+                value={`Terminal ${flight.arrival_terminal || "—"}`}
+                detail={`Gate ${flight.arrival_gate || "—"} · Baggage ${flight.baggage_claim || "—"}`}
+                onEdit={editable ? () => openEditor("arrivalTerminal") : undefined}
+              />
+            </section>
+            {flight.status === "landed" && (
+              <section className="surface-card mt-5 border-success/30 p-5">
+                <p className="flex items-center gap-2 font-display text-xl font-black">
+                  <Luggage className="size-5 text-success" /> Baggage collection
+                </p>
+                <p className="mt-2 text-sm text-muted">
+                  Claim: {flight.baggage_claim || "Not entered yet"}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {baggageTags.map((tag) => (
+                    <Link
+                      className="secondary-button"
+                      key={tag.id}
+                      to={`/trips/${tripId}/documents/${tag.id}`}
+                      state={nestedNavigationState}
+                    >
+                      {tag.short_label || tag.title}
+                      <DocumentVisibilityBadge visibility={tag.visibility} />
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
+            <section className="surface-card mt-5 min-w-0 overflow-hidden p-5">
+              <p className="eyebrow">Other flight documents</p>
+              <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">
+                {documents
+                  .filter((document) => document.id !== primary?.id)
+                  .map((document) => (
+                    <Link
+                      className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-line bg-elevated p-4 text-sm font-bold"
+                      to={`/trips/${tripId}/documents/${document.id}`}
+                      state={nestedNavigationState}
+                      key={document.id}
+                    >
+                      <span className="flex min-w-0 max-w-full items-start gap-2">
+                        <span className="min-w-0 flex-1 whitespace-normal break-words [overflow-wrap:anywhere]">
+                          {document.title}
+                        </span>
+                        <DocumentVisibilityBadge visibility={document.visibility} />
+                      </span>
+                      <span className="mt-1 block text-xs capitalize text-muted">
+                        {document.purpose.replace("_", " ")}
+                      </span>
+                    </Link>
+                  ))}
+                {documents.length === 0 && (
+                  <p className="text-sm text-muted">
+                    No relevant ticket, boarding pass, or baggage tag is attached yet.
+                  </p>
+                )}
+              </div>
+            </section>
+            <p className="mt-4 flex items-center gap-2 text-xs text-muted">
+              <UserRound className="size-4" /> Updated by a traveler ·{" "}
+              {new Intl.DateTimeFormat(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short"
+              }).format(new Date(flight.status_updated_at))}
+            </p>
+          </>
+        )}
+        {editing && editable && flight && (
+          <ModalSheet
+            eyebrow={`${flight.airline_name} ${flight.flight_number}`}
+            title="Manual flight update"
+            onClose={() => {
+              setEditMessage("");
+              setEditing(false);
+            }}
+          >
+            <form className="mt-6 space-y-5" onSubmit={submit}>
+              <label className="form-label">
+                Status
+                <select
+                  className="form-input capitalize"
+                  name="status"
+                  defaultValue={flight.status}
+                >
+                  {flightStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {status.replace("_", " ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <fieldset className="rounded-2xl border border-line p-4">
+                <legend className="px-1 font-display text-lg font-black">Ticket schedule</legend>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <ZonedEditField
+                    label="Scheduled departure"
+                    name="scheduledDeparture"
+                    value={toDateTimeLocal(
+                      flight.scheduled_departure_at,
+                      flight.departure_timezone
+                    )}
+                    timezone={flight.departure_timezone}
+                    showTimeZoneControls={showTimeZoneControls}
+                    required
+                  />
+                  <ZonedEditField
+                    label="Scheduled arrival"
+                    name="scheduledArrival"
+                    value={toDateTimeLocal(flight.scheduled_arrival_at, flight.arrival_timezone)}
+                    timezone={flight.arrival_timezone}
+                    showTimeZoneControls={showTimeZoneControls}
+                    required
+                  />
+                </div>
+              </fieldset>
+              <fieldset className="rounded-2xl border border-line p-4">
+                <legend className="px-1 font-display text-lg font-black">Manual estimates</legend>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <ZonedEditField
+                    label="Estimated departure"
+                    name="estimatedDeparture"
+                    value={toDateTimeLocal(
+                      flight.estimated_departure_at,
+                      flight.departure_timezone
+                    )}
+                    timezone={flight.departure_timezone}
+                    showTimeZoneControls={showTimeZoneControls}
+                  />
+                  <ZonedEditField
+                    label="Estimated arrival"
+                    name="estimatedArrival"
+                    value={toDateTimeLocal(flight.estimated_arrival_at, flight.arrival_timezone)}
+                    timezone={flight.arrival_timezone}
+                    showTimeZoneControls={showTimeZoneControls}
+                  />
+                  <ZonedEditField
+                    label="Actual departure"
+                    name="actualDeparture"
+                    value={toDateTimeLocal(flight.actual_departure_at, flight.departure_timezone)}
+                    timezone={flight.departure_timezone}
+                    showTimeZoneControls={showTimeZoneControls}
+                  />
+                  <ZonedEditField
+                    label="Actual arrival"
+                    name="actualArrival"
+                    value={toDateTimeLocal(flight.actual_arrival_at, flight.arrival_timezone)}
+                    timezone={flight.arrival_timezone}
+                    showTimeZoneControls={showTimeZoneControls}
+                  />
+                </div>
+              </fieldset>
+              <fieldset className="rounded-2xl border border-line p-4">
+                <legend className="px-1 font-display text-lg font-black">Boarding</legend>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <ZonedEditField
+                    label="Exact boarding time"
+                    name="boardingAt"
+                    value={toDateTimeLocal(flight.boarding_at, flight.departure_timezone)}
+                    timezone={flight.departure_timezone}
+                    showTimeZoneControls={showTimeZoneControls}
+                  />
+                  <label className="form-label">
+                    Boarding lead (minutes)
+                    <input
+                      className="form-input"
+                      type="number"
+                      min="0"
+                      max="360"
+                      name="boardingLeadMinutes"
+                      defaultValue={flight.boarding_lead_minutes ?? ""}
+                      placeholder="Enter minutes before scheduled departure"
+                    />
+                  </label>
+                </div>
+                <p className="mt-3 text-xs leading-5 text-muted">
+                  When no exact time is entered, Trip Vault automatically subtracts the lead from
+                  scheduled departure. An exact boarding time takes precedence.
+                </p>
+              </fieldset>
+              <div className="grid grid-cols-2 gap-4">
+                <label className="form-label">
+                  Departure terminal
+                  <input
+                    className="form-input"
+                    name="departureTerminal"
+                    defaultValue={flight.departure_terminal ?? ""}
+                  />
+                </label>
+                <label className="form-label">
+                  Departure gate
+                  <input
+                    className="form-input"
+                    name="departureGate"
+                    defaultValue={flight.departure_gate ?? ""}
+                  />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <label className="form-label">
+                  Arrival terminal
+                  <input
+                    className="form-input"
+                    name="arrivalTerminal"
+                    defaultValue={flight.arrival_terminal ?? ""}
+                  />
+                </label>
+                <label className="form-label">
+                  Arrival gate
+                  <input
+                    className="form-input"
+                    name="arrivalGate"
+                    defaultValue={flight.arrival_gate ?? ""}
+                  />
+                </label>
+              </div>
+              <label className="form-label">
+                Baggage claim
+                <input
+                  className="form-input"
+                  name="baggageClaim"
+                  defaultValue={flight.baggage_claim ?? ""}
+                />
+              </label>
+              <label className="form-label">
+                Status note
+                <textarea
+                  className="form-input min-h-20"
+                  name="statusNote"
+                  defaultValue={flight.status_note ?? ""}
+                />
+              </label>
+              {(editMessage || mutation.error) && (
+                <p
+                  role="alert"
+                  className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger"
+                >
+                  {editMessage || getErrorMessage(mutation.error)}
+                </p>
+              )}
+              <button className="primary-button w-full" disabled={mutation.isPending}>
+                <Save className="size-4" /> Save manual update
+              </button>
+            </form>
+          </ModalSheet>
+        )}
+        {flight && (
+          <FlightTravelerDetails
+            tripId={tripId}
+            flightLegId={flight.id}
+            travelers={
+              focusedTravelerId
+                ? bookingTravelers.filter((traveler) => traveler.id === focusedTravelerId)
+                : bookingTravelers
+            }
+            canEdit={editable}
+          />
+        )}
+        {flight && tripQuery.data && (
+          <button
+            type="button"
+            onClick={() => setUploading(true)}
+            className="secondary-button mt-4"
+          >
+            <FileUp className="size-4" />{" "}
+            {editable ? "Upload flight document" : "Upload my private document"}
+          </button>
+        )}
+        {uploading && flight && tripQuery.data && (
+          <UploadDocumentForm
+            trip={tripQuery.data}
+            travelers={bookingTravelers}
+            preferredTravelerId={focusedTravelerId ?? undefined}
+            members={membersQuery.data ?? []}
+            bookingId={flight.booking_id}
+            flightLegId={flight.id}
+            contextTitle={`${flight.departure_airport_code || flight.departure_airport_name} to ${flight.arrival_airport_code || flight.arrival_airport_name}`}
+            privateOnly={!editable}
+            onClose={() => setUploading(false)}
+          />
+        )}
+        {addingConnection && flight && booking && tripQuery.data && (
+          <AddFlightConnectionForm
+            trip={tripQuery.data}
+            booking={booking}
+            lastLeg={(connectionsQuery.data ?? [flight]).at(-1) ?? flight}
+            onClose={() => setAddingConnection(false)}
+          />
+        )}
+      </div>
+    </AppShell>
+  );
 }
 
-function Info({ label, value, detail, onEdit }: { label: string; value: string; detail: string; onEdit?: () => void }) {
-  const content = <><span className="eyebrow block">{label}</span><span className="mt-2 block font-display text-lg font-black">{value}</span><span className="mt-2 block text-sm text-muted">{detail}</span></>;
+function Info({
+  label,
+  value,
+  detail,
+  onEdit
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  onEdit?: () => void;
+}) {
+  const content = (
+    <>
+      <span className="eyebrow block">{label}</span>
+      <span className="mt-2 block font-display text-lg font-black">{value}</span>
+      <span className="mt-2 block text-sm text-muted">{detail}</span>
+    </>
+  );
   if (!onEdit) return <div className="surface-card p-5">{content}</div>;
-  return <button type="button" onClick={onEdit} className="surface-card group w-full p-5 text-left transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft focus-visible:ring-2 focus-visible:ring-brand">{content}<span className="mt-4 block text-xs font-extrabold text-brand">Edit details</span></button>;
+  return (
+    <button
+      type="button"
+      onClick={onEdit}
+      className="surface-card group w-full p-5 text-left transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft focus-visible:ring-2 focus-visible:ring-brand"
+    >
+      {content}
+      <span className="mt-4 block text-xs font-extrabold text-brand">Edit details</span>
+    </button>
+  );
 }
-function ZonedEditField({ label, name, value, timezone, showTimeZoneControls, required = false }: { label: string; name: string; value: string; timezone: string; showTimeZoneControls: boolean; required?: boolean }) { return <div><label className="form-label">{label}<input className="form-input" type="datetime-local" name={name} defaultValue={value} required={required} /></label>{showTimeZoneControls ? <><label className="mt-2 block text-xs font-bold text-muted">{timezone} · if this clock time occurs twice<select className="form-input mt-1" name={`${name}Occurrence`} defaultValue="automatic"><option value="automatic">Automatic (usual)</option><option value="earlier">Earlier occurrence</option><option value="later">Later occurrence</option></select></label><p className="mt-1 text-[.68rem] leading-5 text-muted">Only change this when daylight saving makes the same local time happen twice and the ticket identifies which one.</p></> : <input type="hidden" name={`${name}Occurrence`} value="earlier" />}</div>; }
+function ZonedEditField({
+  label,
+  name,
+  value,
+  timezone,
+  showTimeZoneControls,
+  required = false
+}: {
+  label: string;
+  name: string;
+  value: string;
+  timezone: string;
+  showTimeZoneControls: boolean;
+  required?: boolean;
+}) {
+  return (
+    <div>
+      <label className="form-label">
+        {label}
+        <input
+          className="form-input"
+          type="datetime-local"
+          name={name}
+          defaultValue={value}
+          required={required}
+        />
+      </label>
+      {showTimeZoneControls ? (
+        <>
+          <label className="mt-2 block text-xs font-bold text-muted">
+            {timezone} · if this clock time occurs twice
+            <select className="form-input mt-1" name={`${name}Occurrence`} defaultValue="automatic">
+              <option value="automatic">Automatic (usual)</option>
+              <option value="earlier">Earlier occurrence</option>
+              <option value="later">Later occurrence</option>
+            </select>
+          </label>
+          <p className="mt-1 text-[.68rem] leading-5 text-muted">
+            Only change this when daylight saving makes the same local time happen twice and the
+            ticket identifies which one.
+          </p>
+        </>
+      ) : (
+        <input type="hidden" name={`${name}Occurrence`} value="earlier" />
+      )}
+    </div>
+  );
+}

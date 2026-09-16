@@ -19,7 +19,10 @@ function isLocallyFresh(root: string) {
   return false;
 }
 
-export function createCoalescedRefresh(refresh: (queryRoots: string[]) => void | Promise<unknown>, delayMs = 400) {
+export function createCoalescedRefresh(
+  refresh: (queryRoots: string[]) => void | Promise<unknown>,
+  delayMs = 400
+) {
   let timeout: ReturnType<typeof setTimeout> | null = null;
   const pendingRoots = new Set<string>();
 
@@ -36,9 +39,13 @@ export function createCoalescedRefresh(refresh: (queryRoots: string[]) => void |
       timeout = null;
       const queryRoots = [...pendingRoots];
       pendingRoots.clear();
-      const rootsToRefresh = queryRoots.includes("*") ? ["*"] : queryRoots.filter((root) => !isLocallyFresh(root));
+      const rootsToRefresh = queryRoots.includes("*")
+        ? ["*"]
+        : queryRoots.filter((root) => !isLocallyFresh(root));
       if (!rootsToRefresh.length) return;
-      void Promise.resolve().then(() => refresh(rootsToRefresh)).catch(() => undefined);
+      void Promise.resolve()
+        .then(() => refresh(rootsToRefresh))
+        .catch(() => undefined);
     }, delayMs);
   };
 
@@ -53,11 +60,20 @@ export function RealtimeRefresh() {
     // One destructive operation can emit a database event for every cascaded
     // row. Coalesce that burst so an event-rich trip deletion refreshes the UI
     // once instead of refetching every active query for every deleted row.
-    const refresh = createCoalescedRefresh((queryRoots) => Promise.all(queryRoots.map((root) => root === "*"
-      ? queryClient.invalidateQueries({ refetchType: "active" })
-      : queryClient.invalidateQueries({ queryKey: [root], refetchType: "active" }))));
-    const channel = client.channel("trip-vault-authorized-changes")
-      .on("postgres_changes", { event: "*", schema: "public" }, (payload) => refresh.schedule(queryRootsForRealtimeTable(payload.table)))
+    const refresh = createCoalescedRefresh((queryRoots) =>
+      Promise.all(
+        queryRoots.map((root) =>
+          root === "*"
+            ? queryClient.invalidateQueries({ refetchType: "active" })
+            : queryClient.invalidateQueries({ queryKey: [root], refetchType: "active" })
+        )
+      )
+    );
+    const channel = client
+      .channel("trip-vault-authorized-changes")
+      .on("postgres_changes", { event: "*", schema: "public" }, (payload) =>
+        refresh.schedule(queryRootsForRealtimeTable(payload.table))
+      )
       .subscribe();
     return () => {
       refresh.cancel();

@@ -1,20 +1,46 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CalendarDays, Clipboard, Clock3, FileText, FileUp, Map, MapPin, Pencil, Phone, Plus, TicketCheck, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  Clipboard,
+  Clock3,
+  FileText,
+  FileUp,
+  Map,
+  MapPin,
+  Pencil,
+  Phone,
+  Plus,
+  TicketCheck,
+  Trash2
+} from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { DocumentVisibilityBadge } from "../components/DocumentVisibilityBadge";
 import { ErrorCard, LoadingCard } from "../components/TripUi";
-import { arrivalDayOffset, journeyDuration, journeyRoute, phoneActionUrls } from "../features/timeline/model";
+import {
+  arrivalDayOffset,
+  journeyDuration,
+  journeyRoute,
+  phoneActionUrls
+} from "../features/timeline/model";
 import { formatEventTime } from "../features/trips/presentation";
 import { localProfileId } from "../features/sync/localSync";
 import {
-  archiveBooking, getBooking, googleMapsDirectionsUrl, googleMapsSearchUrl,
-  listBookingTravelerIds, listJourneyLegsForBooking
+  archiveBooking,
+  getBooking,
+  googleMapsDirectionsUrl,
+  googleMapsSearchUrl,
+  listBookingTravelerIds,
+  listJourneyLegsForBooking
 } from "../features/workspace/api";
 import { EditBookingForm, UploadDocumentForm } from "../features/workspace/WorkspaceForms";
 import { documentMatchesTraveler } from "../features/workspace/documentModel";
-import { JourneyTravelerBadges, JourneyTravelerDetails } from "../features/workspace/JourneyTravelerDetails";
+import {
+  JourneyTravelerBadges,
+  JourneyTravelerDetails
+} from "../features/workspace/JourneyTravelerDetails";
 import { EditJourneyLegForm } from "../features/workspace/EditJourneyLegForm";
 import { readTravelerFocus } from "../features/workspace/travelerFocus";
 import { tripChildNavigationState, tripReturnNavigation } from "../features/trips/navigation";
@@ -23,49 +49,502 @@ import { tripQueries } from "../features/queries/tripQueries";
 
 export function BookingPage() {
   const confirm = useConfirmDialog();
-  const { tripId = "", bookingId = "" } = useParams(); const navigate = useNavigate(); const locationState = useLocation().state; const queryClient = useQueryClient();
-  const [editing, setEditing] = useState(false); const [editingLeg, setEditingLeg] = useState<import("../features/workspace/types").JourneyLeg | null>(null); const [uploadTarget, setUploadTarget] = useState<{ journeyLegId?: string; contextTitle?: string } | null>(null); const [userId, setUserId] = useState("");
-  useEffect(() => { void localProfileId().then((id) => setUserId(id ?? "")); }, []);
-  const query = useQuery({ queryKey: ["booking", bookingId], queryFn: () => getBooking(bookingId), enabled: Boolean(bookingId) });
+  const { tripId = "", bookingId = "" } = useParams();
+  const navigate = useNavigate();
+  const locationState = useLocation().state;
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [editingLeg, setEditingLeg] = useState<
+    import("../features/workspace/types").JourneyLeg | null
+  >(null);
+  const [uploadTarget, setUploadTarget] = useState<{
+    journeyLegId?: string;
+    contextTitle?: string;
+  } | null>(null);
+  const [userId, setUserId] = useState("");
+  useEffect(() => {
+    void localProfileId().then((id) => setUserId(id ?? ""));
+  }, []);
+  const query = useQuery({
+    queryKey: ["booking", bookingId],
+    queryFn: () => getBooking(bookingId),
+    enabled: Boolean(bookingId)
+  });
   const tripQuery = useQuery({ ...tripQueries.trip(tripId), enabled: Boolean(tripId) });
   const travelersQuery = useQuery({ ...tripQueries.travelers(tripId), enabled: Boolean(tripId) });
   const membersQuery = useQuery({ ...tripQueries.members(tripId), enabled: Boolean(tripId) });
-  const travelerIdsQuery = useQuery({ queryKey: ["booking-traveler-ids", bookingId], queryFn: () => listBookingTravelerIds(bookingId, tripId), enabled: Boolean(bookingId && tripId) });
+  const travelerIdsQuery = useQuery({
+    queryKey: ["booking-traveler-ids", bookingId],
+    queryFn: () => listBookingTravelerIds(bookingId, tripId),
+    enabled: Boolean(bookingId && tripId)
+  });
   const documentsQuery = useQuery({ ...tripQueries.documents(tripId), enabled: Boolean(tripId) });
-  const legsQuery = useQuery({ queryKey: ["journey-legs", tripId, bookingId], queryFn: () => listJourneyLegsForBooking(bookingId, tripId), enabled: Boolean(bookingId && tripId) });
-  const booking = query.data; const role = membersQuery.data?.find((member) => member.user_id === userId)?.role; const editable = role === "owner" || role === "editor";
+  const legsQuery = useQuery({
+    queryKey: ["journey-legs", tripId, bookingId],
+    queryFn: () => listJourneyLegsForBooking(bookingId, tripId),
+    enabled: Boolean(bookingId && tripId)
+  });
+  const booking = query.data;
+  const role = membersQuery.data?.find((member) => member.user_id === userId)?.role;
+  const editable = role === "owner" || role === "editor";
   const bookingTimezone = booking?.source_timezone ?? tripQuery.data?.primary_timezone ?? "UTC";
   const returnNavigation = tripReturnNavigation(locationState, tripId);
-  const nestedNavigationState = tripChildNavigationState(locationState, tripId, returnNavigation.view);
-  const archive = useMutation({ mutationFn: () => archiveBooking(booking!), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["bookings", tripId] }); navigate(returnNavigation.href, { replace: true, state: returnNavigation.state }); } });
-  const location = booking?.location?.address || booking?.location?.label; const focusedTravelerId = readTravelerFocus(tripId); const documents = (documentsQuery.data ?? []).filter((document) => document.booking_id === bookingId && (!focusedTravelerId || documentMatchesTraveler(document, focusedTravelerId))); const phone = booking?.contact_phone ? phoneActionUrls(booking.contact_phone) : null;
-  const journeyLegs = legsQuery.data ?? []; const firstLeg = journeyLegs[0]; const lastLeg = journeyLegs.at(-1);
+  const nestedNavigationState = tripChildNavigationState(
+    locationState,
+    tripId,
+    returnNavigation.view
+  );
+  const archive = useMutation({
+    mutationFn: () => archiveBooking(booking!),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["bookings", tripId] });
+      navigate(returnNavigation.href, { replace: true, state: returnNavigation.state });
+    }
+  });
+  const location = booking?.location?.address || booking?.location?.label;
+  const focusedTravelerId = readTravelerFocus(tripId);
+  const documents = (documentsQuery.data ?? []).filter(
+    (document) =>
+      document.booking_id === bookingId &&
+      (!focusedTravelerId || documentMatchesTraveler(document, focusedTravelerId))
+  );
+  const phone = booking?.contact_phone ? phoneActionUrls(booking.contact_phone) : null;
+  const journeyLegs = legsQuery.data ?? [];
+  const firstLeg = journeyLegs[0];
+  const lastLeg = journeyLegs.at(-1);
   const bookingTravelerIds = travelerIdsQuery.data ?? [];
   const allTravelers = travelersQuery.data ?? [];
-  const bookingTravelers = booking?.participant_scope === "selected"
-    ? allTravelers.filter((traveler) => bookingTravelerIds.includes(traveler.id))
-    : booking?.participant_scope === "everyone"
-      ? allTravelers
-      : bookingTravelerIds.length
-        ? allTravelers.filter((traveler) => bookingTravelerIds.includes(traveler.id))
-        : allTravelers;
-  const visibleBookingTravelers = focusedTravelerId ? bookingTravelers.filter((traveler) => traveler.id === focusedTravelerId) : bookingTravelers;
+  const bookingTravelers =
+    booking?.participant_scope === "selected"
+      ? allTravelers.filter((traveler) => bookingTravelerIds.includes(traveler.id))
+      : booking?.participant_scope === "everyone"
+        ? allTravelers
+        : bookingTravelerIds.length
+          ? allTravelers.filter((traveler) => bookingTravelerIds.includes(traveler.id))
+          : allTravelers;
+  const visibleBookingTravelers = focusedTravelerId
+    ? bookingTravelers.filter((traveler) => traveler.id === focusedTravelerId)
+    : bookingTravelers;
   const bookingEndTimezone = lastLeg?.destination_timezone ?? bookingTimezone;
-  const route = journeyRoute(journeyLegs.map((leg) => ({ origin: leg.origin_code || leg.origin_name, destination: leg.destination_code || leg.destination_name })));
-  return <AppShell><div className="mx-auto max-w-3xl"><Link className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted" to={returnNavigation.href} state={returnNavigation.state}><ArrowLeft className="size-4" /> Back to trip</Link>{query.isLoading && <LoadingCard label="Loading booking" />}{query.error && <ErrorCard error={query.error} />}{booking && <section className="surface-card page-enter mt-5 overflow-hidden"><div className="bg-brand p-6 text-surface sm:p-8"><div className="flex items-start justify-between gap-4"><span className="grid size-12 place-items-center rounded-2xl bg-surface/10"><TicketCheck className="size-5" /></span>{editable && <div className="flex gap-2"><button type="button" onClick={() => setEditing(true)} className="hero-action" aria-label={`Edit ${booking.title}`}><Pencil className="size-4" /> Edit booking</button><button type="button" onClick={async () => { if (await confirm({ title: "Archive booking?", message: `Move ${booking.title} to the archive?`, confirmLabel: "Archive", tone: "danger" })) archive.mutate(); }} className="hero-action"><Trash2 className="size-4" /> Archive</button></div>}</div><p className="mt-6 text-xs font-bold uppercase tracking-[.16em] text-surface/60">{booking.type}{booking.journey_scope ? ` · ${booking.journey_scope}` : ""}</p><h1 className="mt-2 font-display text-3xl font-black">{booking.title}</h1><p className="mt-2 text-surface/70">{booking.provider}</p>{firstLeg && lastLeg && <div className="mt-5 rounded-2xl bg-surface/10 p-4"><p className="font-display text-xl font-black">{route}</p><p className="mt-1 text-xs text-surface/65">{journeyLegs.length > 1 ? `${journeyLegs.length} legs · ${journeyLegs.length - 1} connection${journeyLegs.length > 2 ? "s" : ""}` : "Direct journey"}</p>{journeyLegs.map((leg, index) => <JourneyTravelerBadges key={leg.id} tripId={tripId} leg={leg} travelers={bookingTravelers} focusedTravelerId={focusedTravelerId} inverse legIndex={index} legCount={journeyLegs.length} />)}</div>}</div>
-      <div className="space-y-4 p-6 sm:p-8">{booking.reference_code && <Detail icon={<Clipboard />} label="Booking reference / PNR" value={booking.reference_code} copy onEdit={editable ? () => setEditing(true) : undefined} />}{booking.start_at && <Detail icon={<CalendarDays />} label="Starts" value={formatEventTime(booking.start_at, bookingTimezone)} onEdit={editable ? () => setEditing(true) : undefined} />}{booking.end_at && <Detail icon={<CalendarDays />} label="Ends" value={formatEventTime(booking.end_at, bookingEndTimezone)} onEdit={editable ? () => setEditing(true) : undefined} />}{booking.start_at && booking.end_at && <Detail icon={<Clock3 />} label="Elapsed duration" value={journeyDuration(booking.start_at, booking.end_at)} onEdit={editable ? () => setEditing(true) : undefined} />}
-      {(booking.booked_via_name || booking.booked_via_url) && <div className={`group relative rounded-2xl bg-elevated p-4 ${editable ? "transition hover:-translate-y-0.5 hover:shadow-soft" : ""}`}>{editable && <CardEditTarget label="Edit booking source" onEdit={() => setEditing(true)} />}<p className="eyebrow">Booked via</p>{booking.booked_via_url ? <a className="relative z-20 mt-2 inline-flex font-bold text-brand" href={booking.booked_via_url} target="_blank" rel="noreferrer">{booking.booked_via_name || "Open booking website"} →</a> : <p className="mt-2 font-bold">{booking.booked_via_name}</p>}</div>}
-      {booking.contact_phone && <div className={`group relative rounded-2xl bg-elevated p-4 ${editable ? "transition hover:-translate-y-0.5 hover:shadow-soft" : ""}`}>{editable && <CardEditTarget label="Edit booking contact" onEdit={() => setEditing(true)} />}<p className="eyebrow">Booking contact</p><p className="mt-2 font-bold">{booking.contact_name || booking.contact_phone}</p><p className="mt-1 text-sm text-muted">{booking.contact_phone}</p>{phone && <div className="relative z-20 mt-3 flex flex-wrap gap-2"><a className="secondary-button" href={phone.call}><Phone className="size-4" /> Call</a><a className="secondary-button" href={phone.whatsapp} target="_blank" rel="noreferrer">WhatsApp</a></div>}</div>}
-      {(legsQuery.data?.length ?? 0) > 0 && <section><p className="eyebrow">Journey</p><div className="mt-3 space-y-3">{legsQuery.data?.map((leg, index) => { const day = leg.scheduled_arrival_at ? arrivalDayOffset(leg.scheduled_departure_at, leg.origin_timezone, leg.scheduled_arrival_at, leg.destination_timezone) : null; const legTitle = `Leg ${index + 1} · ${leg.origin_code || leg.origin_name} to ${leg.destination_code || leg.destination_name}`; return <article className={`group relative rounded-2xl border border-line bg-elevated p-4 ${editable ? "transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft" : ""}`} key={leg.id}>{editable && <CardEditTarget label={`Edit journey leg ${index + 1}`} onEdit={() => setEditingLeg(leg)} />}<div className="flex items-center justify-between"><strong>Leg {index + 1}{leg.service_number ? ` · ${leg.service_number}` : ""}</strong><span className="text-xs capitalize text-muted">{leg.mode}</span></div><p className="mt-3 font-display text-lg font-black">{leg.origin_code || leg.origin_name} → {leg.destination_code || leg.destination_name}</p><p className="mt-2 text-xs text-muted">{formatEventTime(leg.scheduled_departure_at, leg.origin_timezone)} → {leg.scheduled_arrival_at ? <>{formatEventTime(leg.scheduled_arrival_at, leg.destination_timezone)}{day !== null && day > 0 ? ` · +${day} day` : day !== null && day < 0 ? ` · ${day} day` : ""}</> : "Arrival not added"}</p><p className="mt-1 text-xs text-muted">{leg.scheduled_arrival_at ? journeyDuration(leg.scheduled_departure_at, leg.scheduled_arrival_at) : "Duration not available"}</p><JourneyTravelerBadges tripId={tripId} leg={leg} travelers={bookingTravelers} focusedTravelerId={focusedTravelerId} /><button type="button" className="relative z-20 mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl border border-line px-3 text-xs font-extrabold text-brand" onClick={() => setUploadTarget({ journeyLegId: leg.id, contextTitle: legTitle })} aria-label={`Upload document for journey leg ${index + 1}`}><FileUp className="size-4" /> Upload document</button></article>; })}</div></section>}
-      {location && <><Detail icon={<MapPin />} label="Location" value={location} onEdit={editable ? () => setEditing(true) : undefined} /><div className="flex flex-wrap gap-2"><a className="secondary-button" target="_blank" rel="noreferrer" href={googleMapsSearchUrl(booking.location ?? location)}><Map className="size-4" /> Open in Maps</a><a className="secondary-button" target="_blank" rel="noreferrer" href={googleMapsDirectionsUrl(booking.location ?? location)}>Directions</a><button type="button" className="secondary-button" onClick={() => navigator.clipboard.writeText(location)}>Copy address</button></div></>}{typeof booking.details.notes === "string" && <div className={`group relative rounded-2xl bg-elevated p-4 text-sm leading-6 text-muted ${editable ? "transition hover:-translate-y-0.5 hover:shadow-soft" : ""}`}>{editable && <CardEditTarget label="Edit booking notes" onEdit={() => setEditing(true)} />}{booking.details.notes}</div>}
-      <section className="border-t border-line pt-5"><div className="flex items-center justify-between"><div><p className="eyebrow">Attachments</p><h2 className="mt-1 font-display text-xl font-black">Booking documents</h2></div><button type="button" className="secondary-button" onClick={() => setUploadTarget({ contextTitle: booking.title })}><Plus className="size-4" /> Upload</button></div><div className="mt-3 space-y-2">{documents.map((document) => <Link className="flex min-w-0 items-center gap-3 rounded-xl bg-elevated p-3 text-sm font-bold text-brand" key={document.id} to={`/trips/${tripId}/documents/${document.id}`} state={nestedNavigationState}><FileText className="size-4 shrink-0" /><span className="min-w-0 flex-1 truncate">{document.title}</span><DocumentVisibilityBadge visibility={document.visibility} /></Link>)}{documents.length === 0 && <p className="text-sm text-muted">No documents attached yet.</p>}</div></section></div></section>}{booking && <JourneyTravelerDetails tripId={tripId} legs={journeyLegs} travelers={visibleBookingTravelers} canEdit={editable} />}
-    {editing && booking && tripQuery.data && <EditBookingForm trip={tripQuery.data} booking={booking} travelers={travelersQuery.data ?? []} selectedTravelerIds={travelerIdsQuery.data ?? []} onClose={() => setEditing(false)} />}{editingLeg && booking && tripQuery.data && <EditJourneyLegForm trip={tripQuery.data} booking={booking} leg={editingLeg} legNumber={editingLeg.segment_order + 1} onClose={() => setEditingLeg(null)} />}{uploadTarget && tripQuery.data && <UploadDocumentForm trip={tripQuery.data} travelers={travelersQuery.data ?? []} preferredTravelerId={focusedTravelerId ?? undefined} members={membersQuery.data ?? []} bookingId={bookingId} journeyLegId={uploadTarget.journeyLegId} contextTitle={uploadTarget.contextTitle ?? booking?.title} privateOnly={!editable} onClose={() => setUploadTarget(null)} />}</div></AppShell>;
+  const route = journeyRoute(
+    journeyLegs.map((leg) => ({
+      origin: leg.origin_code || leg.origin_name,
+      destination: leg.destination_code || leg.destination_name
+    }))
+  );
+  return (
+    <AppShell>
+      <div className="mx-auto max-w-3xl">
+        <Link
+          className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted"
+          to={returnNavigation.href}
+          state={returnNavigation.state}
+        >
+          <ArrowLeft className="size-4" /> Back to trip
+        </Link>
+        {query.isLoading && <LoadingCard label="Loading booking" />}
+        {query.error && <ErrorCard error={query.error} />}
+        {booking && (
+          <section className="surface-card page-enter mt-5 overflow-hidden">
+            <div className="bg-brand p-6 text-surface sm:p-8">
+              <div className="flex items-start justify-between gap-4">
+                <span className="grid size-12 place-items-center rounded-2xl bg-surface/10">
+                  <TicketCheck className="size-5" />
+                </span>
+                {editable && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditing(true)}
+                      className="hero-action"
+                      aria-label={`Edit ${booking.title}`}
+                    >
+                      <Pencil className="size-4" /> Edit booking
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (
+                          await confirm({
+                            title: "Archive booking?",
+                            message: `Move ${booking.title} to the archive?`,
+                            confirmLabel: "Archive",
+                            tone: "danger"
+                          })
+                        )
+                          archive.mutate();
+                      }}
+                      className="hero-action"
+                    >
+                      <Trash2 className="size-4" /> Archive
+                    </button>
+                  </div>
+                )}
+              </div>
+              <p className="mt-6 text-xs font-bold uppercase tracking-[.16em] text-surface/60">
+                {booking.type}
+                {booking.journey_scope ? ` · ${booking.journey_scope}` : ""}
+              </p>
+              <h1 className="mt-2 font-display text-3xl font-black">{booking.title}</h1>
+              <p className="mt-2 text-surface/70">{booking.provider}</p>
+              {firstLeg && lastLeg && (
+                <div className="mt-5 rounded-2xl bg-surface/10 p-4">
+                  <p className="font-display text-xl font-black">{route}</p>
+                  <p className="mt-1 text-xs text-surface/65">
+                    {journeyLegs.length > 1
+                      ? `${journeyLegs.length} legs · ${journeyLegs.length - 1} connection${journeyLegs.length > 2 ? "s" : ""}`
+                      : "Direct journey"}
+                  </p>
+                  {journeyLegs.map((leg, index) => (
+                    <JourneyTravelerBadges
+                      key={leg.id}
+                      tripId={tripId}
+                      leg={leg}
+                      travelers={bookingTravelers}
+                      focusedTravelerId={focusedTravelerId}
+                      inverse
+                      legIndex={index}
+                      legCount={journeyLegs.length}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="space-y-4 p-6 sm:p-8">
+              {booking.reference_code && (
+                <Detail
+                  icon={<Clipboard />}
+                  label="Booking reference / PNR"
+                  value={booking.reference_code}
+                  copy
+                  onEdit={editable ? () => setEditing(true) : undefined}
+                />
+              )}
+              {booking.start_at && (
+                <Detail
+                  icon={<CalendarDays />}
+                  label="Starts"
+                  value={formatEventTime(booking.start_at, bookingTimezone)}
+                  onEdit={editable ? () => setEditing(true) : undefined}
+                />
+              )}
+              {booking.end_at && (
+                <Detail
+                  icon={<CalendarDays />}
+                  label="Ends"
+                  value={formatEventTime(booking.end_at, bookingEndTimezone)}
+                  onEdit={editable ? () => setEditing(true) : undefined}
+                />
+              )}
+              {booking.start_at && booking.end_at && (
+                <Detail
+                  icon={<Clock3 />}
+                  label="Elapsed duration"
+                  value={journeyDuration(booking.start_at, booking.end_at)}
+                  onEdit={editable ? () => setEditing(true) : undefined}
+                />
+              )}
+              {(booking.booked_via_name || booking.booked_via_url) && (
+                <div
+                  className={`group relative rounded-2xl bg-elevated p-4 ${editable ? "transition hover:-translate-y-0.5 hover:shadow-soft" : ""}`}
+                >
+                  {editable && (
+                    <CardEditTarget label="Edit booking source" onEdit={() => setEditing(true)} />
+                  )}
+                  <p className="eyebrow">Booked via</p>
+                  {booking.booked_via_url ? (
+                    <a
+                      className="relative z-20 mt-2 inline-flex font-bold text-brand"
+                      href={booking.booked_via_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {booking.booked_via_name || "Open booking website"} →
+                    </a>
+                  ) : (
+                    <p className="mt-2 font-bold">{booking.booked_via_name}</p>
+                  )}
+                </div>
+              )}
+              {booking.contact_phone && (
+                <div
+                  className={`group relative rounded-2xl bg-elevated p-4 ${editable ? "transition hover:-translate-y-0.5 hover:shadow-soft" : ""}`}
+                >
+                  {editable && (
+                    <CardEditTarget label="Edit booking contact" onEdit={() => setEditing(true)} />
+                  )}
+                  <p className="eyebrow">Booking contact</p>
+                  <p className="mt-2 font-bold">{booking.contact_name || booking.contact_phone}</p>
+                  <p className="mt-1 text-sm text-muted">{booking.contact_phone}</p>
+                  {phone && (
+                    <div className="relative z-20 mt-3 flex flex-wrap gap-2">
+                      <a className="secondary-button" href={phone.call}>
+                        <Phone className="size-4" /> Call
+                      </a>
+                      <a
+                        className="secondary-button"
+                        href={phone.whatsapp}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        WhatsApp
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+              {(legsQuery.data?.length ?? 0) > 0 && (
+                <section>
+                  <p className="eyebrow">Journey</p>
+                  <div className="mt-3 space-y-3">
+                    {legsQuery.data?.map((leg, index) => {
+                      const day = leg.scheduled_arrival_at
+                        ? arrivalDayOffset(
+                            leg.scheduled_departure_at,
+                            leg.origin_timezone,
+                            leg.scheduled_arrival_at,
+                            leg.destination_timezone
+                          )
+                        : null;
+                      const legTitle = `Leg ${index + 1} · ${leg.origin_code || leg.origin_name} to ${leg.destination_code || leg.destination_name}`;
+                      return (
+                        <article
+                          className={`group relative rounded-2xl border border-line bg-elevated p-4 ${editable ? "transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft" : ""}`}
+                          key={leg.id}
+                        >
+                          {editable && (
+                            <CardEditTarget
+                              label={`Edit journey leg ${index + 1}`}
+                              onEdit={() => setEditingLeg(leg)}
+                            />
+                          )}
+                          <div className="flex items-center justify-between">
+                            <strong>
+                              Leg {index + 1}
+                              {leg.service_number ? ` · ${leg.service_number}` : ""}
+                            </strong>
+                            <span className="text-xs capitalize text-muted">{leg.mode}</span>
+                          </div>
+                          <p className="mt-3 font-display text-lg font-black">
+                            {leg.origin_code || leg.origin_name} →{" "}
+                            {leg.destination_code || leg.destination_name}
+                          </p>
+                          <p className="mt-2 text-xs text-muted">
+                            {formatEventTime(leg.scheduled_departure_at, leg.origin_timezone)} →{" "}
+                            {leg.scheduled_arrival_at ? (
+                              <>
+                                {formatEventTime(
+                                  leg.scheduled_arrival_at,
+                                  leg.destination_timezone
+                                )}
+                                {day !== null && day > 0
+                                  ? ` · +${day} day`
+                                  : day !== null && day < 0
+                                    ? ` · ${day} day`
+                                    : ""}
+                              </>
+                            ) : (
+                              "Arrival not added"
+                            )}
+                          </p>
+                          <p className="mt-1 text-xs text-muted">
+                            {leg.scheduled_arrival_at
+                              ? journeyDuration(
+                                  leg.scheduled_departure_at,
+                                  leg.scheduled_arrival_at
+                                )
+                              : "Duration not available"}
+                          </p>
+                          <JourneyTravelerBadges
+                            tripId={tripId}
+                            leg={leg}
+                            travelers={bookingTravelers}
+                            focusedTravelerId={focusedTravelerId}
+                          />
+                          <button
+                            type="button"
+                            className="relative z-20 mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl border border-line px-3 text-xs font-extrabold text-brand"
+                            onClick={() =>
+                              setUploadTarget({ journeyLegId: leg.id, contextTitle: legTitle })
+                            }
+                            aria-label={`Upload document for journey leg ${index + 1}`}
+                          >
+                            <FileUp className="size-4" /> Upload document
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+              {location && (
+                <>
+                  <Detail
+                    icon={<MapPin />}
+                    label="Location"
+                    value={location}
+                    onEdit={editable ? () => setEditing(true) : undefined}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      className="secondary-button"
+                      target="_blank"
+                      rel="noreferrer"
+                      href={googleMapsSearchUrl(booking.location ?? location)}
+                    >
+                      <Map className="size-4" /> Open in Maps
+                    </a>
+                    <a
+                      className="secondary-button"
+                      target="_blank"
+                      rel="noreferrer"
+                      href={googleMapsDirectionsUrl(booking.location ?? location)}
+                    >
+                      Directions
+                    </a>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => navigator.clipboard.writeText(location)}
+                    >
+                      Copy address
+                    </button>
+                  </div>
+                </>
+              )}
+              {typeof booking.details.notes === "string" && (
+                <div
+                  className={`group relative rounded-2xl bg-elevated p-4 text-sm leading-6 text-muted ${editable ? "transition hover:-translate-y-0.5 hover:shadow-soft" : ""}`}
+                >
+                  {editable && (
+                    <CardEditTarget label="Edit booking notes" onEdit={() => setEditing(true)} />
+                  )}
+                  {booking.details.notes}
+                </div>
+              )}
+              <section className="border-t border-line pt-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="eyebrow">Attachments</p>
+                    <h2 className="mt-1 font-display text-xl font-black">Booking documents</h2>
+                  </div>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setUploadTarget({ contextTitle: booking.title })}
+                  >
+                    <Plus className="size-4" /> Upload
+                  </button>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {documents.map((document) => (
+                    <Link
+                      className="flex min-w-0 items-center gap-3 rounded-xl bg-elevated p-3 text-sm font-bold text-brand"
+                      key={document.id}
+                      to={`/trips/${tripId}/documents/${document.id}`}
+                      state={nestedNavigationState}
+                    >
+                      <FileText className="size-4 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">{document.title}</span>
+                      <DocumentVisibilityBadge visibility={document.visibility} />
+                    </Link>
+                  ))}
+                  {documents.length === 0 && (
+                    <p className="text-sm text-muted">No documents attached yet.</p>
+                  )}
+                </div>
+              </section>
+            </div>
+          </section>
+        )}
+        {booking && (
+          <JourneyTravelerDetails
+            tripId={tripId}
+            legs={journeyLegs}
+            travelers={visibleBookingTravelers}
+            canEdit={editable}
+          />
+        )}
+        {editing && booking && tripQuery.data && (
+          <EditBookingForm
+            trip={tripQuery.data}
+            booking={booking}
+            travelers={travelersQuery.data ?? []}
+            selectedTravelerIds={travelerIdsQuery.data ?? []}
+            onClose={() => setEditing(false)}
+          />
+        )}
+        {editingLeg && booking && tripQuery.data && (
+          <EditJourneyLegForm
+            trip={tripQuery.data}
+            booking={booking}
+            leg={editingLeg}
+            legNumber={editingLeg.segment_order + 1}
+            onClose={() => setEditingLeg(null)}
+          />
+        )}
+        {uploadTarget && tripQuery.data && (
+          <UploadDocumentForm
+            trip={tripQuery.data}
+            travelers={travelersQuery.data ?? []}
+            preferredTravelerId={focusedTravelerId ?? undefined}
+            members={membersQuery.data ?? []}
+            bookingId={bookingId}
+            journeyLegId={uploadTarget.journeyLegId}
+            contextTitle={uploadTarget.contextTitle ?? booking?.title}
+            privateOnly={!editable}
+            onClose={() => setUploadTarget(null)}
+          />
+        )}
+      </div>
+    </AppShell>
+  );
 }
 
 function CardEditTarget({ label, onEdit }: { label: string; onEdit: () => void }) {
-  return <button type="button" className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus-visible:ring-2 focus-visible:ring-brand" onClick={onEdit} aria-label={label} />;
+  return (
+    <button
+      type="button"
+      className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus-visible:ring-2 focus-visible:ring-brand"
+      onClick={onEdit}
+      aria-label={label}
+    />
+  );
 }
 
-function Detail({ icon, label, value, copy = false, onEdit }: { icon: ReactNode; label: string; value: string; copy?: boolean; onEdit?: () => void }) {
-  return <div className={`group relative flex items-start gap-3 rounded-2xl bg-elevated p-4 ${onEdit ? "transition hover:-translate-y-0.5 hover:shadow-soft" : ""}`}>{onEdit && <CardEditTarget label={`Edit ${label}`} onEdit={onEdit} />}<span className="mt-0.5 text-brand [&>svg]:size-4">{icon}</span><div className="min-w-0 flex-1"><p className="text-xs font-bold uppercase tracking-[.1em] text-muted">{label}</p><p className="mt-1 break-words font-bold">{value}</p></div>{copy && <button type="button" onClick={() => navigator.clipboard.writeText(value)} className="tap-target relative z-20 grid size-10 place-items-center rounded-xl border border-line" aria-label={`Copy ${label}`}><Clipboard className="size-4" /></button>}</div>;
+function Detail({
+  icon,
+  label,
+  value,
+  copy = false,
+  onEdit
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  copy?: boolean;
+  onEdit?: () => void;
+}) {
+  return (
+    <div
+      className={`group relative flex items-start gap-3 rounded-2xl bg-elevated p-4 ${onEdit ? "transition hover:-translate-y-0.5 hover:shadow-soft" : ""}`}
+    >
+      {onEdit && <CardEditTarget label={`Edit ${label}`} onEdit={onEdit} />}
+      <span className="mt-0.5 text-brand [&>svg]:size-4">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-bold uppercase tracking-[.1em] text-muted">{label}</p>
+        <p className="mt-1 break-words font-bold">{value}</p>
+      </div>
+      {copy && (
+        <button
+          type="button"
+          onClick={() => navigator.clipboard.writeText(value)}
+          className="tap-target relative z-20 grid size-10 place-items-center rounded-xl border border-line"
+          aria-label={`Copy ${label}`}
+        >
+          <Clipboard className="size-4" />
+        </button>
+      )}
+    </div>
+  );
 }

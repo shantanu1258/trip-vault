@@ -10,8 +10,10 @@ type InstallPromptEvent = Event & {
 const OPEN_INSTALL_HELP = "trip-vault:open-install-help";
 
 function isStandalone() {
-  return window.matchMedia("(display-mode: standalone)").matches
-    || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
+  );
 }
 
 function deviceType() {
@@ -35,10 +37,18 @@ export function InstallAppButton({ className = "secondary-button" }: { className
   }, []);
 
   if (installed) {
-    return <span className="inline-flex items-center gap-2 text-sm font-bold text-success"><Smartphone className="size-4" /> Installed on this device</span>;
+    return (
+      <span className="inline-flex items-center gap-2 text-sm font-bold text-success">
+        <Smartphone className="size-4" /> Installed on this device
+      </span>
+    );
   }
 
-  return <button type="button" className={className} onClick={openInstallHelp}><Download className="size-4" /> Install Trip Vault</button>;
+  return (
+    <button type="button" className={className} onClick={openInstallHelp}>
+      <Download className="size-4" /> Install Trip Vault
+    </button>
+  );
 }
 
 export function InstallAppManager() {
@@ -83,13 +93,23 @@ export function InstallAppManager() {
   if (!showHelp) return null;
 
   return (
-    <ModalSheet eyebrow="Trip Vault mobile app" title="Add Trip Vault to your Home Screen" onClose={() => setShowHelp(false)}>
+    <ModalSheet
+      eyebrow="Trip Vault mobile app"
+      title="Add Trip Vault to your Home Screen"
+      onClose={() => setShowHelp(false)}
+    >
       <p className="mt-4 text-sm leading-6 text-muted">
-        {platform === "ios" ? "You are on an Apple mobile device. Use Safari and the Share menu." : platform === "android" ? "You are on Android. Chrome may install Trip Vault directly." : "Open this page on your phone and follow the matching steps below."}
+        {platform === "ios"
+          ? "You are on an Apple mobile device. Use Safari and the Share menu."
+          : platform === "android"
+            ? "You are on Android. Chrome may install Trip Vault directly."
+            : "Open this page on your phone and follow the matching steps below."}
       </p>
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
         <section className="rounded-2xl border border-line bg-elevated p-4">
-          <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand"><Share2 className="size-4" /></span>
+          <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand">
+            <Share2 className="size-4" />
+          </span>
           <p className="eyebrow mt-4">iPhone & iPad</p>
           <h3 className="mt-1 font-display text-lg font-black">Install using Safari</h3>
           <ol className="mt-3 grid list-decimal gap-2 pl-5 text-sm leading-6 text-muted">
@@ -99,7 +119,9 @@ export function InstallAppManager() {
           </ol>
         </section>
         <section className="rounded-2xl border border-line bg-elevated p-4">
-          <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand"><EllipsisVertical className="size-4" /></span>
+          <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand">
+            <EllipsisVertical className="size-4" />
+          </span>
           <p className="eyebrow mt-4">Android</p>
           <h3 className="mt-1 font-display text-lg font-black">Install using Chrome</h3>
           <ol className="mt-3 grid list-decimal gap-2 pl-5 text-sm leading-6 text-muted">
@@ -109,10 +131,19 @@ export function InstallAppManager() {
           </ol>
         </section>
       </div>
-      <p className="mt-4 rounded-2xl border border-line bg-brand-soft p-4 text-xs leading-5 text-muted">After installation, Trip Vault opens from your Home Screen like an app and uses the same signed-in account and prepared offline trips.</p>
+      <p className="mt-4 rounded-2xl border border-line bg-brand-soft p-4 text-xs leading-5 text-muted">
+        After installation, Trip Vault opens from your Home Screen like an app and uses the same
+        signed-in account and prepared offline trips.
+      </p>
       <div className="mt-5 flex justify-end gap-3">
-        <button type="button" className="secondary-button" onClick={() => setShowHelp(false)}>Close</button>
-        {canPrompt && <button type="button" className="primary-button" onClick={() => void installNow()}><Download className="size-4" /> Install now</button>}
+        <button type="button" className="secondary-button" onClick={() => setShowHelp(false)}>
+          Close
+        </button>
+        {canPrompt && (
+          <button type="button" className="primary-button" onClick={() => void installNow()}>
+            <Download className="size-4" /> Install now
+          </button>
+        )}
       </div>
     </ModalSheet>
   );

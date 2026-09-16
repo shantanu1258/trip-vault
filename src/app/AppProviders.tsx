@@ -15,7 +15,12 @@ export function AppProviders({ children }: { children: ReactNode }) {
     () =>
       new QueryClient({
         defaultOptions: {
-          queries: { staleTime: 2 * 60_000, gcTime: 30 * 60_000, retry: 1, refetchOnWindowFocus: false },
+          queries: {
+            staleTime: 2 * 60_000,
+            gcTime: 30 * 60_000,
+            retry: 1,
+            refetchOnWindowFocus: false
+          },
           mutations: { retry: 0 }
         }
       })
@@ -23,7 +28,19 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider><ModalHistoryProvider><ConfirmDialogProvider><RouteScrollManager /><InstallAppManager /><ForegroundSync /><RealtimeRefresh /><PublishedConfigSync />{children}<PwaUpdatePrompt /></ConfirmDialogProvider></ModalHistoryProvider></ThemeProvider>
+      <ThemeProvider>
+        <ModalHistoryProvider>
+          <ConfirmDialogProvider>
+            <RouteScrollManager />
+            <InstallAppManager />
+            <ForegroundSync />
+            <RealtimeRefresh />
+            <PublishedConfigSync />
+            {children}
+            <PwaUpdatePrompt />
+          </ConfirmDialogProvider>
+        </ModalHistoryProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

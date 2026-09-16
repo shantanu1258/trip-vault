@@ -14,6 +14,8 @@ import { QuickAddPage } from "../pages/QuickAddPage";
 import { ReadinessPage } from "../pages/ReadinessPage";
 import { SignInPage } from "../pages/SignInPage";
 import { TripPage } from "../pages/TripPage";
+import { TripDocumentsPage } from "../pages/TripDocumentsPage";
+import { TripReservationsPage } from "../pages/TripReservationsPage";
 import { TripsPage } from "../pages/TripsPage";
 import { VaultPage } from "../pages/VaultPage";
 import { WelcomePage } from "../pages/WelcomePage";
@@ -43,6 +45,8 @@ export function App() {
         <Route path="/trips" element={<TripsPage />} />
         <Route path="/trips/new" element={<CreateTripPage />} />
         <Route path="/trips/:tripId" element={<TripPage />} />
+        <Route path="/trips/:tripId/reservations" element={<TripReservationsPage />} />
+        <Route path="/trips/:tripId/documents" element={<TripDocumentsPage />} />
         <Route path="/trips/:tripId/bookings/:bookingId" element={<BookingPage />} />
         <Route path="/trips/:tripId/flights/:flightLegId" element={<FlightPage />} />
         <Route path="/trips/:tripId/readiness" element={<ReadinessPage />} />

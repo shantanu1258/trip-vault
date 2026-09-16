@@ -15,15 +15,27 @@ function LocationProbe() {
   const location = useLocation();
   const navigate = useNavigate();
   const intent = readTripNavigationIntent(location.state, "trip-1");
-  return <><output aria-label="location">{`${location.pathname}${location.search}|${intent?.kind ?? "none"}|${intent?.view ?? "none"}`}</output><button type="button" onClick={() => navigate(-1)}>History back</button></>;
+  return (
+    <>
+      <output aria-label="location">{`${location.pathname}${location.search}|${intent?.kind ?? "none"}|${intent?.view ?? "none"}`}</output>
+      <button type="button" onClick={() => navigate(-1)}>
+        History back
+      </button>
+    </>
+  );
 }
 
 function renderShell(path: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <AppShell><LocationProbe /></AppShell>
+      <MemoryRouter
+        initialEntries={[path]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <AppShell>
+          <LocationProbe />
+        </AppShell>
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -45,7 +57,9 @@ describe("trip header search", () => {
 
     expect(screen.getByLabelText("location")).toHaveTextContent("/trips/trip-1|search|timeline");
     await userEvent.click(screen.getByRole("button", { name: "History back" }));
-    expect(screen.getByLabelText("location")).toHaveTextContent("/trips/trip-1?view=details|none|none");
+    expect(screen.getByLabelText("location")).toHaveTextContent(
+      "/trips/trip-1?view=details|none|none"
+    );
   });
 
   it("is absent outside an active trip", () => {

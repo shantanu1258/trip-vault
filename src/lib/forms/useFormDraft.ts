@@ -21,13 +21,21 @@ export function useFormDraft(key: string) {
       const values = JSON.parse(localStorage.getItem(`${PREFIX}${key}`) ?? "{}") as DraftValues;
       for (const [name, raw] of Object.entries(values)) {
         const escapedName = name.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-        const fields = form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(`[name="${escapedName}"]`);
+        const fields = form.querySelectorAll<
+          HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+        >(`[name="${escapedName}"]`);
         fields.forEach((field) => {
-          if (field instanceof HTMLInputElement && (field.type === "checkbox" || field.type === "radio")) field.checked = Array.isArray(raw) && raw.includes(field.value || "on");
+          if (
+            field instanceof HTMLInputElement &&
+            (field.type === "checkbox" || field.type === "radio")
+          )
+            field.checked = Array.isArray(raw) && raw.includes(field.value || "on");
           else if (!Array.isArray(raw)) field.value = raw;
         });
       }
-    } catch { clearFormDraft(key); }
+    } catch {
+      clearFormDraft(key);
+    }
 
     const persist = () => {
       if (clearedRef.current) return;

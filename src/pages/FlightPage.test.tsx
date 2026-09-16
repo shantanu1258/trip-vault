@@ -17,14 +17,28 @@ const mocks = vi.hoisted(() => ({
   listVaultDocuments: vi.fn()
 }));
 
-vi.mock("../components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => <>{children}</> }));
-vi.mock("../components/ModalSheet", () => ({ ModalSheet: ({ children, title }: { children: ReactNode; title: string }) => <section aria-label={title}>{children}</section> }));
-vi.mock("../components/SafeExternalAction", () => ({ SafeExternalAction: ({ children }: { children: ReactNode }) => <>{children}</> }));
-vi.mock("../features/sync/localSync", () => ({ localProfileId: vi.fn().mockResolvedValue("user-1") }));
+vi.mock("../components/AppShell", () => ({
+  AppShell: ({ children }: { children: ReactNode }) => <>{children}</>
+}));
+vi.mock("../components/ModalSheet", () => ({
+  ModalSheet: ({ children, title }: { children: ReactNode; title: string }) => (
+    <section aria-label={title}>{children}</section>
+  )
+}));
+vi.mock("../components/SafeExternalAction", () => ({
+  SafeExternalAction: ({ children }: { children: ReactNode }) => <>{children}</>
+}));
+vi.mock("../features/sync/localSync", () => ({
+  localProfileId: vi.fn().mockResolvedValue("user-1")
+}));
 vi.mock("../features/trips/api", () => ({ getTrip: mocks.getTrip }));
 vi.mock("../features/workspace/travelerFocus", () => ({ readTravelerFocus: () => null }));
-vi.mock("../features/workspace/AddFlightConnectionForm", () => ({ AddFlightConnectionForm: () => null }));
-vi.mock("../features/workspace/FlightTravelerDetails", () => ({ FlightTravelerDetails: () => null }));
+vi.mock("../features/workspace/AddFlightConnectionForm", () => ({
+  AddFlightConnectionForm: () => null
+}));
+vi.mock("../features/workspace/FlightTravelerDetails", () => ({
+  FlightTravelerDetails: () => null
+}));
 vi.mock("../features/workspace/WorkspaceForms", () => ({ UploadDocumentForm: () => null }));
 vi.mock("../features/workspace/api", () => ({
   getBooking: mocks.getBooking,
@@ -109,19 +123,35 @@ function flight(scope: JourneyScope): FlightLeg {
   };
 }
 
-async function renderFlight(scope: JourneyScope, initialEntry: string | { pathname: string; state: unknown } = "/trips/trip-1/flights/flight-1") {
+async function renderFlight(
+  scope: JourneyScope,
+  initialEntry: string | { pathname: string; state: unknown } = "/trips/trip-1/flights/flight-1"
+) {
   const currentFlight = flight(scope);
   mocks.getBooking.mockResolvedValue(booking(scope));
   mocks.getFlightLeg.mockResolvedValue(currentFlight);
   mocks.getTrip.mockResolvedValue(trip);
-  mocks.listMembers.mockResolvedValue([{ user_id: "user-1", role: "owner", participation_type: "traveler", joined_at: null, display_name: "Owner" }]);
+  mocks.listMembers.mockResolvedValue([
+    {
+      user_id: "user-1",
+      role: "owner",
+      participation_type: "traveler",
+      joined_at: null,
+      display_name: "Owner"
+    }
+  ]);
   mocks.listFlightLegsForBooking.mockResolvedValue([currentFlight]);
 
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Routes><Route path="/trips/:tripId/flights/:flightLegId" element={<FlightPage />} /></Routes>
+      <MemoryRouter
+        initialEntries={[initialEntry]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <Routes>
+          <Route path="/trips/:tripId/flights/:flightLegId" element={<FlightPage />} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -149,7 +179,9 @@ describe("flight edit time-zone controls", () => {
 
     expect(screen.queryByText(/if this clock time occurs twice/i)).not.toBeInTheDocument();
     expect(container.querySelector('select[name="scheduledDepartureOccurrence"]')).toBeNull();
-    const occurrence = container.querySelector<HTMLInputElement>('input[name="scheduledDepartureOccurrence"]');
+    const occurrence = container.querySelector<HTMLInputElement>(
+      'input[name="scheduledDepartureOccurrence"]'
+    );
     expect(occurrence).toHaveAttribute("type", "hidden");
     expect(occurrence).toHaveValue("earlier");
   });
@@ -158,7 +190,9 @@ describe("flight edit time-zone controls", () => {
     const container = await renderEditor("international");
 
     expect(screen.getAllByText(/if this clock time occurs twice/i)).toHaveLength(7);
-    const occurrence = container.querySelector<HTMLSelectElement>('select[name="scheduledDepartureOccurrence"]');
+    const occurrence = container.querySelector<HTMLSelectElement>(
+      'select[name="scheduledDepartureOccurrence"]'
+    );
     expect(occurrence).toHaveValue("automatic");
   });
 
@@ -168,7 +202,9 @@ describe("flight edit time-zone controls", () => {
     await user.click(screen.getByRole("button", { name: /Departure.*Bengaluru/i }));
 
     expect(await screen.findByRole("region", { name: "Manual flight update" })).toBeInTheDocument();
-    await waitFor(() => expect(document.querySelector('[name="scheduledDeparture"]')).toHaveFocus());
+    await waitFor(() =>
+      expect(document.querySelector('[name="scheduledDeparture"]')).toHaveFocus()
+    );
   });
 
   it("returns to the source Trip details tab", async () => {
@@ -177,21 +213,59 @@ describe("flight edit time-zone controls", () => {
       state: tripChildNavigationState(null, "trip-1", "details")
     });
 
-    expect(screen.getByRole("link", { name: "Back to trip" })).toHaveAttribute("href", "/trips/trip-1?view=details");
+    expect(screen.getByRole("link", { name: "Back to trip" })).toHaveAttribute(
+      "href",
+      "/trips/trip-1?view=details"
+    );
   });
 
   it("contains long generated document titles inside the mobile flight card", async () => {
-    const longTitle = "Other booking confirmation · Ankita · Some Place to Some Place with a deliberately long generated title";
+    const longTitle =
+      "Other booking confirmation · Ankita · Some Place to Some Place with a deliberately long generated title";
     mocks.listVaultDocuments.mockResolvedValue([
-      { id: "primary", trip_id: trip.id, booking_id: "booking-1", flight_leg_id: "flight-1", traveler_id: null, assignment_mode: "shared", traveler_ids: [], title: "Boarding pass", category: "flight", purpose: "boarding_pass", short_label: null, visibility: "trip", current_version_id: null, updated_at: "2026-09-01T00:00:00.000Z" },
-      { id: "long", trip_id: trip.id, booking_id: "booking-1", flight_leg_id: "flight-1", traveler_id: null, assignment_mode: "shared", traveler_ids: [], title: longTitle, category: "flight", purpose: "confirmation", short_label: null, visibility: "trip", current_version_id: null, updated_at: "2026-09-01T00:00:00.000Z" }
+      {
+        id: "primary",
+        trip_id: trip.id,
+        booking_id: "booking-1",
+        flight_leg_id: "flight-1",
+        traveler_id: null,
+        assignment_mode: "shared",
+        traveler_ids: [],
+        title: "Boarding pass",
+        category: "flight",
+        purpose: "boarding_pass",
+        short_label: null,
+        visibility: "trip",
+        current_version_id: null,
+        updated_at: "2026-09-01T00:00:00.000Z"
+      },
+      {
+        id: "long",
+        trip_id: trip.id,
+        booking_id: "booking-1",
+        flight_leg_id: "flight-1",
+        traveler_id: null,
+        assignment_mode: "shared",
+        traveler_ids: [],
+        title: longTitle,
+        category: "flight",
+        purpose: "confirmation",
+        short_label: null,
+        visibility: "trip",
+        current_version_id: null,
+        updated_at: "2026-09-01T00:00:00.000Z"
+      }
     ]);
 
     await renderFlight("domestic");
 
     const card = screen.getByRole("link", { name: new RegExp(longTitle) });
     expect(card).toHaveClass("min-w-0", "max-w-full", "overflow-hidden");
-    expect(screen.getByText(longTitle)).toHaveClass("whitespace-normal", "break-words", "[overflow-wrap:anywhere]");
+    expect(screen.getByText(longTitle)).toHaveClass(
+      "whitespace-normal",
+      "break-words",
+      "[overflow-wrap:anywhere]"
+    );
     expect(screen.getByText(longTitle)).not.toHaveClass("truncate");
   });
 });

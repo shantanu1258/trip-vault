@@ -2,9 +2,16 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CREATE_TRIP_DRAFT_KEY, CreateTripPage, dateInput, suggestedTripEndDate } from "./CreateTripPage";
+import {
+  CREATE_TRIP_DRAFT_KEY,
+  CreateTripPage,
+  dateInput,
+  suggestedTripEndDate
+} from "./CreateTripPage";
 
-vi.mock("../components/AppShell", () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
+vi.mock("../components/AppShell", () => ({
+  AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</>
+}));
 
 function renderPage() {
   return render(
@@ -43,7 +50,10 @@ describe("new trip date defaults", () => {
   });
 
   it("uses the versioned draft key so an old one-month-later draft is not restored", () => {
-    localStorage.setItem("trip-vault:form-draft:trip:new", JSON.stringify({ startDate: "2099-01-01", endDate: "2099-01-08" }));
+    localStorage.setItem(
+      "trip-vault:form-draft:trip:new",
+      JSON.stringify({ startDate: "2099-01-01", endDate: "2099-01-08" })
+    );
     renderPage();
     expect(CREATE_TRIP_DRAFT_KEY).toBe("trip:new:v2");
     expect(screen.getByLabelText("Start date")).toHaveValue(dateInput(15));
@@ -63,8 +73,9 @@ describe("new trip date defaults", () => {
     destination.value = "Singapore and Kuala Lumpur";
     fireEvent(window, new Event("pagehide"));
 
-    expect(JSON.parse(localStorage.getItem(`trip-vault:form-draft:${CREATE_TRIP_DRAFT_KEY}`) ?? "{}"))
-      .toMatchObject({ title: "Singapore family trip", destination: "Singapore and Kuala Lumpur" });
+    expect(
+      JSON.parse(localStorage.getItem(`trip-vault:form-draft:${CREATE_TRIP_DRAFT_KEY}`) ?? "{}")
+    ).toMatchObject({ title: "Singapore family trip", destination: "Singapore and Kuala Lumpur" });
 
     firstRender.unmount();
     renderPage();

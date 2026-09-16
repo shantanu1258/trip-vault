@@ -15,13 +15,28 @@ const mocks = vi.hoisted(() => ({
   clearDraft: vi.fn()
 }));
 
-vi.mock("../../components/ModalSheet", () => ({ ModalSheet: ({ children, title }: { children: React.ReactNode; title: string }) => <section aria-label={title}>{children}</section> }));
-vi.mock("../../lib/forms/useFormDraft", () => ({ useFormDraft: () => ({ formRef: { current: null }, clearDraft: mocks.clearDraft }) }));
+vi.mock("../../components/ModalSheet", () => ({
+  ModalSheet: ({ children, title }: { children: React.ReactNode; title: string }) => (
+    <section aria-label={title}>{children}</section>
+  )
+}));
+vi.mock("../../lib/forms/useFormDraft", () => ({
+  useFormDraft: () => ({ formRef: { current: null }, clearDraft: mocks.clearDraft })
+}));
 vi.mock("../timeline/TimingFields", () => ({
   TimingFields: () => null,
-  readEventTiming: () => ({ startsAt: "2026-09-28T04:00:00.000Z", endsAt: undefined, timezone: "Asia/Dubai", timingMode: "exact" as const, isAllDay: false, hasExplicitStartTime: true })
+  readEventTiming: () => ({
+    startsAt: "2026-09-28T04:00:00.000Z",
+    endsAt: undefined,
+    timezone: "Asia/Dubai",
+    timingMode: "exact" as const,
+    isAllDay: false,
+    hasExplicitStartTime: true
+  })
 }));
-vi.mock("../workspace/api", () => ({ listItineraryParticipantIds: mocks.listItineraryParticipantIds }));
+vi.mock("../workspace/api", () => ({
+  listItineraryParticipantIds: mocks.listItineraryParticipantIds
+}));
 vi.mock("./api", () => ({
   addItineraryItem: vi.fn(),
   addTripCost: mocks.addTripCost,
@@ -81,26 +96,53 @@ describe("AddItineraryForm participant scope", () => {
 
   it("preserves an intentional Selected scope when every current traveler is selected", async () => {
     const user = userEvent.setup();
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-    render(<MemoryRouter><QueryClientProvider client={queryClient}><AddItineraryForm trip={trip} travelers={travelers} item={item} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <AddItineraryForm trip={trip} travelers={travelers} item={item} onClose={vi.fn()} />
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
 
     expect(screen.getByRole("radio", { name: "Selected travelers" })).toBeChecked();
     await waitFor(() => expect(screen.getByRole("checkbox", { name: "Asha" })).toBeChecked());
     expect(screen.getByRole("checkbox", { name: "Ravi" })).toBeChecked();
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
-    await waitFor(() => expect(mocks.updateItineraryItem).toHaveBeenCalledWith(expect.objectContaining({
-      id: item.id,
-      participantScope: "selected",
-      travelerIds: ["asha", "ravi"]
-    })));
+    await waitFor(() =>
+      expect(mocks.updateItineraryItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: item.id,
+          participantScope: "selected",
+          travelerIds: ["asha", "ravi"]
+        })
+      )
+    );
   });
 
   it("does not offer a generic edit form for a linked hotel milestone", () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-    render(<MemoryRouter><QueryClientProvider client={queryClient}><AddItineraryForm trip={trip} travelers={travelers} item={{ ...item, booking_id: "hotel-1", event_type: "hotel_check_out" }} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <AddItineraryForm
+            trip={trip}
+            travelers={travelers}
+            item={{ ...item, booking_id: "hotel-1", event_type: "hotel_check_out" }}
+            onClose={vi.fn()}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
 
-    expect(screen.getByText(/Open the hotel booking to edit both milestones safely/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Open the hotel booking to edit both milestones safely/)
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
   });
 });
@@ -113,23 +155,51 @@ describe("AddCostForm optional expense splitting", () => {
 
   it("hides traveler splitting and applies a new cost to everyone when disabled", async () => {
     const user = userEvent.setup();
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-    render(<MemoryRouter><QueryClientProvider client={queryClient}><AddCostForm trip={{ ...trip, expense_splitting_enabled: false }} travelers={travelers} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <AddCostForm
+            trip={{ ...trip, expense_splitting_enabled: false }}
+            travelers={travelers}
+            onClose={vi.fn()}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
 
     expect(screen.queryByRole("radio", { name: "Selected travelers" })).not.toBeInTheDocument();
     await user.type(screen.getByLabelText(/What was it for/i), "Airport transfer");
     await user.type(screen.getByLabelText("Amount"), "1200");
     await user.click(screen.getByRole("button", { name: "Save cost" }));
 
-    await waitFor(() => expect(mocks.addTripCost).toHaveBeenCalledWith(expect.objectContaining({
-      tripId: trip.id,
-      participantTravelerIds: ["asha", "ravi"]
-    })));
+    await waitFor(() =>
+      expect(mocks.addTripCost).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tripId: trip.id,
+          participantTravelerIds: ["asha", "ravi"]
+        })
+      )
+    );
   });
 
   it("shows traveler controls when expense splitting is enabled", () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-    render(<MemoryRouter><QueryClientProvider client={queryClient}><AddCostForm trip={{ ...trip, expense_splitting_enabled: true }} travelers={travelers} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <AddCostForm
+            trip={{ ...trip, expense_splitting_enabled: true }}
+            travelers={travelers}
+            onClose={vi.fn()}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
 
     expect(screen.getByRole("radio", { name: "Selected travelers" })).toBeInTheDocument();
   });
@@ -139,13 +209,21 @@ describe("TripSettingsForm permanent deletion", () => {
   it("clears queries for the deleted trip and leaves the trip page before refreshing the list", async () => {
     const user = userEvent.setup();
     const onArchived = vi.fn();
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    });
     queryClient.setQueryData(["trip", trip.id], trip);
     queryClient.setQueryData(["itinerary", trip.id], [item]);
     queryClient.setQueryData(["trip", "another-trip"], { ...trip, id: "another-trip" });
     mocks.deleteTripPermanently.mockResolvedValue(undefined);
 
-    render(<MemoryRouter><QueryClientProvider client={queryClient}><TripSettingsForm trip={trip} onClose={vi.fn()} onArchived={onArchived} /></QueryClientProvider></MemoryRouter>);
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <TripSettingsForm trip={trip} onClose={vi.fn()} onArchived={onArchived} />
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
 
     await user.type(screen.getByLabelText("Confirm permanent trip deletion"), trip.title);
     await user.click(screen.getByRole("button", { name: "Permanently delete test trip" }));

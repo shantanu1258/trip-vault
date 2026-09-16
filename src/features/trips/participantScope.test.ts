@@ -3,11 +3,17 @@ import { normalizeParticipantSelection } from "./participantScope";
 
 describe("normalizeParticipantSelection", () => {
   it("stores Everyone explicitly with no traveler IDs", () => {
-    expect(normalizeParticipantSelection("everyone", [])).toEqual({ participantScope: "everyone", travelerIds: [] });
+    expect(normalizeParticipantSelection("everyone", [])).toEqual({
+      participantScope: "everyone",
+      travelerIds: []
+    });
   });
 
   it("deduplicates an explicit Selected list", () => {
-    expect(normalizeParticipantSelection("selected", ["a", "a", "b"])).toEqual({ participantScope: "selected", travelerIds: ["a", "b"] });
+    expect(normalizeParticipantSelection("selected", ["a", "a", "b"])).toEqual({
+      participantScope: "selected",
+      travelerIds: ["a", "b"]
+    });
   });
 
   it("rejects contradictory or empty explicit selections", () => {
@@ -16,7 +22,13 @@ describe("normalizeParticipantSelection", () => {
   });
 
   it("preserves the legacy ID-based fallback", () => {
-    expect(normalizeParticipantSelection(undefined, [])).toEqual({ participantScope: "everyone", travelerIds: [] });
-    expect(normalizeParticipantSelection(undefined, ["a"])).toEqual({ participantScope: "selected", travelerIds: ["a"] });
+    expect(normalizeParticipantSelection(undefined, [])).toEqual({
+      participantScope: "everyone",
+      travelerIds: []
+    });
+    expect(normalizeParticipantSelection(undefined, ["a"])).toEqual({
+      participantScope: "selected",
+      travelerIds: ["a"]
+    });
   });
 });

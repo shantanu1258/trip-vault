@@ -6,72 +6,272 @@ import type { ItineraryItem, Trip } from "../trips/types";
 import type { FlightLeg, Traveler } from "../workspace/types";
 
 const mocks = vi.hoisted(() => ({
-  addBookedTimelineEvent: vi.fn(), addFlightBooking: vi.fn(), addItineraryItem: vi.fn(),
-  addJourneyBooking: vi.fn(), addTripCost: vi.fn(), listFlightLegsForTrip: vi.fn(), listItinerary: vi.fn(),
-  saveOptionalCostForCreatedEvent: vi.fn(), setItineraryItemStatus: vi.fn(), suggestCatalogValue: vi.fn()
+  addBookedTimelineEvent: vi.fn(),
+  addFlightBooking: vi.fn(),
+  addItineraryItem: vi.fn(),
+  addJourneyBooking: vi.fn(),
+  addTripCost: vi.fn(),
+  listFlightLegsForTrip: vi.fn(),
+  listItinerary: vi.fn(),
+  saveOptionalCostForCreatedEvent: vi.fn(),
+  setItineraryItemStatus: vi.fn(),
+  suggestCatalogValue: vi.fn()
 }));
 
-vi.mock("../../components/ModalSheet", () => ({ ModalSheet: ({ children, title }: { children: React.ReactNode; title: string }) => <section aria-label={title}>{children}</section> }));
-vi.mock("../metadata/AirlinePicker", () => ({ AirlinePicker: ({ name }: { name: string }) => <><input aria-label="Airline" name={name} /><input name={`${name}Source`} value="catalog" readOnly /></> }));
-vi.mock("../metadata/AirportPicker", () => ({ AirportPicker: ({ name, codeName, timezoneName, countryName, label }: { name: string; codeName: string; timezoneName: string; countryName: string; label: string }) => <><input aria-label={label} name={name} /><input name={codeName} value={label === "From airport" ? "BLR" : "DXB"} readOnly /><input name={timezoneName} value={label === "From airport" ? "Asia/Kolkata" : "Asia/Dubai"} readOnly /><input name={countryName} value={label === "From airport" ? "IN" : "AE"} readOnly /><input name={`${name}Source`} value="catalog" readOnly /></> }));
-vi.mock("../metadata/JourneyOperatorPicker", () => ({ JourneyOperatorPicker: ({ mode, name }: { mode: string; name: string }) => <input aria-label={`${mode[0].toUpperCase()}${mode.slice(1)} operator`} name={name} /> }));
-vi.mock("../metadata/VendorPicker", () => ({ VendorPicker: () => <><input aria-label="Booked via choice" name="bookedViaName" /><input name="bookedViaNameSource" value="catalog" readOnly /></> }));
-vi.mock("../workspace/ParticipantSelector", () => ({ ParticipantSelector: ({ travelers, onSelectionChange }: { travelers: Traveler[]; onSelectionChange?: (scope: "everyone" | "selected", travelerIds: string[]) => void }) => <><input type="hidden" name="participantScope" value="everyone" />{travelers[0] && <button type="button" aria-label="Select first traveler for test" onClick={() => onSelectionChange?.("selected", [travelers[0].id])}>Select first traveler</button>}</> }));
-vi.mock("../trips/api", () => ({ addItineraryItem: mocks.addItineraryItem, addTripCost: mocks.addTripCost, listItinerary: mocks.listItinerary, setItineraryItemStatus: mocks.setItineraryItemStatus }));
-vi.mock("../workspace/api", () => ({ addBookedTimelineEvent: mocks.addBookedTimelineEvent, addFlightBooking: mocks.addFlightBooking, addJourneyBooking: mocks.addJourneyBooking, listFlightLegsForTrip: mocks.listFlightLegsForTrip, saveOptionalCostForCreatedEvent: mocks.saveOptionalCostForCreatedEvent, suggestCatalogValue: mocks.suggestCatalogValue }));
+vi.mock("../../components/ModalSheet", () => ({
+  ModalSheet: ({ children, title }: { children: React.ReactNode; title: string }) => (
+    <section aria-label={title}>{children}</section>
+  )
+}));
+vi.mock("../metadata/AirlinePicker", () => ({
+  AirlinePicker: ({ name }: { name: string }) => (
+    <>
+      <input aria-label="Airline" name={name} />
+      <input name={`${name}Source`} value="catalog" readOnly />
+    </>
+  )
+}));
+vi.mock("../metadata/AirportPicker", () => ({
+  AirportPicker: ({
+    name,
+    codeName,
+    timezoneName,
+    countryName,
+    label
+  }: {
+    name: string;
+    codeName: string;
+    timezoneName: string;
+    countryName: string;
+    label: string;
+  }) => (
+    <>
+      <input aria-label={label} name={name} />
+      <input name={codeName} value={label === "From airport" ? "BLR" : "DXB"} readOnly />
+      <input
+        name={timezoneName}
+        value={label === "From airport" ? "Asia/Kolkata" : "Asia/Dubai"}
+        readOnly
+      />
+      <input name={countryName} value={label === "From airport" ? "IN" : "AE"} readOnly />
+      <input name={`${name}Source`} value="catalog" readOnly />
+    </>
+  )
+}));
+vi.mock("../metadata/JourneyOperatorPicker", () => ({
+  JourneyOperatorPicker: ({ mode, name }: { mode: string; name: string }) => (
+    <input aria-label={`${mode[0].toUpperCase()}${mode.slice(1)} operator`} name={name} />
+  )
+}));
+vi.mock("../metadata/VendorPicker", () => ({
+  VendorPicker: () => (
+    <>
+      <input aria-label="Booked via choice" name="bookedViaName" />
+      <input name="bookedViaNameSource" value="catalog" readOnly />
+    </>
+  )
+}));
+vi.mock("../workspace/ParticipantSelector", () => ({
+  ParticipantSelector: ({
+    travelers,
+    onSelectionChange
+  }: {
+    travelers: Traveler[];
+    onSelectionChange?: (scope: "everyone" | "selected", travelerIds: string[]) => void;
+  }) => (
+    <>
+      <input type="hidden" name="participantScope" value="everyone" />
+      {travelers[0] && (
+        <button
+          type="button"
+          aria-label="Select first traveler for test"
+          onClick={() => onSelectionChange?.("selected", [travelers[0].id])}
+        >
+          Select first traveler
+        </button>
+      )}
+    </>
+  )
+}));
+vi.mock("../trips/api", () => ({
+  addItineraryItem: mocks.addItineraryItem,
+  addTripCost: mocks.addTripCost,
+  listItinerary: mocks.listItinerary,
+  setItineraryItemStatus: mocks.setItineraryItemStatus
+}));
+vi.mock("../workspace/api", () => ({
+  addBookedTimelineEvent: mocks.addBookedTimelineEvent,
+  addFlightBooking: mocks.addFlightBooking,
+  addJourneyBooking: mocks.addJourneyBooking,
+  listFlightLegsForTrip: mocks.listFlightLegsForTrip,
+  saveOptionalCostForCreatedEvent: mocks.saveOptionalCostForCreatedEvent,
+  suggestCatalogValue: mocks.suggestCatalogValue
+}));
 
 import { AddEventForm, assertSequentialConnectionTimes } from "./AddEventForm";
 import { suggestedFlightLocalTime } from "./JourneyEventFields";
 
-const trip: Trip = { id: "trip-1", title: "Autumn trip", destination_summary: "Singapore", start_date: "2026-09-26", end_date: "2026-10-12", primary_timezone: "Asia/Kolkata", base_currency: "INR", status: "upcoming", created_at: "2026-09-01T00:00:00.000Z", updated_at: "2026-09-01T00:00:00.000Z" };
-const travelers: Traveler[] = [{ id: "traveler-1", trip_id: trip.id, display_name: "Shantanu", is_minor: false, created_at: "2026-09-01T00:00:00.000Z" }];
-const secondTraveler: Traveler = { id: "traveler-2", trip_id: trip.id, display_name: "Mira", is_minor: false, created_at: "2026-09-01T00:00:00.000Z" };
-const anchor: ItineraryItem = { id: "anchor-1", trip_id: trip.id, booking_id: "hotel-1", title: "Marina hotel · Check in", event_type: "hotel_check_in", starts_at: "2026-09-28T09:30:00.000Z", ends_at: null, timezone: "Asia/Kolkata", location: null, notes: null, applies_to_all_travelers: true, is_all_day: false, timing_mode: "exact", scheduled_date: "2026-09-28", has_explicit_start_time: true, event_status: "planned", created_at: "2026-09-01T00:00:00.000Z" };
-const linkedFlight = { id: "dd406f17-d2c8-4e72-bdea-1f1239c2bded", booking_id: "booking-flight", segment_order: 0, airline_name: "Air India", flight_number: "AI 909", departure_airport_code: "BLR", departure_airport_name: "Bengaluru", arrival_airport_code: "DXB", arrival_airport_name: "Dubai" } as FlightLeg;
+const trip: Trip = {
+  id: "trip-1",
+  title: "Autumn trip",
+  destination_summary: "Singapore",
+  start_date: "2026-09-26",
+  end_date: "2026-10-12",
+  primary_timezone: "Asia/Kolkata",
+  base_currency: "INR",
+  status: "upcoming",
+  created_at: "2026-09-01T00:00:00.000Z",
+  updated_at: "2026-09-01T00:00:00.000Z"
+};
+const travelers: Traveler[] = [
+  {
+    id: "traveler-1",
+    trip_id: trip.id,
+    display_name: "Shantanu",
+    is_minor: false,
+    created_at: "2026-09-01T00:00:00.000Z"
+  }
+];
+const secondTraveler: Traveler = {
+  id: "traveler-2",
+  trip_id: trip.id,
+  display_name: "Mira",
+  is_minor: false,
+  created_at: "2026-09-01T00:00:00.000Z"
+};
+const anchor: ItineraryItem = {
+  id: "anchor-1",
+  trip_id: trip.id,
+  booking_id: "hotel-1",
+  title: "Marina hotel · Check in",
+  event_type: "hotel_check_in",
+  starts_at: "2026-09-28T09:30:00.000Z",
+  ends_at: null,
+  timezone: "Asia/Kolkata",
+  location: null,
+  notes: null,
+  applies_to_all_travelers: true,
+  is_all_day: false,
+  timing_mode: "exact",
+  scheduled_date: "2026-09-28",
+  has_explicit_start_time: true,
+  event_status: "planned",
+  created_at: "2026-09-01T00:00:00.000Z"
+};
+const linkedFlight = {
+  id: "dd406f17-d2c8-4e72-bdea-1f1239c2bded",
+  booking_id: "booking-flight",
+  segment_order: 0,
+  airline_name: "Air India",
+  flight_number: "AI 909",
+  departure_airport_code: "BLR",
+  departure_airport_name: "Bengaluru",
+  arrival_airport_code: "DXB",
+  arrival_airport_name: "Dubai"
+} as FlightLeg;
 
-function renderForm(withTravelers: Traveler[] = [], tripValue: Trip = trip, documentToAttach?: { id: string; title: string }) {
-  const client = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
-  const onClose = vi.fn(); const onAddDocument = vi.fn(); const user = userEvent.setup();
-  render(<QueryClientProvider client={client}><AddEventForm trip={tripValue} travelers={withTravelers} documentToAttach={documentToAttach} onClose={onClose} onAddDocument={onAddDocument} /></QueryClientProvider>);
+function renderForm(
+  withTravelers: Traveler[] = [],
+  tripValue: Trip = trip,
+  documentToAttach?: { id: string; title: string }
+) {
+  const client = new QueryClient({
+    defaultOptions: { mutations: { retry: false }, queries: { retry: false } }
+  });
+  const onClose = vi.fn();
+  const onAddDocument = vi.fn();
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider client={client}>
+      <AddEventForm
+        trip={tripValue}
+        travelers={withTravelers}
+        documentToAttach={documentToAttach}
+        onClose={onClose}
+        onAddDocument={onAddDocument}
+      />
+    </QueryClientProvider>
+  );
   return { user, onClose, onAddDocument };
 }
 
 describe("event form architecture", () => {
   beforeEach(() => {
-    vi.clearAllMocks(); mocks.listItinerary.mockResolvedValue([anchor]); mocks.addItineraryItem.mockResolvedValue({ ...anchor, id: "item-1", booking_id: null });
-    mocks.addBookedTimelineEvent.mockResolvedValue({ booking: { id: "booking-1" }, itinerary: [{ ...anchor, id: "item-1" }] });
-    mocks.addFlightBooking.mockResolvedValue({ booking: { id: "booking-1" }, flights: [], itinerary: { ...anchor, id: "item-1" } });
-    mocks.addJourneyBooking.mockResolvedValue({ booking: { id: "booking-1" }, legs: [], itinerary: { ...anchor, id: "item-1" } });
+    vi.clearAllMocks();
+    mocks.listItinerary.mockResolvedValue([anchor]);
+    mocks.addItineraryItem.mockResolvedValue({ ...anchor, id: "item-1", booking_id: null });
+    mocks.addBookedTimelineEvent.mockResolvedValue({
+      booking: { id: "booking-1" },
+      itinerary: [{ ...anchor, id: "item-1" }]
+    });
+    mocks.addFlightBooking.mockResolvedValue({
+      booking: { id: "booking-1" },
+      flights: [],
+      itinerary: { ...anchor, id: "item-1" }
+    });
+    mocks.addJourneyBooking.mockResolvedValue({
+      booking: { id: "booking-1" },
+      legs: [],
+      itinerary: { ...anchor, id: "item-1" }
+    });
     mocks.listFlightLegsForTrip.mockResolvedValue([linkedFlight]);
-    mocks.saveOptionalCostForCreatedEvent.mockResolvedValue(undefined); mocks.setItineraryItemStatus.mockResolvedValue(undefined); mocks.suggestCatalogValue.mockResolvedValue(undefined);
+    mocks.saveOptionalCostForCreatedEvent.mockResolvedValue(undefined);
+    mocks.setItineraryItemStatus.mockResolvedValue(undefined);
+    mocks.suggestCatalogValue.mockResolvedValue(undefined);
   });
 
   it("puts the frequent choices first in the approved order", () => {
     renderForm();
-    expect(screen.getAllByRole("button").slice(0, 8).map((button) => button.textContent?.replace(/\s+/g, " ").trim())).toEqual([
-      "FlightDirect or connected flights", "HotelA stay with check-in and checkout", "ActivityVisit, tour, ticket, or free time",
-      "BusCoach, shuttle, or local bus", "CabLocal ride, transfer, or outstation", "Ferry / boatPassenger or vehicle sailing",
-      "TrainRail plan, ticket, or connection", "MealLunch, dinner, or reservation"
+    expect(
+      screen
+        .getAllByRole("button")
+        .slice(0, 8)
+        .map((button) => button.textContent?.replace(/\s+/g, " ").trim())
+    ).toEqual([
+      "FlightDirect or connected flights",
+      "HotelA stay with check-in and checkout",
+      "ActivityVisit, tour, ticket, or free time",
+      "BusCoach, shuttle, or local bus",
+      "CabLocal ride, transfer, or outstation",
+      "Ferry / boatPassenger or vehicle sailing",
+      "TrainRail plan, ticket, or connection",
+      "MealLunch, dinner, or reservation"
     ]);
   });
 
   it("links a previously uploaded document after its new event is saved", async () => {
-    const { user, onAddDocument } = renderForm([], trip, { id: "document-1", title: "Museum admission · Everyone" });
-    expect(screen.getByText(/Create the timeline event for “Museum admission · Everyone”/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i }));
+    const { user, onAddDocument } = renderForm([], trip, {
+      id: "document-1",
+      title: "Museum admission · Everyone"
+    });
+    expect(
+      screen.getByText(/Create the timeline event for “Museum admission · Everyone”/)
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i })
+    );
     await user.type(screen.getByLabelText("Activity name"), "Museum visit");
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
 
-    await waitFor(() => expect(onAddDocument).toHaveBeenCalledWith(
-      { title: "Museum visit", itineraryItemId: "item-1", participantScope: "everyone", travelerIds: [] },
-      { documentId: "document-1" }
-    ));
+    await waitFor(() =>
+      expect(onAddDocument).toHaveBeenCalledWith(
+        {
+          title: "Museum visit",
+          itineraryItemId: "item-1",
+          participantScope: "everyone",
+          travelerIds: []
+        },
+        { documentId: "document-1" }
+      )
+    );
     expect(await screen.findByText("Document linked to this event.")).toBeInTheDocument();
   });
 
   it("keeps hotel times optional, validates checkout, and saves both milestone time flags", async () => {
     const { user } = renderForm();
-    await user.click(screen.getByRole("button", { name: /Hotel A stay with check-in and checkout/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Hotel A stay with check-in and checkout/i })
+    );
     expect(screen.getByLabelText("Check-in date")).toHaveValue("2026-09-26");
     expect(screen.getByLabelText("Checkout date")).toHaveValue("2026-09-27");
     expect(screen.getByLabelText("Printed check-in time (optional)")).toHaveValue("");
@@ -80,12 +280,30 @@ describe("event form architecture", () => {
     await user.type(screen.getByLabelText("Hotel / property name"), "Marina hotel");
     fireEvent.change(screen.getByLabelText("Checkout date"), { target: { value: "2026-09-26" } });
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Hotel checkout date and time must be after check-in");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Hotel checkout date and time must be after check-in"
+    );
     fireEvent.change(screen.getByLabelText("Checkout date"), { target: { value: "2026-09-27" } });
-    fireEvent.change(screen.getByLabelText("Printed check-in time (optional)"), { target: { value: "15:00" } });
-    fireEvent.change(screen.getByLabelText("Printed checkout time (optional)"), { target: { value: "11:00" } });
+    fireEvent.change(screen.getByLabelText("Printed check-in time (optional)"), {
+      target: { value: "15:00" }
+    });
+    fireEvent.change(screen.getByLabelText("Printed checkout time (optional)"), {
+      target: { value: "11:00" }
+    });
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
-    await waitFor(() => expect(mocks.addBookedTimelineEvent).toHaveBeenCalledWith(expect.objectContaining({ title: "Marina hotel", reservationState: "booked", participantScope: "everyone", startsAt: "2026-09-26T09:30:00.000Z", endsAt: "2026-09-27T05:30:00.000Z", hotelCheckInHasTime: true, hotelCheckoutHasTime: true })));
+    await waitFor(() =>
+      expect(mocks.addBookedTimelineEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Marina hotel",
+          reservationState: "booked",
+          participantScope: "everyone",
+          startsAt: "2026-09-26T09:30:00.000Z",
+          endsAt: "2026-09-27T05:30:00.000Z",
+          hotelCheckInHasTime: true,
+          hotelCheckoutHasTime: true
+        })
+      )
+    );
     expect(await screen.findByRole("heading", { name: "Marina hotel" })).toBeInTheDocument();
   });
 
@@ -108,14 +326,47 @@ describe("event form architecture", () => {
     await user.click(screen.getByText("Traveler ticket details"));
     await user.type(screen.getByLabelText("Seat"), "14A");
     await user.type(screen.getByLabelText("Boarding group"), "2");
-    const ticket = new window.File(["%PDF-flight-ticket"], "flight-ticket.pdf", { type: "application/pdf" });
+    const ticket = new window.File(["%PDF-flight-ticket"], "flight-ticket.pdf", {
+      type: "application/pdf"
+    });
     await user.upload(screen.getByLabelText<HTMLInputElement>("Official flight document"), ticket);
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
-    await waitFor(() => expect(mocks.addFlightBooking).toHaveBeenCalledWith(expect.objectContaining({ referenceCode: "PNR123", participantScope: "everyone", travelerIds: [], legs: [expect.objectContaining({ airlineName: "Air India", departureCode: "BLR", arrivalCode: "DXB", boardingLeadMinutes: 45, travelerAllocations: [expect.objectContaining({ travelerId: "traveler-1", seat: "14A", boardingGroup: "2" })] })] })));
-    await waitFor(() => expect(onAddDocument).toHaveBeenCalledWith(
-      { title: "Flight to Dubai", bookingId: "booking-1", itineraryItemId: "item-1", participantScope: "everyone", travelerIds: [] },
-      { file: ticket, kind: "flight_ticket" }
-    ));
+    await waitFor(() =>
+      expect(mocks.addFlightBooking).toHaveBeenCalledWith(
+        expect.objectContaining({
+          referenceCode: "PNR123",
+          participantScope: "everyone",
+          travelerIds: [],
+          legs: [
+            expect.objectContaining({
+              airlineName: "Air India",
+              departureCode: "BLR",
+              arrivalCode: "DXB",
+              boardingLeadMinutes: 45,
+              travelerAllocations: [
+                expect.objectContaining({
+                  travelerId: "traveler-1",
+                  seat: "14A",
+                  boardingGroup: "2"
+                })
+              ]
+            })
+          ]
+        })
+      )
+    );
+    await waitFor(() =>
+      expect(onAddDocument).toHaveBeenCalledWith(
+        {
+          title: "Flight to Dubai",
+          bookingId: "booking-1",
+          itineraryItemId: "item-1",
+          participantScope: "everyone",
+          travelerIds: []
+        },
+        { file: ticket, kind: "flight_ticket" }
+      )
+    );
   });
 
   it("starts a connecting flight with two legs and validates chronological connections", async () => {
@@ -124,9 +375,21 @@ describe("event form architecture", () => {
     await user.click(screen.getByRole("radio", { name: "Connecting flights" }));
     expect(screen.getAllByLabelText("Flight number")).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Add connecting flight" })).toBeInTheDocument();
-    expect(() => assertSequentialConnectionTimes([{ departureAt: "2026-09-26T02:00:00.000Z", arrivalAt: "2026-09-26T05:00:00.000Z" }, { departureAt: "2026-09-26T05:00:00.000Z", arrivalAt: "2026-09-26T08:00:00.000Z" }], "flight")).toThrow("Connection 2 must depart after the previous flight arrives.");
-    expect(suggestedFlightLocalTime("2026-09-26T12:00", "Asia/Dubai", "Asia/Dubai", 120)).toBe("2026-09-26T14:00");
-    expect(suggestedFlightLocalTime("2026-09-26T14:00", "Asia/Dubai", "Asia/Singapore", 180)).toBe("2026-09-26T21:00");
+    expect(() =>
+      assertSequentialConnectionTimes(
+        [
+          { departureAt: "2026-09-26T02:00:00.000Z", arrivalAt: "2026-09-26T05:00:00.000Z" },
+          { departureAt: "2026-09-26T05:00:00.000Z", arrivalAt: "2026-09-26T08:00:00.000Z" }
+        ],
+        "flight"
+      )
+    ).toThrow("Connection 2 must depart after the previous flight arrives.");
+    expect(suggestedFlightLocalTime("2026-09-26T12:00", "Asia/Dubai", "Asia/Dubai", 120)).toBe(
+      "2026-09-26T14:00"
+    );
+    expect(suggestedFlightLocalTime("2026-09-26T14:00", "Asia/Dubai", "Asia/Singapore", 180)).toBe(
+      "2026-09-26T21:00"
+    );
   });
 
   it("uses a compact domestic bus form, optional arrival, and per-traveler seats", async () => {
@@ -155,12 +418,31 @@ describe("event form architecture", () => {
     await user.type(screen.getByLabelText("Seat"), "5");
     expect(screen.queryByLabelText(/Coach|Cabin/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
-    await waitFor(() => expect(mocks.addJourneyBooking).toHaveBeenCalledWith(expect.objectContaining({ mode: "bus", reservationState: "booked", journeyScope: "domestic", legs: [expect.objectContaining({ arrivalAt: undefined, details: expect.objectContaining({ kind: "bus" }), travelerAllocations: [expect.objectContaining({ travelerId: "traveler-1", seatOrBerth: "5" })] })] })));
+    await waitFor(() =>
+      expect(mocks.addJourneyBooking).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "bus",
+          reservationState: "booked",
+          journeyScope: "domestic",
+          legs: [
+            expect.objectContaining({
+              arrivalAt: undefined,
+              details: expect.objectContaining({ kind: "bus" }),
+              travelerAllocations: [
+                expect.objectContaining({ travelerId: "traveler-1", seatOrBerth: "5" })
+              ]
+            })
+          ]
+        })
+      )
+    );
   });
 
   it("always accepts ferry passenger references but only asks for seats and cabins when assigned", async () => {
     const { user } = renderForm(travelers);
-    await user.click(screen.getByRole("button", { name: /Ferry \/ boat Passenger or vehicle sailing/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Ferry \/ boat Passenger or vehicle sailing/i })
+    );
     await user.click(screen.getByRole("radio", { name: /^Ticket booked/ }));
     expect(screen.getByText("Traveler ticket details")).toBeInTheDocument();
     await user.click(screen.getByText("Traveler ticket details"));
@@ -177,7 +459,9 @@ describe("event form architecture", () => {
 
   it("finishes a booked ferry save with a clear confirmation warning when no reference was recorded", async () => {
     const { user } = renderForm();
-    await user.click(screen.getByRole("button", { name: /Ferry \/ boat Passenger or vehicle sailing/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Ferry \/ boat Passenger or vehicle sailing/i })
+    );
     await user.click(screen.getByRole("radio", { name: /^Ticket booked/ }));
     await user.type(screen.getByLabelText("Timeline title"), "Ferry to Batam");
     await user.type(screen.getByLabelText("Ferry operator"), "Batam Fast");
@@ -186,45 +470,75 @@ describe("event form architecture", () => {
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
 
     const completion = await screen.findByRole("status");
-    expect(completion).toHaveTextContent(/needs an official confirmation or ticket, or a booking reference/i);
+    expect(completion).toHaveTextContent(
+      /needs an official confirmation or ticket, or a booking reference/i
+    );
     expect(screen.getByRole("heading", { name: "Ferry to Batam" })).toBeInTheDocument();
   });
 
   it("keeps the train name visible for a plan and reveals ticket-only vocabulary after booking", async () => {
     const { user } = renderForm();
-    await user.click(screen.getByRole("button", { name: /Train Rail plan, ticket, or connection/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Train Rail plan, ticket, or connection/i })
+    );
     expect(screen.getByText("train details", { exact: false })).toBeInTheDocument();
-    expect(screen.getByLabelText("Train name (optional)")).toHaveAttribute("placeholder", "Enter the train name if it is already known");
+    expect(screen.getByLabelText("Train name (optional)")).toHaveAttribute(
+      "placeholder",
+      "Enter the train name if it is already known"
+    );
     expect(screen.queryByLabelText(/Booked from station/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("radio", { name: /^Ticket booked/ }));
     expect(screen.getByLabelText("PNR or booking reference (optional)")).toBeInTheDocument();
     await user.click(screen.getByText("Train ticket details"));
-    expect(screen.getByLabelText("Booked from station (optional)")).toHaveAttribute("placeholder", "Only add this if it differs from the boarding station");
+    expect(screen.getByLabelText("Booked from station (optional)")).toHaveAttribute(
+      "placeholder",
+      "Only add this if it differs from the boarding station"
+    );
   });
 
   it("saves a known train name before the ticket is booked", async () => {
     const { user } = renderForm();
-    await user.click(screen.getByRole("button", { name: /Train Rail plan, ticket, or connection/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Train Rail plan, ticket, or connection/i })
+    );
     await user.type(screen.getByLabelText("Timeline title"), "Train to Jaipur");
     await user.type(screen.getByLabelText("Train name (optional)"), "Ajmer Shatabdi");
     await user.type(screen.getByLabelText("Boarding station"), "New Delhi");
     await user.type(screen.getByLabelText("Destination station"), "Jaipur");
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
-    await waitFor(() => expect(mocks.addJourneyBooking).toHaveBeenCalledWith(expect.objectContaining({
-      mode: "train",
-      reservationState: "planned",
-      legs: [expect.objectContaining({ details: expect.objectContaining({ kind: "train", train_name: "Ajmer Shatabdi" }) })]
-    })));
+    await waitFor(() =>
+      expect(mocks.addJourneyBooking).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "train",
+          reservationState: "planned",
+          legs: [
+            expect.objectContaining({
+              details: expect.objectContaining({ kind: "train", train_name: "Ajmer Shatabdi" })
+            })
+          ]
+        })
+      )
+    );
   });
 
   it("keeps cab free of flight-style scope, connection, platform, and seat fields", async () => {
     const { user } = renderForm();
-    await user.click(screen.getByRole("button", { name: /Cab Local ride, transfer, or outstation/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Cab Local ride, transfer, or outstation/i })
+    );
     expect(screen.getByRole("radio", { name: "Local ride" })).toBeChecked();
     expect(screen.getByRole("radio", { name: /^Need a cab/ })).toBeChecked();
-    expect(screen.queryByRole("radio", { name: /Domestic|International|Direct|Connecting/ })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/Service number|Seat|Platform|Boarding lead/)).not.toBeInTheDocument();
-    expect(within(screen.getByLabelText("Timing")).getAllByRole("option").map((option) => option.textContent)).toEqual(["Exact date and time", "Before or after another event"]);
+    expect(
+      screen.queryByRole("radio", { name: /Domestic|International|Direct|Connecting/ })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/Service number|Seat|Platform|Boarding lead/)
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText("Timing"))
+        .getAllByRole("option")
+        .map((option) => option.textContent)
+    ).toEqual(["Exact date and time", "Before or after another event"]);
     expect(screen.getByLabelText("Pickup")).toBeInTheDocument();
     expect(screen.getByLabelText("Drop-off")).toBeInTheDocument();
     await user.click(screen.getByRole("radio", { name: /^Booked in advance/ }));
@@ -240,25 +554,43 @@ describe("event form architecture", () => {
 
   it("links an airport-transfer cab using a readable flight picker", async () => {
     const { user } = renderForm();
-    await user.click(screen.getByRole("button", { name: /Cab Local ride, transfer, or outstation/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Cab Local ride, transfer, or outstation/i })
+    );
     await user.click(screen.getByRole("radio", { name: "Airport transfer" }));
     await user.click(screen.getByText("More ride details"));
-    const flightOption = await screen.findByRole("option", { name: "Air India AI 909 · BLR → DXB" });
+    const flightOption = await screen.findByRole("option", {
+      name: "Air India AI 909 · BLR → DXB"
+    });
     expect(flightOption).toHaveValue(linkedFlight.id);
     await user.selectOptions(screen.getByLabelText("Linked flight (optional)"), linkedFlight.id);
     await user.type(screen.getByLabelText("Timeline title"), "Airport pickup");
     await user.type(screen.getByLabelText("Pickup"), "Dubai Airport");
     await user.type(screen.getByLabelText("Drop-off"), "Marina hotel");
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
-    await waitFor(() => expect(mocks.addJourneyBooking).toHaveBeenCalledWith(expect.objectContaining({
-      mode: "cab",
-      legs: [expect.objectContaining({ details: expect.objectContaining({ kind: "cab", ride_type: "airport_transfer", linked_flight_leg_id: linkedFlight.id }) })]
-    })));
+    await waitFor(() =>
+      expect(mocks.addJourneyBooking).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "cab",
+          legs: [
+            expect.objectContaining({
+              details: expect.objectContaining({
+                kind: "cab",
+                ride_type: "airport_transfer",
+                linked_flight_leg_id: linkedFlight.id
+              })
+            })
+          ]
+        })
+      )
+    );
   });
 
   it("preserves a cab's relative placement and optional duration in its timeline item", async () => {
     const { user } = renderForm();
-    await user.click(screen.getByRole("button", { name: /Cab Local ride, transfer, or outstation/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Cab Local ride, transfer, or outstation/i })
+    );
     await user.type(screen.getByLabelText("Timeline title"), "Cab after checkout");
     await user.type(screen.getByLabelText("Pickup"), "Hotel");
     await user.type(screen.getByLabelText("Drop-off"), "Station");
@@ -267,15 +599,19 @@ describe("event form architecture", () => {
     await user.type(screen.getByLabelText("Duration (optional)"), "30");
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
 
-    await waitFor(() => expect(mocks.addJourneyBooking).toHaveBeenCalledWith(expect.objectContaining({
-      itineraryTiming: expect.objectContaining({
-        timingMode: "relative",
-        anchorItineraryItemId: anchor.id,
-        relativePosition: "after",
-        hasExplicitStartTime: false,
-        durationMinutes: 30
-      })
-    })));
+    await waitFor(() =>
+      expect(mocks.addJourneyBooking).toHaveBeenCalledWith(
+        expect.objectContaining({
+          itineraryTiming: expect.objectContaining({
+            timingMode: "relative",
+            anchorItineraryItemId: anchor.id,
+            relativePosition: "after",
+            hasExplicitStartTime: false,
+            durationMinutes: 30
+          })
+        })
+      )
+    );
   });
 
   it("derives a booked meal party size from included travelers while keeping it editable", async () => {
@@ -290,61 +626,94 @@ describe("event form architecture", () => {
     await user.type(partySize, "5");
     await user.type(screen.getByLabelText("Meal or restaurant name"), "Dinner at Candlenut");
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
-    await waitFor(() => expect(mocks.addBookedTimelineEvent).toHaveBeenCalledWith(expect.objectContaining({
-      type: "restaurant",
-      bookingDetails: expect.objectContaining({ party_size: 5 })
-    })));
+    await waitFor(() =>
+      expect(mocks.addBookedTimelineEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "restaurant",
+          bookingDetails: expect.objectContaining({ party_size: 5 })
+        })
+      )
+    );
   });
 
   it("persists optional preparation place, navigation, provider, and manage link in supported structured fields", async () => {
     const { user } = renderForm();
-    await user.click(screen.getByRole("button", { name: /Preparation A dated or flexible pre-trip task/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Preparation A dated or flexible pre-trip task/i })
+    );
     await user.type(screen.getByLabelText("Task name"), "Collect visas");
     await user.click(screen.getByText("More details"));
     await user.type(screen.getByLabelText("Place (optional)"), "Visa centre");
-    await user.type(screen.getByLabelText("Navigation (Google Maps link, optional)"), "https://maps.google.com/visa-centre");
+    await user.type(
+      screen.getByLabelText("Navigation (Google Maps link, optional)"),
+      "https://maps.google.com/visa-centre"
+    );
     await user.type(screen.getByLabelText("Provider or organization (optional)"), "VFS Global");
-    await user.type(screen.getByLabelText("External booking or manage link (optional)"), "https://example.com/manage-appointment");
+    await user.type(
+      screen.getByLabelText("External booking or manage link (optional)"),
+      "https://example.com/manage-appointment"
+    );
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
-    await waitFor(() => expect(mocks.addBookedTimelineEvent).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: "preparation",
-      type: "other",
-      reservationState: "planned",
-      provider: "VFS Global",
-      location: "Visa centre",
-      mapUrl: "https://maps.google.com/visa-centre",
-      bookedViaUrl: "https://example.com/manage-appointment"
-    })));
+    await waitFor(() =>
+      expect(mocks.addBookedTimelineEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: "preparation",
+          type: "other",
+          reservationState: "planned",
+          provider: "VFS Global",
+          location: "Visa centre",
+          mapUrl: "https://maps.google.com/visa-centre",
+          bookedViaUrl: "https://example.com/manage-appointment"
+        })
+      )
+    );
   });
 
   it("keeps preparation saved and reports a non-blocking warning when its optional cost fails", async () => {
-    mocks.saveOptionalCostForCreatedEvent.mockResolvedValue("The event is saved, but its cost could not be added. Add the cost from this event later.");
+    mocks.saveOptionalCostForCreatedEvent.mockResolvedValue(
+      "The event is saved, but its cost could not be added. Add the cost from this event later."
+    );
     const { user } = renderForm();
-    await user.click(screen.getByRole("button", { name: /Preparation A dated or flexible pre-trip task/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Preparation A dated or flexible pre-trip task/i })
+    );
     await user.type(screen.getByLabelText("Task name"), "Visa appointment");
     await user.click(screen.getByText("More details"));
     await user.type(screen.getByLabelText("Provider or organization (optional)"), "VFS Global");
     await user.click(screen.getByText("Cost"));
-    expect(screen.queryByRole("radio", { name: /Add later|Free|Add amount/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("radio", { name: /Add later|Free|Add amount/ })
+    ).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("Amount (optional)"), "2500");
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
 
     expect(await screen.findByRole("heading", { name: "Visa appointment" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/event is saved, but its cost could not be added/i);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /event is saved, but its cost could not be added/i
+    );
     expect(mocks.addBookedTimelineEvent).toHaveBeenCalledTimes(1);
-    expect(mocks.saveOptionalCostForCreatedEvent).toHaveBeenCalledWith(expect.objectContaining({
-      bookingId: "booking-1",
-      itineraryItemId: "item-1",
-      amountMinor: 250000
-    }));
+    expect(mocks.saveOptionalCostForCreatedEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: "booking-1",
+        itineraryItemId: "item-1",
+        amountMinor: 250000
+      })
+    );
   });
 
   it("keeps an event cost optional and hides traveler splitting while the trip setting is off", async () => {
-    const { user } = renderForm([travelers[0], secondTraveler], { ...trip, expense_splitting_enabled: false });
-    await user.click(screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i }));
+    const { user } = renderForm([travelers[0], secondTraveler], {
+      ...trip,
+      expense_splitting_enabled: false
+    });
+    await user.click(
+      screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i })
+    );
     await user.click(screen.getByText("Cost"));
 
-    expect(screen.getByText(/leave it blank and add the cost from the event later/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/leave it blank and add the cost from the event later/i)
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Amount (optional)")).not.toBeRequired();
     await user.click(screen.getByText("Payment and sharing (optional)"));
     expect(screen.queryByRole("radio", { name: "Split among everyone" })).not.toBeInTheDocument();
@@ -352,8 +721,13 @@ describe("event form architecture", () => {
   });
 
   it("shows traveler split choices in an event cost only when the trip setting is on", async () => {
-    const { user } = renderForm([travelers[0], secondTraveler], { ...trip, expense_splitting_enabled: true });
-    await user.click(screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i }));
+    const { user } = renderForm([travelers[0], secondTraveler], {
+      ...trip,
+      expense_splitting_enabled: true
+    });
+    await user.click(
+      screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i })
+    );
     await user.click(screen.getByText("Cost"));
     await user.click(screen.getByText("Payment and sharing (optional)"));
 
@@ -363,36 +737,64 @@ describe("event form architecture", () => {
 
   it("keeps a relative activity duration and only exposes booking fields after Booked is selected", async () => {
     const { user } = renderForm();
-    await user.click(screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i })
+    );
     expect(screen.queryByLabelText(/Booking reference/)).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("Activity name"), "Museum visit");
     await user.selectOptions(screen.getByLabelText("Timing"), "relative");
-    await waitFor(() => expect(screen.getByRole("option", { name: anchor.title })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("option", { name: anchor.title })).toBeInTheDocument()
+    );
     await user.selectOptions(screen.getByLabelText("Event"), anchor.id);
     await user.type(screen.getByLabelText("Duration (optional)"), "90");
     await user.click(screen.getByRole("radio", { name: /^Booked/ }));
     expect(screen.getByLabelText("Booking reference (optional)")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
-    await waitFor(() => expect(mocks.addBookedTimelineEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "activity", title: "Museum visit", timingMode: "relative", anchorItineraryItemId: anchor.id, relativePosition: "after", hasExplicitStartTime: false, durationMinutes: 90, reservationState: "booked" })));
+    await waitFor(() =>
+      expect(mocks.addBookedTimelineEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "activity",
+          title: "Museum visit",
+          timingMode: "relative",
+          anchorItineraryItemId: anchor.id,
+          relativePosition: "after",
+          hasExplicitStartTime: false,
+          durationMinutes: 90,
+          reservationState: "booked"
+        })
+      )
+    );
   });
 
   it("keeps useful activity instructions when the booking will be added later", async () => {
     const { user } = renderForm();
-    await user.click(screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i })
+    );
     await user.type(screen.getByLabelText("Activity name"), "Street-art walk");
     await user.click(screen.getByText("More details"));
-    await user.type(screen.getByLabelText("Entry or meeting instructions (optional)"), "Meet outside the east gate");
+    await user.type(
+      screen.getByLabelText("Entry or meeting instructions (optional)"),
+      "Meet outside the east gate"
+    );
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
 
-    await waitFor(() => expect(mocks.addItineraryItem).toHaveBeenCalledWith(expect.objectContaining({
-      title: "Street-art walk",
-      notes: "Entry / meeting: Meet outside the east gate"
-    })));
+    await waitFor(() =>
+      expect(mocks.addItineraryItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Street-art walk",
+          notes: "Entry / meeting: Meet outside the east gate"
+        })
+      )
+    );
   });
 
   it("adapts Other transport to its subtype and keeps Walk free of booking fields", async () => {
     const { user } = renderForm();
-    await user.click(screen.getByRole("button", { name: /Other transport Metro, rental, transfer, or walk/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Other transport Metro, rental, transfer, or walk/i })
+    );
     await user.selectOptions(screen.getByLabelText("Transport type"), "walk");
     expect(screen.queryByRole("group", { name: "Booking status" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Booking reference/)).not.toBeInTheDocument();
@@ -400,18 +802,36 @@ describe("event form architecture", () => {
     await user.type(screen.getByLabelText("From"), "Hotel");
     await user.type(screen.getByLabelText("To"), "Museum");
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
-    await waitFor(() => expect(mocks.addItineraryItem).toHaveBeenCalledWith(expect.objectContaining({ eventType: "transport", title: "Walk to the museum", location: "Hotel → Museum", notes: "Walk" })));
+    await waitFor(() =>
+      expect(mocks.addItineraryItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: "transport",
+          title: "Walk to the museum",
+          location: "Hotel → Museum",
+          notes: "Walk"
+        })
+      )
+    );
   });
 
   it("marks the explicit Already took this ride cab state as done", async () => {
     const { user } = renderForm();
-    await user.click(screen.getByRole("button", { name: /Cab Local ride, transfer, or outstation/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Cab Local ride, transfer, or outstation/i })
+    );
     await user.click(screen.getByRole("radio", { name: /^Already took this ride/ }));
     await user.type(screen.getByLabelText("Timeline title"), "Airport taxi");
     await user.type(screen.getByLabelText("Pickup"), "Terminal 3");
     await user.type(screen.getByLabelText("Drop-off"), "Hotel");
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
-    await waitFor(() => expect(mocks.addJourneyBooking).toHaveBeenCalledWith(expect.objectContaining({ mode: "cab", reservationState: "walk_up" })));
-    expect(mocks.setItineraryItemStatus).toHaveBeenCalledWith(expect.objectContaining({ id: "item-1" }), "done");
+    await waitFor(() =>
+      expect(mocks.addJourneyBooking).toHaveBeenCalledWith(
+        expect.objectContaining({ mode: "cab", reservationState: "walk_up" })
+      )
+    );
+    expect(mocks.setItineraryItemStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "item-1" }),
+      "done"
+    );
   });
 });

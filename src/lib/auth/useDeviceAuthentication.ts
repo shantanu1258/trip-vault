@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabase/client";
-import { offlineDeviceProfileId, rememberDeviceProfile, resolveDeviceProfileId } from "./deviceSession";
+import {
+  offlineDeviceProfileId,
+  rememberDeviceProfile,
+  resolveDeviceProfileId
+} from "./deviceSession";
 
 export function useDeviceAuthentication() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);

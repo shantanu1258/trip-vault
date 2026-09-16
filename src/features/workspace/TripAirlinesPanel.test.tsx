@@ -4,22 +4,24 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  listTripAirlines: vi.fn().mockResolvedValue([{
-    id: "airline-1",
-    trip_id: "trip-1",
-    name: "Air India",
-    iata_code: "AI",
-    icao_code: "AIC",
-    check_in_url_template: null,
-    manage_booking_url_template: null,
-    status_url_template: null,
-    tracker_url_template: null,
-    brand_color: "#142f31",
-    metadata_source: "catalog",
-    source_catalog_key: "air-india",
-    source_config_version: 1,
-    version: 1
-  }]),
+  listTripAirlines: vi.fn().mockResolvedValue([
+    {
+      id: "airline-1",
+      trip_id: "trip-1",
+      name: "Air India",
+      iata_code: "AI",
+      icao_code: "AIC",
+      check_in_url_template: null,
+      manage_booking_url_template: null,
+      status_url_template: null,
+      tracker_url_template: null,
+      brand_color: "#142f31",
+      metadata_source: "catalog",
+      source_catalog_key: "air-india",
+      source_config_version: 1,
+      version: 1
+    }
+  ]),
   updateTripAirline: vi.fn()
 }));
 
@@ -32,7 +34,11 @@ import { TripAirlinesPanel } from "./TripAirlinesPanel";
 
 function renderPanel(canEdit: boolean) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={queryClient}><TripAirlinesPanel tripId="trip-1" canEdit={canEdit} /></QueryClientProvider>);
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TripAirlinesPanel tripId="trip-1" canEdit={canEdit} />
+    </QueryClientProvider>
+  );
 }
 
 describe("trip airline cards", () => {
@@ -113,14 +119,16 @@ describe("trip airline cards", () => {
 
     await user.click(screen.getByRole("button", { name: "Save airline" }));
     expect(mocks.updateTripAirline).toHaveBeenCalledOnce();
-    expect(mocks.updateTripAirline).toHaveBeenCalledWith(expect.objectContaining({
-      id: "airline-2",
-      name: "Singapore Airlines",
-      iata_code: "SQ",
-      icao_code: "SIA",
-      tracker_url_template: null,
-      brand_color: "#5c0632",
-      version: 4
-    }));
+    expect(mocks.updateTripAirline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "airline-2",
+        name: "Singapore Airlines",
+        iata_code: "SQ",
+        icao_code: "SIA",
+        tracker_url_template: null,
+        brand_color: "#5c0632",
+        version: 4
+      })
+    );
   });
 });

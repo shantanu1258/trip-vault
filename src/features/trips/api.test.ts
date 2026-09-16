@@ -33,7 +33,13 @@ vi.mock("./participantSync", () => ({
   queueBookingParticipantSync: vi.fn()
 }));
 
-import { cleanupQueuedTripDocuments, createTrip, deleteTripPermanently, getTrip, linkBookingToItineraryItem } from "./api";
+import {
+  cleanupQueuedTripDocuments,
+  createTrip,
+  deleteTripPermanently,
+  getTrip,
+  linkBookingToItineraryItem
+} from "./api";
 import type { ItineraryItem, Trip } from "./types";
 
 describe("trip creation", () => {
@@ -56,11 +62,13 @@ describe("trip creation", () => {
     });
 
     expect(mocks.from).toHaveBeenCalledWith("trips");
-    expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({
-      id: trip.id,
-      created_by: "57468f77-4be5-498f-9995-a085db5dc334",
-      title: "October Trip"
-    }));
+    expect(mocks.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: trip.id,
+        created_by: "57468f77-4be5-498f-9995-a085db5dc334",
+        title: "October Trip"
+      })
+    );
     expect(trip).toEqual(expect.objectContaining({ version: 1, deleted_at: null }));
     expect(mocks.cacheEntity).toHaveBeenCalledWith("trips", trip);
   });
@@ -75,7 +83,9 @@ describe("trip lookup", () => {
     const select = vi.fn().mockReturnValue({ eq });
     mocks.from.mockReturnValue({ select });
 
-    await expect(getTrip("deleted-trip")).rejects.toThrow("This trip no longer exists or you no longer have access to it.");
+    await expect(getTrip("deleted-trip")).rejects.toThrow(
+      "This trip no longer exists or you no longer have access to it."
+    );
 
     expect(maybeSingle).toHaveBeenCalledOnce();
   });
@@ -86,19 +96,40 @@ describe("temporary permanent trip deletion", () => {
     Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
     mocks.localProfileId.mockResolvedValue("owner-user");
     const relationshipError = new Error("stop after checking the relationship");
-    const versionSelect = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: relationshipError }) });
+    const versionSelect = vi
+      .fn()
+      .mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: relationshipError }) });
     mocks.from.mockImplementation((table: string) => {
-      if (table === "trip_members") return { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { role: "owner" }, error: null }) }) }) }) };
+      if (table === "trip_members")
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: vi.fn().mockResolvedValue({ data: { role: "owner" }, error: null })
+              })
+            })
+          })
+        };
       if (table === "document_versions") return { select: versionSelect };
       throw new Error(`Unexpected table ${table}`);
     });
     const trip: Trip = {
-      id: "trip-1", title: "Test trip", destination_summary: "Dubai", start_date: "2026-09-20", end_date: "2026-09-25",
-      primary_timezone: "Asia/Kolkata", base_currency: "INR", status: "upcoming", created_at: "", updated_at: ""
+      id: "trip-1",
+      title: "Test trip",
+      destination_summary: "Dubai",
+      start_date: "2026-09-20",
+      end_date: "2026-09-25",
+      primary_timezone: "Asia/Kolkata",
+      base_currency: "INR",
+      status: "upcoming",
+      created_at: "",
+      updated_at: ""
     };
 
     await expect(deleteTripPermanently(trip)).rejects.toThrow(relationshipError);
-    expect(versionSelect).toHaveBeenCalledWith("id,storage_bucket,storage_path,source_upload_id,documents!document_versions_document_id_fkey!inner(trip_id)");
+    expect(versionSelect).toHaveBeenCalledWith(
+      "id,storage_bucket,storage_path,source_upload_id,documents!document_versions_document_id_fkey!inner(trip_id)"
+    );
   });
 });
 
@@ -129,15 +160,39 @@ describe("activity booking linking", () => {
       created_at: "2026-09-01T00:00:00.000Z"
     };
     const linked = { ...item, booking_id: "booking-1", version: 8 };
-    const synchronizedBooking = { id: "booking-1", trip_id: "trip-1", participant_scope: "selected" };
-    mocks.syncBookingParticipants.mockResolvedValue({ booking: synchronizedBooking, itinerary_items: [linked] });
+    const synchronizedBooking = {
+      id: "booking-1",
+      trip_id: "trip-1",
+      participant_scope: "selected"
+    };
+    mocks.syncBookingParticipants.mockResolvedValue({
+      booking: synchronizedBooking,
+      itinerary_items: [linked]
+    });
 
-    await expect(linkBookingToItineraryItem(item, "booking-1", { participantScope: "selected", travelerIds: ["traveler-1"] })).resolves.toEqual(linked);
+    await expect(
+      linkBookingToItineraryItem(item, "booking-1", {
+        participantScope: "selected",
+        travelerIds: ["traveler-1"]
+      })
+    ).resolves.toEqual(linked);
 
-    expect(mocks.syncBookingParticipants).toHaveBeenCalledWith({ bookingId: "booking-1", participantScope: "selected", travelerIds: ["traveler-1"], itineraryItemId: "activity-1", itineraryVersion: 7 });
+    expect(mocks.syncBookingParticipants).toHaveBeenCalledWith({
+      bookingId: "booking-1",
+      participantScope: "selected",
+      travelerIds: ["traveler-1"],
+      itineraryItemId: "activity-1",
+      itineraryVersion: 7
+    });
     expect(mocks.cacheEntity).toHaveBeenCalledWith("bookings:trip-1", synchronizedBooking);
     expect(mocks.cacheEntity).toHaveBeenCalledWith("itinerary:trip-1", linked);
-    expect(mocks.cacheParticipantAssignments).toHaveBeenCalledWith({ tripId: "trip-1", bookingId: "booking-1", itineraryItemIds: ["activity-1"], participantScope: "selected", travelerIds: ["traveler-1"] });
+    expect(mocks.cacheParticipantAssignments).toHaveBeenCalledWith({
+      tripId: "trip-1",
+      bookingId: "booking-1",
+      itineraryItemIds: ["activity-1"],
+      participantScope: "selected",
+      travelerIds: ["traveler-1"]
+    });
   });
 
   it("keeps a committed booking link successful when the local cache write fails", async () => {
@@ -162,10 +217,18 @@ describe("activity booking linking", () => {
     const linked = { ...item, booking_id: "booking-1", version: 8 };
     const cacheError = new Error("IndexedDB quota exceeded");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    mocks.syncBookingParticipants.mockResolvedValue({ booking: { id: "booking-1", trip_id: "trip-1" }, itinerary_items: [linked] });
+    mocks.syncBookingParticipants.mockResolvedValue({
+      booking: { id: "booking-1", trip_id: "trip-1" },
+      itinerary_items: [linked]
+    });
     mocks.cacheEntity.mockRejectedValueOnce(cacheError);
 
-    await expect(linkBookingToItineraryItem(item, "booking-1", { participantScope: "everyone", travelerIds: [] })).resolves.toEqual(linked);
+    await expect(
+      linkBookingToItineraryItem(item, "booking-1", {
+        participantScope: "everyone",
+        travelerIds: []
+      })
+    ).resolves.toEqual(linked);
 
     expect(warn).toHaveBeenCalledWith(
       "Booking was attached, but the local itinerary cache could not be refreshed.",
@@ -189,7 +252,9 @@ describe("queued legacy trip-document cleanup", () => {
 
     expect(removeObjects).toHaveBeenCalledWith(rows.map((row) => row.storage_path));
     expect(removeQueueRows).toHaveBeenCalledWith(rows.map((row) => row.id));
-    expect(removeObjects.mock.invocationCallOrder[0]).toBeLessThan(removeQueueRows.mock.invocationCallOrder[0]);
+    expect(removeObjects.mock.invocationCallOrder[0]).toBeLessThan(
+      removeQueueRows.mock.invocationCallOrder[0]
+    );
   });
 
   it("retains every queue row when Storage cleanup fails", async () => {

@@ -35,7 +35,15 @@ export type OutboxOperation = {
   profileId: string;
   entityType: string;
   entityId: string;
-  operation: "create" | "upsert" | "update" | "delete" | "rpc" | "upload_document" | "upload_account_document" | "associate_account_document";
+  operation:
+    | "create"
+    | "upsert"
+    | "update"
+    | "delete"
+    | "rpc"
+    | "upload_document"
+    | "upload_account_document"
+    | "associate_account_document";
   payload: unknown;
   baseVersion?: number;
   dependsOn: string[];
@@ -48,7 +56,14 @@ export type OutboxOperation = {
 export type OfflineManifest = {
   profileId: string;
   tripId: string;
-  state: "not_requested" | "preparing" | "essentials_ready" | "ready" | "stale" | "failed" | "insufficient_space";
+  state:
+    | "not_requested"
+    | "preparing"
+    | "essentials_ready"
+    | "ready"
+    | "stale"
+    | "failed"
+    | "insufficient_space";
   expectedVersionIds: string[];
   verifiedVersionIds: string[];
   checkedAt: string;
@@ -72,7 +87,8 @@ class TripVaultDatabase extends Dexie {
       settings: "&key, updatedAt",
       localDocuments: "&[profileId+documentVersionId], profileId, documentVersionId, verifiedAt",
       localFileBlobs: "&[profileId+documentVersionId], profileId, documentVersionId",
-      entities: "&[profileId+entityType+id], [profileId+entityType], profileId, entityType, id, updatedAt",
+      entities:
+        "&[profileId+entityType+id], [profileId+entityType], profileId, entityType, id, updatedAt",
       outbox: "&operationId, profileId, entityType, entityId, createdAt",
       offlineManifests: "&[profileId+tripId], profileId, tripId, state, checkedAt"
     });
@@ -80,19 +96,32 @@ class TripVaultDatabase extends Dexie {
 }
 
 export async function clearProfileLocalData(profileId: string) {
-  await database.transaction("rw", [database.localDocuments, database.localFileBlobs, database.entities, database.outbox, database.offlineManifests], async () => {
-    await Promise.all([
-      database.localDocuments.where("profileId").equals(profileId).delete(),
-      database.localFileBlobs.where("profileId").equals(profileId).delete(),
-      database.entities.where("profileId").equals(profileId).delete(),
-      database.outbox.where("profileId").equals(profileId).delete(),
-      database.offlineManifests.where("profileId").equals(profileId).delete()
-    ]);
-  });
+  await database.transaction(
+    "rw",
+    [
+      database.localDocuments,
+      database.localFileBlobs,
+      database.entities,
+      database.outbox,
+      database.offlineManifests
+    ],
+    async () => {
+      await Promise.all([
+        database.localDocuments.where("profileId").equals(profileId).delete(),
+        database.localFileBlobs.where("profileId").equals(profileId).delete(),
+        database.entities.where("profileId").equals(profileId).delete(),
+        database.outbox.where("profileId").equals(profileId).delete(),
+        database.offlineManifests.where("profileId").equals(profileId).delete()
+      ]);
+    }
+  );
 }
 
 export const database = new TripVaultDatabase();
 
-export function canOpenLocalDocument(profileId: string | null, record: LocalDocumentRecord | undefined): boolean {
+export function canOpenLocalDocument(
+  profileId: string | null,
+  record: LocalDocumentRecord | undefined
+): boolean {
   return Boolean(profileId && record && record.profileId === profileId && record.verifiedAt);
 }

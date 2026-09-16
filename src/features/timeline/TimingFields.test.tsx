@@ -64,7 +64,9 @@ describe("relative event timing", () => {
   });
 
   it("accepts a duration without requiring a start or end", () => {
-    expect(readEventTiming(relativeForm({ durationValue: "1.5", durationUnit: "hours" }), trip, [anchor])).toMatchObject({
+    expect(
+      readEventTiming(relativeForm({ durationValue: "1.5", durationUnit: "hours" }), trip, [anchor])
+    ).toMatchObject({
       startsAt: anchor.starts_at,
       endsAt: undefined,
       hasExplicitStartTime: false,
@@ -76,15 +78,27 @@ describe("relative event timing", () => {
     ["zero", "0"],
     ["negative", "-1"]
   ])("rejects a %s duration", (_label, durationValue) => {
-    expect(() => readEventTiming(relativeForm({ durationValue, durationUnit: "minutes" }), trip, [anchor])).toThrow("Duration must be greater than zero.");
+    expect(() =>
+      readEventTiming(relativeForm({ durationValue, durationUnit: "minutes" }), trip, [anchor])
+    ).toThrow("Duration must be greater than zero.");
   });
 
   it("rejects a fractional duration that does not resolve to whole minutes", () => {
-    expect(() => readEventTiming(relativeForm({ durationValue: "0.5", durationUnit: "minutes" }), trip, [anchor])).toThrow("Duration must resolve to a whole number of minutes.");
+    expect(() =>
+      readEventTiming(relativeForm({ durationValue: "0.5", durationUnit: "minutes" }), trip, [
+        anchor
+      ])
+    ).toThrow("Duration must resolve to a whole number of minutes.");
   });
 
   it("derives an end from an optional start and duration", () => {
-    expect(readEventTiming(relativeForm({ startsAt: "2026-09-27T10:00", durationValue: "2", durationUnit: "hours" }), trip, [anchor])).toMatchObject({
+    expect(
+      readEventTiming(
+        relativeForm({ startsAt: "2026-09-27T10:00", durationValue: "2", durationUnit: "hours" }),
+        trip,
+        [anchor]
+      )
+    ).toMatchObject({
       startsAt: "2026-09-27T04:30:00.000Z",
       endsAt: "2026-09-27T06:30:00.000Z",
       scheduledDate: "2026-09-27",
@@ -94,7 +108,13 @@ describe("relative event timing", () => {
   });
 
   it("derives duration from optional relative start and end", () => {
-    expect(readEventTiming(relativeForm({ startsAt: "2026-09-27T10:00", endsAt: "2026-09-27T11:45" }), trip, [anchor])).toMatchObject({
+    expect(
+      readEventTiming(
+        relativeForm({ startsAt: "2026-09-27T10:00", endsAt: "2026-09-27T11:45" }),
+        trip,
+        [anchor]
+      )
+    ).toMatchObject({
       hasExplicitStartTime: true,
       durationMinutes: 105
     });
@@ -102,7 +122,11 @@ describe("relative event timing", () => {
 
   it("uses the anchor time zone for a new relative event", () => {
     const dubaiAnchor = { ...anchor, timezone: "Asia/Dubai" };
-    const data = relativeForm({ startsAt: "2026-09-27T10:00", durationValue: "1", durationUnit: "hours" });
+    const data = relativeForm({
+      startsAt: "2026-09-27T10:00",
+      durationValue: "1",
+      durationUnit: "hours"
+    });
     data.delete("timezone");
 
     expect(readEventTiming(data, trip, [dubaiAnchor])).toMatchObject({
@@ -113,17 +137,48 @@ describe("relative event timing", () => {
   });
 
   it("rejects an end without a start", () => {
-    expect(() => readEventTiming(relativeForm({ endsAt: "2026-09-27T12:00" }), trip, [anchor])).toThrow("Add a start date and time before adding an end time.");
+    expect(() =>
+      readEventTiming(relativeForm({ endsAt: "2026-09-27T12:00" }), trip, [anchor])
+    ).toThrow("Add a start date and time before adding an end time.");
   });
 
   it("rejects an end before start and inconsistent duration", () => {
-    expect(() => readEventTiming(relativeForm({ startsAt: "2026-09-27T12:00", endsAt: "2026-09-27T11:00" }), trip, [anchor])).toThrow("End time must be after the start time.");
-    expect(() => readEventTiming(relativeForm({ startsAt: "2026-09-27T12:00", endsAt: "2026-09-27T12:00" }), trip, [anchor])).toThrow("End time must be after the start time.");
-    expect(() => readEventTiming(relativeForm({ startsAt: "2026-09-27T10:00", endsAt: "2026-09-27T12:00", durationValue: "3", durationUnit: "hours" }), trip, [anchor])).toThrow("End time and duration do not match.");
+    expect(() =>
+      readEventTiming(
+        relativeForm({ startsAt: "2026-09-27T12:00", endsAt: "2026-09-27T11:00" }),
+        trip,
+        [anchor]
+      )
+    ).toThrow("End time must be after the start time.");
+    expect(() =>
+      readEventTiming(
+        relativeForm({ startsAt: "2026-09-27T12:00", endsAt: "2026-09-27T12:00" }),
+        trip,
+        [anchor]
+      )
+    ).toThrow("End time must be after the start time.");
+    expect(() =>
+      readEventTiming(
+        relativeForm({
+          startsAt: "2026-09-27T10:00",
+          endsAt: "2026-09-27T12:00",
+          durationValue: "3",
+          durationUnit: "hours"
+        }),
+        trip,
+        [anchor]
+      )
+    ).toThrow("End time and duration do not match.");
   });
 
   it("rejects a derived end outside the trip dates", () => {
-    expect(() => readEventTiming(relativeForm({ startsAt: "2026-10-12T23:00", durationValue: "2", durationUnit: "hours" }), trip, [anchor])).toThrow("Choose a date between 2026-09-26 and 2026-10-12.");
+    expect(() =>
+      readEventTiming(
+        relativeForm({ startsAt: "2026-10-12T23:00", durationValue: "2", durationUnit: "hours" }),
+        trip,
+        [anchor]
+      )
+    ).toThrow("Choose a date between 2026-09-26 and 2026-10-12.");
   });
 
   it("shows an optional full schedule below Position and Event and enables end after start", async () => {
@@ -148,7 +203,11 @@ describe("relative event timing", () => {
 
   it("uses native range validation and custom whole-minute validation for duration", async () => {
     const user = userEvent.setup();
-    render(<form><TimingFields trip={trip} itinerary={[anchor]} /></form>);
+    render(
+      <form>
+        <TimingFields trip={trip} itinerary={[anchor]} />
+      </form>
+    );
 
     await user.selectOptions(screen.getByLabelText("Timing"), "relative");
     const duration = screen.getByLabelText("Duration (optional)") as HTMLInputElement;
@@ -171,31 +230,43 @@ describe("relative event timing", () => {
   });
 
   it("does not display an old synthetic anchor time as an explicit start", () => {
-    render(<TimingFields trip={trip} itinerary={[anchor]} item={{
-      ...anchor,
-      id: "relative-1",
-      title: "Museum",
-      timing_mode: "relative",
-      anchor_itinerary_item_id: anchor.id,
-      relative_position: "after",
-      has_explicit_start_time: false
-    }} />);
+    render(
+      <TimingFields
+        trip={trip}
+        itinerary={[anchor]}
+        item={{
+          ...anchor,
+          id: "relative-1",
+          title: "Museum",
+          timing_mode: "relative",
+          anchor_itinerary_item_id: anchor.id,
+          relative_position: "after",
+          has_explicit_start_time: false
+        }}
+      />
+    );
 
     expect(screen.getByLabelText("Start date & time (optional)")).toHaveValue("");
   });
 
   it("preloads a start added later to an existing relative event", () => {
-    render(<TimingFields trip={trip} itinerary={[anchor]} item={{
-      ...anchor,
-      id: "relative-1",
-      title: "Museum",
-      starts_at: "2026-09-27T04:30:00.000Z",
-      timing_mode: "relative",
-      anchor_itinerary_item_id: anchor.id,
-      relative_position: "after",
-      has_explicit_start_time: true,
-      duration_minutes: 120
-    }} />);
+    render(
+      <TimingFields
+        trip={trip}
+        itinerary={[anchor]}
+        item={{
+          ...anchor,
+          id: "relative-1",
+          title: "Museum",
+          starts_at: "2026-09-27T04:30:00.000Z",
+          timing_mode: "relative",
+          anchor_itinerary_item_id: anchor.id,
+          relative_position: "after",
+          has_explicit_start_time: true,
+          duration_minutes: 120
+        }}
+      />
+    );
 
     expect(screen.getByLabelText("Start date & time (optional)")).toHaveValue("2026-09-27T10:00");
     expect(screen.getByLabelText("Duration (optional)")).toHaveValue(2);
@@ -227,7 +298,18 @@ describe("relative event timing", () => {
 
 describe("exact event timing", () => {
   it("derives duration from start and end", () => {
-    expect(readEventTiming(form({ timingMode: "exact", timezone: "Asia/Kolkata", startsAt: "2026-09-27T10:00", endsAt: "2026-09-27T11:30" }), trip, [])).toMatchObject({
+    expect(
+      readEventTiming(
+        form({
+          timingMode: "exact",
+          timezone: "Asia/Kolkata",
+          startsAt: "2026-09-27T10:00",
+          endsAt: "2026-09-27T11:30"
+        }),
+        trip,
+        []
+      )
+    ).toMatchObject({
       startsAt: "2026-09-27T04:30:00.000Z",
       endsAt: "2026-09-27T06:00:00.000Z",
       hasExplicitStartTime: true,
@@ -236,7 +318,19 @@ describe("exact event timing", () => {
   });
 
   it("derives end from start and duration", () => {
-    expect(readEventTiming(form({ timingMode: "exact", timezone: "Asia/Kolkata", startsAt: "2026-09-27T10:00", durationValue: "1", durationUnit: "days" }), trip, [])).toMatchObject({
+    expect(
+      readEventTiming(
+        form({
+          timingMode: "exact",
+          timezone: "Asia/Kolkata",
+          startsAt: "2026-09-27T10:00",
+          durationValue: "1",
+          durationUnit: "days"
+        }),
+        trip,
+        []
+      )
+    ).toMatchObject({
       endsAt: "2026-09-28T04:30:00.000Z",
       hasExplicitStartTime: true,
       durationMinutes: 1_440

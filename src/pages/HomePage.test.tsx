@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { ItineraryItem, Trip, TripCost } from "../features/trips/types";
-import type { Traveler } from "../features/workspace/types";
+import type { Traveler, VaultDocument } from "../features/workspace/types";
 
 const mocks = vi.hoisted(() => ({
   deriveAlerts: vi.fn().mockReturnValue([]),
@@ -18,12 +18,16 @@ const mocks = vi.hoisted(() => ({
   listTravelers: vi.fn(),
   listTrips: vi.fn(),
   listVaultDocuments: vi.fn().mockResolvedValue([]),
+  listCurrentAccountTravelerIds: vi.fn().mockResolvedValue(["traveler-1"]),
+  listTripEventDocumentReferences: vi.fn().mockResolvedValue([]),
   loadAlertInputs: vi.fn().mockResolvedValue({}),
   respondToTripOffer: vi.fn(),
   saveTripFocus: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock("../components/AppShell", () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
+vi.mock("../components/AppShell", () => ({
+  AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</>
+}));
 vi.mock("../features/alerts/engine", () => ({ deriveAlerts: mocks.deriveAlerts }));
 vi.mock("../features/alerts/load", () => ({
   loadAlertInputs: mocks.loadAlertInputs,
@@ -44,6 +48,10 @@ vi.mock("../features/workspace/api", () => ({
   listTravelers: mocks.listTravelers,
   listVaultDocuments: mocks.listVaultDocuments,
   respondToTripOffer: mocks.respondToTripOffer
+}));
+vi.mock("../features/workspace/tripRelationships", () => ({
+  listCurrentAccountTravelerIds: mocks.listCurrentAccountTravelerIds,
+  listTripEventDocumentReferences: mocks.listTripEventDocumentReferences
 }));
 
 import { HomePage } from "./HomePage";
@@ -79,8 +87,20 @@ const itineraryItem: ItineraryItem = {
 };
 
 const travelers: Traveler[] = [
-  { id: "traveler-1", trip_id: trip.id, display_name: "Shantanu", is_minor: false, created_at: "2026-09-01T00:00:00.000Z" },
-  { id: "traveler-2", trip_id: trip.id, display_name: "Shubham", is_minor: false, created_at: "2026-09-01T00:00:00.000Z" }
+  {
+    id: "traveler-1",
+    trip_id: trip.id,
+    display_name: "Shantanu",
+    is_minor: false,
+    created_at: "2026-09-01T00:00:00.000Z"
+  },
+  {
+    id: "traveler-2",
+    trip_id: trip.id,
+    display_name: "Shubham",
+    is_minor: false,
+    created_at: "2026-09-01T00:00:00.000Z"
+  }
 ];
 
 const expense: TripCost = {
@@ -110,7 +130,13 @@ describe("home trip expenses", () => {
     mocks.listTravelers.mockResolvedValue(travelers);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-    render(<QueryClientProvider client={queryClient}><MemoryRouter><HomePage /></MemoryRouter></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <HomePage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
 
     const featuredCardTarget = await screen.findByRole("link", { name: "Open October escape" });
     const explicitOpen = screen.getByRole("link", { name: /^Open trip$/ });
@@ -122,18 +148,25 @@ describe("home trip expenses", () => {
     const readinessTarget = screen.getByRole("link", { name: "Open trip readiness" });
     const readinessCard = readinessTarget.closest(".surface-card");
     expect(readinessTarget).toHaveAttribute("href", "/trips/trip-1/readiness");
-    expect(within(readinessCard as HTMLElement).getByRole("link", { name: /Open checklist/ })).toHaveAttribute("href", "/trips/trip-1/readiness");
+    expect(
+      within(readinessCard as HTMLElement).getByRole("link", { name: /Open checklist/ })
+    ).toHaveAttribute("href", "/trips/trip-1/readiness");
     expect(readinessCard?.querySelector("a a, a button, button a, button button")).toBeNull();
 
     const openExpenses = await screen.findByRole("button", { name: "Open trip expenses" });
     const card = openExpenses.closest(".surface-card");
     expect(card?.querySelector("button a, a button")).toBeNull();
-    expect(within(card as HTMLElement).getByRole("link", { name: "Add cost" })).toHaveAttribute("href", "/trips/trip-1?add=cost");
+    expect(within(card as HTMLElement).getByRole("link", { name: "Add cost" })).toHaveAttribute(
+      "href",
+      "/trips/trip-1?add=cost"
+    );
 
     await userEvent.click(openExpenses);
 
     const summary = screen.getByRole("dialog", { name: "Trip expenses" });
-    expect(within(summary).getByRole("button", { name: "View details for Museum tickets" })).toHaveTextContent("2 travelers");
+    expect(
+      within(summary).getByRole("button", { name: "View details for Museum tickets" })
+    ).toHaveTextContent("2 travelers");
     expect(within(summary).queryByText("Balances by currency")).not.toBeInTheDocument();
 
     await userEvent.click(within(summary).getByRole("checkbox", { name: "Show balances" }));
@@ -141,7 +174,9 @@ describe("home trip expenses", () => {
     expect(within(summary).getByText(/gets.*6,000/)).toBeInTheDocument();
     expect(within(summary).getByText(/owes.*6,000/)).toBeInTheDocument();
 
-    await userEvent.click(within(summary).getByRole("button", { name: "View details for Museum tickets" }));
+    await userEvent.click(
+      within(summary).getByRole("button", { name: "View details for Museum tickets" })
+    );
 
     const details = screen.getByRole("dialog", { name: "Museum tickets" });
     expect(within(details).getByText("Booked at the museum website")).toBeInTheDocument();
@@ -150,5 +185,51 @@ describe("home trip expenses", () => {
     await userEvent.click(within(details).getByRole("button", { name: "Back" }));
     expect(screen.queryByRole("dialog", { name: "Museum tickets" })).not.toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "Trip expenses" })).toBeInTheDocument();
+  });
+
+  it("shows Everyone documents and the signed-in traveler's documents without leaking another traveler", async () => {
+    const makeDocument = (
+      id: string,
+      title: string,
+      assignmentMode: VaultDocument["assignment_mode"],
+      travelerIds: string[] = []
+    ): VaultDocument => ({
+      id,
+      trip_id: trip.id,
+      booking_id: null,
+      flight_leg_id: null,
+      traveler_id: travelerIds[0] ?? null,
+      assignment_mode: assignmentMode,
+      traveler_ids: travelerIds,
+      title,
+      category: "flight",
+      purpose: "ticket",
+      short_label: null,
+      visibility: "trip",
+      current_version_id: null,
+      updated_at: "2026-09-15T00:00:00Z"
+    });
+    mocks.listTrips.mockResolvedValue([trip]);
+    mocks.listCosts.mockResolvedValue([]);
+    mocks.listItinerary.mockResolvedValue([]);
+    mocks.listTravelers.mockResolvedValue(travelers);
+    mocks.listVaultDocuments.mockResolvedValue([
+      makeDocument("shared", "Everyone flight ticket", "shared"),
+      makeDocument("mine", "Shantanu boarding document", "selected", ["traveler-1"]),
+      makeDocument("other", "Shubham private ticket", "selected", ["traveler-2"])
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <HomePage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByText("Everyone flight ticket")).toBeInTheDocument();
+    expect(screen.getByText("Shantanu boarding document")).toBeInTheDocument();
+    expect(screen.queryByText("Shubham private ticket")).not.toBeInTheDocument();
   });
 });

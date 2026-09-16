@@ -59,12 +59,28 @@ function document(overrides: Partial<VaultDocument>): VaultDocument {
 }
 
 function link(value: VaultDocument, sortOrder: number): EventDocumentLink {
-  return { itinerary_item_id: item.id, document_id: value.id, label: null, sort_order: sortOrder, document: value };
+  return {
+    itinerary_item_id: item.id,
+    document_id: value.id,
+    label: null,
+    sort_order: sortOrder,
+    document: value
+  };
 }
 
 function renderShortcut(travelerId?: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={queryClient}><MemoryRouter><EventDocumentShortcut item={item} travelerId={travelerId} navigationState={{ returnTo: "timeline" }} /></MemoryRouter></QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <EventDocumentShortcut
+          item={item}
+          travelerId={travelerId}
+          navigationState={{ returnTo: "timeline" }}
+        />
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
 }
 
 describe("timeline primary document shortcut", () => {
@@ -74,8 +90,24 @@ describe("timeline primary document shortcut", () => {
   });
 
   it("labels and opens the first explicitly related document visible to the focused traveler", async () => {
-    const otherTraveler = document({ id: "other-pass", title: "Asha boarding pass", purpose: "boarding_pass", assignment_mode: "selected", traveler_id: "asha", traveler_ids: ["asha"] });
-    const focusedVisa = document({ id: "ravi-visa", booking_id: null, title: "Ravi visa", purpose: "visa", assignment_mode: "selected", traveler_id: "ravi", traveler_ids: ["ravi"], short_label: "UAE" });
+    const otherTraveler = document({
+      id: "other-pass",
+      title: "Asha boarding pass",
+      purpose: "boarding_pass",
+      assignment_mode: "selected",
+      traveler_id: "asha",
+      traveler_ids: ["asha"]
+    });
+    const focusedVisa = document({
+      id: "ravi-visa",
+      booking_id: null,
+      title: "Ravi visa",
+      purpose: "visa",
+      assignment_mode: "selected",
+      traveler_id: "ravi",
+      traveler_ids: ["ravi"],
+      short_label: "UAE"
+    });
     mocks.listEventDocumentLinks.mockResolvedValue([link(otherTraveler, 0), link(focusedVisa, 1)]);
 
     renderShortcut("ravi");
@@ -83,19 +115,29 @@ describe("timeline primary document shortcut", () => {
     const shortcut = await screen.findByRole("link", { name: "Open Visa: Ravi visa" });
     expect(shortcut).toHaveAttribute("href", "/trips/trip-1/documents/ravi-visa");
     expect(shortcut).toHaveTextContent("Open Visa · UAE");
-    expect(shortcut).toContainElement(screen.getByLabelText("Visible to all signed-in trip members"));
+    expect(shortcut).toContainElement(
+      screen.getByLabelText("Visible to all signed-in trip members")
+    );
     expect(shortcut).toHaveTextContent("Trip members");
     expect(screen.queryByRole("link", { name: /Asha boarding pass/ })).not.toBeInTheDocument();
   });
 
   it("falls back to a traveler-visible booking document when no explicit link is visible", async () => {
-    const hidden = document({ id: "hidden", booking_id: null, assignment_mode: "selected", traveler_id: "asha", traveler_ids: ["asha"] });
+    const hidden = document({
+      id: "hidden",
+      booking_id: null,
+      assignment_mode: "selected",
+      traveler_id: "asha",
+      traveler_ids: ["asha"]
+    });
     const bookingTicket = document({ id: "booking-ticket", title: "Shared operator ticket" });
     mocks.listEventDocumentLinks.mockResolvedValue([link(hidden, 0)]);
     mocks.listVaultDocuments.mockResolvedValue([bookingTicket]);
 
     renderShortcut("ravi");
 
-    expect(await screen.findByRole("link", { name: "Open Ticket: Shared operator ticket" })).toHaveAttribute("href", "/trips/trip-1/documents/booking-ticket");
+    expect(
+      await screen.findByRole("link", { name: "Open Ticket: Shared operator ticket" })
+    ).toHaveAttribute("href", "/trips/trip-1/documents/booking-ticket");
   });
 });

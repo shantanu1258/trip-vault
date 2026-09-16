@@ -4,7 +4,7 @@ description: "Prioritized inventory of Trip Vault capabilities, MVP boundaries, 
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [features, product-scope, mvp, acceptance-criteria, roadmap]
-last_verified: 2026-09-14
+last_verified: 2026-09-16
 ---
 
 # Trip Vault Feature Catalog
@@ -41,6 +41,7 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 - Add an omitted connecting flight later from Flight details and keep the grouped journey, travelers, and timeline end in sync.
 - Add generic booking details later to an unbooked activity, meal, transport, preparation, or custom event while preserving its timeline identity and leaving booking times empty until a real event start exists.
 - Treat cards as primary interactions: rich records open read-first details, shallow editable facts open their editor directly, and independent or destructive quick actions remain separate.
+- Keep large trips usable by previewing only the next few events, reservations, and event-relevant documents in Trip details, then opening dedicated searchable and traveler-filtered reservation/document views for the complete collections.
 
 ## 1. Priority and Release Definitions
 
@@ -65,13 +66,13 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 | Onboarding | 5 | 4 | 1 |
 | Account and security | 1 | 8 | 4 |
 | Trips | 2 | 9 | 3 |
-| Dashboard and itinerary | 7 | 25 | 1 |
-| Bookings | 3 | 15 | 4 |
+| Dashboard and itinerary | 7 | 26 | 1 |
+| Bookings | 3 | 16 | 4 |
 | Flight assistance | 2 | 10 | 0 |
 | Airline metadata | 1 | 5 | 0 |
 | Administration and metadata | 2 | 8 | 1 |
 | Travel readiness | 3 | 9 | 1 |
-| Documents | 4 | 24 | 5 |
+| Documents | 4 | 25 | 5 |
 | Offline and sync | 3 | 14 | 4 |
 | Collaboration | 4 | 14 | 3 |
 | Search and organization | 2 | 3 | 6 |
@@ -154,7 +155,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DSH-015 | Provider-fed live disruption status | Explore | Not planned | MVP uses manual updates and external tracker links instead of a live flight-data provider |
 | DSH-016 | Context-aware home modes | P0 | Prototype | Demonstrates planning, pre-departure, travel-day, in-trip, and post-trip arrangements without changing navigation |
 | DSH-017 | Next-action hero | P0 | MVP | Home shows one highest-priority action or event with its time, location, reason, and direct action |
-| DSH-018 | Need-now shortcut bubbles | P0 | MVP | Home computes a short row of relevant boarding pass, visa, hotel, insurance, transport, or contact shortcuts |
+| DSH-018 | Need-now shortcut bubbles | P0 | MVP | Home computes a short row of relevant boarding pass, visa, hotel, insurance, transport, or contact shortcuts. Document shortcuts preserve the useful full title/context, rank by the next applicable event before document-type preference, and include only shared documents plus documents assigned to a traveler linked to the signed-in account, after normal access checks |
 | DSH-019 | Upcoming-trip work queue | P0 | MVP | Each upcoming trip shows missing or time-sensitive preparation work and its nearest due date |
 | DSH-020 | Trip Home | P0 | MVP | A trip-specific home puts Now/Next, urgent documents, today's timeline, accommodation, and unresolved work before the full itinerary |
 | DSH-021 | One-tap essential document | P0 | MVP | A contextual shortcut opens the correct authorized local copy when offline and the current cloud version when online |
@@ -171,6 +172,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DSH-032 | Human-readable duration | P1 | MVP | Elapsed time uses compact minute/hour units through exactly 24 hours, adds days above 24 hours, and adds weeks above seven days while preserving non-zero remainder units |
 | DSH-033 | Fresh-launch current trip | P0 | MVP | Authenticated root launch waits for trips and saved focus, opens the saved eligible current trip or the earliest-end/earliest-start/stable-ID overlap fallback, and does not redirect a later explicit `/home` visit |
 | DSH-034 | Primary card interaction hierarchy | P0 | MVP | Mouse, keyboard, and touch activate one predictable card target: rich timeline events and costs open read-first details before role-gated Edit/Archive; shallow flight facts, notes, airline snapshots, and readiness requirements open edit directly for Owner/Editor and remain static for Viewer; the Trip information overview opens settings only for Owner; navigation, status, guidance, phone, document, and destructive quick actions stay independent. Only Admin catalog cards remain excluded pending their redesign |
+| DSH-035 | Large-trip details summary | P0 | MVP | Trip details keeps a three-item Next up preview, compact category counts, at most three reservation rows, and at most three event-ranked document rows. Complete reservation and document collections open in dedicated routes so a trip with dozens of records stays scannable without hiding access to anything |
 
 ## 7. Bookings
 
@@ -200,6 +202,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | BKG-022 | Ground-journey schedule and detail | P0 | MVP | Train, Bus, Ferry, and Cab require departure but allow arrival to remain unknown; when arrival is supplied it must follow departure. Each kind saves only its allowlisted ticket details, while a Domestic entry stays compact and an International entry collects strict endpoint zones |
 | BKG-023 | Per-traveler journey ticket details | P0 | MVP | Flight stores seat, boarding group, and ticket number. Train stores seat/berth, coach, and reference; Bus stores seat and reference; Ferry stores passenger reference and shows seat/cabin only for assigned seating. Values belong to each included traveler and leg, while Cab exposes no passenger-seat grid |
 | BKG-024 | Atomic hotel stay creation | P0 | MVP | One save creates the Hotel booking, traveler scope, and both check-in/check-out milestones as one transaction; omitted printed times create date-only milestones with neutral hidden ordering instants, either all records succeed or none do, and checkout must follow check-in |
+| BKG-025 | Full reservation index | P0 | MVP | View all reservations opens a chronological compact list with complete route summaries, provider/reference search, category counts and filters, document counts, and an Everyone or one-traveler filter; selecting a row opens the existing Flight or Booking details route |
 
 ## 8. Documents and Vault
 
@@ -241,6 +244,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DOC-033 | Association cache reconciliation | P0 | MVP | A successful association clears pending/error state and removes its outbox item; an associated server receipt suppresses any stale unassociated device copy so the upload does not return to Profile |
 | DOC-034 | In-app PDF and image controls | P0 | MVP | The bundled PDF.js renderer shows multi-page PDFs with previous/next, zoom, and fit controls; image preview has zoom controls; both work from local object URLs without sending bytes to a third-party viewer and retain device Open as fallback |
 | DOC-035 | Accessible document picker | P0 | MVP | Trip upload and Profile show a large centered touch target that also supports keyboard activation and desktop drag/drop; replacement uses a compact variant; the chosen filename and busy state remain visible, while invalid type/size errors use an alert and do not persist rejected bytes |
+| DOC-036 | Full trip-document index | P0 | MVP | View all documents opens a compact searchable list with complete wrapping titles, purpose, audience, event context, visibility, category and traveler filters, and a Needed next group ranked by the earliest applicable upcoming event; shared documents remain visible beside the selected traveler's documents |
 
 ## 9. Offline and Synchronization
 
@@ -628,6 +632,7 @@ The MVP is ready for private travel use only when:
 | 52 | Progressive reservation intent | Accepted | Store Planned, Walk-up/no reservation, or Booked; reveal reservation fields only for Booked and permit later enrichment without duplicating the event |
 | 53 | Per-leg traveler ticket details | Accepted | Keep Flight seat + boarding group + ticket number; use Train seat/berth + coach + reference, Bus seat + reference, and Ferry reference with seat/cabin only for assigned seating per included traveler and leg; keep Cab simple |
 | 54 | Document rendering and selection | Accepted | Bundle PDF.js for in-app PDF controls, zoom images locally, retain device Open, and reuse a large accessible picker with a compact replacement variant |
+| 55 | Large-trip collection navigation | Accepted | Keep Trip details to small previews and counts, put the complete reservation/document collections on stable searchable routes, and rank urgent documents by event chronology before document-type preference |
 
 ## 22. Research Sources
 
@@ -673,6 +678,7 @@ Feature behavior is implemented under `src/features/` and exposed through `src/p
 | Event-form implementation | `src/features/timeline/AddEventForm.tsx`, `src/features/timeline/EventFormCommonFields.tsx`, `src/features/timeline/JourneyEventFields.tsx`, `src/features/workspace/JourneyTravelerDetails.tsx` | Progressive booking intent, type-specific journey entry, optional ground arrival, and per-leg traveler ticket details |
 | Document experience | `src/components/FileDropzone.tsx`, `src/components/DocumentPreview.tsx`, `src/features/workspace/DocumentInboxPanel.tsx`, `src/pages/DocumentPage.tsx`, `public/vendor/pdfjs/` | Validated large/compact file selection, PDF/image in-app controls, and device Open fallback |
 | Card interaction hierarchy | `src/pages/TripPage.tsx`, `src/pages/TripPage.test.tsx`, `src/pages/BookingPage.tsx`, `src/pages/FlightPage.tsx`, `src/pages/FlightPage.test.tsx`, `src/pages/ReadinessPage.tsx`, `src/features/workspace/TripAirlinesPanel.tsx`, `src/features/workspace/TripAirlinesPanel.test.tsx` | Whole-card navigation, read-first booking/event/expense details, opt-in balances, Owner trip-overview settings, readiness direct edit with independent controls, and other direct-edit shallow cards |
+| Large-trip collection views | `src/features/trips/TripDetailsView.tsx`, `src/features/trips/TripDetailsCards.tsx`, `src/components/TripDocumentRow.tsx`, `src/pages/TripReservationsPage.tsx`, `src/pages/TripDocumentsPage.tsx` | Compact Trip-details previews, complete searchable/filterable collections, route and document context, and full wrapping document names |
 | Supabase schema | `supabase/migrations/` | Database, authorization, object Storage, and server functions |
 | Account document hardening | `supabase/migrations/202609130004_account_document_storage_state.sql` | Server-verified completion and append-only unassociated Storage lifecycle |
 | Latest catalog migration | `supabase/migrations/202609130005_booking_vendor_catalog_additions.sql` | Publishes Airbnb and Trip.com after the regional catalog |

@@ -80,35 +80,61 @@ describe("offline Document Inbox deletion", () => {
 
   it("keeps a cloud-synced upload local while offline even if a stale upload operation exists", async () => {
     const synced = upload({ stored_at: "2026-09-13T10:01:00.000Z", sync_state: "synced" });
-    mocks.outboxRows.push({ operation: "upload_account_document", entityId: synced.id, attemptCount: 0, payload: { uploadId: synced.id } });
+    mocks.outboxRows.push({
+      operation: "upload_account_document",
+      entityId: synced.id,
+      attemptCount: 0,
+      payload: { uploadId: synced.id }
+    });
 
-    await expect(deleteAccountDocumentUpload(synced)).rejects.toThrow(/Reconnect to delete this Document Inbox file/);
+    await expect(deleteAccountDocumentUpload(synced)).rejects.toThrow(
+      /Reconnect to delete this Document Inbox file/
+    );
     expect(mocks.discardDocumentUploadOperations).not.toHaveBeenCalled();
     expect(mocks.removeOfflineFile).not.toHaveBeenCalled();
     expect(mocks.entityDelete).not.toHaveBeenCalled();
   });
 
   it("also blocks an offline delete when no pending first-upload operation proves the file is local-only", async () => {
-    await expect(deleteAccountDocumentUpload(upload())).rejects.toThrow(/cloud-backed file would reappear/i);
+    await expect(deleteAccountDocumentUpload(upload())).rejects.toThrow(
+      /cloud-backed file would reappear/i
+    );
     expect(mocks.entityDelete).not.toHaveBeenCalled();
   });
 
   it("blocks a previously attempted upload because a partial cloud row may already exist", async () => {
     const failed = upload();
-    mocks.outboxRows.push({ operation: "upload_account_document", entityId: failed.id, attemptCount: 1, lastErrorCode: "network", payload: { uploadId: failed.id } });
+    mocks.outboxRows.push({
+      operation: "upload_account_document",
+      entityId: failed.id,
+      attemptCount: 1,
+      lastErrorCode: "network",
+      payload: { uploadId: failed.id }
+    });
 
-    await expect(deleteAccountDocumentUpload(failed)).rejects.toThrow(/cloud-backed file would reappear/i);
+    await expect(deleteAccountDocumentUpload(failed)).rejects.toThrow(
+      /cloud-backed file would reappear/i
+    );
     expect(mocks.discardDocumentUploadOperations).not.toHaveBeenCalled();
     expect(mocks.entityDelete).not.toHaveBeenCalled();
   });
 
   it("discards a never-synced upload and its pending operation while offline", async () => {
     const pending = upload();
-    mocks.outboxRows.push({ operation: "upload_account_document", entityId: pending.id, attemptCount: 0, payload: { uploadId: pending.id } });
+    mocks.outboxRows.push({
+      operation: "upload_account_document",
+      entityId: pending.id,
+      attemptCount: 0,
+      payload: { uploadId: pending.id }
+    });
 
     await expect(deleteAccountDocumentUpload(pending)).resolves.toBeUndefined();
     expect(mocks.discardDocumentUploadOperations).toHaveBeenCalledWith(pending.id, undefined);
     expect(mocks.removeOfflineFile).toHaveBeenCalledWith("user-1", pending.id);
-    expect(mocks.entityDelete).toHaveBeenCalledWith(["user-1", "account-document-uploads", pending.id]);
+    expect(mocks.entityDelete).toHaveBeenCalledWith([
+      "user-1",
+      "account-document-uploads",
+      pending.id
+    ]);
   });
 });

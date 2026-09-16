@@ -15,8 +15,35 @@ describe("offline document blobs", () => {
   });
 
   it("protects both trip and account inbox bytes while their upload is queued", () => {
-    expect(outboxOperationNeedsOfflineFile({ operation: "upload_document", entityId: "document-1", payload: { version: { id: "version-1" } } }, "version-1")).toBe(true);
-    expect(outboxOperationNeedsOfflineFile({ operation: "upload_account_document", entityId: "upload-1", payload: { upload: { id: "upload-1" } } }, "upload-1")).toBe(true);
-    expect(outboxOperationNeedsOfflineFile({ operation: "associate_account_document", entityId: "document-1", payload: { uploadId: "upload-1" } }, "upload-1")).toBe(false);
+    expect(
+      outboxOperationNeedsOfflineFile(
+        {
+          operation: "upload_document",
+          entityId: "document-1",
+          payload: { version: { id: "version-1" } }
+        },
+        "version-1"
+      )
+    ).toBe(true);
+    expect(
+      outboxOperationNeedsOfflineFile(
+        {
+          operation: "upload_account_document",
+          entityId: "upload-1",
+          payload: { upload: { id: "upload-1" } }
+        },
+        "upload-1"
+      )
+    ).toBe(true);
+    expect(
+      outboxOperationNeedsOfflineFile(
+        {
+          operation: "associate_account_document",
+          entityId: "document-1",
+          payload: { uploadId: "upload-1" }
+        },
+        "upload-1"
+      )
+    ).toBe(false);
   });
 });

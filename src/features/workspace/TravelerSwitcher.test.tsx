@@ -14,7 +14,10 @@ describe("traveler switcher", () => {
     const user = userEvent.setup();
     render(<TravelerSwitcher travelers={travelers} value={null} onChange={onChange} />);
 
-    expect(screen.getByRole("button", { name: "Everyone" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Everyone" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
     await user.click(screen.getByRole("button", { name: /Maya/ }));
     expect(onChange).toHaveBeenCalledWith("maya");
     expect(screen.getByText(/remain signed in as yourself/i)).toBeInTheDocument();

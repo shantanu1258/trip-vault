@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { preferredScrollBehavior, scrollTimelineEventIntoView } from "./scroll";
 
 describe("timeline positioning", () => {
-  afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });
+  afterEach(() => {
+    document.body.replaceChildren();
+    vi.restoreAllMocks();
+  });
 
   it("centers the requested event instead of restoring an unrelated page position", () => {
     const card = document.createElement("article");
@@ -18,7 +21,10 @@ describe("timeline positioning", () => {
   });
 
   it("respects reduced-motion preferences", () => {
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true }))
+    );
     expect(preferredScrollBehavior()).toBe("auto");
   });
 });

@@ -4,7 +4,7 @@ description: "Short manual acceptance checklist for the timeline-first Trip Vaul
 scope: [service-wide]
 agents: [tester, reviewer]
 tags: [manual-testing, acceptance, timeline, mobile, admin]
-last_verified: 2026-09-15
+last_verified: 2026-09-16
 ---
 
 # Trip Vault Feature Test Checklist
@@ -59,6 +59,10 @@ For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it includes 
 - [ ] Repeat permanent deletion for a trip whose document has a current version. Confirm the pre-delete document lookup succeeds without a “more than one relationship” embedding error and deletion continues through the owner-only RPC.
 - [ ] Search by title, PNR, airport code, vendor, traveler, document, and readiness item; open or jump to each result.
 - [ ] Open Trip details and review Overview, Reservations, Costs, People, Readiness, Documents, Offline, Travel data, and Notes.
+- [ ] Use a trip with at least 15 reservations and 30 documents. Confirm Trip details shows only the next three events, three reservations, and three event-ranked documents plus accurate category/count summaries; the page must not become a 45-card feed.
+- [ ] Activate **View all reservations**. Confirm all reservations appear in chronological compact rows with the full connecting route, provider/reference search, working Flight/Stay/Ground & water/Plan filters, document counts, and an All travelers/person filter. Open a row, then use Back and confirm Trip details is restored.
+- [ ] Activate **View all documents**. Confirm complete document titles wrap instead of truncating, **Needed next** follows the earliest applicable upcoming event before document-type preference, category/search/person filters work, and Shared documents remain visible with the selected traveler's documents. Open a file, then use Back and confirm the collection and Trip details return path remain coherent.
+- [ ] On Home, sign in as an account linked to traveler A. Confirm document shortcuts include Everyone/shared documents plus traveler A documents, exclude traveler B-only and Assign later documents, retain the useful complete document name/context, and still respect Only me/trip/selected-member access.
 - [ ] In People & sharing, click a traveler card and confirm focus changes and the sheet closes. Reopen it, use that traveler's pencil action, change the traveler name, and confirm Back returns to People. Verify assignments use the new trip-local name while the linked member's Profile name is unchanged; confirm a Viewer has no pencil action.
 - [ ] In an event sheet, activate a linked expense row; then activate the same or another row in the main Trip expenses section. Confirm both open `CostDetailsSheet` and show amount, payment state, category, payer, connected event/booking, every participant and equal/explicit share, and notes. As Viewer, confirm the same detail remains available but Edit expense and Archive are absent; as Editor, confirm those actions appear only inside the sheet.
 - [ ] Reload the Trip expenses section and confirm **Balances by currency** is absent by default. Enable **Show balances**, verify each currency remains separate and the expected gets/owes values appear, then disable it and confirm the balances hide without changing costs. Repeat the toggle as Viewer.

@@ -37,58 +37,68 @@ const lastLeg: FlightLeg = {
 
 describe("add-flight connection validation", () => {
   it("accepts the prior arrival airport as the next origin", () => {
-    expect(() => validateNextFlightConnection(lastLeg, {
-      departureCode: "DEL",
-      departureName: "Indira Gandhi International Airport",
-      departureAt: "2026-09-26T06:00:00.000Z",
-      arrivalAt: "2026-09-26T08:00:00.000Z",
-      arrivalCountryCode: "IN",
-      journeyScope: "domestic"
-    })).not.toThrow();
+    expect(() =>
+      validateNextFlightConnection(lastLeg, {
+        departureCode: "DEL",
+        departureName: "Indira Gandhi International Airport",
+        departureAt: "2026-09-26T06:00:00.000Z",
+        arrivalAt: "2026-09-26T08:00:00.000Z",
+        arrivalCountryCode: "IN",
+        journeyScope: "domestic"
+      })
+    ).not.toThrow();
   });
 
   it("rejects a disconnected departure airport", () => {
-    expect(() => validateNextFlightConnection(lastLeg, {
-      departureCode: "BOM",
-      departureName: "Chhatrapati Shivaji Maharaj International Airport",
-      departureAt: "2026-09-26T06:00:00.000Z",
-      arrivalAt: "2026-09-26T08:00:00.000Z",
-      arrivalCountryCode: "IN",
-      journeyScope: "domestic"
-    })).toThrow(/where the previous flight arrives/i);
+    expect(() =>
+      validateNextFlightConnection(lastLeg, {
+        departureCode: "BOM",
+        departureName: "Chhatrapati Shivaji Maharaj International Airport",
+        departureAt: "2026-09-26T06:00:00.000Z",
+        arrivalAt: "2026-09-26T08:00:00.000Z",
+        arrivalCountryCode: "IN",
+        journeyScope: "domestic"
+      })
+    ).toThrow(/where the previous flight arrives/i);
   });
 
   it("requires a positive connection interval", () => {
-    expect(() => validateNextFlightConnection(lastLeg, {
-      departureCode: "DEL",
-      departureName: "Indira Gandhi International Airport",
-      departureAt: lastLeg.scheduled_arrival_at,
-      arrivalAt: "2026-09-26T08:00:00.000Z",
-      arrivalCountryCode: "IN",
-      journeyScope: "domestic"
-    })).toThrow(/depart after/i);
+    expect(() =>
+      validateNextFlightConnection(lastLeg, {
+        departureCode: "DEL",
+        departureName: "Indira Gandhi International Airport",
+        departureAt: lastLeg.scheduled_arrival_at,
+        arrivalAt: "2026-09-26T08:00:00.000Z",
+        arrivalCountryCode: "IN",
+        journeyScope: "domestic"
+      })
+    ).toThrow(/depart after/i);
   });
 
   it("rejects a foreign destination on a domestic connection", () => {
-    expect(() => validateNextFlightConnection(lastLeg, {
-      departureCode: "DEL",
-      departureName: "Indira Gandhi International Airport",
-      departureAt: "2026-09-26T06:00:00.000Z",
-      arrivalAt: "2026-09-26T08:00:00.000Z",
-      arrivalCountryCode: "AE",
-      journeyScope: "domestic"
-    })).toThrow(/choose International/i);
+    expect(() =>
+      validateNextFlightConnection(lastLeg, {
+        departureCode: "DEL",
+        departureName: "Indira Gandhi International Airport",
+        departureAt: "2026-09-26T06:00:00.000Z",
+        arrivalAt: "2026-09-26T08:00:00.000Z",
+        arrivalCountryCode: "AE",
+        journeyScope: "domestic"
+      })
+    ).toThrow(/choose International/i);
   });
 
   it("compares normalized airport names when old legs have no code", () => {
     const withoutCodes = { ...lastLeg, arrival_airport_code: null };
-    expect(() => validateNextFlightConnection(withoutCodes, {
-      departureCode: "",
-      departureName: "Indira-Gandhi International Airport",
-      departureAt: "2026-09-26T06:00:00.000Z",
-      arrivalAt: "2026-09-26T08:00:00.000Z",
-      arrivalCountryCode: "IN",
-      journeyScope: "domestic"
-    })).not.toThrow();
+    expect(() =>
+      validateNextFlightConnection(withoutCodes, {
+        departureCode: "",
+        departureName: "Indira-Gandhi International Airport",
+        departureAt: "2026-09-26T06:00:00.000Z",
+        arrivalAt: "2026-09-26T08:00:00.000Z",
+        arrivalCountryCode: "IN",
+        journeyScope: "domestic"
+      })
+    ).not.toThrow();
   });
 });

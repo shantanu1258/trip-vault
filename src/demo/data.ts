@@ -69,7 +69,13 @@ export const demoTravelers: DemoTraveler[] = [
   { id: "noah", initials: "NR", name: "Noah Rao", role: "Viewer - traveler", color: "#a87442" },
   { id: "leela", initials: "LD", name: "Leela Devi", role: "Managed parent", color: "#7f6aa8" },
   { id: "ari", initials: "AS", name: "Ari Shah", role: "Managed child", color: "#3c8574" },
-  { id: "jo", initials: "JM", name: "Jo Menon", role: "Non-travelling collaborator", color: "#996571" }
+  {
+    id: "jo",
+    initials: "JM",
+    name: "Jo Menon",
+    role: "Non-travelling collaborator",
+    color: "#996571"
+  }
 ];
 
 export const demoEvents: DemoEvent[] = [
@@ -171,12 +177,31 @@ export const demoTasks: DemoTask[] = [
   }
 ];
 
-export const demoPhaseCopy: Record<DemoPhase, { label: string; sublabel: string; activeEventId: string | null }> = {
+export const demoPhaseCopy: Record<
+  DemoPhase,
+  { label: string; sublabel: string; activeEventId: string | null }
+> = {
   planning: { label: "Planning", sublabel: "42 days to departure", activeEventId: "flight-out" },
-  predeparture: { label: "Tomorrow", sublabel: "Ready offline - checked 8 min ago", activeEventId: "flight-out" },
-  travelday: { label: "Travel day", sublabel: "Boarding in 48 minutes", activeEventId: "flight-out" },
-  intrip: { label: "In Rome", sublabel: "Next activity in 1 hr 20 min", activeEventId: "colosseum" },
-  completed: { label: "Completed", sublabel: "A beautiful trip, safely archived", activeEventId: null }
+  predeparture: {
+    label: "Tomorrow",
+    sublabel: "Ready offline - checked 8 min ago",
+    activeEventId: "flight-out"
+  },
+  travelday: {
+    label: "Travel day",
+    sublabel: "Boarding in 48 minutes",
+    activeEventId: "flight-out"
+  },
+  intrip: {
+    label: "In Rome",
+    sublabel: "Next activity in 1 hr 20 min",
+    activeEventId: "colosseum"
+  },
+  completed: {
+    label: "Completed",
+    sublabel: "A beautiful trip, safely archived",
+    activeEventId: null
+  }
 };
 
 export const documentById = new Map(demoDocuments.map((document) => [document.id, document]));

@@ -33,7 +33,12 @@ vi.mock("../workspace/api", () => ({
 vi.mock("../sync/localSync", () => ({ localProfileId: vi.fn().mockResolvedValue("profile-1") }));
 vi.mock("../../lib/local-db/database", () => {
   const toArray = vi.fn().mockResolvedValue([]);
-  return { database: { offlineManifests: { where: () => ({ equals: () => ({ toArray }) }) }, outbox: { where: () => ({ equals: () => ({ toArray }) }) } } };
+  return {
+    database: {
+      offlineManifests: { where: () => ({ equals: () => ({ toArray }) }) },
+      outbox: { where: () => ({ equals: () => ({ toArray }) }) }
+    }
+  };
 });
 
 import { loadAlertInputs } from "./load";
@@ -60,7 +65,9 @@ describe("loadAlertInputs", () => {
     expect(mocks.listTrips).toHaveBeenCalledOnce();
     expect(mocks.listBookings).toHaveBeenCalledOnce();
     expect(mocks.listFlightLegsForTrip).toHaveBeenCalledOnce();
-    expect(mocks.listFlightLegsForTrip).toHaveBeenCalledWith("trip-1", [{ id: "booking-1", type: "flight" }]);
+    expect(mocks.listFlightLegsForTrip).toHaveBeenCalledWith("trip-1", [
+      { id: "booking-1", type: "flight" }
+    ]);
     expect(mocks.listRequirements).toHaveBeenCalledOnce();
     expect(mocks.listItinerary).toHaveBeenCalledOnce();
     expect(mocks.listVaultDocuments).toHaveBeenCalledOnce();

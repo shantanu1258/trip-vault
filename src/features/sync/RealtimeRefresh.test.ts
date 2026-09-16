@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createCoalescedRefresh, queryRootsForRealtimeTable, suppressRealtimeRefresh } from "./RealtimeRefresh";
+import {
+  createCoalescedRefresh,
+  queryRootsForRealtimeTable,
+  suppressRealtimeRefresh
+} from "./RealtimeRefresh";
 import { queryRootsForChangedTables } from "./queryRoots";
 
 describe("createCoalescedRefresh", () => {
@@ -57,6 +61,11 @@ describe("createCoalescedRefresh", () => {
   });
 
   it("deduplicates query roots for a completed offline sync batch", () => {
-    expect(queryRootsForChangedTables(["bookings", "flight_legs", "bookings"])).toEqual(["bookings", "booking", "flights", "flight"]);
+    expect(queryRootsForChangedTables(["bookings", "flight_legs", "bookings"])).toEqual([
+      "bookings",
+      "booking",
+      "flights",
+      "flight"
+    ]);
   });
 });

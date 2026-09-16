@@ -14,15 +14,37 @@ export function RootRoute() {
   const [focusReady, setFocusReady] = useState(false);
   const trips = useQuery({ ...tripQueries.trips(), enabled: authenticated === true });
   useEffect(() => {
-    if (!authenticated) { setFocusReady(false); return; }
+    if (!authenticated) {
+      setFocusReady(false);
+      return;
+    }
     let active = true;
-    getSavedTripFocus().then((tripId) => { if (active) setSavedFocus(tripId); }).catch(() => undefined).finally(() => { if (active) setFocusReady(true); });
-    return () => { active = false; };
+    getSavedTripFocus()
+      .then((tripId) => {
+        if (active) setSavedFocus(tripId);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setFocusReady(true);
+      });
+    return () => {
+      active = false;
+    };
   }, [authenticated]);
 
-  if (authenticated === null || (authenticated && (trips.isLoading || !focusReady))) return <div className="grid min-h-dvh place-items-center bg-canvas text-brand"><Loader2 className="size-7 animate-spin motion-reduce:animate-none" aria-label="Opening Trip Vault" /></div>;
+  if (authenticated === null || (authenticated && (trips.isLoading || !focusReady)))
+    return (
+      <div className="grid min-h-dvh place-items-center bg-canvas text-brand">
+        <Loader2
+          className="size-7 animate-spin motion-reduce:animate-none"
+          aria-label="Opening Trip Vault"
+        />
+      </div>
+    );
   if (!authenticated) return <WelcomePage />;
-  const currentTrips = (trips.data ?? []).filter((trip) => trip.status !== "archived" && tripPhase(trip) === "current");
+  const currentTrips = (trips.data ?? []).filter(
+    (trip) => trip.status !== "archived" && tripPhase(trip) === "current"
+  );
   const launchTrip = currentTrips.length ? selectFocusedTrip(currentTrips, savedFocus) : null;
   return <Navigate to={launchTrip ? `/trips/${launchTrip.id}` : "/home"} replace />;
 }

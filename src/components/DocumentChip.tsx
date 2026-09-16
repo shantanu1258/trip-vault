@@ -1,7 +1,13 @@
 import { CheckCircle2, ExternalLink, FileText } from "lucide-react";
 import type { DemoDocument } from "../demo/types";
 
-export function DocumentChip({ document, compact = false }: { document: DemoDocument; compact?: boolean }) {
+export function DocumentChip({
+  document,
+  compact = false
+}: {
+  document: DemoDocument;
+  compact?: boolean;
+}) {
   return (
     <a
       href={document.url}
@@ -19,7 +25,10 @@ export function DocumentChip({ document, compact = false }: { document: DemoDocu
           Offline · {document.sizeLabel}
         </span>
       </span>
-      <ExternalLink className="size-4 shrink-0 text-muted transition-colors group-hover:text-brand" aria-hidden="true" />
+      <ExternalLink
+        className="size-4 shrink-0 text-muted transition-colors group-hover:text-brand"
+        aria-hidden="true"
+      />
     </a>
   );
 }

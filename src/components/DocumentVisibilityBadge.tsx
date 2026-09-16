@@ -34,7 +34,13 @@ export function documentVisibilityPresentation(visibility: DocumentVisibility) {
   return visibilityPresentations[visibility];
 }
 
-export function DocumentVisibilityBadge({ visibility, className = "" }: { visibility: DocumentVisibility; className?: string }) {
+export function DocumentVisibilityBadge({
+  visibility,
+  className = ""
+}: {
+  visibility: DocumentVisibility;
+  className?: string;
+}) {
   const presentation = documentVisibilityPresentation(visibility);
   const Icon = presentation.icon;
 

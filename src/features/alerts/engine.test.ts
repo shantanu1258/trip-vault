@@ -2,22 +2,190 @@ import { describe, expect, it } from "vitest";
 import { deriveAlerts, unreadAlertCount } from "./engine";
 import type { FlightLeg, Requirement, VaultDocument } from "../workspace/types";
 
-const flight: FlightLeg & { trip_id: string } = { id: "f", trip_id: "t", booking_id: "b", segment_order: 0, airline_name: "Aster", flight_number: "AV218", departure_airport_code: "DEL", departure_airport_name: "Delhi", arrival_airport_code: "FCO", arrival_airport_name: "Rome", scheduled_departure_at: "2026-09-10T12:00:00Z", scheduled_arrival_at: "2026-09-10T20:00:00Z", estimated_departure_at: "2026-09-10T12:30:00Z", estimated_arrival_at: null, actual_departure_at: null, actual_arrival_at: null, departure_timezone: "Asia/Kolkata", arrival_timezone: "Europe/Rome", boarding_at: "2026-09-10T10:00:00Z", departure_terminal: null, departure_gate: null, arrival_terminal: null, arrival_gate: null, baggage_claim: null, status: "delayed", status_note: "Weather", status_updated_by: "u", status_updated_at: "2026-09-10T08:00:00Z" };
-const requirement: Requirement = { id: "r", trip_id: "t", type: "visa", title: "Visa check", destination_country_code: "IT", visa_type: null, status: "required", due_date: "2026-09-09", issued_on: null, expires_on: null, validity_buffer_days: 0, official_guidance_url: null, guidance_checked_at: null, linked_document_id: null, notes: null };
-const base = { trips: [], flights: [flight], requirements: [requirement], reminders: [], states: [], documents: [] as VaultDocument[], now: new Date("2026-09-10T10:30:00Z") };
+const flight: FlightLeg & { trip_id: string } = {
+  id: "f",
+  trip_id: "t",
+  booking_id: "b",
+  segment_order: 0,
+  airline_name: "Aster",
+  flight_number: "AV218",
+  departure_airport_code: "DEL",
+  departure_airport_name: "Delhi",
+  arrival_airport_code: "FCO",
+  arrival_airport_name: "Rome",
+  scheduled_departure_at: "2026-09-10T12:00:00Z",
+  scheduled_arrival_at: "2026-09-10T20:00:00Z",
+  estimated_departure_at: "2026-09-10T12:30:00Z",
+  estimated_arrival_at: null,
+  actual_departure_at: null,
+  actual_arrival_at: null,
+  departure_timezone: "Asia/Kolkata",
+  arrival_timezone: "Europe/Rome",
+  boarding_at: "2026-09-10T10:00:00Z",
+  departure_terminal: null,
+  departure_gate: null,
+  arrival_terminal: null,
+  arrival_gate: null,
+  baggage_claim: null,
+  status: "delayed",
+  status_note: "Weather",
+  status_updated_by: "u",
+  status_updated_at: "2026-09-10T08:00:00Z"
+};
+const requirement: Requirement = {
+  id: "r",
+  trip_id: "t",
+  type: "visa",
+  title: "Visa check",
+  destination_country_code: "IT",
+  visa_type: null,
+  status: "required",
+  due_date: "2026-09-09",
+  issued_on: null,
+  expires_on: null,
+  validity_buffer_days: 0,
+  official_guidance_url: null,
+  guidance_checked_at: null,
+  linked_document_id: null,
+  notes: null
+};
+const base = {
+  trips: [],
+  flights: [flight],
+  requirements: [requirement],
+  reminders: [],
+  states: [],
+  documents: [] as VaultDocument[],
+  now: new Date("2026-09-10T10:30:00Z")
+};
 
 describe("alert engine", () => {
-  it("derives stable delayed and missing-boarding-pass occurrences", () => { const keys = deriveAlerts(base).map((alert) => alert.key); expect(keys).toContain("flight-delayed:f:2026-09-10T12:30:00Z"); expect(keys).toContain("flight-missing-boarding-pass:f:2026-09-10T10:00:00Z"); });
-  it("does not report a missing boarding pass when one is attached", () => { const documents = [{ id: "d", trip_id: "t", booking_id: "b", flight_leg_id: "f", traveler_id: null, title: "Pass", category: "flight", purpose: "boarding_pass", short_label: null, visibility: "trip", current_version_id: null, updated_at: "" } as VaultDocument]; expect(deriveAlerts({ ...base, documents }).some((alert) => alert.key.startsWith("flight-missing"))).toBe(false); });
-  it("hides dismissed occurrences and keeps them in dismissed view", () => { const key = "flight-delayed:f:2026-09-10T12:30:00Z"; const input = { ...base, states: [{ alert_key: key, read_at: null, dismissed_at: "2026-09-10T10:31:00Z", snoozed_until: null }] }; expect(deriveAlerts(input).some((alert) => alert.key === key)).toBe(false); expect(deriveAlerts(input, "dismissed").some((alert) => alert.key === key)).toBe(true); });
-  it("suppresses snoozed alerts until their time passes", () => { const key = "flight-delayed:f:2026-09-10T12:30:00Z"; expect(deriveAlerts({ ...base, states: [{ alert_key: key, read_at: null, dismissed_at: null, snoozed_until: "2026-09-10T11:00:00Z" }] }).some((alert) => alert.key === key)).toBe(false); });
-  it("counts only unread visible alerts", () => { const alerts = deriveAlerts(base); expect(unreadAlertCount(alerts, [{ alert_key: alerts[0].key, read_at: "2026-09-10T10:31:00Z", dismissed_at: null, snoozed_until: null }])).toBe(alerts.length - 1); });
-  it("surfaces stale packs and version conflicts", () => { const alerts = deriveAlerts({ ...base, offlineManifests: [{ tripId: "t", state: "stale", checkedAt: "2026-09-01" }], conflicts: [{ entityId: "f", entityType: "flights:t" }] }); expect(alerts.some((alert) => alert.key.startsWith("offline-pack"))).toBe(true); expect(alerts.some((alert) => alert.key.startsWith("sync-conflict"))).toBe(true); });
+  it("derives stable delayed and missing-boarding-pass occurrences", () => {
+    const keys = deriveAlerts(base).map((alert) => alert.key);
+    expect(keys).toContain("flight-delayed:f:2026-09-10T12:30:00Z");
+    expect(keys).toContain("flight-missing-boarding-pass:f:2026-09-10T10:00:00Z");
+  });
+  it("does not report a missing boarding pass when one is attached", () => {
+    const documents = [
+      {
+        id: "d",
+        trip_id: "t",
+        booking_id: "b",
+        flight_leg_id: "f",
+        traveler_id: null,
+        title: "Pass",
+        category: "flight",
+        purpose: "boarding_pass",
+        short_label: null,
+        visibility: "trip",
+        current_version_id: null,
+        updated_at: ""
+      } as VaultDocument
+    ];
+    expect(
+      deriveAlerts({ ...base, documents }).some((alert) => alert.key.startsWith("flight-missing"))
+    ).toBe(false);
+  });
+  it("hides dismissed occurrences and keeps them in dismissed view", () => {
+    const key = "flight-delayed:f:2026-09-10T12:30:00Z";
+    const input = {
+      ...base,
+      states: [
+        { alert_key: key, read_at: null, dismissed_at: "2026-09-10T10:31:00Z", snoozed_until: null }
+      ]
+    };
+    expect(deriveAlerts(input).some((alert) => alert.key === key)).toBe(false);
+    expect(deriveAlerts(input, "dismissed").some((alert) => alert.key === key)).toBe(true);
+  });
+  it("suppresses snoozed alerts until their time passes", () => {
+    const key = "flight-delayed:f:2026-09-10T12:30:00Z";
+    expect(
+      deriveAlerts({
+        ...base,
+        states: [
+          {
+            alert_key: key,
+            read_at: null,
+            dismissed_at: null,
+            snoozed_until: "2026-09-10T11:00:00Z"
+          }
+        ]
+      }).some((alert) => alert.key === key)
+    ).toBe(false);
+  });
+  it("counts only unread visible alerts", () => {
+    const alerts = deriveAlerts(base);
+    expect(
+      unreadAlertCount(alerts, [
+        {
+          alert_key: alerts[0].key,
+          read_at: "2026-09-10T10:31:00Z",
+          dismissed_at: null,
+          snoozed_until: null
+        }
+      ])
+    ).toBe(alerts.length - 1);
+  });
+  it("surfaces stale packs and version conflicts", () => {
+    const alerts = deriveAlerts({
+      ...base,
+      offlineManifests: [{ tripId: "t", state: "stale", checkedAt: "2026-09-01" }],
+      conflicts: [{ entityId: "f", entityType: "flights:t" }]
+    });
+    expect(alerts.some((alert) => alert.key.startsWith("offline-pack"))).toBe(true);
+    expect(alerts.some((alert) => alert.key.startsWith("sync-conflict"))).toBe(true);
+  });
   it("alerts for an event-linked task and removes it as soon as it is complete", () => {
-    const trips = [{ id: "t", title: "Bali", destination_summary: "Bali", start_date: "2026-09-10", end_date: "2026-09-20", primary_timezone: "UTC", base_currency: "INR", status: "current", created_at: "", updated_at: "" }] as never;
-    const itinerary = [{ id: "bali", trip_id: "t", booking_id: null, title: "Flight to Bali", event_type: "flight", starts_at: "2026-09-13T10:00:00Z", ends_at: null, timezone: "UTC", location: null, notes: null, applies_to_all_travelers: true, created_at: "" }] as never;
-    const linked = { ...requirement, timing_mode: "relative", due_date: null, anchor_itinerary_item_id: "bali", relative_position: "before", offset_minutes: 4_320 } as Requirement;
-    expect(deriveAlerts({ ...base, trips, itinerary, requirements: [linked] }).some((alert) => alert.title === "Visa check")).toBe(true);
-    expect(deriveAlerts({ ...base, trips, itinerary, requirements: [{ ...linked, status: "complete" }] }).some((alert) => alert.title === "Visa check")).toBe(false);
+    const trips = [
+      {
+        id: "t",
+        title: "Bali",
+        destination_summary: "Bali",
+        start_date: "2026-09-10",
+        end_date: "2026-09-20",
+        primary_timezone: "UTC",
+        base_currency: "INR",
+        status: "current",
+        created_at: "",
+        updated_at: ""
+      }
+    ] as never;
+    const itinerary = [
+      {
+        id: "bali",
+        trip_id: "t",
+        booking_id: null,
+        title: "Flight to Bali",
+        event_type: "flight",
+        starts_at: "2026-09-13T10:00:00Z",
+        ends_at: null,
+        timezone: "UTC",
+        location: null,
+        notes: null,
+        applies_to_all_travelers: true,
+        created_at: ""
+      }
+    ] as never;
+    const linked = {
+      ...requirement,
+      timing_mode: "relative",
+      due_date: null,
+      anchor_itinerary_item_id: "bali",
+      relative_position: "before",
+      offset_minutes: 4_320
+    } as Requirement;
+    expect(
+      deriveAlerts({ ...base, trips, itinerary, requirements: [linked] }).some(
+        (alert) => alert.title === "Visa check"
+      )
+    ).toBe(true);
+    expect(
+      deriveAlerts({
+        ...base,
+        trips,
+        itinerary,
+        requirements: [{ ...linked, status: "complete" }]
+      }).some((alert) => alert.title === "Visa check")
+    ).toBe(false);
   });
 });

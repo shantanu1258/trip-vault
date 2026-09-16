@@ -21,25 +21,53 @@ const mocks = vi.hoisted(() => ({
   focusedTravelerId: null as string | null
 }));
 
-vi.mock("../components/AppShell", () => ({ AppShell: ({ children }: { children: ReactNode }) => <>{children}</> }));
-vi.mock("../features/sync/localSync", () => ({ localProfileId: vi.fn().mockResolvedValue("user-1") }));
-vi.mock("../features/trips/api", () => ({ getTrip: mocks.getTrip, listItinerary: mocks.listItinerary }));
+vi.mock("../components/AppShell", () => ({
+  AppShell: ({ children }: { children: ReactNode }) => <>{children}</>
+}));
+vi.mock("../features/sync/localSync", () => ({
+  localProfileId: vi.fn().mockResolvedValue("user-1")
+}));
+vi.mock("../features/trips/api", () => ({
+  getTrip: mocks.getTrip,
+  listItinerary: mocks.listItinerary
+}));
 vi.mock("../features/workspace/travelerFocus", () => ({
   readTravelerFocus: () => mocks.focusedTravelerId,
-  requirementMatchesTraveler: (requirementId: string, travelerId: string, assignees: Array<{ requirement_id: string; traveler_id: string }>) => {
+  requirementMatchesTraveler: (
+    requirementId: string,
+    travelerId: string,
+    assignees: Array<{ requirement_id: string; traveler_id: string }>
+  ) => {
     const taskAssignees = assignees.filter((row) => row.requirement_id === requirementId);
-    return taskAssignees.length === 0 || taskAssignees.some((row) => row.traveler_id === travelerId);
+    return (
+      taskAssignees.length === 0 || taskAssignees.some((row) => row.traveler_id === travelerId)
+    );
   },
-  requirementAudienceLabel: (requirementId: string, assignees: Array<{ requirement_id: string; traveler_id: string }>, travelers: Array<{ id: string; display_name: string }>) => {
-    const names = assignees.filter((row) => row.requirement_id === requirementId).map((row) => travelers.find((traveler) => traveler.id === row.traveler_id)?.display_name).filter(Boolean);
+  requirementAudienceLabel: (
+    requirementId: string,
+    assignees: Array<{ requirement_id: string; traveler_id: string }>,
+    travelers: Array<{ id: string; display_name: string }>
+  ) => {
+    const names = assignees
+      .filter((row) => row.requirement_id === requirementId)
+      .map((row) => travelers.find((traveler) => traveler.id === row.traveler_id)?.display_name)
+      .filter(Boolean);
     return names.join(", ");
   }
 }));
 vi.mock("../features/workspace/WorkspaceForms", () => ({
-  AddRequirementForm: ({ requirement, onClose }: { requirement?: Requirement; onClose: () => void }) => (
+  AddRequirementForm: ({
+    requirement,
+    onClose
+  }: {
+    requirement?: Requirement;
+    onClose: () => void;
+  }) => (
     <section aria-label={requirement ? "Edit task" : "Add task"}>
       {requirement?.title}
-      <button type="button" onClick={onClose}>Close form</button>
+      <button type="button" onClick={onClose}>
+        Close form
+      </button>
     </section>
   )
 }));
@@ -85,13 +113,22 @@ const requirement: Requirement = {
   notes: "Check validity before departure."
 };
 
-function renderPage(initialEntry: string | { pathname: string; state: unknown } = "/trips/trip-1/readiness") {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+function renderPage(
+  initialEntry: string | { pathname: string; state: unknown } = "/trips/trip-1/readiness"
+) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+  });
   return render(
     <QueryClientProvider client={queryClient}>
       <ConfirmDialogProvider>
-        <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <Routes><Route path="/trips/:tripId/readiness" element={<ReadinessPage />} /></Routes>
+        <MemoryRouter
+          initialEntries={[initialEntry]}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
+          <Routes>
+            <Route path="/trips/:tripId/readiness" element={<ReadinessPage />} />
+          </Routes>
         </MemoryRouter>
       </ConfirmDialogProvider>
     </QueryClientProvider>
@@ -106,7 +143,15 @@ describe("readiness checklist interactions", () => {
     mocks.listRequirements.mockResolvedValue([requirement]);
     mocks.listItinerary.mockResolvedValue([]);
     mocks.listTravelers.mockResolvedValue([]);
-    mocks.listMembers.mockResolvedValue([{ user_id: "user-1", role: "owner", participation_type: "traveler", joined_at: null, display_name: "Owner" }]);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "user-1",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: null,
+        display_name: "Owner"
+      }
+    ]);
     mocks.listTripRequirementAssignees.mockResolvedValue([]);
     mocks.updateRequirementStatus.mockResolvedValue(undefined);
     mocks.archiveRequirement.mockResolvedValue(undefined);
@@ -121,7 +166,13 @@ describe("readiness checklist interactions", () => {
     expect(screen.getByText("Check validity before departure.")).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "Mark as done: Passport ready" }));
-    await waitFor(() => expect(mocks.updateRequirementStatus).toHaveBeenCalledWith("requirement-1", "complete", "trip-1"));
+    await waitFor(() =>
+      expect(mocks.updateRequirementStatus).toHaveBeenCalledWith(
+        "requirement-1",
+        "complete",
+        "trip-1"
+      )
+    );
     expect(screen.getByRole("status")).toHaveTextContent("marked done");
     expect(screen.queryByRole("region", { name: "Edit task" })).not.toBeInTheDocument();
 
@@ -132,7 +183,9 @@ describe("readiness checklist interactions", () => {
     expect(screen.queryByRole("region", { name: "Edit task" })).not.toBeInTheDocument();
 
     await user.click(editTask);
-    expect(await screen.findByRole("region", { name: "Edit task" })).toHaveTextContent("Passport ready");
+    expect(await screen.findByRole("region", { name: "Edit task" })).toHaveTextContent(
+      "Passport ready"
+    );
   });
 
   it("opens a simple add-task flow from the checklist header", async () => {
@@ -169,7 +222,9 @@ describe("readiness checklist interactions", () => {
   });
 
   it("omits due date and notes when a task does not have them", async () => {
-    mocks.listRequirements.mockResolvedValue([{ ...requirement, id: "requirement-2", title: "Buy adapter", due_date: null, notes: null }]);
+    mocks.listRequirements.mockResolvedValue([
+      { ...requirement, id: "requirement-2", title: "Buy adapter", due_date: null, notes: null }
+    ]);
     renderPage();
 
     const title = await screen.findByText("Buy adapter");
@@ -180,8 +235,14 @@ describe("readiness checklist interactions", () => {
   });
 
   it("returns to the source Trip details tab", async () => {
-    renderPage({ pathname: "/trips/trip-1/readiness", state: tripChildNavigationState(null, "trip-1", "details") });
+    renderPage({
+      pathname: "/trips/trip-1/readiness",
+      state: tripChildNavigationState(null, "trip-1", "details")
+    });
 
-    expect(await screen.findByRole("link", { name: "Back to trip" })).toHaveAttribute("href", "/trips/trip-1?view=details");
+    expect(await screen.findByRole("link", { name: "Back to trip" })).toHaveAttribute(
+      "href",
+      "/trips/trip-1?view=details"
+    );
   });
 });

@@ -4,7 +4,7 @@ description: "Implemented routes, modules, data model, authorization, file stora
 scope: [service-wide]
 agents: [coder, reviewer, planner, debugger]
 tags: [implementation, data-model, sync, storage, authorization, testing]
-last_verified: 2026-09-14
+last_verified: 2026-09-16
 ---
 
 # Trip Vault Low-Level Design
@@ -122,6 +122,8 @@ Feature folders should own their views, hooks, validation, and tests. Shared pri
 | `/trips` | Authenticated | Upcoming, active, and past trips | Supabase first online; cached trip index on failure or offline |
 | `/trips/new` | Authenticated | Create a trip | A valid submitted creation is cached and queued; unfinished fields are not an autosaved draft |
 | `/trips/:tripId` | Trip member | Complete chronological timeline by default; `?view=details` opens sectioned trip details | Online refresh with cached fallback; offline reads the authorized device snapshot and restores timeline position |
+| `/trips/:tripId/reservations` | Trip member | Complete chronological reservation index with search, category counts, and traveler filter | Uses the same cached trip, booking, leg, document, and traveler collections as Trip details |
+| `/trips/:tripId/documents` | Trip member | Complete trip-document index with Needed next, search, category filter, and traveler filter | Uses cached authorized document metadata and cached event/document relationships; opening a file follows the existing local-first document route |
 | `/trips/:tripId/bookings/:bookingId` | Trip member | Booking details and attachments | Network-first metadata with cached fallback |
 | `/trips/:tripId/flights/:flightLegId` | Trip member | Flight details, manual update, ticket, boarding pass, and baggage tags | Network-first metadata with cached fallback; local document files remain available |
 | `/trips/:tripId/readiness` | Trip member | Visa, passport, insurance, check-in, and custom requirements | Network-first list with cached fallback; supported submissions queue locally |
@@ -1285,6 +1287,7 @@ Every local metadata row and OPFS document path is namespaced by `profile_id`. S
 | Published metadata catalogs | IndexedDB plus bundled JSON fallbacks | Use cached/bundled values at startup and refresh published configuration online |
 | HTML navigation | Service worker precache and SPA navigation fallback | Serve the installed app shell without runtime-caching Supabase requests |
 | Supabase structured records | IndexedDB | Supabase first while online, replacing the cached collection on success; cached collection on request failure or offline |
+| Current-account traveler links and trip event/document links | IndexedDB logical collections plus TanStack Query | Fetch each relationship set once per trip, reuse it across Home/Trip details/full collection pages, invalidate it from Realtime and attachment mutations, and fall back to the last authorized cache offline |
 | Opened or prepared file originals | OPFS with IndexedDB blob fallback | Persist the verified profile-scoped copy until the user removes local data |
 | Authenticated download URLs | Memory only | Never persist signed URLs |
 
@@ -1452,6 +1455,9 @@ Today, readiness becomes `stale` automatically when the authorized document-vers
 | `ModalSheet` | Accessible modal/sheet container with an explicit Back action and Escape dismissal for mobile-friendly creation and management flows |
 | `FocusSurface` | Current/active label, accent, elevation, and reduced-motion-safe emphasis |
 | `TripPage` timeline composition | Complete timeline, phase jumps, active-event scroll, event detail sheet, people/sharing sheet, and Details switch |
+| `TripDetailsView` | Three-item Next up, reservation, and document previews; category counts; section navigation; links to the complete reservation/document routes |
+| `ReservationRow`, `TripDocumentRow` | Compact whole-row navigation with complete route/document context, document counts, full wrapping titles, traveler audience, and visibility |
+| `TripReservationsPage`, `TripDocumentsPage` | Stable full-collection routes with search, category and traveler filtering, event-ranked documents, and Back continuity to Trip details |
 | `ReadinessPage` | Readiness requirement list whose Owner/Editor card body opens the requirement editor while status, guidance, document, and Archive controls remain independent; Viewer cards stay read-only |
 | `ReservationCard` | Makes the complete reservation surface a native details link while keeping Call and WhatsApp as independent actions |
 | `CostDetailsSheet`, `TripExpensesContent`, and `EventCost` | Shared read-first expense detail, role-gated editing/archive, itemized cost rows, and opt-in per-currency balances |
@@ -1504,7 +1510,9 @@ No gradients should be used. Decorative elements must not compete with urgent tr
 - Everyone shows the complete trip. Traveler focus retains shared events and the selected person's assigned events, reservations, linked costs, seats, and documents while hiding records assigned only to someone else. For readiness, an empty `requirement_assignees` set is the shared Everyone case; a selected traveler sees those tasks plus tasks with their own assignee row.
 - The floating control group opens Add Event, People & sharing/current member, or the active-event jump. Creation controls are hidden from Viewers.
 - Search matches timeline titles, booking/provider data, PNRs, airport codes/names, documents, travelers, readiness items, and related metadata after two characters, returning at most 40 results.
-- Details view keeps the existing sectioned experience: Overview, Reservations, Costs, People, Readiness, Documents, Archived, Offline, Travel data, and Notes. Home and the trip header show one compact per-currency cost line; either cost line deep-links to this itemized Costs section.
+- Details view keeps the existing sectioned experience: Next up, Overview, Reservations, Costs, People, Readiness, Documents, Archived, Offline, Travel data, and Notes. Next up contains at most three upcoming events. Reservations and Documents show category counts plus at most three compact rows, then route to their complete collection pages. Home and the trip header show one compact per-currency cost line; either cost line deep-links to this itemized Costs section.
+
+The complete reservation page sorts by real booking start and then title, searches title/provider/reference/full route, filters Flight, Stay, Ground & water, or Plan, and optionally retains shared plus one selected traveler's bookings. The complete document page searches full title/purpose/short label, filters category and traveler, keeps Shared documents with a selected traveler's documents, and separates the first three finite event-ranked results into **Needed next**. Document titles wrap rather than truncate on both compact and full routes.
 
 #### Card interaction contract
 
@@ -1586,6 +1594,8 @@ The first eligible item wins within each severity group; ties use event time and
 | 3 | Delayed flight, departure/boarding approaching, check-in due | Open flight or check-in action |
 | 4 | Current accommodation or next transport | Navigate, call, or copy reference |
 | 5 | Next itinerary event | Open event |
+
+Home applies authorization before relevance. From the already authorized document set it retains Shared documents plus Selected documents assigned to any traveler linked to the signed-in account for that trip; it excludes Assign later and another traveler's selected document. Explicit itinerary-document links outrank inferred booking/flight links. The next applicable event time is the primary ordering key and document purpose is only a tie-breaker, so a later boarding pass cannot displace a ticket required for an earlier event. Shortcut labels use the complete document title, while purpose, audience, and event/route context remain visible below it.
 
 Need-now bubbles are derived from the focused trip and limited to five. The resolver prefers boarding pass over ticket, then visa/passport requirement, current accommodation, insurance, and next transport. Every bubble must have an actual target; placeholders are not rendered.
 
@@ -1890,9 +1900,10 @@ Rules:
 
 | Check | Last verified | Result |
 |---|---|---|
-| `npm run typecheck` | 2026-09-13 | Pass |
-| `npm test` | 2026-09-14 | Pass: 67 files, 358 tests |
-| `npm run build` | 2026-09-13 | Pass; only the existing chunk-size and dynamic-import advisories remain |
+| `npm run typecheck` | 2026-09-16 | Pass |
+| `npm test` | 2026-09-16 | Pass: 78 files, 425 tests |
+| `npm run build` | 2026-09-16 | Pass; only the existing chunk-size and dynamic-import advisories remain |
+| `npm run format:check` | 2026-09-16 | Pass |
 | `supabase/tests/001_schema_smoke.sql` | Current local SQL includes booking-vendor, trip-cleanup, relative-event timing, reservation/scope, ground-detail, allocation, optional-arrival, and hotel-RPC assertions | Rerun remotely after the single new tail `202609140001_event_form_data_model.sql` |
 | Phone, desktop, sharing, upload, Cloudflare, and airplane mode | Current release | Manual acceptance pending in `docs/FEATURE_TEST_CHECKLIST.md` |
 
@@ -1939,6 +1950,7 @@ The lists below are the release coverage contract. They do not imply that every 
 - Validated Train/Bus/Ferry/Cab detail discriminators and optional non-flight arrival handling
 - Per-traveler journey allocation mapping and offline-cache keys
 - Approved filename-extension MIME recovery for generic phone files, plus extensionless OPFS MIME restoration
+- Event-first document ranking, current-account traveler relevance, shared-document retention, and full reservation route/category aggregation
 
 ### 16.3 Component-test and UI coverage
 
@@ -1952,6 +1964,7 @@ The lists below are the release coverage contract. They do not imply that every 
 - Conditional journey fields: hidden Domestic/local zones, derived known-airport zones, International Other/manual zones, no journey location, and hidden flight/train contact names
 - Domestic Flight edit hides repeated-clock controls; International Flight edit retains them
 - Booking-vendor Other remains reversible, with Airbnb and Trip.com present in the bundled fallback
+- Large Trip details renders only three reservation/document previews, while the dedicated routes render all records with search, category and traveler filters, complete wrapping document titles, and Back continuity
 - Manual visa input and readiness warnings
 - Join-code entry without pre-redemption trip disclosure
 - Traveler roster and managed-traveler context picker
@@ -2207,6 +2220,7 @@ The React bundle already contains fallback catalog JSON, so form entry does not 
 | LLD-076 | Journey traveler allocations | Keep Flight seat + boarding group + ticket number; store Train seat/berth + coach + reference, Bus seat + reference, and Ferry reference with seat/cabin only for assigned seating per included traveler and leg; do not force one shared seat field or add a Cab seat grid | Accepted |
 | LLD-077 | Document preview engine | Bundle the browser-safe PDF.js module and worker with the PWA, render PDFs to canvas with page/zoom/fit controls, zoom images in-app, and keep device **Open** for fallback/unsupported rendering | Accepted |
 | LLD-078 | Document file-selection surface | Use one reusable large centered, touch/keyboard/drop-enabled picker for trip upload and the Profile inbox, with a compact replacement variant and immediate size/type/busy feedback; defer Admin artwork selection to the Admin redesign | Accepted |
+| LLD-079 | Large-trip collection routes | Keep Trip details to three-row previews and counts; expose complete reservation/document collections on stable searchable routes; batch/cache account-traveler and event-document relationships; rank documents by event time before purpose | Accepted |
 
 ## Source File Index
 
@@ -2224,6 +2238,8 @@ These paths are the implemented ownership map. Tests are co-located with their m
 | Journey-operator catalog | `src/features/metadata/starter-journey-operators.json`, `src/features/metadata/JourneyOperatorPicker.tsx` | Transport-specific operator suggestions with an explicit Other/manual fallback |
 | Timeline feature | `src/features/timeline/`, `src/features/workspace/JourneyTravelerDetails.tsx`, `src/pages/TripPage.tsx` | Event creation, progressive reservation state, typed journey fields, per-leg traveler allocation, relative timing precision, active-item scrolling, event details, and trip details switch |
 | Card interaction hierarchy and expense detail | `src/pages/TripPage.tsx`, `src/pages/TripPage.test.tsx`, `src/pages/BookingPage.tsx`, `src/pages/FlightPage.tsx`, `src/pages/FlightPage.test.tsx`, `src/pages/ReadinessPage.tsx`, `src/features/workspace/TripAirlinesPanel.tsx`, `src/features/workspace/TripAirlinesPanel.test.tsx` | Whole-card reservation/event/cost activation, read-first booking and expense fields, opt-in balances, Owner trip-overview settings, readiness direct edit with independent controls, and other direct-edit shallow cards |
+| Large-trip collection views | `src/features/trips/TripDetailsView.tsx`, `src/features/trips/TripDetailsCards.tsx`, `src/features/trips/reservationPresentation.ts`, `src/components/TripDocumentRow.tsx`, `src/pages/TripReservationsPage.tsx`, `src/pages/TripDocumentsPage.tsx` | Three-row previews, category counts, compact rows, complete searchable/filterable collections, and event-first document grouping |
+| Trip relationship batching | `src/features/workspace/tripRelationships.ts`, `src/features/queries/tripQueries.ts`, `src/features/sync/queryRoots.ts` | One cached current-account traveler-link read and one batched event-document reference read per trip, with offline fallback and targeted invalidation |
 | Journey and booking detail | `src/pages/FlightPage.tsx`, `src/pages/BookingPage.tsx` | Endpoint-zone display, Domestic/International update controls, full route, seats, and booking detail |
 | Generic event booking enrichment | `src/features/workspace/AddActivityBookingForm.tsx`, `src/features/trips/TripForms.tsx`, `src/features/trips/api.ts` | Supported event types, nullable untimed booking schedule, existing/new booking choices, versioned event link, and compensating archive |
 | Theme definitions | `src/lib/theme/`, `src/styles/globals.css` | Bundled semantic light/dark fallbacks, local preference, and published-token application |

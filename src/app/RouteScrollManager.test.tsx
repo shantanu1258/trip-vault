@@ -11,8 +11,24 @@ function NavigationHarness() {
       <RouteScrollManager />
       <button onClick={() => navigate("/trips/example?view=details")}>Trip</button>
       <button onClick={() => navigate("/trips/example?view=timeline")}>Trip view</button>
-      <button onClick={() => navigate("/trips/example", { state: tripIntentNavigationState(null, "example", "restore", { view: "timeline" }) })}>Return to trip</button>
-      <button onClick={() => navigate("/trips/example?view=details", { state: tripEntryNavigationState(null, "example", "details") })}>Restore trip tab</button>
+      <button
+        onClick={() =>
+          navigate("/trips/example", {
+            state: tripIntentNavigationState(null, "example", "restore", { view: "timeline" })
+          })
+        }
+      >
+        Return to trip
+      </button>
+      <button
+        onClick={() =>
+          navigate("/trips/example?view=details", {
+            state: tripEntryNavigationState(null, "example", "details")
+          })
+        }
+      >
+        Restore trip tab
+      </button>
       <button onClick={() => navigate("/profile")}>Profile</button>
     </>
   );
@@ -22,7 +38,10 @@ describe("route scroll isolation", () => {
   it("starts real pages at the top without resetting query-only TripPage views", () => {
     const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
     const view = render(
-      <MemoryRouter initialEntries={["/home"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter
+        initialEntries={["/home"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <NavigationHarness />
       </MemoryRouter>
     );
@@ -40,7 +59,10 @@ describe("route scroll isolation", () => {
   it("leaves child returns and saved trip-tab entries for TripPage to restore", () => {
     const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
     const view = render(
-      <MemoryRouter initialEntries={["/trips/example/bookings/booking-1"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter
+        initialEntries={["/trips/example/bookings/booking-1"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <NavigationHarness />
       </MemoryRouter>
     );
@@ -54,7 +76,11 @@ describe("route scroll isolation", () => {
 
   it("restores the browser scroll-restoration setting when it unmounts", () => {
     vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
-    Object.defineProperty(window.history, "scrollRestoration", { value: "auto", writable: true, configurable: true });
+    Object.defineProperty(window.history, "scrollRestoration", {
+      value: "auto",
+      writable: true,
+      configurable: true
+    });
     const view = render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <RouteScrollManager />

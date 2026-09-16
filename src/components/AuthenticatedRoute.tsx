@@ -10,11 +10,22 @@ export function AuthenticatedRoute() {
   if (authenticated === null) {
     return (
       <div className="grid min-h-dvh place-items-center bg-canvas text-brand">
-        <Loader2 className="size-7 animate-spin motion-reduce:animate-none" aria-label="Opening your private space" />
+        <Loader2
+          className="size-7 animate-spin motion-reduce:animate-none"
+          aria-label="Opening your private space"
+        />
       </div>
     );
   }
 
-  if (!authenticated) return <Navigate to="/sign-in" replace state={{ from: `${location.pathname}${location.search}` }} />;
-  return <><StoragePermissionPrompt /><Outlet /></>;
+  if (!authenticated)
+    return (
+      <Navigate to="/sign-in" replace state={{ from: `${location.pathname}${location.search}` }} />
+    );
+  return (
+    <>
+      <StoragePermissionPrompt />
+      <Outlet />
+    </>
+  );
 }

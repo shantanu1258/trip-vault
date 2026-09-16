@@ -34,13 +34,15 @@ import { addBooking, bookingFields, bookingInputForTimelineEvent } from "./api";
 
 describe("timeline event booking timing", () => {
   it("keeps the pasted navigation link in booking location metadata", () => {
-    expect(bookingFields({
-      tripId: "trip-1",
-      type: "other",
-      title: "Visa appointment",
-      location: "Visa centre",
-      mapUrl: "https://maps.google.com/visa-centre"
-    }).location).toEqual({
+    expect(
+      bookingFields({
+        tripId: "trip-1",
+        type: "other",
+        title: "Visa appointment",
+        location: "Visa centre",
+        mapUrl: "https://maps.google.com/visa-centre"
+      }).location
+    ).toEqual({
       label: "Visa centre",
       address: "Visa centre",
       map_url: "https://maps.google.com/visa-centre"
@@ -79,11 +81,13 @@ describe("timeline event booking timing", () => {
       timezone: "Asia/Kolkata"
     });
 
-    expect(bookingInput).toEqual(expect.objectContaining({
-      startsAt: "2026-09-28T09:30:00.000Z",
-      endsAt: "2026-09-29T05:30:00.000Z",
-      timezone: "Asia/Kolkata"
-    }));
+    expect(bookingInput).toEqual(
+      expect.objectContaining({
+        startsAt: "2026-09-28T09:30:00.000Z",
+        endsAt: "2026-09-29T05:30:00.000Z",
+        timezone: "Asia/Kolkata"
+      })
+    );
   });
 });
 
@@ -104,23 +108,27 @@ describe("booking creation compensation", () => {
       error: null
     }));
     mocks.cleanupEq.mockResolvedValue({ error: null });
-    mocks.from.mockImplementation((table: string) => table === "bookings"
-      ? { insert: mocks.bookingInsert, update: mocks.bookingUpdate }
-      : { insert: mocks.travelerInsert });
+    mocks.from.mockImplementation((table: string) =>
+      table === "bookings"
+        ? { insert: mocks.bookingInsert, update: mocks.bookingUpdate }
+        : { insert: mocks.travelerInsert }
+    );
   });
 
   it("archives the unfinished booking when participant insertion fails", async () => {
     const participantError = { code: "42501", message: "booking traveler policy rejected the row" };
     mocks.travelerInsert.mockResolvedValue({ error: participantError });
 
-    await expect(addBooking({
-      tripId: "trip-1",
-      type: "activity",
-      title: "Museum visit",
-      startsAt: "2026-09-28T04:00:00.000Z",
-      timezone: "Asia/Dubai",
-      travelerIds: ["traveler-1"]
-    })).rejects.toEqual(participantError);
+    await expect(
+      addBooking({
+        tripId: "trip-1",
+        type: "activity",
+        title: "Museum visit",
+        startsAt: "2026-09-28T04:00:00.000Z",
+        timezone: "Asia/Dubai",
+        travelerIds: ["traveler-1"]
+      })
+    ).rejects.toEqual(participantError);
 
     const createdId = mocks.bookingInsert.mock.calls[0][0].id;
     expect(mocks.bookingInsert.mock.calls[0][0]).toMatchObject({
@@ -133,12 +141,19 @@ describe("booking creation compensation", () => {
   });
 
   it("reports the unfinished booking id if participant rollback also fails", async () => {
-    mocks.travelerInsert.mockResolvedValue({ error: { code: "42501", message: "participants failed" } });
+    mocks.travelerInsert.mockResolvedValue({
+      error: { code: "42501", message: "participants failed" }
+    });
     mocks.cleanupEq.mockResolvedValue({ error: { code: "42501", message: "cleanup failed" } });
 
     let caught: unknown;
     try {
-      await addBooking({ tripId: "trip-1", type: "activity", title: "Museum visit", travelerIds: ["traveler-1"] });
+      await addBooking({
+        tripId: "trip-1",
+        type: "activity",
+        title: "Museum visit",
+        travelerIds: ["traveler-1"]
+      });
     } catch (error) {
       caught = error;
     }

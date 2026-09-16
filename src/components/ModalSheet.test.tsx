@@ -4,7 +4,19 @@ import { ModalSheet } from "./ModalSheet";
 
 describe("ModalSheet", () => {
   it("scrolls the entire modal without pinning its heading or actions", () => {
-    render(<ModalSheet eyebrow="Trip" title="Long form" onClose={vi.fn()}><form><label>Field<input /></label><button className="primary-button" type="submit">Save</button></form></ModalSheet>);
+    render(
+      <ModalSheet eyebrow="Trip" title="Long form" onClose={vi.fn()}>
+        <form>
+          <label>
+            Field
+            <input />
+          </label>
+          <button className="primary-button" type="submit">
+            Save
+          </button>
+        </form>
+      </ModalSheet>
+    );
 
     const dialog = screen.getByRole("dialog", { name: "Long form" });
     expect(dialog).toHaveClass("overflow-y-auto");

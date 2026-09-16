@@ -1,8 +1,18 @@
 export type TripStatus = "draft" | "upcoming" | "active" | "completed" | "archived";
 
 export const timelineEventTypes = [
-  "flight", "train", "bus", "ferry", "cab", "hotel_check_in", "hotel_check_out",
-  "transport", "meal", "activity", "preparation", "custom"
+  "flight",
+  "train",
+  "bus",
+  "ferry",
+  "cab",
+  "hotel_check_in",
+  "hotel_check_out",
+  "transport",
+  "meal",
+  "activity",
+  "preparation",
+  "custom"
 ] as const;
 export type TimelineEventType = (typeof timelineEventTypes)[number];
 export type EventTimingMode = "exact" | "date_only" | "all_day" | "relative" | "unscheduled";
@@ -11,8 +21,12 @@ export type ParticipantScope = "everyone" | "selected";
 
 export const journeyTimelineEventTypes = ["flight", "train", "bus", "ferry", "cab"] as const;
 
-export function isJourneyEventType(type: TimelineEventType | undefined): type is (typeof journeyTimelineEventTypes)[number] {
-  return Boolean(type && journeyTimelineEventTypes.includes(type as (typeof journeyTimelineEventTypes)[number]));
+export function isJourneyEventType(
+  type: TimelineEventType | undefined
+): type is (typeof journeyTimelineEventTypes)[number] {
+  return Boolean(
+    type && journeyTimelineEventTypes.includes(type as (typeof journeyTimelineEventTypes)[number])
+  );
 }
 
 export type Trip = {
@@ -59,7 +73,16 @@ export type ItineraryItem = {
   deleted_at?: string | null;
 };
 
-export const costCategories = ["flight", "hotel", "transport", "activity", "food", "visa", "insurance", "other"] as const;
+export const costCategories = [
+  "flight",
+  "hotel",
+  "transport",
+  "activity",
+  "food",
+  "visa",
+  "insurance",
+  "other"
+] as const;
 export type CostCategory = (typeof costCategories)[number];
 export type PaymentStatus = "planned" | "paid" | "refunded";
 
@@ -131,7 +154,11 @@ export type CreateTripInput = {
   baseCurrency: string;
 };
 
-export type UpdateTripInput = CreateTripInput & { id: string; status: TripStatus; version?: number };
+export type UpdateTripInput = CreateTripInput & {
+  id: string;
+  status: TripStatus;
+  version?: number;
+};
 
 export type CreateItineraryInput = {
   tripId: string;

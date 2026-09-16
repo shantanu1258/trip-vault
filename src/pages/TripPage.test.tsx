@@ -6,7 +6,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ItineraryItem, Trip, TripCost } from "../features/trips/types";
 import { tripIntentNavigationState } from "../features/trips/navigation";
 import { CostDetailsSheet, TripExpensesContent } from "../features/trips/TripExpenses";
-import type { Booking, FlightLeg, FlightTraveler, JourneyLeg, Requirement, Traveler, TripNote } from "../features/workspace/types";
+import type {
+  Booking,
+  FlightLeg,
+  FlightTraveler,
+  JourneyLeg,
+  Requirement,
+  Traveler,
+  TripNote
+} from "../features/workspace/types";
 
 const mocks = vi.hoisted(() => ({
   getTrip: vi.fn(),
@@ -26,19 +34,94 @@ const mocks = vi.hoisted(() => ({
   listTripItineraryParticipants: vi.fn().mockResolvedValue([]),
   listTripRequirementAssignees: vi.fn().mockResolvedValue([]),
   listVaultDocuments: vi.fn().mockResolvedValue([]),
+  listTripEventDocumentReferences: vi.fn().mockResolvedValue([]),
   attachDocumentsToEvent: vi.fn().mockResolvedValue(undefined),
   uploadDocument: vi.fn().mockResolvedValue({ id: "document-auto" }),
   updateRequirementStatus: vi.fn().mockResolvedValue(undefined),
   updateTripExpenseSplitting: vi.fn()
 }));
 
-vi.mock("../components/AppShell", () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
-vi.mock("../components/ModalSheet", () => ({ ModalSheet: ({ children, title, onClose }: { children: React.ReactNode; title: string; onClose: () => void }) => <section aria-label={title}><button type="button" onClick={onClose}>Back</button>{children}</section> }));
+vi.mock("../components/AppShell", () => ({
+  AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</>
+}));
+vi.mock("../components/ModalSheet", () => ({
+  ModalSheet: ({
+    children,
+    title,
+    onClose
+  }: {
+    children: React.ReactNode;
+    title: string;
+    onClose: () => void;
+  }) => (
+    <section aria-label={title}>
+      <button type="button" onClick={onClose}>
+        Back
+      </button>
+      {children}
+    </section>
+  )
+}));
 vi.mock("../features/readiness/OfflinePackControl", () => ({ OfflinePackControl: () => null }));
-vi.mock("../features/timeline/AddEventForm", () => ({ AddEventForm: ({ onAddDocument }: { onAddDocument?: (saved: { title: string; itineraryItemId: string; bookingId?: string; participantScope: "everyone" | "selected"; travelerIds: string[] }, handoff?: { file?: File; kind?: "flight_ticket" }) => void | Promise<void> }) => <section aria-label="Add event test form"><button type="button" onClick={() => onAddDocument?.({ title: "Bus to Kuala Lumpur", itineraryItemId: "saved-event", bookingId: "booking-1", participantScope: "everyone", travelerIds: [] })}>Add official document</button><button type="button" onClick={() => onAddDocument?.({ title: "Flight to Dubai", itineraryItemId: "saved-flight", bookingId: "booking-flight", participantScope: "everyone", travelerIds: [] }, { file: new File(["%PDF-ticket"], "flight-ticket.pdf", { type: "application/pdf" }), kind: "flight_ticket" })}>Save flight with selected document</button></section> }));
-vi.mock("../features/sync/localSync", () => ({ localProfileId: vi.fn().mockResolvedValue("owner-user") }));
+vi.mock("../features/timeline/AddEventForm", () => ({
+  AddEventForm: ({
+    onAddDocument
+  }: {
+    onAddDocument?: (
+      saved: {
+        title: string;
+        itineraryItemId: string;
+        bookingId?: string;
+        participantScope: "everyone" | "selected";
+        travelerIds: string[];
+      },
+      handoff?: { file?: File; kind?: "flight_ticket" }
+    ) => void | Promise<void>;
+  }) => (
+    <section aria-label="Add event test form">
+      <button
+        type="button"
+        onClick={() =>
+          onAddDocument?.({
+            title: "Bus to Kuala Lumpur",
+            itineraryItemId: "saved-event",
+            bookingId: "booking-1",
+            participantScope: "everyone",
+            travelerIds: []
+          })
+        }
+      >
+        Add official document
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          onAddDocument?.(
+            {
+              title: "Flight to Dubai",
+              itineraryItemId: "saved-flight",
+              bookingId: "booking-flight",
+              participantScope: "everyone",
+              travelerIds: []
+            },
+            {
+              file: new File(["%PDF-ticket"], "flight-ticket.pdf", { type: "application/pdf" }),
+              kind: "flight_ticket"
+            }
+          )
+        }
+      >
+        Save flight with selected document
+      </button>
+    </section>
+  )
+}));
+vi.mock("../features/sync/localSync", () => ({
+  localProfileId: vi.fn().mockResolvedValue("owner-user")
+}));
 vi.mock("../features/trips/api", async () => {
-  const actual = await vi.importActual<typeof import("../features/trips/api")>("../features/trips/api");
+  const actual =
+    await vi.importActual<typeof import("../features/trips/api")>("../features/trips/api");
   return {
     ...actual,
     getTrip: mocks.getTrip,
@@ -50,18 +133,59 @@ vi.mock("../features/trips/api", async () => {
 });
 vi.mock("../features/workspace/EventDocuments", () => ({
   EventDocuments: () => null,
-  EventDocumentShortcut: ({ item, travelerId }: { item: ItineraryItem; travelerId?: string | null }) => <a href={`/trips/${item.trip_id}/documents/primary-document`} data-traveler-id={travelerId ?? "everyone"}>Open Ticket</a>
+  EventDocumentShortcut: ({
+    item,
+    travelerId
+  }: {
+    item: ItineraryItem;
+    travelerId?: string | null;
+  }) => (
+    <a
+      href={`/trips/${item.trip_id}/documents/primary-document`}
+      data-traveler-id={travelerId ?? "everyone"}
+    >
+      Open Ticket
+    </a>
+  )
 }));
 vi.mock("../features/workspace/TripAirlinesPanel", () => ({ TripAirlinesPanel: () => null }));
 vi.mock("../features/workspace/WorkspaceForms", async () => {
-  const actual = await vi.importActual<typeof import("../features/workspace/WorkspaceForms")>("../features/workspace/WorkspaceForms");
+  const actual = await vi.importActual<typeof import("../features/workspace/WorkspaceForms")>(
+    "../features/workspace/WorkspaceForms"
+  );
   return {
     ...actual,
-    UploadDocumentForm: ({ bookingId, contextTitle, initialFile, initialKind, onUploaded }: { bookingId?: string; contextTitle?: string; initialFile?: File; initialKind?: string; onUploaded?: (documentId: string) => Promise<void> | void }) => <section aria-label="Upload official document" data-booking-id={bookingId} data-context-title={contextTitle} data-initial-file={initialFile?.name} data-initial-kind={initialKind}><button type="button" onClick={() => void onUploaded?.("document-1")}>Complete test upload</button></section>
+    UploadDocumentForm: ({
+      bookingId,
+      contextTitle,
+      initialFile,
+      initialKind,
+      onUploaded
+    }: {
+      bookingId?: string;
+      contextTitle?: string;
+      initialFile?: File;
+      initialKind?: string;
+      onUploaded?: (documentId: string) => Promise<void> | void;
+    }) => (
+      <section
+        aria-label="Upload official document"
+        data-booking-id={bookingId}
+        data-context-title={contextTitle}
+        data-initial-file={initialFile?.name}
+        data-initial-kind={initialKind}
+      >
+        <button type="button" onClick={() => void onUploaded?.("document-1")}>
+          Complete test upload
+        </button>
+      </section>
+    )
   };
 });
 vi.mock("../features/workspace/api", async () => {
-  const actual = await vi.importActual<typeof import("../features/workspace/api")>("../features/workspace/api");
+  const actual = await vi.importActual<typeof import("../features/workspace/api")>(
+    "../features/workspace/api"
+  );
   return {
     ...actual,
     attachDocumentsToEvent: mocks.attachDocumentsToEvent,
@@ -82,10 +206,24 @@ vi.mock("../features/workspace/api", async () => {
     updateRequirementStatus: mocks.updateRequirementStatus
   };
 });
+vi.mock("../features/workspace/tripRelationships", () => ({
+  listCurrentAccountTravelerIds: vi.fn().mockResolvedValue([]),
+  listTripEventDocumentReferences: mocks.listTripEventDocumentReferences
+}));
 
-import { EventDetailsSheet, indexFirstFlightByBooking, NoteCard, ReservationCard, TripPage } from "./TripPage";
+import {
+  EventDetailsSheet,
+  indexFirstFlightByBooking,
+  NoteCard,
+  ReservationCard,
+  TripPage
+} from "./TripPage";
 
-Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, writable: true, value: vi.fn() });
+Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+  configurable: true,
+  writable: true,
+  value: vi.fn()
+});
 
 afterEach(() => {
   localStorage.clear();
@@ -96,7 +234,12 @@ afterEach(() => {
   mocks.attachDocumentsToEvent.mockReset().mockResolvedValue(undefined);
   mocks.uploadDocument.mockReset().mockResolvedValue({ id: "document-auto" });
   mocks.updateRequirementStatus.mockReset().mockResolvedValue(undefined);
-  mocks.updateTripExpenseSplitting.mockReset().mockImplementation(async (trip: Trip, enabled: boolean) => ({ ...trip, expense_splitting_enabled: enabled }));
+  mocks.updateTripExpenseSplitting
+    .mockReset()
+    .mockImplementation(async (trip: Trip, enabled: boolean) => ({
+      ...trip,
+      expense_splitting_enabled: enabled
+    }));
 });
 
 const activity: ItineraryItem = {
@@ -117,8 +260,20 @@ const activity: ItineraryItem = {
 };
 
 const expenseTravelers: Traveler[] = [
-  { id: "traveler-1", trip_id: "trip-1", display_name: "Shantanu", is_minor: false, created_at: "2026-09-01T00:00:00.000Z" },
-  { id: "traveler-2", trip_id: "trip-1", display_name: "Shubham", is_minor: false, created_at: "2026-09-01T00:00:00.000Z" }
+  {
+    id: "traveler-1",
+    trip_id: "trip-1",
+    display_name: "Shantanu",
+    is_minor: false,
+    created_at: "2026-09-01T00:00:00.000Z"
+  },
+  {
+    id: "traveler-2",
+    trip_id: "trip-1",
+    display_name: "Shubham",
+    is_minor: false,
+    created_at: "2026-09-01T00:00:00.000Z"
+  }
 ];
 
 const expense: TripCost = {
@@ -153,10 +308,69 @@ const ownerTrip: Trip = {
   updated_at: "2026-09-01T00:00:00.000Z"
 };
 
-function renderDetails({ item = activity, itinerary = [], booking, flights = [], flightTravelers = [], journeys = [], travelers = [], costs = [], focusedTravelerId, editable = true, onAddBooking = vi.fn(), onEdit = vi.fn(), onViewCost = vi.fn() }: { item?: ItineraryItem; itinerary?: ItineraryItem[]; booking?: Booking; flights?: FlightLeg[]; flightTravelers?: FlightTraveler[]; journeys?: JourneyLeg[]; travelers?: Traveler[]; costs?: TripCost[]; focusedTravelerId?: string | null; editable?: boolean; onAddBooking?: () => void; onEdit?: () => void; onViewCost?: (cost: TripCost) => void } = {}) {
+function renderDetails({
+  item = activity,
+  itinerary = [],
+  booking,
+  flights = [],
+  flightTravelers = [],
+  journeys = [],
+  travelers = [],
+  costs = [],
+  focusedTravelerId,
+  editable = true,
+  onAddBooking = vi.fn(),
+  onEdit = vi.fn(),
+  onViewCost = vi.fn()
+}: {
+  item?: ItineraryItem;
+  itinerary?: ItineraryItem[];
+  booking?: Booking;
+  flights?: FlightLeg[];
+  flightTravelers?: FlightTraveler[];
+  journeys?: JourneyLeg[];
+  travelers?: Traveler[];
+  costs?: TripCost[];
+  focusedTravelerId?: string | null;
+  editable?: boolean;
+  onAddBooking?: () => void;
+  onEdit?: () => void;
+  onViewCost?: (cost: TripCost) => void;
+} = {}) {
   const noop = vi.fn();
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={queryClient}><MemoryRouter><EventDetailsSheet item={item} itinerary={itinerary} tripId="trip-1" booking={booking} flights={flights} flightTravelers={flightTravelers} journeys={journeys} travelerIds={[]} travelers={travelers} costs={costs} focusedTravelerId={focusedTravelerId} editable={editable} canMoveUp={false} canMoveDown={false} onClose={noop} onEdit={onEdit} onArchive={noop} onAddBooking={onAddBooking} onAddCost={noop} onViewCost={onViewCost} onUploadDocument={noop} onStatus={noop} onMoveUp={noop} onMoveDown={noop} /></MemoryRouter></QueryClientProvider>);
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <EventDetailsSheet
+          item={item}
+          itinerary={itinerary}
+          tripId="trip-1"
+          booking={booking}
+          flights={flights}
+          flightTravelers={flightTravelers}
+          journeys={journeys}
+          travelerIds={[]}
+          travelers={travelers}
+          costs={costs}
+          focusedTravelerId={focusedTravelerId}
+          editable={editable}
+          canMoveUp={false}
+          canMoveDown={false}
+          onClose={noop}
+          onEdit={onEdit}
+          onArchive={noop}
+          onAddBooking={onAddBooking}
+          onAddCost={noop}
+          onViewCost={onViewCost}
+          onUploadDocument={noop}
+          onStatus={noop}
+          onMoveUp={noop}
+          onMoveDown={noop}
+        />
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
   return { onAddBooking, onEdit, onViewCost };
 }
 
@@ -164,13 +378,21 @@ describe("trip overview card", () => {
   it("lets the owner open Trip settings from the card body without nesting interactive controls", async () => {
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listMembers.mockResolvedValue([
-      { user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
     ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/trips/trip-1?view=details"]}>
-          <Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
         </MemoryRouter>
       </QueryClientProvider>
     );
@@ -198,20 +420,30 @@ describe("trip summary interactions", () => {
     mocks.listTravelers.mockResolvedValue(expenseTravelers);
     mocks.listRequirements.mockResolvedValue([]);
     mocks.listMembers.mockResolvedValue([
-      { user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
     ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const view = render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/trips/trip-1"]}>
-          <Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
         </MemoryRouter>
       </QueryClientProvider>
     );
 
     const timelineTarget = await screen.findByRole("link", { name: "Open trip readiness" });
     const timelineCard = timelineTarget.closest("section");
-    expect(within(timelineCard as HTMLElement).getByRole("link", { name: "Open checklist" })).toHaveAttribute("href", "/trips/trip-1/readiness");
+    expect(
+      within(timelineCard as HTMLElement).getByRole("link", { name: "Open checklist" })
+    ).toHaveAttribute("href", "/trips/trip-1/readiness");
     expect(timelineCard?.querySelector("a a, a button, button a, button button")).toBeNull();
 
     view.unmount();
@@ -219,35 +451,78 @@ describe("trip summary interactions", () => {
     render(
       <QueryClientProvider client={detailsClient}>
         <MemoryRouter initialEntries={["/trips/trip-1?view=details"]}>
-          <Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
         </MemoryRouter>
       </QueryClientProvider>
     );
 
     const detailsTarget = await screen.findByRole("button", { name: "Open trip readiness" });
     const detailsCard = detailsTarget.closest("section");
-    expect(within(detailsCard as HTMLElement).getByRole("link", { name: "Open" })).toHaveAttribute("href", "/trips/trip-1/readiness");
+    expect(within(detailsCard as HTMLElement).getByRole("link", { name: "Open" })).toHaveAttribute(
+      "href",
+      "/trips/trip-1/readiness"
+    );
     expect(detailsCard?.querySelector("a a, a button, button a, button button")).toBeNull();
   });
 
   it("renders an event-linked readiness task in the main timeline and completes it in place", async () => {
     const linkedTask: Requirement = {
-      id: "visa-task", trip_id: ownerTrip.id, type: "visa", title: "Prepare Bali visa", status: "to_check",
-      destination_country_code: null, visa_type: null, due_date: null, timing_mode: "relative",
-      anchor_itinerary_item_id: activity.id, relative_position: "before", offset_minutes: 4_320,
-      issued_on: null, expires_on: null, validity_buffer_days: null, official_guidance_url: null,
-      guidance_checked_at: null, linked_document_id: null, notes: null
+      id: "visa-task",
+      trip_id: ownerTrip.id,
+      type: "visa",
+      title: "Prepare Bali visa",
+      status: "to_check",
+      destination_country_code: null,
+      visa_type: null,
+      due_date: null,
+      timing_mode: "relative",
+      anchor_itinerary_item_id: activity.id,
+      relative_position: "before",
+      offset_minutes: 4_320,
+      issued_on: null,
+      expires_on: null,
+      validity_buffer_days: null,
+      official_guidance_url: null,
+      guidance_checked_at: null,
+      linked_document_id: null,
+      notes: null
     };
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listItinerary.mockResolvedValue([activity]);
     mocks.listRequirements.mockResolvedValue([linkedTask]);
-    mocks.listMembers.mockResolvedValue([{ user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: null, display_name: "Shantanu" }]);
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-    render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: null,
+        display_name: "Shantanu"
+      }
+    ]);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
 
-    expect(await screen.findByText("3 days before Museum visit · Readiness task")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("checkbox", { name: "Mark as done: Prepare Bali visa" }));
-    await waitFor(() => expect(mocks.updateRequirementStatus).toHaveBeenCalledWith("visa-task", "complete", "trip-1"));
+    expect(
+      await screen.findByText("3 days before Museum visit · Readiness task")
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Mark as done: Prepare Bali visa" })
+    );
+    await waitFor(() =>
+      expect(mocks.updateRequirementStatus).toHaveBeenCalledWith("visa-task", "complete", "trip-1")
+    );
     expect(screen.getByText(/next item is now highlighted/i)).toHaveAttribute("role", "status");
   });
 
@@ -259,7 +534,13 @@ describe("trip summary interactions", () => {
     mocks.listTravelers.mockResolvedValue(expenseTravelers);
     mocks.listRequirements.mockResolvedValue([]);
     mocks.listMembers.mockResolvedValue([
-      { user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
     ]);
     Object.defineProperty(window, "scrollY", { configurable: true, value: 420 });
     const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
@@ -267,21 +548,29 @@ describe("trip summary interactions", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/trips/trip-1?view=details"]}>
-          <Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
         </MemoryRouter>
       </QueryClientProvider>
     );
 
     const peopleTarget = await screen.findByRole("button", { name: "Open People & sharing" });
     const peopleCard = peopleTarget.closest("section");
-    expect(within(peopleCard as HTMLElement).getByRole("button", { name: "Open" })).toBeInTheDocument();
+    expect(
+      within(peopleCard as HTMLElement).getByRole("button", { name: "Open" })
+    ).toBeInTheDocument();
     expect(peopleCard?.querySelector("a a, a button, button a, button button")).toBeNull();
 
     await userEvent.click(peopleTarget);
     const peopleSheet = screen.getByRole("region", { name: "People & sharing" });
-    await userEvent.click(within(peopleSheet).getByRole("button", { name: "Show Shubham's trip information" }));
+    await userEvent.click(
+      within(peopleSheet).getByRole("button", { name: "Show Shubham's trip information" })
+    );
 
-    await waitFor(() => expect(screen.queryByRole("region", { name: "People & sharing" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "People & sharing" })).not.toBeInTheDocument()
+    );
     await waitFor(() => expect(peopleTarget).toHaveFocus());
     expect(screen.getByText("Showing Shubham")).toBeInTheDocument();
     await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ top: 420, behavior: "auto" }));
@@ -293,17 +582,41 @@ describe("trip summary interactions", () => {
   it("opens the traveler-name editor from People and returns to People on back", async () => {
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listTravelers.mockResolvedValue(expenseTravelers);
-    mocks.listMembers.mockResolvedValue([{ user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: null, display_name: "Shantanu" }]);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: null,
+        display_name: "Shantanu"
+      }
+    ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1?view=details"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1?view=details"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
 
     await userEvent.click(await screen.findByRole("button", { name: "Open People & sharing" }));
-    await userEvent.click(within(screen.getByRole("region", { name: "People & sharing" })).getByRole("button", { name: "Edit Shubham" }));
+    await userEvent.click(
+      within(screen.getByRole("region", { name: "People & sharing" })).getByRole("button", {
+        name: "Edit Shubham"
+      })
+    );
     expect(screen.queryByRole("region", { name: "People & sharing" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Edit traveler" })).toBeInTheDocument();
     expect(screen.getByLabelText("Traveler name")).toHaveValue("Shubham");
 
-    await userEvent.click(within(screen.getByRole("region", { name: "Edit traveler" })).getByRole("button", { name: "Back" }));
+    await userEvent.click(
+      within(screen.getByRole("region", { name: "Edit traveler" })).getByRole("button", {
+        name: "Back"
+      })
+    );
     expect(screen.getByRole("region", { name: "People & sharing" })).toBeInTheDocument();
   });
 
@@ -322,8 +635,12 @@ describe("trip summary interactions", () => {
     const state = tripIntentNavigationState(null, "trip-1", "search", { view: "timeline" });
     render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={[{ pathname: "/trips/trip-1", search: "?view=details", state }]}>
-          <Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes>
+        <MemoryRouter
+          initialEntries={[{ pathname: "/trips/trip-1", search: "?view=details", state }]}
+        >
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
         </MemoryRouter>
       </QueryClientProvider>
     );
@@ -341,7 +658,8 @@ describe("trip summary interactions", () => {
   });
 
   it("shows complete wrapped document names in Trip details", async () => {
-    const longTitle = "Other booking confirmation · Ankita · Some Place to Some Place with a deliberately long generated title";
+    const longTitle =
+      "Other booking confirmation · Ankita · Some Place to Some Place with a deliberately long generated title";
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listCosts.mockResolvedValue([]);
     mocks.listItinerary.mockResolvedValue([]);
@@ -349,15 +667,132 @@ describe("trip summary interactions", () => {
     mocks.listRequirements.mockResolvedValue([]);
     mocks.listMembers.mockResolvedValue([]);
     mocks.listVaultDocuments.mockResolvedValue([
-      { id: "document-long", trip_id: ownerTrip.id, booking_id: null, flight_leg_id: null, traveler_id: null, assignment_mode: "shared", traveler_ids: [], title: longTitle, category: "flight", purpose: "confirmation", short_label: null, visibility: "trip", current_version_id: null, updated_at: "2026-09-01T00:00:00.000Z" }
+      {
+        id: "document-long",
+        trip_id: ownerTrip.id,
+        booking_id: null,
+        flight_leg_id: null,
+        traveler_id: null,
+        assignment_mode: "shared",
+        traveler_ids: [],
+        title: longTitle,
+        category: "flight",
+        purpose: "confirmation",
+        short_label: null,
+        visibility: "trip",
+        current_version_id: null,
+        updated_at: "2026-09-01T00:00:00.000Z"
+      }
     ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1?view=details"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1?view=details"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
 
     const title = await screen.findByText(longTitle);
     expect(title).toHaveClass("whitespace-normal", "break-words", "[overflow-wrap:anywhere]");
     expect(title).not.toHaveClass("truncate");
-    expect(title.closest("a")).toHaveClass("flex-col", "overflow-hidden");
+    expect(title.closest("a")).toHaveClass("grid", "min-w-0");
+  });
+
+  it("previews a large trip document collection and links to its complete view", async () => {
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listCosts.mockResolvedValue([]);
+    mocks.listItinerary.mockResolvedValue([]);
+    mocks.listTravelers.mockResolvedValue([]);
+    mocks.listRequirements.mockResolvedValue([]);
+    mocks.listMembers.mockResolvedValue([]);
+    mocks.listVaultDocuments.mockResolvedValue(
+      Array.from({ length: 40 }, (_, index) => ({
+        id: `document-${index + 1}`,
+        trip_id: ownerTrip.id,
+        booking_id: null,
+        flight_leg_id: null,
+        traveler_id: null,
+        assignment_mode: "shared",
+        traveler_ids: [],
+        title: `Travel document ${index + 1}`,
+        category: index % 2 ? "flight" : "hotel",
+        purpose: "confirmation",
+        short_label: null,
+        visibility: "trip",
+        current_version_id: null,
+        updated_at: "2026-09-01T00:00:00.000Z"
+      }))
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1?view=details"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByText("Travel document 3")).toBeInTheDocument();
+    expect(screen.queryByText("Travel document 4")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Documents · 40" })).toHaveAttribute(
+      "href",
+      "#documents"
+    );
+
+    expect(screen.getByRole("link", { name: "View all 40 documents" })).toHaveAttribute(
+      "href",
+      "/trips/trip-1/documents"
+    );
+  });
+
+  it("summarizes a large reservation collection and links to its complete view", async () => {
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listCosts.mockResolvedValue([]);
+    mocks.listItinerary.mockResolvedValue([]);
+    mocks.listTravelers.mockResolvedValue([]);
+    mocks.listRequirements.mockResolvedValue([]);
+    mocks.listMembers.mockResolvedValue([]);
+    mocks.listBookings.mockResolvedValueOnce(
+      Array.from({ length: 15 }, (_, index) => ({
+        id: `booking-${index + 1}`,
+        trip_id: ownerTrip.id,
+        type: index < 10 ? "flight" : "hotel",
+        title: `Reservation ${index + 1}`,
+        provider: index < 10 ? "Airline" : "Hotel",
+        reference_code: `REF${index + 1}`,
+        start_at: null,
+        end_at: null,
+        source_timezone: null,
+        location: null,
+        details: {},
+        created_at: "2026-09-01T00:00:00.000Z"
+      }))
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1?view=details"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByText("Reservation 3")).toBeInTheDocument();
+    expect(screen.queryByText("Reservation 4")).not.toBeInTheDocument();
+    expect(screen.getByText("Flights").parentElement).toHaveTextContent("Flights 10");
+    expect(screen.getByText("Stays").parentElement).toHaveTextContent("Stays 5");
+
+    expect(screen.getByRole("link", { name: "View all 15 reservations" })).toHaveAttribute(
+      "href",
+      "/trips/trip-1/reservations"
+    );
   });
 });
 
@@ -368,13 +803,21 @@ describe("trip expense summary", () => {
     mocks.listItinerary.mockResolvedValue([]);
     mocks.listTravelers.mockResolvedValue(expenseTravelers);
     mocks.listMembers.mockResolvedValue([
-      { user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
     ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/trips/trip-1"]}>
-          <Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
         </MemoryRouter>
       </QueryClientProvider>
     );
@@ -382,7 +825,9 @@ describe("trip expense summary", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Open trip expenses" }));
 
     const summary = screen.getByRole("region", { name: "Trip expenses" });
-    await userEvent.click(within(summary).getByRole("button", { name: "View details for Museum tickets" }));
+    await userEvent.click(
+      within(summary).getByRole("button", { name: "View details for Museum tickets" })
+    );
     const details = screen.getByRole("region", { name: "Museum tickets" });
     expect(screen.queryByRole("region", { name: "Trip expenses" })).not.toBeInTheDocument();
 
@@ -397,26 +842,38 @@ describe("trip expense summary", () => {
     mocks.listCosts.mockResolvedValue([expense]);
     mocks.listTravelers.mockResolvedValue(expenseTravelers);
     mocks.listMembers.mockResolvedValue([
-      { user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
     ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/trips/trip-1?view=details"]}>
-          <Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
         </MemoryRouter>
       </QueryClientProvider>
     );
 
     const openExpenses = await screen.findByRole("button", { name: "Open itemized trip expenses" });
-    expect(screen.queryByRole("checkbox", { name: /^Enable expense splitting/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: /^Enable expense splitting/ })
+    ).not.toBeInTheDocument();
     await userEvent.click(openExpenses);
 
     const summary = screen.getByRole("region", { name: "Trip expenses" });
     const splitting = within(summary).getByRole("checkbox", { name: /^Enable expense splitting/ });
     expect(splitting).toBeInTheDocument();
     await userEvent.click(splitting);
-    await waitFor(() => expect(mocks.updateTripExpenseSplitting).toHaveBeenCalledWith(ownerTrip, true));
+    await waitFor(() =>
+      expect(mocks.updateTripExpenseSplitting).toHaveBeenCalledWith(ownerTrip, true)
+    );
   });
 });
 
@@ -434,7 +891,14 @@ describe("activity event details", () => {
 
   it("keeps the named order and duration visible while allowing a booking before the exact time is known", async () => {
     const anchor = { ...activity, id: "event-1", title: "Shantanu Hotel – Palm Springs" };
-    const relative = { ...activity, timing_mode: "relative" as const, anchor_itinerary_item_id: anchor.id, relative_position: "after" as const, has_explicit_start_time: false, duration_minutes: 90 };
+    const relative = {
+      ...activity,
+      timing_mode: "relative" as const,
+      anchor_itinerary_item_id: anchor.id,
+      relative_position: "after" as const,
+      has_explicit_start_time: false,
+      duration_minutes: 90
+    };
     const { onAddBooking } = renderDetails({ item: relative, itinerary: [anchor, relative] });
 
     expect(screen.getByText("After Shantanu Hotel – Palm Springs")).toBeInTheDocument();
@@ -459,9 +923,25 @@ describe("timeline event primary document", () => {
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listItinerary.mockResolvedValue([activity]);
     mocks.listTravelers.mockResolvedValue(expenseTravelers);
-    mocks.listMembers.mockResolvedValue([{ user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }]);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
+    ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
 
     const cardTarget = await screen.findByRole("button", { name: "Open details for Museum visit" });
     const shortcut = screen.getByRole("link", { name: "Open Ticket" });
@@ -482,30 +962,98 @@ describe("timeline event primary document", () => {
 describe("timeline booking-at-a-glance details", () => {
   it("shows flight booking state, boarding, gate, and focused seat details on the timeline card", async () => {
     const flightBooking: Booking = {
-      id: "flight-booking", trip_id: ownerTrip.id, type: "flight", title: "Flight to Dubai", provider: "Air India", reference_code: "PNR123",
-      start_at: "2026-09-28T03:30:00.000Z", end_at: "2026-09-28T08:00:00.000Z", source_timezone: "Asia/Kolkata", location: null,
-      details: {}, reservation_state: "booked", participant_scope: "everyone", journey_scope: "international", created_at: "2026-09-01T00:00:00.000Z"
+      id: "flight-booking",
+      trip_id: ownerTrip.id,
+      type: "flight",
+      title: "Flight to Dubai",
+      provider: "Air India",
+      reference_code: "PNR123",
+      start_at: "2026-09-28T03:30:00.000Z",
+      end_at: "2026-09-28T08:00:00.000Z",
+      source_timezone: "Asia/Kolkata",
+      location: null,
+      details: {},
+      reservation_state: "booked",
+      participant_scope: "everyone",
+      journey_scope: "international",
+      created_at: "2026-09-01T00:00:00.000Z"
     };
     const flight: FlightLeg = {
-      id: "flight-leg", booking_id: flightBooking.id, segment_order: 0, airline_name: "Air India", flight_number: "AI 995",
-      departure_airport_code: "DEL", departure_airport_name: "Delhi", arrival_airport_code: "DXB", arrival_airport_name: "Dubai",
-      scheduled_departure_at: flightBooking.start_at!, scheduled_arrival_at: flightBooking.end_at!, estimated_departure_at: null, estimated_arrival_at: null,
-      actual_departure_at: null, actual_arrival_at: null, departure_timezone: "Asia/Kolkata", arrival_timezone: "Asia/Dubai",
-      boarding_at: "2026-09-28T02:45:00.000Z", boarding_lead_minutes: 45, departure_terminal: "3", departure_gate: "12", arrival_terminal: "1", arrival_gate: null,
-      baggage_claim: null, status: "scheduled", status_note: null, status_updated_by: "owner-user", status_updated_at: "2026-09-01T00:00:00.000Z"
+      id: "flight-leg",
+      booking_id: flightBooking.id,
+      segment_order: 0,
+      airline_name: "Air India",
+      flight_number: "AI 995",
+      departure_airport_code: "DEL",
+      departure_airport_name: "Delhi",
+      arrival_airport_code: "DXB",
+      arrival_airport_name: "Dubai",
+      scheduled_departure_at: flightBooking.start_at!,
+      scheduled_arrival_at: flightBooking.end_at!,
+      estimated_departure_at: null,
+      estimated_arrival_at: null,
+      actual_departure_at: null,
+      actual_arrival_at: null,
+      departure_timezone: "Asia/Kolkata",
+      arrival_timezone: "Asia/Dubai",
+      boarding_at: "2026-09-28T02:45:00.000Z",
+      boarding_lead_minutes: 45,
+      departure_terminal: "3",
+      departure_gate: "12",
+      arrival_terminal: "1",
+      arrival_gate: null,
+      baggage_claim: null,
+      status: "scheduled",
+      status_note: null,
+      status_updated_by: "owner-user",
+      status_updated_at: "2026-09-01T00:00:00.000Z"
     };
     localStorage.setItem("trip-vault:traveler-focus:trip-1", "traveler-1");
     mocks.getTrip.mockResolvedValue(ownerTrip);
-    mocks.listItinerary.mockResolvedValue([{ ...activity, id: "flight-event", title: flightBooking.title, event_type: "flight", booking_id: flightBooking.id, applies_to_all_travelers: true }]);
+    mocks.listItinerary.mockResolvedValue([
+      {
+        ...activity,
+        id: "flight-event",
+        title: flightBooking.title,
+        event_type: "flight",
+        booking_id: flightBooking.id,
+        applies_to_all_travelers: true
+      }
+    ]);
     mocks.listBookings.mockResolvedValue([flightBooking]);
     mocks.listFlightLegsForTrip.mockResolvedValue([flight]);
     mocks.listTravelers.mockResolvedValue(expenseTravelers);
-    mocks.listMembers.mockResolvedValue([{ user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }]);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
+    ]);
     mocks.listTripBookingTravelers.mockResolvedValue([]);
     mocks.listTripItineraryParticipants.mockResolvedValue([]);
-    mocks.listTripFlightTravelers.mockResolvedValue([{ id: "flight-leg:traveler-1", flight_leg_id: flight.id, traveler_id: "traveler-1", seat: "12A", boarding_group: "2", ticket_number: null }]);
+    mocks.listTripFlightTravelers.mockResolvedValue([
+      {
+        id: "flight-leg:traveler-1",
+        flight_leg_id: flight.id,
+        traveler_id: "traveler-1",
+        seat: "12A",
+        boarding_group: "2",
+        ticket_number: null
+      }
+    ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
 
     expect(await screen.findByText("Shantanu · Seat 12A · Group 2")).toBeInTheDocument();
     expect(screen.getByText("booked")).toBeInTheDocument();
@@ -514,28 +1062,86 @@ describe("timeline booking-at-a-glance details", () => {
 
   it("keeps a cab call shortcut independent from opening the timeline event", async () => {
     const cabBooking: Booking = {
-      id: "cab-booking", trip_id: ownerTrip.id, type: "cab", title: "Airport transfer", provider: "Grab", reference_code: null,
-      start_at: "2026-09-28T03:30:00.000Z", end_at: null, source_timezone: "Asia/Singapore", location: null, details: {}, reservation_state: "booked",
-      participant_scope: "everyone", journey_scope: "domestic", contact_phone: "+6591234567", created_at: "2026-09-01T00:00:00.000Z"
+      id: "cab-booking",
+      trip_id: ownerTrip.id,
+      type: "cab",
+      title: "Airport transfer",
+      provider: "Grab",
+      reference_code: null,
+      start_at: "2026-09-28T03:30:00.000Z",
+      end_at: null,
+      source_timezone: "Asia/Singapore",
+      location: null,
+      details: {},
+      reservation_state: "booked",
+      participant_scope: "everyone",
+      journey_scope: "domestic",
+      contact_phone: "+6591234567",
+      created_at: "2026-09-01T00:00:00.000Z"
     };
     const cabLeg: JourneyLeg = {
-      id: "cab-leg", booking_id: cabBooking.id, segment_order: 0, mode: "cab", operator_name: "Grab", service_number: null,
-      origin_code: null, origin_name: "Changi Airport", origin_country_code: "SG", origin_timezone: "Asia/Singapore", destination_code: null,
-      destination_name: "Hotel", destination_country_code: "SG", destination_timezone: "Asia/Singapore", scheduled_departure_at: cabBooking.start_at!,
-      scheduled_arrival_at: null, boarding_at: null, boarding_lead_minutes: null, departure_platform: null, arrival_platform: null, coach_or_cabin: null,
-      seat: null, details: { kind: "cab", ride_type: "airport_transfer" }, status_note: null
+      id: "cab-leg",
+      booking_id: cabBooking.id,
+      segment_order: 0,
+      mode: "cab",
+      operator_name: "Grab",
+      service_number: null,
+      origin_code: null,
+      origin_name: "Changi Airport",
+      origin_country_code: "SG",
+      origin_timezone: "Asia/Singapore",
+      destination_code: null,
+      destination_name: "Hotel",
+      destination_country_code: "SG",
+      destination_timezone: "Asia/Singapore",
+      scheduled_departure_at: cabBooking.start_at!,
+      scheduled_arrival_at: null,
+      boarding_at: null,
+      boarding_lead_minutes: null,
+      departure_platform: null,
+      arrival_platform: null,
+      coach_or_cabin: null,
+      seat: null,
+      details: { kind: "cab", ride_type: "airport_transfer" },
+      status_note: null
     };
     mocks.getTrip.mockResolvedValue(ownerTrip);
-    mocks.listItinerary.mockResolvedValue([{ ...activity, id: "cab-event", title: cabBooking.title, event_type: "cab", booking_id: cabBooking.id }]);
+    mocks.listItinerary.mockResolvedValue([
+      {
+        ...activity,
+        id: "cab-event",
+        title: cabBooking.title,
+        event_type: "cab",
+        booking_id: cabBooking.id
+      }
+    ]);
     mocks.listBookings.mockResolvedValue([cabBooking]);
     mocks.listFlightLegsForTrip.mockResolvedValue([]);
     mocks.listJourneyLegsForTrip.mockResolvedValue([cabLeg]);
     mocks.listTravelers.mockResolvedValue(expenseTravelers);
-    mocks.listMembers.mockResolvedValue([{ user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }]);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
+    ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
 
-    const cardTarget = await screen.findByRole("button", { name: "Open details for Airport transfer" });
+    const cardTarget = await screen.findByRole("button", {
+      name: "Open details for Airport transfer"
+    });
     const call = screen.getByRole("link", { name: "Call cab contact" });
     expect(call).toHaveAttribute("href", "tel:+6591234567");
     expect(cardTarget.contains(call)).toBe(false);
@@ -548,9 +1154,21 @@ describe("timeline booking-at-a-glance details", () => {
 describe("hotel timeline editing", () => {
   it("opens the atomic hotel booking editor from either stay milestone", async () => {
     const hotelBooking: Booking = {
-      id: "hotel-booking-1", trip_id: ownerTrip.id, type: "hotel", title: "Palm Springs Hotel", provider: "Palm Springs Hotel", reference_code: "HOTEL123",
-      start_at: "2026-09-28T08:00:00.000Z", end_at: "2026-09-30T04:00:00.000Z", source_timezone: "Asia/Dubai", location: { label: "Palm Jumeirah" },
-      details: {}, participant_scope: "everyone", journey_scope: null, reservation_state: "booked", created_at: "2026-09-01T00:00:00.000Z"
+      id: "hotel-booking-1",
+      trip_id: ownerTrip.id,
+      type: "hotel",
+      title: "Palm Springs Hotel",
+      provider: "Palm Springs Hotel",
+      reference_code: "HOTEL123",
+      start_at: "2026-09-28T08:00:00.000Z",
+      end_at: "2026-09-30T04:00:00.000Z",
+      source_timezone: "Asia/Dubai",
+      location: { label: "Palm Jumeirah" },
+      details: {},
+      participant_scope: "everyone",
+      journey_scope: null,
+      reservation_state: "booked",
+      created_at: "2026-09-01T00:00:00.000Z"
     };
     const checkIn: ItineraryItem = {
       ...activity,
@@ -574,15 +1192,35 @@ describe("hotel timeline editing", () => {
     mocks.listItinerary.mockResolvedValue([checkIn, checkout]);
     mocks.listBookings.mockResolvedValue([hotelBooking]);
     mocks.listTravelers.mockResolvedValue(expenseTravelers);
-    mocks.listMembers.mockResolvedValue([{ user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }]);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
+    ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
 
-    await userEvent.click(await screen.findByRole("button", { name: "Open details for Check out · Palm Springs Hotel" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Open details for Check out · Palm Springs Hotel" })
+    );
     const eventDetails = screen.getByRole("region", { name: "Check out · Palm Springs Hotel" });
     await userEvent.click(within(eventDetails).getByRole("button", { name: "Edit event" }));
 
-    expect(screen.queryByRole("region", { name: "Check out · Palm Springs Hotel" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Check out · Palm Springs Hotel" })
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Edit booking" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Stay" })).toBeInTheDocument();
   });
@@ -591,7 +1229,14 @@ describe("hotel timeline editing", () => {
 describe("trip expense cards", () => {
   it("keeps balances hidden until requested and opens a cost from the whole row", async () => {
     const onViewCost = vi.fn();
-    render(<TripExpensesContent costs={[expense]} balances={[{ travelerId: "traveler-1", currencyCode: "INR", amountMinor: 6_000_00 }]} travelers={expenseTravelers} onViewCost={onViewCost} />);
+    render(
+      <TripExpensesContent
+        costs={[expense]}
+        balances={[{ travelerId: "traveler-1", currencyCode: "INR", amountMinor: 6_000_00 }]}
+        travelers={expenseTravelers}
+        onViewCost={onViewCost}
+      />
+    );
 
     expect(screen.queryByText("Balances by currency")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("checkbox", { name: "Show balances" }));
@@ -605,7 +1250,17 @@ describe("trip expense cards", () => {
   it("shows payment, linkage, shares and notes before offering edit", async () => {
     const onEdit = vi.fn();
     const onArchive = vi.fn();
-    render(<CostDetailsSheet cost={expense} travelers={expenseTravelers} itinerary={[activity]} editable onClose={vi.fn()} onEdit={onEdit} onArchive={onArchive} />);
+    render(
+      <CostDetailsSheet
+        cost={expense}
+        travelers={expenseTravelers}
+        itinerary={[activity]}
+        editable
+        onClose={vi.fn()}
+        onEdit={onEdit}
+        onArchive={onArchive}
+      />
+    );
 
     expect(screen.getByRole("region", { name: "Museum tickets" })).toBeInTheDocument();
     expect(screen.getByText("Paid by").nextSibling).toHaveTextContent("Shantanu");
@@ -630,7 +1285,17 @@ describe("trip expense cards", () => {
       ]
     };
 
-    render(<CostDetailsSheet cost={equalSplitExpense} travelers={expenseTravelers} itinerary={[activity]} editable={false} onClose={vi.fn()} onEdit={vi.fn()} onArchive={vi.fn()} />);
+    render(
+      <CostDetailsSheet
+        cost={equalSplitExpense}
+        travelers={expenseTravelers}
+        itinerary={[activity]}
+        editable={false}
+        onClose={vi.fn()}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+      />
+    );
 
     const participantRows = screen.getAllByRole("listitem");
     const shantanuRow = participantRows.find((row) => within(row).queryByText("Shantanu"));
@@ -654,7 +1319,9 @@ describe("trip expense cards", () => {
     const headline = screen.getByText(/^Cost ·/);
     expect(headline).toHaveTextContent(/12,000/);
     expect(headline).not.toHaveTextContent(/14,000/);
-    const refundedRow = screen.getByRole("button", { name: "View details for Refunded museum audio guide" });
+    const refundedRow = screen.getByRole("button", {
+      name: "View details for Refunded museum audio guide"
+    });
     expect(refundedRow).toHaveTextContent("refunded");
 
     await userEvent.click(refundedRow);
@@ -715,21 +1382,53 @@ describe("connecting flight booking index", () => {
 describe("reservation cards", () => {
   it("makes the complete card a details link while keeping phone actions independent", () => {
     const reservation: Booking = {
-      id: "booking-1", trip_id: "trip-1", type: "hotel", title: "Palm Springs Hotel", provider: "Palm Springs", reference_code: "HOTEL123",
-      start_at: null, end_at: null, source_timezone: null, location: null, details: {}, journey_scope: null, booked_via_name: "Booking.com", contact_phone: "+919876543210",
+      id: "booking-1",
+      trip_id: "trip-1",
+      type: "hotel",
+      title: "Palm Springs Hotel",
+      provider: "Palm Springs",
+      reference_code: "HOTEL123",
+      start_at: null,
+      end_at: null,
+      source_timezone: null,
+      location: null,
+      details: {},
+      journey_scope: null,
+      booked_via_name: "Booking.com",
+      contact_phone: "+919876543210",
       created_at: "2026-09-01T00:00:00.000Z"
     };
-    render(<MemoryRouter><ReservationCard booking={reservation} href="/trips/trip-1/bookings/booking-1" route="DXB" /></MemoryRouter>);
+    render(
+      <MemoryRouter>
+        <ReservationCard
+          booking={reservation}
+          href="/trips/trip-1/bookings/booking-1"
+          route="DXB"
+        />
+      </MemoryRouter>
+    );
 
-    expect(screen.getByRole("link", { name: "Open details for Palm Springs Hotel" })).toHaveAttribute("href", "/trips/trip-1/bookings/booking-1");
+    expect(
+      screen.getByRole("link", { name: "Open details for Palm Springs Hotel" })
+    ).toHaveAttribute("href", "/trips/trip-1/bookings/booking-1");
     expect(screen.getByRole("link", { name: "Call" })).toHaveAttribute("href", "tel:+919876543210");
-    expect(screen.getByRole("link", { name: "WhatsApp" })).toHaveAttribute("href", expect.stringContaining("wa.me"));
+    expect(screen.getByRole("link", { name: "WhatsApp" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("wa.me")
+    );
   });
 });
 
 describe("note cards", () => {
   it("opens edit from the card while archive remains an independent action", async () => {
-    const note: TripNote = { id: "note-1", trip_id: "trip-1", title: "Door code", body: "Use 2486", created_at: "2026-09-01T00:00:00.000Z", updated_at: "2026-09-01T00:00:00.000Z" };
+    const note: TripNote = {
+      id: "note-1",
+      trip_id: "trip-1",
+      title: "Door code",
+      body: "Use 2486",
+      created_at: "2026-09-01T00:00:00.000Z",
+      updated_at: "2026-09-01T00:00:00.000Z"
+    };
     const onEdit = vi.fn();
     const onArchive = vi.fn();
     render(<NoteCard note={note} editable onEdit={onEdit} onArchive={onArchive} />);
@@ -745,56 +1444,174 @@ describe("note cards", () => {
 describe("flight event details", () => {
   it("shows only the focused traveler's seat and boarding details as soon as the event opens", async () => {
     const booking: Booking = {
-      id: "booking-1", trip_id: "trip-1", type: "flight", title: "Flight to Dubai", provider: "Air India", reference_code: "ABC123",
-      start_at: "2026-09-28T04:00:00.000Z", end_at: "2026-09-28T08:00:00.000Z", source_timezone: "Asia/Kolkata", location: null,
-      details: {}, journey_scope: "international", created_at: "2026-09-01T00:00:00.000Z"
+      id: "booking-1",
+      trip_id: "trip-1",
+      type: "flight",
+      title: "Flight to Dubai",
+      provider: "Air India",
+      reference_code: "ABC123",
+      start_at: "2026-09-28T04:00:00.000Z",
+      end_at: "2026-09-28T08:00:00.000Z",
+      source_timezone: "Asia/Kolkata",
+      location: null,
+      details: {},
+      journey_scope: "international",
+      created_at: "2026-09-01T00:00:00.000Z"
     };
     const flight: FlightLeg = {
-      id: "flight-1", booking_id: booking.id, segment_order: 0, airline_name: "Air India", flight_number: "AI 995",
-      departure_airport_code: "DEL", departure_airport_name: "Indira Gandhi International Airport", arrival_airport_code: "DXB", arrival_airport_name: "Dubai International Airport",
-      scheduled_departure_at: "2026-09-28T04:00:00.000Z", scheduled_arrival_at: "2026-09-28T08:00:00.000Z", estimated_departure_at: null, estimated_arrival_at: null,
-      actual_departure_at: null, actual_arrival_at: null, departure_timezone: "Asia/Kolkata", arrival_timezone: "Asia/Dubai", boarding_at: null,
-      departure_terminal: "3", departure_gate: "12", arrival_terminal: "1", arrival_gate: null, baggage_claim: null, status: "scheduled", status_note: null,
-      status_updated_by: "user-1", status_updated_at: "2026-09-01T00:00:00.000Z"
+      id: "flight-1",
+      booking_id: booking.id,
+      segment_order: 0,
+      airline_name: "Air India",
+      flight_number: "AI 995",
+      departure_airport_code: "DEL",
+      departure_airport_name: "Indira Gandhi International Airport",
+      arrival_airport_code: "DXB",
+      arrival_airport_name: "Dubai International Airport",
+      scheduled_departure_at: "2026-09-28T04:00:00.000Z",
+      scheduled_arrival_at: "2026-09-28T08:00:00.000Z",
+      estimated_departure_at: null,
+      estimated_arrival_at: null,
+      actual_departure_at: null,
+      actual_arrival_at: null,
+      departure_timezone: "Asia/Kolkata",
+      arrival_timezone: "Asia/Dubai",
+      boarding_at: null,
+      departure_terminal: "3",
+      departure_gate: "12",
+      arrival_terminal: "1",
+      arrival_gate: null,
+      baggage_claim: null,
+      status: "scheduled",
+      status_note: null,
+      status_updated_by: "user-1",
+      status_updated_at: "2026-09-01T00:00:00.000Z"
     };
     const travelers: Traveler[] = [
-      { id: "traveler-1", trip_id: "trip-1", display_name: "Shantanu", is_minor: false, created_at: "2026-09-01T00:00:00.000Z" },
-      { id: "traveler-2", trip_id: "trip-1", display_name: "Rahul", is_minor: false, created_at: "2026-09-01T00:00:00.000Z" }
+      {
+        id: "traveler-1",
+        trip_id: "trip-1",
+        display_name: "Shantanu",
+        is_minor: false,
+        created_at: "2026-09-01T00:00:00.000Z"
+      },
+      {
+        id: "traveler-2",
+        trip_id: "trip-1",
+        display_name: "Rahul",
+        is_minor: false,
+        created_at: "2026-09-01T00:00:00.000Z"
+      }
     ];
     const flightTravelers: FlightTraveler[] = [
-      { id: "flight-1:traveler-1", flight_leg_id: "flight-1", traveler_id: "traveler-1", seat: "12A", boarding_group: "2", ticket_number: null },
-      { id: "flight-1:traveler-2", flight_leg_id: "flight-1", traveler_id: "traveler-2", seat: "14C", boarding_group: "3", ticket_number: "098765" }
+      {
+        id: "flight-1:traveler-1",
+        flight_leg_id: "flight-1",
+        traveler_id: "traveler-1",
+        seat: "12A",
+        boarding_group: "2",
+        ticket_number: null
+      },
+      {
+        id: "flight-1:traveler-2",
+        flight_leg_id: "flight-1",
+        traveler_id: "traveler-2",
+        seat: "14C",
+        boarding_group: "3",
+        ticket_number: "098765"
+      }
     ];
 
-    renderDetails({ item: { ...activity, event_type: "flight", booking_id: booking.id }, booking, flights: [flight], flightTravelers, travelers, focusedTravelerId: "traveler-2" });
+    renderDetails({
+      item: { ...activity, event_type: "flight", booking_id: booking.id },
+      booking,
+      flights: [flight],
+      flightTravelers,
+      travelers,
+      focusedTravelerId: "traveler-2"
+    });
 
-    expect(screen.getByRole("link", { name: "Open booking details for Flight to Dubai" })).toHaveAttribute("href", "/trips/trip-1/flights/flight-1");
-    expect(await screen.findByText("Rahul · Seat 14C · Group 3 · Ticket 098765")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open booking details for Flight to Dubai" })
+    ).toHaveAttribute("href", "/trips/trip-1/flights/flight-1");
+    expect(
+      await screen.findByText("Rahul · Seat 14C · Group 3 · Ticket 098765")
+    ).toBeInTheDocument();
     expect(screen.queryByText(/Seat 12A/)).not.toBeInTheDocument();
   });
 });
 
 describe("ground journey traveler details", () => {
   const busBooking: Booking = {
-    id: "booking-1", trip_id: "trip-1", type: "bus", title: "Bus to Kuala Lumpur", provider: "Qistna Express", reference_code: "SGV8G20684227",
-    start_at: "2026-09-30T01:00:00.000Z", end_at: "2026-09-30T06:51:00.000Z", source_timezone: "Asia/Singapore", location: null,
-    details: {}, participant_scope: "everyone", journey_scope: "international", created_at: "2026-09-01T00:00:00.000Z"
+    id: "booking-1",
+    trip_id: "trip-1",
+    type: "bus",
+    title: "Bus to Kuala Lumpur",
+    provider: "Qistna Express",
+    reference_code: "SGV8G20684227",
+    start_at: "2026-09-30T01:00:00.000Z",
+    end_at: "2026-09-30T06:51:00.000Z",
+    source_timezone: "Asia/Singapore",
+    location: null,
+    details: {},
+    participant_scope: "everyone",
+    journey_scope: "international",
+    created_at: "2026-09-01T00:00:00.000Z"
   };
   const busLeg: JourneyLeg = {
-    id: "bus-leg-1", booking_id: busBooking.id, segment_order: 0, mode: "bus", operator_name: "Qistna Express", service_number: null,
-    origin_code: null, origin_name: "Bugis MRT Exit D", origin_country_code: "SG", origin_timezone: "Asia/Singapore",
-    destination_code: null, destination_name: "KL Sentral", destination_country_code: "MY", destination_timezone: "Asia/Kuala_Lumpur",
-    scheduled_departure_at: busBooking.start_at!, scheduled_arrival_at: busBooking.end_at!, boarding_at: null, boarding_lead_minutes: null,
-    departure_platform: null, arrival_platform: null, coach_or_cabin: null, seat: null, details: { kind: "bus" }, status_note: null
+    id: "bus-leg-1",
+    booking_id: busBooking.id,
+    segment_order: 0,
+    mode: "bus",
+    operator_name: "Qistna Express",
+    service_number: null,
+    origin_code: null,
+    origin_name: "Bugis MRT Exit D",
+    origin_country_code: "SG",
+    origin_timezone: "Asia/Singapore",
+    destination_code: null,
+    destination_name: "KL Sentral",
+    destination_country_code: "MY",
+    destination_timezone: "Asia/Kuala_Lumpur",
+    scheduled_departure_at: busBooking.start_at!,
+    scheduled_arrival_at: busBooking.end_at!,
+    boarding_at: null,
+    boarding_lead_minutes: null,
+    departure_platform: null,
+    arrival_platform: null,
+    coach_or_cabin: null,
+    seat: null,
+    details: { kind: "bus" },
+    status_note: null
   };
 
   it("shows only the focused passenger's bus seat and reference inside the opened event", async () => {
     mocks.listJourneyLegTravelers.mockResolvedValue([
-      { id: "bus-leg-1:traveler-1", journey_leg_id: busLeg.id, traveler_id: "traveler-1", seat_or_berth: "5", coach_or_cabin: null, passenger_reference: "85854178" },
-      { id: "bus-leg-1:traveler-2", journey_leg_id: busLeg.id, traveler_id: "traveler-2", seat_or_berth: "9", coach_or_cabin: null, passenger_reference: "85854179" }
+      {
+        id: "bus-leg-1:traveler-1",
+        journey_leg_id: busLeg.id,
+        traveler_id: "traveler-1",
+        seat_or_berth: "5",
+        coach_or_cabin: null,
+        passenger_reference: "85854178"
+      },
+      {
+        id: "bus-leg-1:traveler-2",
+        journey_leg_id: busLeg.id,
+        traveler_id: "traveler-2",
+        seat_or_berth: "9",
+        coach_or_cabin: null,
+        passenger_reference: "85854179"
+      }
     ]);
 
-    renderDetails({ item: { ...activity, event_type: "bus", booking_id: busBooking.id }, booking: busBooking, journeys: [busLeg], travelers: expenseTravelers, focusedTravelerId: "traveler-2" });
+    renderDetails({
+      item: { ...activity, event_type: "bus", booking_id: busBooking.id },
+      booking: busBooking,
+      journeys: [busLeg],
+      travelers: expenseTravelers,
+      focusedTravelerId: "traveler-2"
+    });
 
     expect(await screen.findByText(/Shubham.*Seat 9.*85854179/)).toBeInTheDocument();
     expect(screen.queryByText(/Shantanu.*Seat 5/)).not.toBeInTheDocument();
@@ -803,17 +1620,49 @@ describe("ground journey traveler details", () => {
   it("uses those passenger allocations in the timeline summary instead of a shared legacy seat", async () => {
     localStorage.setItem("trip-vault:traveler-focus:trip-1", "traveler-2");
     mocks.getTrip.mockResolvedValue(ownerTrip);
-    mocks.listItinerary.mockResolvedValue([{ ...activity, id: "bus-event", event_type: "bus", booking_id: busBooking.id }]);
+    mocks.listItinerary.mockResolvedValue([
+      { ...activity, id: "bus-event", event_type: "bus", booking_id: busBooking.id }
+    ]);
     mocks.listBookings.mockResolvedValue([busBooking]);
     mocks.listJourneyLegsForTrip.mockResolvedValue([{ ...busLeg, seat: "OLD-SHARED-SEAT" }]);
     mocks.listTravelers.mockResolvedValue(expenseTravelers);
-    mocks.listMembers.mockResolvedValue([{ user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }]);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
+    ]);
     mocks.listJourneyLegTravelers.mockResolvedValue([
-      { id: "bus-leg-1:traveler-1", journey_leg_id: busLeg.id, traveler_id: "traveler-1", seat_or_berth: "5", coach_or_cabin: null, passenger_reference: "85854178" },
-      { id: "bus-leg-1:traveler-2", journey_leg_id: busLeg.id, traveler_id: "traveler-2", seat_or_berth: "9", coach_or_cabin: null, passenger_reference: "85854179" }
+      {
+        id: "bus-leg-1:traveler-1",
+        journey_leg_id: busLeg.id,
+        traveler_id: "traveler-1",
+        seat_or_berth: "5",
+        coach_or_cabin: null,
+        passenger_reference: "85854178"
+      },
+      {
+        id: "bus-leg-1:traveler-2",
+        journey_leg_id: busLeg.id,
+        traveler_id: "traveler-2",
+        seat_or_berth: "9",
+        coach_or_cabin: null,
+        passenger_reference: "85854179"
+      }
     ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
 
     expect(await screen.findByText(/Shubham.*Seat 9.*85854179/)).toBeInTheDocument();
     expect(screen.queryByText(/Shantanu.*Seat 5/)).not.toBeInTheDocument();
@@ -823,13 +1672,35 @@ describe("ground journey traveler details", () => {
 
 describe("new event document handoff", () => {
   it("opens upload from the saved-event confirmation and attaches the official document to that event", async () => {
-    const savedEvent: ItineraryItem = { ...activity, id: "saved-event", booking_id: "booking-1", title: "Bus to Kuala Lumpur", event_type: "bus" };
+    const savedEvent: ItineraryItem = {
+      ...activity,
+      id: "saved-event",
+      booking_id: "booking-1",
+      title: "Bus to Kuala Lumpur",
+      event_type: "bus"
+    };
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listItinerary.mockResolvedValue([savedEvent]);
     mocks.listTravelers.mockResolvedValue(expenseTravelers);
-    mocks.listMembers.mockResolvedValue([{ user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }]);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
+    ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1?add=event"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1?add=event"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
 
     await userEvent.click(await screen.findByRole("button", { name: "Add official document" }));
     const upload = screen.getByRole("region", { name: "Upload official document" });
@@ -837,31 +1708,65 @@ describe("new event document handoff", () => {
     expect(upload).toHaveAttribute("data-context-title", "Bus to Kuala Lumpur");
     await userEvent.click(within(upload).getByRole("button", { name: "Complete test upload" }));
 
-    await waitFor(() => expect(mocks.attachDocumentsToEvent).toHaveBeenCalledWith(savedEvent, ["document-1"]));
+    await waitFor(() =>
+      expect(mocks.attachDocumentsToEvent).toHaveBeenCalledWith(savedEvent, ["document-1"])
+    );
   });
 
   it("persists a flight ticket selected during creation without reopening the document form", async () => {
-    const savedFlight: ItineraryItem = { ...activity, id: "saved-flight", booking_id: "booking-flight", title: "Flight to Dubai", event_type: "flight" };
+    const savedFlight: ItineraryItem = {
+      ...activity,
+      id: "saved-flight",
+      booking_id: "booking-flight",
+      title: "Flight to Dubai",
+      event_type: "flight"
+    };
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listItinerary.mockResolvedValue([savedFlight]);
     mocks.listTravelers.mockResolvedValue(expenseTravelers);
-    mocks.listMembers.mockResolvedValue([{ user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }]);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
+    ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1?add=event"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1?add=event"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
 
-    await userEvent.click(await screen.findByRole("button", { name: "Save flight with selected document" }));
-    await waitFor(() => expect(mocks.uploadDocument).toHaveBeenCalledWith(expect.objectContaining({
-      tripId: "trip-1",
-      title: "Flight ticket · Everyone · Flight to Dubai",
-      category: "flight",
-      purpose: "ticket",
-      assignmentMode: "shared",
-      visibility: "trip",
-      travelerIds: [],
-      bookingId: "booking-flight",
-      file: expect.objectContaining({ name: "flight-ticket.pdf" })
-    })));
-    expect(screen.queryByRole("region", { name: "Upload official document" })).not.toBeInTheDocument();
-    await waitFor(() => expect(mocks.attachDocumentsToEvent).toHaveBeenCalledWith(savedFlight, ["document-auto"]));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Save flight with selected document" })
+    );
+    await waitFor(() =>
+      expect(mocks.uploadDocument).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tripId: "trip-1",
+          title: "Flight ticket · Everyone · Flight to Dubai",
+          category: "flight",
+          purpose: "ticket",
+          assignmentMode: "shared",
+          visibility: "trip",
+          travelerIds: [],
+          bookingId: "booking-flight",
+          file: expect.objectContaining({ name: "flight-ticket.pdf" })
+        })
+      )
+    );
+    expect(
+      screen.queryByRole("region", { name: "Upload official document" })
+    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(mocks.attachDocumentsToEvent).toHaveBeenCalledWith(savedFlight, ["document-auto"])
+    );
   });
 });

@@ -91,7 +91,18 @@ export type TravelerManager = {
   can_edit_profile: boolean;
 };
 
-export const bookingTypes = ["flight", "hotel", "train", "bus", "ferry", "cab", "transport", "activity", "restaurant", "other"] as const;
+export const bookingTypes = [
+  "flight",
+  "hotel",
+  "train",
+  "bus",
+  "ferry",
+  "cab",
+  "transport",
+  "activity",
+  "restaurant",
+  "other"
+] as const;
 export type BookingType = (typeof bookingTypes)[number];
 export type JourneyScope = "domestic" | "international";
 export type JourneyMode = "train" | "bus" | "ferry" | "cab";
@@ -154,7 +165,11 @@ export type CabJourneyDetails = {
   final_dropoff?: string;
 };
 
-export type JourneyLegDetails = TrainJourneyDetails | BusJourneyDetails | FerryJourneyDetails | CabJourneyDetails;
+export type JourneyLegDetails =
+  | TrainJourneyDetails
+  | BusJourneyDetails
+  | FerryJourneyDetails
+  | CabJourneyDetails;
 
 export type Booking = {
   id: string;
@@ -166,7 +181,13 @@ export type Booking = {
   start_at: string | null;
   end_at: string | null;
   source_timezone: string | null;
-  location: { label?: string; address?: string; map_url?: string; latitude?: number | null; longitude?: number | null } | null;
+  location: {
+    label?: string;
+    address?: string;
+    map_url?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
   details: Record<string, unknown>;
   reservation_state?: ReservationState;
   participant_scope?: ParticipantScope;
@@ -181,7 +202,15 @@ export type Booking = {
   updated_at?: string;
 };
 
-export const flightStatuses = ["scheduled", "check_in_open", "boarding", "delayed", "departed", "landed", "cancelled"] as const;
+export const flightStatuses = [
+  "scheduled",
+  "check_in_open",
+  "boarding",
+  "delayed",
+  "departed",
+  "landed",
+  "cancelled"
+] as const;
 export type FlightStatus = (typeof flightStatuses)[number];
 
 export type FlightLeg = {
@@ -287,8 +316,23 @@ export type TripAirline = {
   version: number;
 };
 
-export const requirementTypes = ["visa", "passport", "insurance", "check_in", "payment", "packing", "custom"] as const;
-export const requirementStatuses = ["to_check", "not_required", "required", "in_progress", "complete", "expired"] as const;
+export const requirementTypes = [
+  "visa",
+  "passport",
+  "insurance",
+  "check_in",
+  "payment",
+  "packing",
+  "custom"
+] as const;
+export const requirementStatuses = [
+  "to_check",
+  "not_required",
+  "required",
+  "in_progress",
+  "complete",
+  "expired"
+] as const;
 export type RequirementType = (typeof requirementTypes)[number];
 export type RequirementStatus = (typeof requirementStatuses)[number];
 export type RequirementTimingMode = "unscheduled" | "date_only" | "relative";
@@ -339,9 +383,38 @@ export type RequirementInput = {
 
 export type UpdateRequirementInput = RequirementInput & { id: string; version?: number };
 
-export const documentCategories = ["flight", "hotel", "activity", "visa", "passport", "insurance", "ticket", "transport", "receipt", "other"] as const;
-export const documentPurposes = ["confirmation", "ticket", "boarding_pass", "baggage_tag", "visa", "passport", "insurance", "hotel_confirmation", "activity_ticket", "meal_voucher", "receipt", "other"] as const;
-export const documentVisibilities = ["private", "traveler_and_managers", "trip", "selected_members"] as const;
+export const documentCategories = [
+  "flight",
+  "hotel",
+  "activity",
+  "visa",
+  "passport",
+  "insurance",
+  "ticket",
+  "transport",
+  "receipt",
+  "other"
+] as const;
+export const documentPurposes = [
+  "confirmation",
+  "ticket",
+  "boarding_pass",
+  "baggage_tag",
+  "visa",
+  "passport",
+  "insurance",
+  "hotel_confirmation",
+  "activity_ticket",
+  "meal_voucher",
+  "receipt",
+  "other"
+] as const;
+export const documentVisibilities = [
+  "private",
+  "traveler_and_managers",
+  "trip",
+  "selected_members"
+] as const;
 export type DocumentCategory = (typeof documentCategories)[number];
 export type DocumentPurpose = (typeof documentPurposes)[number];
 export type DocumentVisibility = (typeof documentVisibilities)[number];
@@ -471,7 +544,14 @@ export type CreateFlightInput = {
     }>;
   }>;
   travelerIds?: string[];
-  cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid"; paidByTravelerId?: string; participantTravelerIds?: string[] };
+  cost?: {
+    title: string;
+    amountMinor: number;
+    currencyCode: string;
+    paymentStatus: "planned" | "paid";
+    paidByTravelerId?: string;
+    participantTravelerIds?: string[];
+  };
 };
 
 export type AddFlightConnectionInput = {
@@ -532,7 +612,14 @@ export type CreateJourneyInput = {
       passengerReference?: string;
     }>;
   }>;
-  cost?: { title: string; amountMinor: number; currencyCode: string; paymentStatus: "planned" | "paid"; paidByTravelerId?: string; participantTravelerIds?: string[] };
+  cost?: {
+    title: string;
+    amountMinor: number;
+    currencyCode: string;
+    paymentStatus: "planned" | "paid";
+    paidByTravelerId?: string;
+    participantTravelerIds?: string[];
+  };
 };
 
 export type UpdateJourneyLegInput = {

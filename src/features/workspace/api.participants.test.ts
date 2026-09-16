@@ -71,7 +71,10 @@ describe("booking/event participant edits", () => {
     const updateRequest: Record<string, unknown> = {};
     updateRequest.eq = vi.fn(() => updateRequest);
     updateRequest.select = vi.fn(() => updateRequest);
-    updateRequest.maybeSingle = vi.fn().mockResolvedValue({ data: { ...existing, title: "Museum visit updated", version: 5 }, error: null });
+    updateRequest.maybeSingle = vi.fn().mockResolvedValue({
+      data: { ...existing, title: "Museum visit updated", version: 5 },
+      error: null
+    });
 
     const travelerRequest: Record<string, unknown> = {};
     travelerRequest.eq = vi.fn().mockResolvedValue({ data: [], error: null });
@@ -83,10 +86,25 @@ describe("booking/event participant edits", () => {
       throw new Error(`Unexpected table ${table}`);
     });
     mocks.syncBookingParticipants.mockResolvedValue({
-      booking: { ...existing, title: "Museum visit updated", participant_scope: "selected", version: 6 },
+      booking: {
+        ...existing,
+        title: "Museum visit updated",
+        participant_scope: "selected",
+        version: 6
+      },
       itinerary_items: [
-        { id: "event-1", trip_id: "trip-1", booking_id: "booking-1", applies_to_all_travelers: false },
-        { id: "event-2", trip_id: "trip-1", booking_id: "booking-1", applies_to_all_travelers: false }
+        {
+          id: "event-1",
+          trip_id: "trip-1",
+          booking_id: "booking-1",
+          applies_to_all_travelers: false
+        },
+        {
+          id: "event-2",
+          trip_id: "trip-1",
+          booking_id: "booking-1",
+          applies_to_all_travelers: false
+        }
       ]
     });
   });
@@ -104,9 +122,21 @@ describe("booking/event participant edits", () => {
     });
 
     const bookingTable = mocks.from.mock.results.find((result) => result.value?.update)?.value;
-    expect(bookingTable.update).toHaveBeenCalledWith(expect.not.objectContaining({ participant_scope: expect.anything() }));
-    expect(mocks.syncBookingParticipants).toHaveBeenCalledWith({ bookingId: "booking-1", participantScope: "selected", travelerIds: ["asha", "ravi"] });
-    expect(mocks.cacheParticipantAssignments).toHaveBeenCalledWith({ tripId: "trip-1", bookingId: "booking-1", itineraryItemIds: ["event-1", "event-2"], participantScope: "selected", travelerIds: ["asha", "ravi"] });
+    expect(bookingTable.update).toHaveBeenCalledWith(
+      expect.not.objectContaining({ participant_scope: expect.anything() })
+    );
+    expect(mocks.syncBookingParticipants).toHaveBeenCalledWith({
+      bookingId: "booking-1",
+      participantScope: "selected",
+      travelerIds: ["asha", "ravi"]
+    });
+    expect(mocks.cacheParticipantAssignments).toHaveBeenCalledWith({
+      tripId: "trip-1",
+      bookingId: "booking-1",
+      itineraryItemIds: ["event-1", "event-2"],
+      participantScope: "selected",
+      travelerIds: ["asha", "ravi"]
+    });
     expect(result).toMatchObject({ participant_scope: "selected", version: 6 });
   });
 });

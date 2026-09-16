@@ -9,10 +9,18 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes("node_modules/@supabase") || id.includes("node_modules/@gotrue") || id.includes("node_modules/@realtime") || id.includes("node_modules/@postgrest") || id.includes("node_modules/@storage")) return "supabase";
+          if (
+            id.includes("node_modules/@supabase") ||
+            id.includes("node_modules/@gotrue") ||
+            id.includes("node_modules/@realtime") ||
+            id.includes("node_modules/@postgrest") ||
+            id.includes("node_modules/@storage")
+          )
+            return "supabase";
           if (id.includes("node_modules/dexie")) return "offline-storage";
           if (id.includes("node_modules/lucide-react")) return "icons";
-          if (id.includes("node_modules/react") || id.includes("node_modules/@tanstack")) return "react-vendor";
+          if (id.includes("node_modules/react") || id.includes("node_modules/@tanstack"))
+            return "react-vendor";
         }
       }
     }
@@ -21,7 +29,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "prompt",
-      includeAssets: ["icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"],
+      includeAssets: [
+        "icons/icon.svg",
+        "icons/icon-192.png",
+        "icons/icon-512.png",
+        "icons/apple-touch-icon.png"
+      ],
       manifest: {
         name: "Trip Vault",
         short_name: "Trip Vault",

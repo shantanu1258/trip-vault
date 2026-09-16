@@ -1,6 +1,11 @@
 [
   { "mode": "train", "name": "Indian Railways", "region": "India", "aliases": "IR" },
-  { "mode": "train", "name": "KTM Berhad", "region": "Malaysia", "aliases": "KTMB Keretapi Tanah Melayu" },
+  {
+    "mode": "train",
+    "name": "KTM Berhad",
+    "region": "Malaysia",
+    "aliases": "KTMB Keretapi Tanah Melayu"
+  },
   { "mode": "train", "name": "PT Kereta Api Indonesia", "region": "Indonesia", "aliases": "KAI" },
   { "mode": "train", "name": "SMRT Trains", "region": "Singapore", "aliases": "SMRT" },
   { "mode": "train", "name": "SBS Transit", "region": "Singapore", "aliases": "SBS" },
@@ -10,42 +15,107 @@
   { "mode": "bus", "name": "Kerala RTC", "region": "India", "aliases": "KSRTC Kerala" },
   { "mode": "bus", "name": "K-SWIFT", "region": "India", "aliases": "Kerala Swift" },
   { "mode": "bus", "name": "TNSTC", "region": "India", "aliases": "Tamil Nadu STC" },
-  { "mode": "bus", "name": "SETC", "region": "India", "aliases": "State Express Transport Corporation" },
+  {
+    "mode": "bus",
+    "name": "SETC",
+    "region": "India",
+    "aliases": "State Express Transport Corporation"
+  },
   { "mode": "bus", "name": "MSRTC", "region": "India", "aliases": "Maharashtra RTC" },
   { "mode": "bus", "name": "GSRTC", "region": "India", "aliases": "Gujarat RTC" },
   { "mode": "bus", "name": "RSRTC", "region": "India", "aliases": "Rajasthan RTC" },
   { "mode": "bus", "name": "UPSRTC", "region": "India", "aliases": "Uttar Pradesh RTC" },
   { "mode": "bus", "name": "HRTC", "region": "India", "aliases": "Himachal RTC" },
-  { "mode": "bus", "name": "Uttarakhand Transport Corporation", "region": "India", "aliases": "UTC" },
+  {
+    "mode": "bus",
+    "name": "Uttarakhand Transport Corporation",
+    "region": "India",
+    "aliases": "UTC"
+  },
   { "mode": "bus", "name": "OSRTC", "region": "India", "aliases": "Odisha RTC" },
   { "mode": "bus", "name": "Vijayanand Travels", "region": "India", "aliases": "VRL" },
-  { "mode": "bus", "name": "Orange Tours & Travels", "region": "India", "aliases": "Orange Travels" },
+  {
+    "mode": "bus",
+    "name": "Orange Tours & Travels",
+    "region": "India",
+    "aliases": "Orange Travels"
+  },
   { "mode": "bus", "name": "KPN Travels", "region": "India", "aliases": "KPN Express" },
   { "mode": "bus", "name": "IntrCity SmartBus", "region": "India", "aliases": "IntrCity" },
   { "mode": "bus", "name": "zingbus", "region": "India", "aliases": "Zing Bus" },
   { "mode": "bus", "name": "NueGo", "region": "India", "aliases": "GreenCell Mobility" },
   { "mode": "bus", "name": "FlixBus India", "region": "India", "aliases": "FlixBus" },
   { "mode": "bus", "name": "Chartered Bus", "region": "India", "aliases": "Chartered Speed" },
-  { "mode": "bus", "name": "Qistna Express", "region": "Singapore / Malaysia", "aliases": "Qistna" },
-  { "mode": "bus", "name": "Causeway Link", "region": "Singapore / Malaysia", "aliases": "Handal Indah" },
-  { "mode": "bus", "name": "Aeroline", "region": "Singapore / Malaysia", "aliases": "Aeroline Coach" },
-  { "mode": "bus", "name": "Transtar Travel", "region": "Singapore / Malaysia", "aliases": "Transtar" },
+  {
+    "mode": "bus",
+    "name": "Qistna Express",
+    "region": "Singapore / Malaysia",
+    "aliases": "Qistna"
+  },
+  {
+    "mode": "bus",
+    "name": "Causeway Link",
+    "region": "Singapore / Malaysia",
+    "aliases": "Handal Indah"
+  },
+  {
+    "mode": "bus",
+    "name": "Aeroline",
+    "region": "Singapore / Malaysia",
+    "aliases": "Aeroline Coach"
+  },
+  {
+    "mode": "bus",
+    "name": "Transtar Travel",
+    "region": "Singapore / Malaysia",
+    "aliases": "Transtar"
+  },
   { "mode": "bus", "name": "KKKL Express", "region": "Singapore / Malaysia", "aliases": "KKKL" },
   { "mode": "bus", "name": "DAMRI", "region": "Indonesia", "aliases": "Perum DAMRI" },
   { "mode": "bus", "name": "Rosalia Indah", "region": "Indonesia", "aliases": "PO Rosalia Indah" },
   { "mode": "bus", "name": "Sinar Jaya", "region": "Indonesia", "aliases": "PO Sinar Jaya" },
   { "mode": "bus", "name": "PO Haryanto", "region": "Indonesia", "aliases": "Haryanto" },
-  { "mode": "ferry", "name": "BatamFast", "region": "Singapore / Indonesia", "aliases": "Batam Fast Ferry" },
-  { "mode": "ferry", "name": "Bintan Resort Ferries", "region": "Singapore / Indonesia", "aliases": "BRF" },
+  {
+    "mode": "ferry",
+    "name": "BatamFast",
+    "region": "Singapore / Indonesia",
+    "aliases": "Batam Fast Ferry"
+  },
+  {
+    "mode": "ferry",
+    "name": "Bintan Resort Ferries",
+    "region": "Singapore / Indonesia",
+    "aliases": "BRF"
+  },
   { "mode": "ferry", "name": "Sindo Ferry", "region": "Singapore / Indonesia", "aliases": "Sindo" },
-  { "mode": "ferry", "name": "Majestic Fast Ferry", "region": "Singapore / Indonesia", "aliases": "Majestic" },
-  { "mode": "ferry", "name": "Horizon Fast Ferry", "region": "Singapore / Indonesia", "aliases": "Horizon" },
+  {
+    "mode": "ferry",
+    "name": "Majestic Fast Ferry",
+    "region": "Singapore / Indonesia",
+    "aliases": "Majestic"
+  },
+  {
+    "mode": "ferry",
+    "name": "Horizon Fast Ferry",
+    "region": "Singapore / Indonesia",
+    "aliases": "Horizon"
+  },
   { "mode": "cab", "name": "Ola", "region": "India", "aliases": "Ola Cabs" },
-  { "mode": "cab", "name": "Uber", "region": "India / Singapore / Malaysia", "aliases": "Uber Taxi" },
+  {
+    "mode": "cab",
+    "name": "Uber",
+    "region": "India / Singapore / Malaysia",
+    "aliases": "Uber Taxi"
+  },
   { "mode": "cab", "name": "Rapido", "region": "India", "aliases": "Rapido Cab" },
   { "mode": "cab", "name": "BluSmart", "region": "India", "aliases": "Blu Smart" },
   { "mode": "cab", "name": "Meru Cabs", "region": "India", "aliases": "Meru" },
-  { "mode": "cab", "name": "Grab", "region": "Singapore / Malaysia / Indonesia", "aliases": "GrabCar GrabTaxi" },
+  {
+    "mode": "cab",
+    "name": "Grab",
+    "region": "Singapore / Malaysia / Indonesia",
+    "aliases": "GrabCar GrabTaxi"
+  },
   { "mode": "cab", "name": "Gojek", "region": "Singapore / Indonesia", "aliases": "GoCar GoRide" },
   { "mode": "cab", "name": "ComfortDelGro", "region": "Singapore", "aliases": "Comfort CityCab" },
   { "mode": "cab", "name": "Bluebird", "region": "Indonesia", "aliases": "Blue Bird Taxi" }

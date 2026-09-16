@@ -12,7 +12,10 @@ export function isValidTimeZone(value: string) {
 
 export function currencyFractionDigits(currencyCode: string) {
   try {
-    return new Intl.NumberFormat("en", { style: "currency", currency: currencyCode }).resolvedOptions().maximumFractionDigits ?? 2;
+    return (
+      new Intl.NumberFormat("en", { style: "currency", currency: currencyCode }).resolvedOptions()
+        .maximumFractionDigits ?? 2
+    );
   } catch {
     return 2;
   }
@@ -25,18 +28,35 @@ export function amountStringToMinor(amount: string, currencyCode: string) {
 }
 
 function representedLocalValue(instant: Date, timeZone: string) {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
-    timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
-  }).formatToParts(instant).map((part) => [part.type, part.value]));
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    })
+      .formatToParts(instant)
+      .map((part) => [part.type, part.value])
+  );
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 }
 
 export function localDateTimeCandidates(value: string, timeZone: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
-  if (!match || !isValidTimeZone(timeZone)) throw new Error("Enter a valid date, time, and time zone.");
+  if (!match || !isValidTimeZone(timeZone))
+    throw new Error("Enter a valid date, time, and time zone.");
 
   const [, year, month, day, hour, minute] = match;
-  const desired = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+  const desired = Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute)
+  );
   let candidate = desired;
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -50,7 +70,9 @@ export function localDateTimeCandidates(value: string, timeZone: string) {
   });
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const parts = Object.fromEntries(formatter.formatToParts(new Date(candidate)).map((part) => [part.type, part.value]));
+    const parts = Object.fromEntries(
+      formatter.formatToParts(new Date(candidate)).map((part) => [part.type, part.value])
+    );
     const represented = Date.UTC(
       Number(parts.year),
       Number(parts.month) - 1,
@@ -70,10 +92,20 @@ export function localDateTimeCandidates(value: string, timeZone: string) {
   return [...candidates].sort();
 }
 
-export function localDateTimeToIso(value: string, timeZone: string, occurrence: "automatic" | "earlier" | "later" = "automatic") {
+export function localDateTimeToIso(
+  value: string,
+  timeZone: string,
+  occurrence: "automatic" | "earlier" | "later" = "automatic"
+) {
   const candidates = localDateTimeCandidates(value, timeZone);
-  if (!candidates.length) throw new Error(`${value.replace("T", " ")} does not exist in ${timeZone} because the clock changes. Choose another time.`);
-  if (candidates.length > 1 && occurrence === "automatic") throw new Error(`${value.replace("T", " ")} occurs twice in ${timeZone}. Choose the earlier or later occurrence.`);
+  if (!candidates.length)
+    throw new Error(
+      `${value.replace("T", " ")} does not exist in ${timeZone} because the clock changes. Choose another time.`
+    );
+  if (candidates.length > 1 && occurrence === "automatic")
+    throw new Error(
+      `${value.replace("T", " ")} occurs twice in ${timeZone}. Choose the earlier or later occurrence.`
+    );
   return occurrence === "later" ? candidates[candidates.length - 1] : candidates[0];
 }
 
@@ -87,7 +119,15 @@ export function defaultHotelCheckoutLocal(checkInLocal: string) {
 export function localDateTimeMinusMinutes(value: string, minutes: number) {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
   if (!match || !Number.isInteger(minutes) || minutes < 0) return "";
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]) - minutes));
+  const date = new Date(
+    Date.UTC(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4]),
+      Number(match[5]) - minutes
+    )
+  );
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}T${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
 }
 
@@ -101,7 +141,11 @@ export function hotelStayInstants(input: {
   if (!input.checkInLocal) throw new Error("Add the hotel check-in date and time.");
   if (!input.checkoutLocal) throw new Error("Add the hotel checkout date and time.");
   const checkInAt = localDateTimeToIso(input.checkInLocal, input.timeZone, input.checkInOccurrence);
-  const checkoutAt = localDateTimeToIso(input.checkoutLocal, input.timeZone, input.checkoutOccurrence);
+  const checkoutAt = localDateTimeToIso(
+    input.checkoutLocal,
+    input.timeZone,
+    input.checkoutOccurrence
+  );
   if (Date.parse(checkoutAt) <= Date.parse(checkInAt)) {
     throw new Error("Hotel checkout date and time must be after check-in.");
   }
@@ -110,9 +154,19 @@ export function hotelStayInstants(input: {
 
 export function isoToLocalDateTime(value: string | null | undefined, timeZone: string) {
   if (!value || !isValidTimeZone(timeZone)) return "";
-  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
-    timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
-  }).formatToParts(new Date(value)).map((part) => [part.type, part.value]));
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    })
+      .formatToParts(new Date(value))
+      .map((part) => [part.type, part.value])
+  );
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 }
 
@@ -122,12 +176,23 @@ export const tripFormSchema = z
     destination: z.string().trim().min(1, "Add the destination.").max(180),
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a start date."),
     endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose an end date."),
-    timezone: z.string().trim().refine(isValidTimeZone, "Enter a valid time zone, such as Asia/Kolkata."),
-    baseCurrency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, "Use a three-letter currency code.")
+    timezone: z
+      .string()
+      .trim()
+      .refine(isValidTimeZone, "Enter a valid time zone, such as Asia/Kolkata."),
+    baseCurrency: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/, "Use a three-letter currency code.")
   })
   .superRefine((value, context) => {
     if (value.endDate < value.startDate) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["endDate"], message: "End date cannot be before the start date." });
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endDate"],
+        message: "End date cannot be before the start date."
+      });
     }
   });
 
@@ -141,7 +206,11 @@ export const itineraryFormSchema = z
   })
   .superRefine((value, context) => {
     if (value.endsAt && value.endsAt < value.startsAt) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["endsAt"], message: "End time cannot be before the start time." });
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endsAt"],
+        message: "End time cannot be before the start time."
+      });
     }
   });
 
@@ -150,7 +219,11 @@ export const costFormSchema = z
     title: z.string().trim().min(1, "Describe this cost.").max(160),
     category: z.enum(costCategories),
     amount: z.string().trim().min(1, "Enter an amount."),
-    currencyCode: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, "Use a three-letter currency code."),
+    currencyCode: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/, "Use a three-letter currency code."),
     paymentStatus: z.enum(["planned", "paid", "refunded"]),
     notes: z.string().trim().max(2000).optional()
   })
@@ -161,7 +234,10 @@ export const costFormSchema = z
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["amount"],
-        message: digits === 0 ? "Enter zero or a positive whole amount." : `Enter zero or a positive amount with up to ${digits} decimal places.`
+        message:
+          digits === 0
+            ? "Enter zero or a positive whole amount."
+            : `Enter zero or a positive amount with up to ${digits} decimal places.`
       });
     }
   });

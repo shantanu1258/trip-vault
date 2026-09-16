@@ -28,15 +28,24 @@ export function bookingParticipantSyncArgs(input: BookingParticipantSyncInput) {
   };
 }
 
-export async function syncBookingParticipants(input: BookingParticipantSyncInput): Promise<BookingParticipantSyncResult> {
+export async function syncBookingParticipants(
+  input: BookingParticipantSyncInput
+): Promise<BookingParticipantSyncResult> {
   if (!supabase) throw new Error("Supabase is not connected.");
-  const { data, error } = await supabase.rpc("sync_booking_participants", bookingParticipantSyncArgs(input));
+  const { data, error } = await supabase.rpc(
+    "sync_booking_participants",
+    bookingParticipantSyncArgs(input)
+  );
   if (error) throw error;
-  if (!data || typeof data !== "object") throw new Error("Supabase did not return the synchronized booking participants.");
+  if (!data || typeof data !== "object")
+    throw new Error("Supabase did not return the synchronized booking participants.");
   return data as unknown as BookingParticipantSyncResult;
 }
 
-export async function queueBookingParticipantSync(input: BookingParticipantSyncInput, dependsOn: string[] = []) {
+export async function queueBookingParticipantSync(
+  input: BookingParticipantSyncInput,
+  dependsOn: string[] = []
+) {
   return queueRpc({
     entityType: "booking-participant-sync",
     entityId: input.bookingId,
@@ -56,17 +65,29 @@ export async function cacheParticipantAssignments(input: {
   const participants = normalizeParticipantSelection(input.participantScope, input.travelerIds);
   const [bookingRows, itineraryRows] = await Promise.all([
     readEntityList<BookingTraveler>(`booking-travelers:${input.tripId}`),
-    readEntityList<{ id: string; itinerary_item_id: string; traveler_id: string }>(`itinerary-participants:${input.tripId}`)
+    readEntityList<{ id: string; itinerary_item_id: string; traveler_id: string }>(
+      `itinerary-participants:${input.tripId}`
+    )
   ]);
   const itineraryIds = new Set(input.itineraryItemIds);
   await Promise.all([
     cacheEntityList(`booking-travelers:${input.tripId}`, [
       ...bookingRows.filter((row) => row.booking_id !== input.bookingId),
-      ...participants.travelerIds.map((travelerId) => ({ id: `${input.bookingId}:${travelerId}`, booking_id: input.bookingId, traveler_id: travelerId }))
+      ...participants.travelerIds.map((travelerId) => ({
+        id: `${input.bookingId}:${travelerId}`,
+        booking_id: input.bookingId,
+        traveler_id: travelerId
+      }))
     ]),
     cacheEntityList(`itinerary-participants:${input.tripId}`, [
       ...itineraryRows.filter((row) => !itineraryIds.has(row.itinerary_item_id)),
-      ...input.itineraryItemIds.flatMap((itineraryItemId) => participants.travelerIds.map((travelerId) => ({ id: `${itineraryItemId}:${travelerId}`, itinerary_item_id: itineraryItemId, traveler_id: travelerId })))
+      ...input.itineraryItemIds.flatMap((itineraryItemId) =>
+        participants.travelerIds.map((travelerId) => ({
+          id: `${itineraryItemId}:${travelerId}`,
+          itinerary_item_id: itineraryItemId,
+          traveler_id: travelerId
+        }))
+      )
     ])
   ]);
 }

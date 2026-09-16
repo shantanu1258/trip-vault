@@ -24,7 +24,12 @@ function dateFromToday(days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-function trip(id: string, startOffset: number, endOffset: number, status: Trip["status"] = "upcoming"): Trip {
+function trip(
+  id: string,
+  startOffset: number,
+  endOffset: number,
+  status: Trip["status"] = "upcoming"
+): Trip {
   return {
     id,
     title: `Trip ${id}`,
@@ -41,14 +46,22 @@ function trip(id: string, startOffset: number, endOffset: number, status: Trip["
 
 function TripProbe() {
   const { tripId } = useParams();
-  return <><p>Opened trip {tripId}</p><Link to="/home">Go home</Link></>;
+  return (
+    <>
+      <p>Opened trip {tripId}</p>
+      <Link to="/home">Go home</Link>
+    </>
+  );
 }
 
 function renderLaunch() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter
+        initialEntries={["/"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <Routes>
           <Route path="/" element={<RootRoute />} />
           <Route path="/trips/:tripId" element={<TripProbe />} />
@@ -67,7 +80,11 @@ describe("fresh launch trip routing", () => {
 
   it("waits for saved focus before choosing between overlapping current trips", async () => {
     let resolveFocus!: (tripId: string | null) => void;
-    getSavedTripFocus.mockReturnValue(new Promise<string | null>((resolve) => { resolveFocus = resolve; }));
+    getSavedTripFocus.mockReturnValue(
+      new Promise<string | null>((resolve) => {
+        resolveFocus = resolve;
+      })
+    );
     listTrips.mockResolvedValue([trip("soon", 0, 1), trip("saved", 0, 3)]);
 
     renderLaunch();
@@ -75,7 +92,9 @@ describe("fresh launch trip routing", () => {
     expect(await screen.findByLabelText("Opening Trip Vault")).toBeInTheDocument();
     expect(screen.queryByText(/Opened trip/)).not.toBeInTheDocument();
 
-    await act(async () => { resolveFocus("saved"); });
+    await act(async () => {
+      resolveFocus("saved");
+    });
     expect(await screen.findByText("Opened trip saved")).toBeInTheDocument();
   });
 

@@ -17,7 +17,8 @@ export function normalizeParticipantSelection(
   const scope = participantScope ?? (uniqueTravelerIds.length ? "selected" : "everyone");
 
   if (scope === "everyone") {
-    if (uniqueTravelerIds.length) throw new Error("Everyone cannot also contain selected travelers.");
+    if (uniqueTravelerIds.length)
+      throw new Error("Everyone cannot also contain selected travelers.");
     return { participantScope: scope, travelerIds: [] };
   }
   if (!uniqueTravelerIds.length) throw new Error("Select at least one traveler.");

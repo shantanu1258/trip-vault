@@ -16,11 +16,19 @@ const mocks = vi.hoisted(() => {
   const upload = vi.fn().mockResolvedValue({ error: null });
   const storageFrom = vi.fn(() => ({ upload }));
   const rpc = vi.fn();
-  const readOfflineFile = vi.fn(async (_profileId: string, _versionId: string, expectedMimeType?: string) => new Blob(["bytes"], { type: expectedMimeType }));
+  const readOfflineFile = vi.fn(
+    async (_profileId: string, _versionId: string, expectedMimeType?: string) =>
+      new Blob(["bytes"], { type: expectedMimeType })
+  );
 
   return {
     database: {
-      outbox: { where, bulkGet: vi.fn().mockResolvedValue([]), delete: deleteOperation, update: updateOperation },
+      outbox: {
+        where,
+        bulkGet: vi.fn().mockResolvedValue([]),
+        delete: deleteOperation,
+        update: updateOperation
+      },
       entities: { get: getEntity, put: putEntity }
     },
     deleteOperation,
@@ -38,14 +46,19 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("../../lib/local-db/database", () => ({ database: mocks.database }));
 vi.mock("../../lib/storage/offlineFiles", () => ({ readOfflineFile: mocks.readOfflineFile }));
-vi.mock("../../lib/auth/deviceSession", () => ({ resolveDeviceProfileId: vi.fn().mockResolvedValue("profile-1") }));
+vi.mock("../../lib/auth/deviceSession", () => ({
+  resolveDeviceProfileId: vi.fn().mockResolvedValue("profile-1")
+}));
 vi.mock("../../lib/supabase/client", () => ({
   supabase: { from: mocks.from, rpc: mocks.rpc, storage: { from: mocks.storageFrom } }
 }));
 
 import { syncOutbox } from "./localSync";
 
-function operation(operation: OutboxOperation["operation"], payload: Record<string, unknown>): OutboxOperation {
+function operation(
+  operation: OutboxOperation["operation"],
+  payload: Record<string, unknown>
+): OutboxOperation {
   return {
     operationId: `${operation}-1`,
     profileId: "profile-1",
@@ -63,7 +76,10 @@ describe("offline upload MIME restoration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);
-    mocks.readOfflineFile.mockImplementation(async (_profileId: string, _versionId: string, expectedMimeType?: string) => new Blob(["bytes"], { type: expectedMimeType }));
+    mocks.readOfflineFile.mockImplementation(
+      async (_profileId: string, _versionId: string, expectedMimeType?: string) =>
+        new Blob(["bytes"], { type: expectedMimeType })
+    );
     mocks.upload.mockResolvedValue({ error: null });
     mocks.upsert.mockResolvedValue({ error: null });
     mocks.eq.mockResolvedValue({ error: null });
@@ -71,7 +87,9 @@ describe("offline upload MIME restoration", () => {
 
   it("restores the private-inbox MIME before Supabase wraps the Blob in multipart form data", async () => {
     const upload = { id: "upload-1", mime_type: "application/pdf" };
-    mocks.toArray.mockResolvedValue([operation("upload_account_document", { upload, storagePath: "profile-1/upload-1/ticket.pdf" })]);
+    mocks.toArray.mockResolvedValue([
+      operation("upload_account_document", { upload, storagePath: "profile-1/upload-1/ticket.pdf" })
+    ]);
     mocks.rpc
       .mockResolvedValueOnce({ data: null, error: { message: "Document file is not stored yet" } })
       .mockResolvedValueOnce({ data: "2026-09-13T01:00:00.000Z", error: null });
@@ -86,7 +104,13 @@ describe("offline upload MIME restoration", () => {
   it("restores the MIME for queued trip-document versions too", async () => {
     const document = { id: "document-1" };
     const version = { id: "version-1", mime_type: "image/png" };
-    mocks.toArray.mockResolvedValue([operation("upload_document", { document, version, storagePath: "trips/trip-1/document-1/image.png" })]);
+    mocks.toArray.mockResolvedValue([
+      operation("upload_document", {
+        document,
+        version,
+        storagePath: "trips/trip-1/document-1/image.png"
+      })
+    ]);
 
     await expect(syncOutbox()).resolves.toEqual({ synced: 1, failed: 0 });
 
@@ -96,10 +120,15 @@ describe("offline upload MIME restoration", () => {
   });
 
   it("repairs an orphaned legacy booking scope only after the database rejects its traveler row", async () => {
-    mocks.toArray.mockResolvedValue([{
-      ...operation("create", { table: "booking_travelers", row: { booking_id: "booking-1", traveler_id: "traveler-1" } }),
-      entityType: "booking-travelers:booking-1"
-    }]);
+    mocks.toArray.mockResolvedValue([
+      {
+        ...operation("create", {
+          table: "booking_travelers",
+          row: { booking_id: "booking-1", traveler_id: "traveler-1" }
+        }),
+        entityType: "booking-travelers:booking-1"
+      }
+    ]);
     mocks.upsert
       .mockResolvedValueOnce({ error: { message: "Booking traveler rows require Selected scope" } })
       .mockResolvedValueOnce({ error: null });
@@ -113,7 +142,9 @@ describe("offline upload MIME restoration", () => {
 
   it("coalesces overlapping foreground sync runs", async () => {
     const upload = { id: "upload-1", mime_type: "application/pdf" };
-    mocks.toArray.mockResolvedValue([operation("upload_account_document", { upload, storagePath: "profile-1/upload-1/ticket.pdf" })]);
+    mocks.toArray.mockResolvedValue([
+      operation("upload_account_document", { upload, storagePath: "profile-1/upload-1/ticket.pdf" })
+    ]);
     mocks.rpc
       .mockResolvedValueOnce({ data: null, error: { message: "Document file is not stored yet" } })
       .mockResolvedValueOnce({ data: "2026-09-13T01:00:00.000Z", error: null });
@@ -128,11 +159,16 @@ describe("offline upload MIME restoration", () => {
 
   it("does not automatically repeat a deterministic permission failure", async () => {
     const upload = { id: "upload-1", mime_type: "application/pdf" };
-    mocks.toArray.mockResolvedValue([{
-      ...operation("upload_account_document", { upload, storagePath: "profile-1/upload-1/ticket.pdf" }),
-      attemptCount: 1,
-      lastErrorCode: "permission"
-    }]);
+    mocks.toArray.mockResolvedValue([
+      {
+        ...operation("upload_account_document", {
+          upload,
+          storagePath: "profile-1/upload-1/ticket.pdf"
+        }),
+        attemptCount: 1,
+        lastErrorCode: "permission"
+      }
+    ]);
 
     await expect(syncOutbox()).resolves.toEqual({ synced: 0, failed: 0 });
 

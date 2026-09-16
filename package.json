@@ -12,7 +12,9 @@
     "preview": "NODE_OPTIONS=--experimental-global-webcrypto vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false",
+    "format": "prettier --write \"src/**/*.{ts,tsx,json,css}\" \"*.{json,js,ts}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,json,css}\" \"*.{json,js,ts}\""
   },
   "dependencies": {
     "@supabase/supabase-js": "2.49.8",
@@ -34,6 +36,7 @@
     "autoprefixer": "10.4.20",
     "jsdom": "25.0.1",
     "postcss": "8.5.1",
+    "prettier": "3.8.3",
     "tailwindcss": "3.4.17",
     "typescript": "5.7.3",
     "vite": "5.4.14",

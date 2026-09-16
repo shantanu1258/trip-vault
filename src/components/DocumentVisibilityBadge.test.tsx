@@ -9,9 +9,12 @@ describe("document visibility presentation", () => {
     ["private", "Only me", "Visible only to you"],
     ["selected_members", "Selected members", "Visible only to selected trip members"],
     ["traveler_and_managers", "Traveler + managers", "Visible to the traveler and their managers"]
-  ] satisfies [DocumentVisibility, string, string][])("describes %s consistently", (visibility, label, description) => {
-    expect(documentVisibilityPresentation(visibility)).toMatchObject({ label, description });
-  });
+  ] satisfies [DocumentVisibility, string, string][])(
+    "describes %s consistently",
+    (visibility, label, description) => {
+      expect(documentVisibilityPresentation(visibility)).toMatchObject({ label, description });
+    }
+  );
 
   it("renders the compact label with the complete trip-member explanation", () => {
     render(<DocumentVisibilityBadge visibility="trip" />);

@@ -60,7 +60,7 @@ export async function resolveDeviceProfileId() {
   if (explicitlySignedOut) return null;
   if (typeof navigator !== "undefined" && !navigator.onLine) return rememberedDeviceProfileId();
   try {
-    const { data } = await supabase?.auth.getSession() ?? { data: { session: null } };
+    const { data } = (await supabase?.auth.getSession()) ?? { data: { session: null } };
     const profileId = data.session?.user.id;
     if (profileId) {
       rememberDeviceProfile(profileId);

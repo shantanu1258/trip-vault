@@ -28,12 +28,29 @@ const bookingTypeByEvent: Partial<Record<NonNullable<ItineraryItem["event_type"]
   custom: "other"
 };
 
-const providerCopyByEvent: Partial<Record<NonNullable<ItineraryItem["event_type"]>, { label: string; placeholder: string }>> = {
-  activity: { label: "Activity provider (optional)", placeholder: "Enter the attraction, tour company, venue, or organizer" },
-  meal: { label: "Restaurant or venue (optional)", placeholder: "Enter the restaurant, café, venue, or organizer" },
-  transport: { label: "Transport provider (optional)", placeholder: "Enter the transport company, rental service, or operator" },
-  preparation: { label: "Service provider (optional)", placeholder: "Enter the agency, appointment provider, or organizer" },
-  custom: { label: "Service provider (optional)", placeholder: "Enter the business or organizer providing this booking" }
+const providerCopyByEvent: Partial<
+  Record<NonNullable<ItineraryItem["event_type"]>, { label: string; placeholder: string }>
+> = {
+  activity: {
+    label: "Activity provider (optional)",
+    placeholder: "Enter the attraction, tour company, venue, or organizer"
+  },
+  meal: {
+    label: "Restaurant or venue (optional)",
+    placeholder: "Enter the restaurant, café, venue, or organizer"
+  },
+  transport: {
+    label: "Transport provider (optional)",
+    placeholder: "Enter the transport company, rental service, or operator"
+  },
+  preparation: {
+    label: "Service provider (optional)",
+    placeholder: "Enter the agency, appointment provider, or organizer"
+  },
+  custom: {
+    label: "Service provider (optional)",
+    placeholder: "Enter the business or organizer providing this booking"
+  }
 };
 
 export function canAddEventBooking(item: ItineraryItem) {
@@ -43,7 +60,14 @@ export function canAddEventBooking(item: ItineraryItem) {
 // Retained while existing callers move to the event-wide name.
 export const canAddActivityBooking = canAddEventBooking;
 
-export function AddActivityBookingForm({ trip, item, itinerary = [], travelers, eventTravelerIds, onClose }: ActivityBookingFormProps) {
+export function AddActivityBookingForm({
+  trip,
+  item,
+  itinerary = [],
+  travelers,
+  eventTravelerIds,
+  onClose
+}: ActivityBookingFormProps) {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const [bookedViaUrl, setBookedViaUrl] = useState("");
@@ -52,20 +76,29 @@ export function AddActivityBookingForm({ trip, item, itinerary = [], travelers, 
   const bookingType = bookingTypeByEvent[eventType] ?? "other";
   const providerCopy = providerCopyByEvent[eventType] ?? providerCopyByEvent.custom!;
   const explicitRelativeStart = item.has_explicit_start_time === true;
-  const hasExplicitStart = (item.timing_mode ?? "exact") === "exact"
-    || (item.timing_mode === "relative" && explicitRelativeStart);
+  const hasExplicitStart =
+    (item.timing_mode ?? "exact") === "exact" ||
+    (item.timing_mode === "relative" && explicitRelativeStart);
   const mutation = useMutation({
     mutationFn: async (input: CreateBookingInput) => {
-      if (!canAddEventBooking(item)) throw new Error("This event already has a booking or does not support generic booking details.");
+      if (!canAddEventBooking(item))
+        throw new Error(
+          "This event already has a booking or does not support generic booking details."
+        );
       if (!navigator.onLine) throw new Error("Adding booking details requires a connection.");
       const booking = await addBooking(input);
       try {
-        await linkBookingToItineraryItem(item, booking.id, { participantScope: input.participantScope ?? "everyone", travelerIds: input.travelerIds ?? [] });
+        await linkBookingToItineraryItem(item, booking.id, {
+          participantScope: input.participantScope ?? "everyone",
+          travelerIds: input.travelerIds ?? []
+        });
       } catch (linkError) {
         try {
           await archiveBooking(booking);
         } catch {
-          throw new Error(`The booking was saved but could not be attached or cleaned up. Booking ID: ${booking.id}. Refresh the trip before trying again.`);
+          throw new Error(
+            `The booking was saved but could not be attached or cleaned up. Booking ID: ${booking.id}. Refresh the trip before trying again.`
+          );
         }
         throw linkError;
       }
@@ -85,7 +118,9 @@ export function AddActivityBookingForm({ trip, item, itinerary = [], travelers, 
     event.preventDefault();
     setMessage("");
     const form = new FormData(event.currentTarget);
-    const participantScope = (form.get("participantScope") === "selected" ? "selected" : "everyone") as ParticipantScope;
+    const participantScope = (
+      form.get("participantScope") === "selected" ? "selected" : "everyone"
+    ) as ParticipantScope;
     const selectedTravelerIds = form.getAll("travelerIds").map(String);
     if (participantScope === "selected" && selectedTravelerIds.length === 0) {
       setMessage("Choose at least one traveler, or select Everyone.");
@@ -98,13 +133,22 @@ export function AddActivityBookingForm({ trip, item, itinerary = [], travelers, 
       const value = Number(raw);
       return Number.isInteger(value) && value > 0 ? value : undefined;
     };
-    const bookingDetails = eventType === "activity"
-      ? { meeting_instructions: String(form.get("meetingInstructions") ?? "").trim() || undefined }
-      : eventType === "meal"
-        ? { party_size: optionalPositiveInteger("partySize"), dietary_notes: String(form.get("dietaryNotes") ?? "").trim() || undefined }
-        : eventType === "transport"
-          ? { transport_subtype: String(form.get("transportSubtype") ?? "").trim() || undefined, transport_return_at: String(form.get("transportReturnAt") ?? "").trim() || undefined }
-          : undefined;
+    const bookingDetails =
+      eventType === "activity"
+        ? {
+            meeting_instructions: String(form.get("meetingInstructions") ?? "").trim() || undefined
+          }
+        : eventType === "meal"
+          ? {
+              party_size: optionalPositiveInteger("partySize"),
+              dietary_notes: String(form.get("dietaryNotes") ?? "").trim() || undefined
+            }
+          : eventType === "transport"
+            ? {
+                transport_subtype: String(form.get("transportSubtype") ?? "").trim() || undefined,
+                transport_return_at: String(form.get("transportReturnAt") ?? "").trim() || undefined
+              }
+            : undefined;
     mutation.mutate({
       tripId: trip.id,
       type: bookingType,
@@ -112,7 +156,7 @@ export function AddActivityBookingForm({ trip, item, itinerary = [], travelers, 
       provider: String(form.get("provider") ?? "").trim() || undefined,
       referenceCode: String(form.get("referenceCode") ?? "").trim() || undefined,
       startsAt: hasExplicitStart ? item.starts_at : undefined,
-      endsAt: hasExplicitStart ? item.ends_at ?? undefined : undefined,
+      endsAt: hasExplicitStart ? (item.ends_at ?? undefined) : undefined,
       timezone: hasExplicitStart ? item.timezone : undefined,
       location: item.location?.label ?? item.location?.address,
       notes: String(form.get("notes") ?? "").trim() || undefined,
@@ -128,34 +172,185 @@ export function AddActivityBookingForm({ trip, item, itinerary = [], travelers, 
   };
 
   const defaultTravelerIds = item.applies_to_all_travelers ? undefined : eventTravelerIds;
-  if (!canAddEventBooking(item)) return <ModalSheet eyebrow={item.title} title="Add booking details" onClose={onClose}>
-    <div className="mt-6 rounded-2xl bg-warning/10 p-4 text-sm leading-6 text-warning">
-      <p className="font-extrabold">A new booking cannot be added here</p>
-      <p className="mt-1">This event already has a booking or uses specialized travel booking details.</p>
-    </div>
-  </ModalSheet>;
-  const timingLabel = eventTimeLabel(item, itinerary) ?? formatEventTime(item.starts_at, item.timezone);
+  if (!canAddEventBooking(item))
+    return (
+      <ModalSheet eyebrow={item.title} title="Add booking details" onClose={onClose}>
+        <div className="mt-6 rounded-2xl bg-warning/10 p-4 text-sm leading-6 text-warning">
+          <p className="font-extrabold">A new booking cannot be added here</p>
+          <p className="mt-1">
+            This event already has a booking or uses specialized travel booking details.
+          </p>
+        </div>
+      </ModalSheet>
+    );
+  const timingLabel =
+    eventTimeLabel(item, itinerary) ?? formatEventTime(item.starts_at, item.timezone);
   const locationLabel = item.location?.label ?? item.location?.address;
-  return <ModalSheet eyebrow={item.title} title="Add booking details" onClose={onClose}>
-    <form className="mt-6 space-y-4" onSubmit={submit}>
-      <div className="rounded-2xl bg-elevated p-4 text-sm">
-        <p className="font-extrabold">Uses this event's plan</p>
-        <p className="mt-1 text-xs leading-5 text-muted">{timingLabel}{locationLabel ? ` · ${locationLabel}` : ""}. Change the event itself if its timing, order, or place needs updating.</p>
-        {!hasExplicitStart && <p className="mt-2 text-xs leading-5 text-muted">The booking will stay untimed while this event has no explicit start time.</p>}
-      </div>
-      <p className="rounded-2xl bg-warning/10 p-3 text-xs leading-5 text-warning">Adding booking details needs a connection for now. If attaching the booking fails, the new booking is archived and this event stays unchanged.</p>
-      <label className="form-label">{providerCopy.label}<input autoFocus className="form-input" name="provider" placeholder={providerCopy.placeholder} /></label>
-      <label className="form-label">Booking reference (optional)<input className="form-input" name="referenceCode" placeholder="Enter the confirmation number or reservation reference" /></label>
-      {eventType === "activity" && <label className="form-label">Entry or meeting instructions (optional)<textarea className="form-input min-h-20" name="meetingInstructions" placeholder="Enter the meeting point, entry rule, or arrival instruction" /></label>}
-      {eventType === "meal" && <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Party size (optional)<input className="form-input" name="partySize" type="number" min="1" inputMode="numeric" defaultValue={item.applies_to_all_travelers ? travelers.length || undefined : eventTravelerIds.length || undefined} placeholder="Enter the number of diners" /></label><label className="form-label">Dietary or arrival notes (optional)<textarea className="form-input min-h-20" name="dietaryNotes" placeholder="Add dietary needs or instructions for arrival" /></label></div>}
-      {eventType === "transport" && <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Transport type (optional)<select className="form-input" name="transportSubtype" defaultValue=""><option value="">Keep the existing plan</option><option value="metro">Metro / public transit</option><option value="rental">Rental vehicle</option><option value="private_transfer">Private transfer</option><option value="other">Other transport</option></select></label><label className="form-label">Return date and time (optional)<input className="form-input" name="transportReturnAt" type="datetime-local" min={`${trip.start_date}T00:00`} max={`${trip.end_date}T23:59`} /></label></div>}
-      <div className="form-label"><span>Booked via (optional)</span><VendorPicker onWebsite={setBookedViaUrl} /></div>
-      <label className="form-label">Booking website (optional)<input className="form-input" name="bookedViaUrl" type="url" value={bookedViaUrl} onChange={(event) => setBookedViaUrl(event.target.value)} placeholder="Paste the page used to view or manage this booking" /></label>
-      <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Contact name (optional)<input className="form-input" name="contactName" placeholder="Enter the guide, venue, or support contact" /></label><label className="form-label">Phone number (optional)<input className="form-input" name="contactPhone" type="tel" placeholder="Include the country code for call and WhatsApp" /></label></div>
-      <label className="form-label">Booking notes (optional)<textarea className="form-input min-h-24 resize-y" name="notes" placeholder="Add entry instructions, meeting point, or booking conditions" /></label>
-      <ParticipantSelector travelers={travelers} selectedTravelerIds={defaultTravelerIds} initialScope={item.applies_to_all_travelers ? "everyone" : "selected"} scopeName="participantScope" />
-      {(message || mutation.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{message || getErrorMessage(mutation.error)}</p>}
-      <button type="submit" className="primary-button w-full" disabled={!online || mutation.isPending}>{mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <TicketCheck className="size-4" />} Save booking details</button>
-    </form>
-  </ModalSheet>;
+  return (
+    <ModalSheet eyebrow={item.title} title="Add booking details" onClose={onClose}>
+      <form className="mt-6 space-y-4" onSubmit={submit}>
+        <div className="rounded-2xl bg-elevated p-4 text-sm">
+          <p className="font-extrabold">Uses this event's plan</p>
+          <p className="mt-1 text-xs leading-5 text-muted">
+            {timingLabel}
+            {locationLabel ? ` · ${locationLabel}` : ""}. Change the event itself if its timing,
+            order, or place needs updating.
+          </p>
+          {!hasExplicitStart && (
+            <p className="mt-2 text-xs leading-5 text-muted">
+              The booking will stay untimed while this event has no explicit start time.
+            </p>
+          )}
+        </div>
+        <p className="rounded-2xl bg-warning/10 p-3 text-xs leading-5 text-warning">
+          Adding booking details needs a connection for now. If attaching the booking fails, the new
+          booking is archived and this event stays unchanged.
+        </p>
+        <label className="form-label">
+          {providerCopy.label}
+          <input
+            autoFocus
+            className="form-input"
+            name="provider"
+            placeholder={providerCopy.placeholder}
+          />
+        </label>
+        <label className="form-label">
+          Booking reference (optional)
+          <input
+            className="form-input"
+            name="referenceCode"
+            placeholder="Enter the confirmation number or reservation reference"
+          />
+        </label>
+        {eventType === "activity" && (
+          <label className="form-label">
+            Entry or meeting instructions (optional)
+            <textarea
+              className="form-input min-h-20"
+              name="meetingInstructions"
+              placeholder="Enter the meeting point, entry rule, or arrival instruction"
+            />
+          </label>
+        )}
+        {eventType === "meal" && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="form-label">
+              Party size (optional)
+              <input
+                className="form-input"
+                name="partySize"
+                type="number"
+                min="1"
+                inputMode="numeric"
+                defaultValue={
+                  item.applies_to_all_travelers
+                    ? travelers.length || undefined
+                    : eventTravelerIds.length || undefined
+                }
+                placeholder="Enter the number of diners"
+              />
+            </label>
+            <label className="form-label">
+              Dietary or arrival notes (optional)
+              <textarea
+                className="form-input min-h-20"
+                name="dietaryNotes"
+                placeholder="Add dietary needs or instructions for arrival"
+              />
+            </label>
+          </div>
+        )}
+        {eventType === "transport" && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="form-label">
+              Transport type (optional)
+              <select className="form-input" name="transportSubtype" defaultValue="">
+                <option value="">Keep the existing plan</option>
+                <option value="metro">Metro / public transit</option>
+                <option value="rental">Rental vehicle</option>
+                <option value="private_transfer">Private transfer</option>
+                <option value="other">Other transport</option>
+              </select>
+            </label>
+            <label className="form-label">
+              Return date and time (optional)
+              <input
+                className="form-input"
+                name="transportReturnAt"
+                type="datetime-local"
+                min={`${trip.start_date}T00:00`}
+                max={`${trip.end_date}T23:59`}
+              />
+            </label>
+          </div>
+        )}
+        <div className="form-label">
+          <span>Booked via (optional)</span>
+          <VendorPicker onWebsite={setBookedViaUrl} />
+        </div>
+        <label className="form-label">
+          Booking website (optional)
+          <input
+            className="form-input"
+            name="bookedViaUrl"
+            type="url"
+            value={bookedViaUrl}
+            onChange={(event) => setBookedViaUrl(event.target.value)}
+            placeholder="Paste the page used to view or manage this booking"
+          />
+        </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="form-label">
+            Contact name (optional)
+            <input
+              className="form-input"
+              name="contactName"
+              placeholder="Enter the guide, venue, or support contact"
+            />
+          </label>
+          <label className="form-label">
+            Phone number (optional)
+            <input
+              className="form-input"
+              name="contactPhone"
+              type="tel"
+              placeholder="Include the country code for call and WhatsApp"
+            />
+          </label>
+        </div>
+        <label className="form-label">
+          Booking notes (optional)
+          <textarea
+            className="form-input min-h-24 resize-y"
+            name="notes"
+            placeholder="Add entry instructions, meeting point, or booking conditions"
+          />
+        </label>
+        <ParticipantSelector
+          travelers={travelers}
+          selectedTravelerIds={defaultTravelerIds}
+          initialScope={item.applies_to_all_travelers ? "everyone" : "selected"}
+          scopeName="participantScope"
+        />
+        {(message || mutation.error) && (
+          <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">
+            {message || getErrorMessage(mutation.error)}
+          </p>
+        )}
+        <button
+          type="submit"
+          className="primary-button w-full"
+          disabled={!online || mutation.isPending}
+        >
+          {mutation.isPending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <TicketCheck className="size-4" />
+          )}{" "}
+          Save booking details
+        </button>
+      </form>
+    </ModalSheet>
+  );
 }

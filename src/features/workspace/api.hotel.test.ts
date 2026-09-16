@@ -48,7 +48,11 @@ const savedBooking: Booking = {
   start_at: "2026-09-27T06:30:00.000Z",
   end_at: "2026-09-29T04:30:00.000Z",
   source_timezone: "Asia/Kolkata",
-  location: { label: "1 Bay Road", address: "1 Bay Road", map_url: "https://maps.app.goo.gl/hotel" },
+  location: {
+    label: "1 Bay Road",
+    address: "1 Bay Road",
+    map_url: "https://maps.app.goo.gl/hotel"
+  },
   details: { room_type: "Family suite", notes: "Late arrival" },
   reservation_state: "booked",
   participant_scope: "selected",
@@ -60,18 +64,44 @@ describe("atomic hotel stay persistence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
-    mocks.rpc.mockResolvedValue({ data: { booking_id: "booking-hotel", check_in_id: "check-in-1", check_out_id: "check-out-1" }, error: null });
+    mocks.rpc.mockResolvedValue({
+      data: { booking_id: "booking-hotel", check_in_id: "check-in-1", check_out_id: "check-out-1" },
+      error: null
+    });
     mocks.addTripCost.mockResolvedValue(undefined);
     mocks.from.mockImplementation((table: string) => {
-      if (table === "bookings") return {
-        select: vi.fn(() => ({ eq: vi.fn(() => ({ single: vi.fn().mockResolvedValue({ data: savedBooking, error: null }) })) }))
-      };
-      if (table === "itinerary_items") return {
-        select: vi.fn(() => ({ in: vi.fn(() => ({ order: vi.fn().mockResolvedValue({ data: [
-          { id: "check-in-1", booking_id: "booking-hotel", event_type: "hotel_check_in", starts_at: savedBooking.start_at },
-          { id: "check-out-1", booking_id: "booking-hotel", event_type: "hotel_check_out", starts_at: savedBooking.end_at }
-        ], error: null }) })) }))
-      };
+      if (table === "bookings")
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              single: vi.fn().mockResolvedValue({ data: savedBooking, error: null })
+            }))
+          }))
+        };
+      if (table === "itinerary_items")
+        return {
+          select: vi.fn(() => ({
+            in: vi.fn(() => ({
+              order: vi.fn().mockResolvedValue({
+                data: [
+                  {
+                    id: "check-in-1",
+                    booking_id: "booking-hotel",
+                    event_type: "hotel_check_in",
+                    starts_at: savedBooking.start_at
+                  },
+                  {
+                    id: "check-out-1",
+                    booking_id: "booking-hotel",
+                    event_type: "hotel_check_out",
+                    starts_at: savedBooking.end_at
+                  }
+                ],
+                error: null
+              })
+            }))
+          }))
+        };
       throw new Error(`Unexpected table: ${table}`);
     });
   });
@@ -110,11 +140,18 @@ describe("atomic hotel stay persistence", () => {
         end_at: "2026-09-29T04:30:00.000Z",
         participant_scope: "selected",
         details: { room_type: "Family suite", notes: "Late arrival" },
-        location: { label: "1 Bay Road", address: "1 Bay Road", map_url: "https://maps.app.goo.gl/hotel" },
+        location: {
+          label: "1 Bay Road",
+          address: "1 Bay Road",
+          map_url: "https://maps.app.goo.gl/hotel"
+        },
         version: 4
       }),
       requested_traveler_ids: ["traveler-1"],
-      requested_milestones: expect.objectContaining({ check_in_has_time: false, check_out_has_time: true })
+      requested_milestones: expect.objectContaining({
+        check_in_has_time: false,
+        check_out_has_time: true
+      })
     });
     expect(result).toEqual(expect.objectContaining({ booking: savedBooking }));
     expect(mocks.from).toHaveBeenCalledWith("bookings");
@@ -129,16 +166,18 @@ describe("atomic hotel stay persistence", () => {
   });
 
   it("rejects unsafe hotel edits before making a network write", async () => {
-    await expect(saveHotelStay({
-      bookingId: "booking-hotel",
-      tripId: "trip-1",
-      type: "hotel",
-      eventType: "hotel_check_in",
-      title: "Harbour Hotel",
-      startsAt: "2026-09-29T04:30:00.000Z",
-      endsAt: "2026-09-27T06:30:00.000Z",
-      timezone: "Asia/Kolkata"
-    })).rejects.toThrow("Hotel checkout must be after check-in");
+    await expect(
+      saveHotelStay({
+        bookingId: "booking-hotel",
+        tripId: "trip-1",
+        type: "hotel",
+        eventType: "hotel_check_in",
+        title: "Harbour Hotel",
+        startsAt: "2026-09-29T04:30:00.000Z",
+        endsAt: "2026-09-27T06:30:00.000Z",
+        timezone: "Asia/Kolkata"
+      })
+    ).rejects.toThrow("Hotel checkout must be after check-in");
 
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
@@ -155,12 +194,19 @@ describe("atomic hotel stay persistence", () => {
       startsAt: savedBooking.start_at!,
       endsAt: savedBooking.end_at!,
       timezone: savedBooking.source_timezone!,
-      cost: { title: "Harbour Hotel", amountMinor: 45_000_00, currencyCode: "INR", paymentStatus: "paid" }
+      cost: {
+        title: "Harbour Hotel",
+        amountMinor: 45_000_00,
+        currencyCode: "INR",
+        paymentStatus: "paid"
+      }
     });
 
     expect(result.booking.id).toBe(savedBooking.id);
     expect(result.itinerary).toHaveLength(2);
     expect(result.costWarning).toBe(COST_SAVE_WARNING);
-    expect(mocks.addTripCost).toHaveBeenCalledWith(expect.objectContaining({ bookingId: savedBooking.id, category: "hotel" }));
+    expect(mocks.addTripCost).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingId: savedBooking.id, category: "hotel" })
+    );
   });
 });

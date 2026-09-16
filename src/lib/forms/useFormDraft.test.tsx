@@ -6,10 +6,17 @@ const storageKey = "trip-vault:form-draft:test-form";
 
 function DraftForm() {
   const draft = useFormDraft("test-form");
-  return <form ref={draft.formRef}>
-    <label>Title<input name="title" /></label>
-    <button type="button" onClick={draft.clearDraft}>Clear draft</button>
-  </form>;
+  return (
+    <form ref={draft.formRef}>
+      <label>
+        Title
+        <input name="title" />
+      </label>
+      <button type="button" onClick={draft.clearDraft}>
+        Clear draft
+      </button>
+    </form>
+  );
 }
 
 describe("useFormDraft", () => {

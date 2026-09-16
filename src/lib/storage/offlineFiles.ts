@@ -1,4 +1,9 @@
-import { clearProfileLocalData, database, type LocalDocumentRecord, type OutboxOperation } from "../local-db/database";
+import {
+  clearProfileLocalData,
+  database,
+  type LocalDocumentRecord,
+  type OutboxOperation
+} from "../local-db/database";
 
 type StorageManagerWithDirectory = StorageManager & { getDirectory?: () => Promise<any> };
 
@@ -17,7 +22,13 @@ async function directoryFor(profileId: string) {
   return profile.getDirectoryHandle("documents", { create: true });
 }
 
-export async function storeOfflineFile(input: { profileId: string; versionId: string; blob: Blob; sha256: string; pinReason?: LocalDocumentRecord["pinReason"] }) {
+export async function storeOfflineFile(input: {
+  profileId: string;
+  versionId: string;
+  blob: Blob;
+  sha256: string;
+  pinReason?: LocalDocumentRecord["pinReason"];
+}) {
   let localPath = `indexeddb://${input.profileId}/${input.versionId}`;
   try {
     const directory = await directoryFor(input.profileId);
@@ -28,23 +39,43 @@ export async function storeOfflineFile(input: { profileId: string; versionId: st
       await writable.close();
       localPath = `opfs://profiles/${input.profileId}/documents/${input.versionId}`;
     } else {
-      await database.localFileBlobs.put({ profileId: input.profileId, documentVersionId: input.versionId, blob: input.blob });
+      await database.localFileBlobs.put({
+        profileId: input.profileId,
+        documentVersionId: input.versionId,
+        blob: input.blob
+      });
     }
   } catch {
-    await database.localFileBlobs.put({ profileId: input.profileId, documentVersionId: input.versionId, blob: input.blob });
+    await database.localFileBlobs.put({
+      profileId: input.profileId,
+      documentVersionId: input.versionId,
+      blob: input.blob
+    });
   }
-  await database.localDocuments.put({ profileId: input.profileId, documentVersionId: input.versionId, localPath, byteSize: input.blob.size, sha256: input.sha256, verifiedAt: new Date().toISOString(), pinReason: input.pinReason ?? "document" });
+  await database.localDocuments.put({
+    profileId: input.profileId,
+    documentVersionId: input.versionId,
+    localPath,
+    byteSize: input.blob.size,
+    sha256: input.sha256,
+    verifiedAt: new Date().toISOString(),
+    pinReason: input.pinReason ?? "document"
+  });
   return localPath;
 }
 
-export async function readOfflineFile(profileId: string, versionId: string, expectedMimeType?: string | null) {
+export async function readOfflineFile(
+  profileId: string,
+  versionId: string,
+  expectedMimeType?: string | null
+) {
   const record = await database.localDocuments.get([profileId, versionId]);
   if (!record?.verifiedAt) return null;
   if (record.localPath.startsWith("opfs://")) {
     try {
       const directory = await directoryFor(profileId);
       const handle = await directory?.getFileHandle(versionId);
-      return handle ? ensureBlobMimeType(await (await handle.getFile()), expectedMimeType) : null;
+      return handle ? ensureBlobMimeType(await await handle.getFile(), expectedMimeType) : null;
     } catch {
       return null;
     }
@@ -56,12 +87,23 @@ export async function readOfflineFile(profileId: string, versionId: string, expe
 export async function removeOfflineFile(profileId: string, versionId: string) {
   const record = await database.localDocuments.get([profileId, versionId]);
   if (record?.localPath.startsWith("opfs://")) {
-    try { const directory = await directoryFor(profileId); await directory?.removeEntry(versionId); } catch { /* already absent */ }
+    try {
+      const directory = await directoryFor(profileId);
+      await directory?.removeEntry(versionId);
+    } catch {
+      /* already absent */
+    }
   }
-  await Promise.all([database.localDocuments.delete([profileId, versionId]), database.localFileBlobs.delete([profileId, versionId])]);
+  await Promise.all([
+    database.localDocuments.delete([profileId, versionId]),
+    database.localFileBlobs.delete([profileId, versionId])
+  ]);
 }
 
-export function outboxOperationNeedsOfflineFile(operation: Pick<OutboxOperation, "entityId" | "operation" | "payload">, versionId: string) {
+export function outboxOperationNeedsOfflineFile(
+  operation: Pick<OutboxOperation, "entityId" | "operation" | "payload">,
+  versionId: string
+) {
   if (operation.operation === "upload_document") {
     const payload = operation.payload as { version?: { id?: string } };
     return payload.version?.id === versionId;
@@ -74,20 +116,33 @@ export function outboxOperationNeedsOfflineFile(operation: Pick<OutboxOperation,
 }
 
 export async function removeDocumentOfflineCopy(profileId: string, versionId: string) {
-  const pendingUpload = await database.outbox.where("profileId").equals(profileId).filter((operation) => outboxOperationNeedsOfflineFile(operation, versionId)).first();
+  const pendingUpload = await database.outbox
+    .where("profileId")
+    .equals(profileId)
+    .filter((operation) => outboxOperationNeedsOfflineFile(operation, versionId))
+    .first();
   if (pendingUpload) throw new Error("Keep this device copy until its upload has synchronized.");
 
   await removeOfflineFile(profileId, versionId);
   const manifests = await database.offlineManifests.where("profileId").equals(profileId).toArray();
-  await Promise.all(manifests.filter((manifest) => manifest.expectedVersionIds.includes(versionId)).map((manifest) => database.offlineManifests.update(
-    [profileId, manifest.tripId],
-    { state: "failed", verifiedVersionIds: manifest.verifiedVersionIds.filter((id) => id !== versionId), checkedAt: new Date().toISOString() }
-  )));
+  await Promise.all(
+    manifests
+      .filter((manifest) => manifest.expectedVersionIds.includes(versionId))
+      .map((manifest) =>
+        database.offlineManifests.update([profileId, manifest.tripId], {
+          state: "failed",
+          verifiedVersionIds: manifest.verifiedVersionIds.filter((id) => id !== versionId),
+          checkedAt: new Date().toISOString()
+        })
+      )
+  );
 }
 
 export async function clearProfileOfflineData(profileId: string) {
   const records = await database.localDocuments.where("profileId").equals(profileId).toArray();
-  await Promise.all(records.map((record) => removeOfflineFile(profileId, record.documentVersionId)));
+  await Promise.all(
+    records.map((record) => removeOfflineFile(profileId, record.documentVersionId))
+  );
   await clearProfileLocalData(profileId);
 }
 

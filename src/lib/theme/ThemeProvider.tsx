@@ -1,5 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { applyPublishedPalette, PALETTE_UPDATED_EVENT, readCachedPalette } from "./publishedPalette";
+import {
+  applyPublishedPalette,
+  PALETTE_UPDATED_EVENT,
+  readCachedPalette
+} from "./publishedPalette";
 
 export type ThemePreference = "system" | "light" | "dark";
 
@@ -39,7 +43,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     applyPublishedPalette(palette, resolvedTheme);
     document.documentElement.dataset.theme = resolvedTheme;
     document.documentElement.style.colorScheme = resolvedTheme;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolvedTheme === "dark" ? "#101819" : "#142f31");
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", resolvedTheme === "dark" ? "#101819" : "#142f31");
   }, [palette, resolvedTheme]);
 
   useEffect(() => {
@@ -53,7 +59,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setPreferenceState(next);
   };
 
-  return <ThemeContext.Provider value={{ preference, resolvedTheme, setPreference }}>{children}</ThemeContext.Provider>;
+  return (
+    <ThemeContext.Provider value={{ preference, resolvedTheme, setPreference }}>
+      {children}
+    </ThemeContext.Provider>
+  );
 }
 
 export function useTheme() {

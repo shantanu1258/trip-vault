@@ -30,7 +30,7 @@ let intentSequence = 0;
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : {};
 }
 
@@ -75,7 +75,10 @@ export function tripEntryNavigationState(state: unknown, tripId: string, view: T
   return withEnvelope(state, { ...current, entry: { tripId, view } });
 }
 
-export function readTripNavigationIntent(state: unknown, tripId: string): TripNavigationIntent | null {
+export function readTripNavigationIntent(
+  state: unknown,
+  tripId: string
+): TripNavigationIntent | null {
   const intent = readEnvelope(state).intent;
   if (!intent || intent.tripId !== tripId || typeof intent.token !== "string") return null;
   if (!["current", "search", "target", "restore"].includes(intent.kind)) return null;
@@ -95,11 +98,19 @@ export function readTripEntry(state: unknown, tripId: string): TripEntry | null 
 }
 
 export function consumeTripNavigationIntent(intent: TripNavigationIntent) {
-  try { sessionStorage.setItem(`${consumedIntentPrefix}${intent.token}`, "1"); } catch { /* Intent consumption is best effort. */ }
+  try {
+    sessionStorage.setItem(`${consumedIntentPrefix}${intent.token}`, "1");
+  } catch {
+    /* Intent consumption is best effort. */
+  }
 }
 
 export function isTripNavigationIntentConsumed(intent: TripNavigationIntent) {
-  try { return sessionStorage.getItem(`${consumedIntentPrefix}${intent.token}`) === "1"; } catch { return false; }
+  try {
+    return sessionStorage.getItem(`${consumedIntentPrefix}${intent.token}`) === "1";
+  } catch {
+    return false;
+  }
 }
 
 export function tripReturnHref(tripId: string, view: TripView) {

@@ -18,7 +18,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../components/ModalSheet", () => ({
-  ModalSheet: ({ children, title }: { children: React.ReactNode; title: string }) => <section aria-label={title}>{children}</section>
+  ModalSheet: ({ children, title }: { children: React.ReactNode; title: string }) => (
+    <section aria-label={title}>{children}</section>
+  )
 }));
 vi.mock("../trips/api", () => ({ listTrips: mocks.listTrips }));
 vi.mock("../sync/localSync", () => ({ localProfileId: mocks.localProfileId }));
@@ -88,8 +90,14 @@ const owner: TripMember = {
 };
 
 function renderPanel() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(<QueryClientProvider client={client}><DocumentInboxPanel /></QueryClientProvider>);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <DocumentInboxPanel />
+    </QueryClientProvider>
+  );
 }
 
 describe("private document inbox", () => {
@@ -128,15 +136,19 @@ describe("private document inbox", () => {
     await user.click(await within(sheet).findByText("Ravi"));
     await user.click(within(sheet).getByRole("button", { name: /attach to trip/i }));
 
-    await waitFor(() => expect(mocks.associateAccountDocument).toHaveBeenCalledWith(expect.objectContaining({
-      upload,
-      tripId: trip.id,
-      purpose: "boarding_pass",
-      assignmentMode: "selected",
-      travelerIds: [traveler.id],
-      visibility: "trip",
-      selectedUserIds: []
-    })));
+    await waitFor(() =>
+      expect(mocks.associateAccountDocument).toHaveBeenCalledWith(
+        expect.objectContaining({
+          upload,
+          tripId: trip.id,
+          purpose: "boarding_pass",
+          assignmentMode: "selected",
+          travelerIds: [traveler.id],
+          visibility: "trip",
+          selectedUserIds: []
+        })
+      )
+    );
   });
 
   it("allows an associated inbox file to remain private", async () => {
@@ -149,12 +161,16 @@ describe("private document inbox", () => {
     await user.selectOptions(await within(sheet).findByLabelText("Who can open it?"), "private");
     await user.click(within(sheet).getByRole("button", { name: /attach to trip/i }));
 
-    await waitFor(() => expect(mocks.associateAccountDocument).toHaveBeenCalledWith(expect.objectContaining({
-      upload,
-      tripId: trip.id,
-      visibility: "private",
-      selectedUserIds: []
-    })));
+    await waitFor(() =>
+      expect(mocks.associateAccountDocument).toHaveBeenCalledWith(
+        expect.objectContaining({
+          upload,
+          tripId: trip.id,
+          visibility: "private",
+          selectedUserIds: []
+        })
+      )
+    );
   });
 
   it("validates and associates selected signed-in members", async () => {
@@ -164,22 +180,33 @@ describe("private document inbox", () => {
 
     await user.click(await screen.findByRole("button", { name: /attach to trip/i }));
     const sheet = screen.getByLabelText("Attach uploaded file");
-    await user.selectOptions(await within(sheet).findByLabelText("Who can open it?"), "selected_members");
-    const memberCheckbox = await within(sheet).findByRole("checkbox", { name: member.display_name });
+    await user.selectOptions(
+      await within(sheet).findByLabelText("Who can open it?"),
+      "selected_members"
+    );
+    const memberCheckbox = await within(sheet).findByRole("checkbox", {
+      name: member.display_name
+    });
     await user.click(within(sheet).getByRole("button", { name: /attach to trip/i }));
 
-    expect(await within(sheet).findByRole("alert")).toHaveTextContent("Choose at least one signed-in member.");
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent(
+      "Choose at least one signed-in member."
+    );
     expect(mocks.associateAccountDocument).not.toHaveBeenCalled();
 
     await user.click(memberCheckbox);
     await user.click(within(sheet).getByRole("button", { name: /attach to trip/i }));
 
-    await waitFor(() => expect(mocks.associateAccountDocument).toHaveBeenCalledWith(expect.objectContaining({
-      upload,
-      tripId: trip.id,
-      visibility: "selected_members",
-      selectedUserIds: [member.user_id]
-    })));
+    await waitFor(() =>
+      expect(mocks.associateAccountDocument).toHaveBeenCalledWith(
+        expect.objectContaining({
+          upload,
+          tripId: trip.id,
+          visibility: "selected_members",
+          selectedUserIds: [member.user_id]
+        })
+      )
+    );
   });
 
   it("forces a viewer association to remain private", async () => {
@@ -194,34 +221,48 @@ describe("private document inbox", () => {
     expect(within(sheet).queryByLabelText("Who can open it?")).not.toBeInTheDocument();
     await user.click(within(sheet).getByRole("button", { name: /attach to trip/i }));
 
-    await waitFor(() => expect(mocks.associateAccountDocument).toHaveBeenCalledWith(expect.objectContaining({
-      upload,
-      tripId: trip.id,
-      visibility: "private",
-      selectedUserIds: []
-    })));
+    await waitFor(() =>
+      expect(mocks.associateAccountDocument).toHaveBeenCalledWith(
+        expect.objectContaining({
+          upload,
+          tripId: trip.id,
+          visibility: "private",
+          selectedUserIds: []
+        })
+      )
+    );
   });
 
   it("does not offer association for a metadata row whose cloud file is missing", async () => {
-    mocks.listAccountDocumentUploads.mockResolvedValue([{
-      ...upload,
-      stored_at: null,
-      sync_state: "queued",
-      sync_error: "storage_missing",
-      can_retry: false,
-      can_verify: true
-    }]);
+    mocks.listAccountDocumentUploads.mockResolvedValue([
+      {
+        ...upload,
+        stored_at: null,
+        sync_state: "queued",
+        sync_error: "storage_missing",
+        can_retry: false,
+        can_verify: true
+      }
+    ]);
     renderPanel();
 
     expect(await screen.findByText(/cloud file missing/i)).toBeInTheDocument();
-    expect(screen.getByText(/delete this unfinished entry and select the file again here/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/delete this unfinished entry and select the file again here/i)
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /attach to trip/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /retry cloud/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /check cloud/i })).toBeInTheDocument();
   });
 
   it("reports a queued device copy without claiming it reached the cloud", async () => {
-    mocks.stageAccountDocument.mockResolvedValue({ ...upload, stored_at: null, sync_state: "queued", sync_error: "permission", can_retry: true });
+    mocks.stageAccountDocument.mockResolvedValue({
+      ...upload,
+      stored_at: null,
+      sync_state: "queued",
+      sync_error: "permission",
+      can_retry: true
+    });
     const user = userEvent.setup();
     renderPanel();
     const file = new File(["%PDF-test"], "boarding-pass.pdf", { type: "application/pdf" });
@@ -229,6 +270,8 @@ describe("private document inbox", () => {
     await user.upload(screen.getByLabelText("PDF or image under 5 MB"), file);
     await user.click(screen.getByRole("button", { name: /save privately/i }));
 
-    expect(await screen.findByText(/saved on this device, but its cloud upload needs attention/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/saved on this device, but its cloud upload needs attention/i)
+    ).toBeInTheDocument();
   });
 });

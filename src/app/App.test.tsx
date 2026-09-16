@@ -9,19 +9,32 @@ import { EmptyHomeDashboard } from "../pages/HomePage";
 describe("Trip Vault", () => {
   it("offers the bundled demo from the signed-out welcome page", async () => {
     render(
-      <MemoryRouter initialEntries={["/welcome"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <AppProviders><App /></AppProviders>
+      <MemoryRouter
+        initialEntries={["/welcome"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <AppProviders>
+          <App />
+        </AppProviders>
       </MemoryRouter>
     );
 
     expect(await screen.findByRole("heading", { name: /your whole trip/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /explore the demo trip/i })).toHaveAttribute("href", "/preview");
+    expect(screen.getByRole("link", { name: /explore the demo trip/i })).toHaveAttribute(
+      "href",
+      "/preview"
+    );
   });
 
   it("keeps personal routes behind sign-in", async () => {
     render(
-      <MemoryRouter initialEntries={["/vault"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <AppProviders><App /></AppProviders>
+      <MemoryRouter
+        initialEntries={["/vault"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <AppProviders>
+          <App />
+        </AppProviders>
       </MemoryRouter>
     );
 
@@ -31,8 +44,13 @@ describe("Trip Vault", () => {
   it("confirms and reveals passwords when creating an account", async () => {
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={["/sign-in"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <AppProviders><App /></AppProviders>
+      <MemoryRouter
+        initialEntries={["/sign-in"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <AppProviders>
+          <App />
+        </AppProviders>
       </MemoryRouter>
     );
 
@@ -65,26 +83,45 @@ describe("Trip Vault", () => {
     );
 
     expect(screen.getByRole("heading", { name: /where are you going next/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /create your first trip/i })).toHaveAttribute("href", "/trips/new");
-    expect(screen.getByRole("link", { name: /join with a code/i })).toHaveAttribute("href", "/join");
+    expect(screen.getByRole("link", { name: /create your first trip/i })).toHaveAttribute(
+      "href",
+      "/trips/new"
+    );
+    expect(screen.getByRole("link", { name: /join with a code/i })).toHaveAttribute(
+      "href",
+      "/join"
+    );
     expect(screen.queryByRole("link", { name: /demo/i })).not.toBeInTheDocument();
   });
 
   it("keeps every visible demo action interactive or explicitly sign-in gated", async () => {
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={["/preview"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <AppProviders><App /></AppProviders>
+      <MemoryRouter
+        initialEntries={["/preview"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <AppProviders>
+          <App />
+        </AppProviders>
       </MemoryRouter>
     );
 
     await user.click(await screen.findByRole("button", { name: /open details for fly to rome/i }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sign in to add" })).toHaveAttribute("href", "/sign-in");
-    expect(screen.getAllByRole("link", { name: /flight ticket|boarding pass/i }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "Sign in to add" })).toHaveAttribute(
+      "href",
+      "/sign-in"
+    );
+    expect(
+      screen.getAllByRole("link", { name: /flight ticket|boarding pass/i }).length
+    ).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Timeline" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Timeline" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
     expect(screen.getByRole("button", { name: "Trip details" })).toBeInTheDocument();
   });
 });

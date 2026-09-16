@@ -18,13 +18,19 @@ describe("trip navigation context", () => {
   it("carries a validated source view through a child page and back", () => {
     const childState = tripChildNavigationState({ caller: "test" }, "trip-1", "details");
 
-    expect(readTripReturnContext(childState, "trip-1")).toEqual({ tripId: "trip-1", view: "details" });
+    expect(readTripReturnContext(childState, "trip-1")).toEqual({
+      tripId: "trip-1",
+      view: "details"
+    });
     expect(readTripReturnContext(childState, "another-trip")).toBeNull();
 
     const back = tripReturnNavigation(childState, "trip-1");
     expect(back.href).toBe("/trips/trip-1?view=details");
     expect(back.view).toBe("details");
-    expect(readTripNavigationIntent(back.state, "trip-1")).toMatchObject({ kind: "restore", view: "details" });
+    expect(readTripNavigationIntent(back.state, "trip-1")).toMatchObject({
+      kind: "restore",
+      view: "details"
+    });
     expect((back.state as { caller?: string }).caller).toBe("test");
   });
 

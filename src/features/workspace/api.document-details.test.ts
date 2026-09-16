@@ -61,9 +61,11 @@ describe("document detail edits", () => {
     mocks.travelerDelete.mockReturnValue({ eq: mocks.travelerDeleteEq });
     mocks.travelerInsert.mockResolvedValue({ error: null });
     mocks.cacheEntity.mockResolvedValue(undefined);
-    mocks.from.mockImplementation((table: string) => table === "documents"
-      ? { update: mocks.documentUpdate }
-      : { delete: mocks.travelerDelete, insert: mocks.travelerInsert });
+    mocks.from.mockImplementation((table: string) =>
+      table === "documents"
+        ? { update: mocks.documentUpdate }
+        : { delete: mocks.travelerDelete, insert: mocks.travelerInsert }
+    );
   });
 
   it("updates the title and replaces the document traveler rows", async () => {
@@ -84,13 +86,31 @@ describe("document detail edits", () => {
       { document_id: "document-1", traveler_id: "traveler-1", assigned_by: "user-1" },
       { document_id: "document-1", traveler_id: "traveler-2", assigned_by: "user-1" }
     ]);
-    expect(updated).toMatchObject({ title: "Dubai flight tickets", assignment_mode: "selected", traveler_id: null, traveler_ids: ["traveler-1", "traveler-2"] });
-    expect(mocks.cacheEntity).toHaveBeenCalledWith("documents:trip-1", expect.objectContaining({ title: "Dubai flight tickets" }));
-    expect(mocks.cacheEntity).toHaveBeenCalledWith("documents", expect.objectContaining({ title: "Dubai flight tickets" }));
+    expect(updated).toMatchObject({
+      title: "Dubai flight tickets",
+      assignment_mode: "selected",
+      traveler_id: null,
+      traveler_ids: ["traveler-1", "traveler-2"]
+    });
+    expect(mocks.cacheEntity).toHaveBeenCalledWith(
+      "documents:trip-1",
+      expect.objectContaining({ title: "Dubai flight tickets" })
+    );
+    expect(mocks.cacheEntity).toHaveBeenCalledWith(
+      "documents",
+      expect.objectContaining({ title: "Dubai flight tickets" })
+    );
   });
 
   it("requires a traveler when Selected travelers is chosen", async () => {
-    await expect(updateDocumentDetails({ document, title: "Ticket", assignmentMode: "selected", travelerIds: [] })).rejects.toThrow("Choose at least one traveler");
+    await expect(
+      updateDocumentDetails({
+        document,
+        title: "Ticket",
+        assignmentMode: "selected",
+        travelerIds: []
+      })
+    ).rejects.toThrow("Choose at least one traveler");
     expect(mocks.documentUpdate).not.toHaveBeenCalled();
   });
 });

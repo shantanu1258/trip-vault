@@ -19,15 +19,37 @@ const mocks = vi.hoisted(() => ({
   readTravelerFocus: vi.fn()
 }));
 
-vi.mock("../components/AppShell", () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
+vi.mock("../components/AppShell", () => ({
+  AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</>
+}));
 vi.mock("../features/trips/api", () => ({ getTrip: mocks.getTrip }));
-vi.mock("../features/sync/localSync", () => ({ localProfileId: vi.fn().mockResolvedValue("user-1") }));
-vi.mock("../features/workspace/travelerFocus", () => ({ readTravelerFocus: mocks.readTravelerFocus }));
+vi.mock("../features/sync/localSync", () => ({
+  localProfileId: vi.fn().mockResolvedValue("user-1")
+}));
+vi.mock("../features/workspace/travelerFocus", () => ({
+  readTravelerFocus: mocks.readTravelerFocus
+}));
 vi.mock("../features/workspace/WorkspaceForms", () => ({
   EditBookingForm: () => <section aria-label="Edit booking form" />,
-  UploadDocumentForm: ({ journeyLegId, contextTitle }: { journeyLegId?: string; contextTitle?: string }) => <section aria-label="Upload document form" data-journey-leg-id={journeyLegId} data-context-title={contextTitle} />
+  UploadDocumentForm: ({
+    journeyLegId,
+    contextTitle
+  }: {
+    journeyLegId?: string;
+    contextTitle?: string;
+  }) => (
+    <section
+      aria-label="Upload document form"
+      data-journey-leg-id={journeyLegId}
+      data-context-title={contextTitle}
+    />
+  )
 }));
-vi.mock("../features/workspace/EditJourneyLegForm", () => ({ EditJourneyLegForm: ({ leg }: { leg: JourneyLeg }) => <section aria-label="Edit journey leg form">{leg.origin_name}</section> }));
+vi.mock("../features/workspace/EditJourneyLegForm", () => ({
+  EditJourneyLegForm: ({ leg }: { leg: JourneyLeg }) => (
+    <section aria-label="Edit journey leg form">{leg.origin_name}</section>
+  )
+}));
 vi.mock("../features/workspace/api", () => ({
   archiveBooking: vi.fn(),
   getBooking: mocks.getBooking,
@@ -99,12 +121,19 @@ const leg: JourneyLeg = {
   status_note: null
 };
 
-function renderPage(initialEntry: string | { pathname: string; state: unknown } = "/trips/trip-1/bookings/booking-1") {
+function renderPage(
+  initialEntry: string | { pathname: string; state: unknown } = "/trips/trip-1/bookings/booking-1"
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Routes><Route path="/trips/:tripId/bookings/:bookingId" element={<BookingPage />} /></Routes>
+      <MemoryRouter
+        initialEntries={[initialEntry]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <Routes>
+          <Route path="/trips/:tripId/bookings/:bookingId" element={<BookingPage />} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -144,7 +173,10 @@ describe("generic journey booking times", () => {
       state: tripChildNavigationState(null, "trip-1", "details")
     });
 
-    expect(await screen.findByRole("link", { name: "Back to trip" })).toHaveAttribute("href", "/trips/trip-1?view=details");
+    expect(await screen.findByRole("link", { name: "Back to trip" })).toHaveAttribute(
+      "href",
+      "/trips/trip-1?view=details"
+    );
   });
 
   it("keeps a journey useful when its source does not provide an arrival", async () => {
@@ -157,14 +189,31 @@ describe("generic journey booking times", () => {
   });
 
   it("hydrates only the travelers selected for this booking and shows their individual ticket details", async () => {
-    const shantanu = { id: "traveler-1", trip_id: trip.id, display_name: "Shantanu", is_minor: false, created_at: "2026-09-01T00:00:00.000Z" };
+    const shantanu = {
+      id: "traveler-1",
+      trip_id: trip.id,
+      display_name: "Shantanu",
+      is_minor: false,
+      created_at: "2026-09-01T00:00:00.000Z"
+    };
     const rahul = { ...shantanu, id: "traveler-2", display_name: "Rahul" };
     let resolveTravelerIds!: (ids: string[]) => void;
     mocks.getBooking.mockResolvedValue({ ...booking, participant_scope: "selected" });
     mocks.listTravelers.mockResolvedValue([shantanu, rahul]);
-    mocks.listBookingTravelerIds.mockReturnValue(new Promise<string[]>((resolve) => { resolveTravelerIds = resolve; }));
+    mocks.listBookingTravelerIds.mockReturnValue(
+      new Promise<string[]>((resolve) => {
+        resolveTravelerIds = resolve;
+      })
+    );
     mocks.listJourneyLegTravelers.mockResolvedValue([
-      { id: "leg-1:traveler-1", journey_leg_id: leg.id, traveler_id: shantanu.id, seat_or_berth: "5", coach_or_cabin: "Executive", passenger_reference: "85854178" }
+      {
+        id: "leg-1:traveler-1",
+        journey_leg_id: leg.id,
+        traveler_id: shantanu.id,
+        seat_or_berth: "5",
+        coach_or_cabin: "Executive",
+        passenger_reference: "85854178"
+      }
     ]);
 
     renderPage();
@@ -195,7 +244,13 @@ describe("booking detail card interactions", () => {
     mocks.getTrip.mockResolvedValue(trip);
     mocks.listJourneyLegsForBooking.mockResolvedValue([leg]);
     mocks.listMembers.mockResolvedValue([
-      { user_id: "user-1", role: "editor", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }
+      {
+        user_id: "user-1",
+        role: "editor",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
     ]);
   });
 
@@ -204,13 +259,17 @@ describe("booking detail card interactions", () => {
     renderPage();
 
     expect(await screen.findByRole("button", { name: "Edit Starts" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Edit Booking reference / PNR" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Edit Booking reference / PNR" })
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit booking source" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit booking contact" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit journey leg 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit Location" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit booking notes" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Edit Bus to Dubai" })).toHaveTextContent("Edit booking");
+    expect(screen.getByRole("button", { name: "Edit Bus to Dubai" })).toHaveTextContent(
+      "Edit booking"
+    );
     expect(document.querySelector("button button, button a, a button, a a")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Edit Starts" }));
@@ -224,7 +283,9 @@ describe("booking detail card interactions", () => {
 
     await user.click(await screen.findByRole("button", { name: "Edit journey leg 1" }));
 
-    expect(screen.getByRole("region", { name: "Edit journey leg form" })).toHaveTextContent("Delhi");
+    expect(screen.getByRole("region", { name: "Edit journey leg form" })).toHaveTextContent(
+      "Delhi"
+    );
     expect(screen.queryByRole("region", { name: "Edit booking form" })).not.toBeInTheDocument();
   });
 
@@ -232,7 +293,9 @@ describe("booking detail card interactions", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole("button", { name: "Upload document for journey leg 1" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Upload document for journey leg 1" })
+    );
 
     const upload = screen.getByRole("region", { name: "Upload document form" });
     expect(upload).toHaveAttribute("data-journey-leg-id", leg.id);
@@ -258,7 +321,8 @@ describe("booking detail card interactions", () => {
     ];
 
     for (const action of independentActions) {
-      if (action instanceof HTMLAnchorElement) action.addEventListener("click", (event) => event.preventDefault(), { once: true });
+      if (action instanceof HTMLAnchorElement)
+        action.addEventListener("click", (event) => event.preventDefault(), { once: true });
       await user.click(action);
       expect(screen.queryByRole("region", { name: "Edit booking form" })).not.toBeInTheDocument();
     }
@@ -266,13 +330,21 @@ describe("booking detail card interactions", () => {
 
   it("renders the same cards as static details for a viewer", async () => {
     mocks.listMembers.mockResolvedValue([
-      { user_id: "user-1", role: "viewer", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }
+      {
+        user_id: "user-1",
+        role: "viewer",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
     ]);
     renderPage();
 
     await screen.findByText("Booking reference / PNR");
     expect(screen.queryByRole("button", { name: /^Edit / })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Copy Booking reference / PNR" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Copy Booking reference / PNR" })
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Call" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open in Maps" })).toBeInTheDocument();
   });

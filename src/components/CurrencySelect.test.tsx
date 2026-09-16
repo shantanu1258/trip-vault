@@ -27,7 +27,9 @@ describe("currency selector", () => {
   });
 
   it("normalizes a controlled value without changing the submitted currency", () => {
-    render(<CurrencySelect aria-label="Controlled currency" value="usd" onChange={() => undefined} />);
+    render(
+      <CurrencySelect aria-label="Controlled currency" value="usd" onChange={() => undefined} />
+    );
     expect(screen.getByRole("combobox", { name: "Controlled currency" })).toHaveValue("USD");
   });
 });

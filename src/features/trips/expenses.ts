@@ -27,8 +27,16 @@ export function calculateTripBalances(costs: TripCost[]): TravelerBalance[] {
     const participants = cost.participants ?? [];
     const explicit = participants.every((participant) => participant.share_amount_minor !== null);
     const shares = explicit
-      ? new Map(participants.map((participant) => [participant.traveler_id, participant.share_amount_minor ?? 0]))
-      : splitExpenseEqually(cost.amount_minor, participants.map((participant) => participant.traveler_id));
+      ? new Map(
+          participants.map((participant) => [
+            participant.traveler_id,
+            participant.share_amount_minor ?? 0
+          ])
+        )
+      : splitExpenseEqually(
+          cost.amount_minor,
+          participants.map((participant) => participant.traveler_id)
+        );
     add(cost.paid_by_traveler_id, cost.currency_code, cost.amount_minor);
     for (const [travelerId, share] of shares) add(travelerId, cost.currency_code, -share);
   }
@@ -36,8 +44,16 @@ export function calculateTripBalances(costs: TripCost[]): TravelerBalance[] {
   return [...totals.entries()]
     .map(([key, amountMinor]) => {
       const separator = key.indexOf(":");
-      return { currencyCode: key.slice(0, separator), travelerId: key.slice(separator + 1), amountMinor };
+      return {
+        currencyCode: key.slice(0, separator),
+        travelerId: key.slice(separator + 1),
+        amountMinor
+      };
     })
     .filter((balance) => balance.amountMinor !== 0)
-    .sort((left, right) => left.currencyCode.localeCompare(right.currencyCode) || left.travelerId.localeCompare(right.travelerId));
+    .sort(
+      (left, right) =>
+        left.currencyCode.localeCompare(right.currencyCode) ||
+        left.travelerId.localeCompare(right.travelerId)
+    );
 }

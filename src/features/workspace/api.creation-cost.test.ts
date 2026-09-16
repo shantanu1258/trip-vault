@@ -45,43 +45,50 @@ describe("post-creation cost persistence", () => {
     mocks.where.mockReturnValue({ equals: mocks.equals });
     mocks.equals.mockImplementation((entityId: string) => ({
       filter: (predicate: (row: { operation: string }) => boolean) => ({
-        first: () => predicate({ operation: "create" })
-          ? Promise.resolve({ operationId: `${entityId}-create` })
-          : Promise.resolve(undefined)
+        first: () =>
+          predicate({ operation: "create" })
+            ? Promise.resolve({ operationId: `${entityId}-create` })
+            : Promise.resolve(undefined)
       })
     }));
     mocks.addTripCost.mockResolvedValue({ id: "cost-1" });
   });
 
   it("queues cost behind both persisted rows it references", async () => {
-    await expect(saveOptionalCostForCreatedEvent({
-      tripId: "trip-1",
-      bookingId: "booking-1",
-      itineraryItemId: "item-1",
-      title: "Ferry",
-      category: "transport",
-      amountMinor: 10_000,
-      currencyCode: "INR",
-      paymentStatus: "paid",
-      dependsOn: ["explicit-parent"]
-    })).resolves.toBeUndefined();
+    await expect(
+      saveOptionalCostForCreatedEvent({
+        tripId: "trip-1",
+        bookingId: "booking-1",
+        itineraryItemId: "item-1",
+        title: "Ferry",
+        category: "transport",
+        amountMinor: 10_000,
+        currencyCode: "INR",
+        paymentStatus: "paid",
+        dependsOn: ["explicit-parent"]
+      })
+    ).resolves.toBeUndefined();
 
-    expect(mocks.addTripCost).toHaveBeenCalledWith(expect.objectContaining({
-      dependsOn: ["explicit-parent", "booking-1-create", "item-1-create"]
-    }));
+    expect(mocks.addTripCost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dependsOn: ["explicit-parent", "booking-1-create", "item-1-create"]
+      })
+    );
   });
 
   it("returns a warning instead of failing after the core event exists", async () => {
     mocks.addTripCost.mockRejectedValue(new Error("cost insert failed"));
 
-    await expect(saveOptionalCostForCreatedEvent({
-      tripId: "trip-1",
-      itineraryItemId: "item-1",
-      title: "Museum",
-      category: "activity",
-      amountMinor: 2_500,
-      currencyCode: "INR",
-      paymentStatus: "planned"
-    })).resolves.toBe(COST_SAVE_WARNING);
+    await expect(
+      saveOptionalCostForCreatedEvent({
+        tripId: "trip-1",
+        itineraryItemId: "item-1",
+        title: "Museum",
+        category: "activity",
+        amountMinor: 2_500,
+        currencyCode: "INR",
+        paymentStatus: "planned"
+      })
+    ).resolves.toBe(COST_SAVE_WARNING);
   });
 });
