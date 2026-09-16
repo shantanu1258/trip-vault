@@ -329,7 +329,7 @@ describe("event form architecture", () => {
     const ticket = new window.File(["%PDF-flight-ticket"], "flight-ticket.pdf", {
       type: "application/pdf"
     });
-    await user.upload(screen.getByLabelText<HTMLInputElement>("Official flight document"), ticket);
+    await user.upload(screen.getByLabelText<HTMLInputElement>("Official document"), ticket);
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
     await waitFor(() =>
       expect(mocks.addFlightBooking).toHaveBeenCalledWith(
@@ -365,6 +365,52 @@ describe("event form architecture", () => {
           travelerIds: []
         },
         { file: ticket, kind: "flight_ticket" }
+      )
+    );
+  });
+
+  it.each([
+    [/Flight Direct or connected flights/i, "flight_ticket"],
+    [/Hotel A stay with check-in and checkout/i, "hotel_confirmation"],
+    [/Activity Visit, tour, ticket, or free time/i, "activity_confirmation"],
+    [/Bus Coach, shuttle, or local bus/i, "journey_ticket"],
+    [/Cab Local ride, transfer, or outstation/i, "journey_ticket"],
+    [/Ferry \/ boat Passenger or vehicle sailing/i, "journey_ticket"],
+    [/Train Rail plan, ticket, or connection/i, "journey_ticket"],
+    [/Meal Lunch, dinner, or reservation/i, "meal_voucher"],
+    [/Preparation A dated or flexible pre-trip task/i, "other"],
+    [/Other transport Metro, rental, transfer, or walk/i, "journey_ticket"],
+    [/Other Anything else on the timeline/i, "booking_confirmation"]
+  ])("offers an event-aware document picker for %s", async (choice, expectedKind) => {
+    const { user } = renderForm(travelers);
+    await user.click(screen.getByRole("button", { name: choice }));
+
+    expect(screen.getByText("Attach an official document (optional)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Document type")).toHaveValue(expectedKind);
+    expect(screen.getByLabelText("Official document")).toBeInTheDocument();
+  });
+
+  it("uploads an activity document with the saved event and inherited traveler scope", async () => {
+    const { user, onAddDocument } = renderForm(travelers);
+    await user.click(
+      screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i })
+    );
+    await user.type(screen.getByLabelText("Activity name"), "Museum visit");
+    const confirmation = new window.File(["%PDF-confirmation"], "museum.pdf", {
+      type: "application/pdf"
+    });
+    await user.upload(screen.getByLabelText<HTMLInputElement>("Official document"), confirmation);
+    await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
+
+    await waitFor(() =>
+      expect(onAddDocument).toHaveBeenCalledWith(
+        {
+          title: "Museum visit",
+          itineraryItemId: "item-1",
+          participantScope: "everyone",
+          travelerIds: []
+        },
+        { file: confirmation, kind: "activity_confirmation" }
       )
     );
   });

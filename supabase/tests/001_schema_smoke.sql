@@ -141,6 +141,9 @@ begin
   if strpos(hotel_save_definition, 'left(title_value, 148)') = 0 then
     raise exception 'Hotel milestone titles can exceed the itinerary title limit';
   end if;
+  if strpos(hotel_save_definition, 'public.event_timing_mode') > 0 then
+    raise exception 'Hotel save function references a timing enum that does not exist';
+  end if;
   if to_regprocedure('public.save_journey_leg(uuid,jsonb)') is null then
     raise exception 'Atomic journey leg editing RPC is missing';
   end if;

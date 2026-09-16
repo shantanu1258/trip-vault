@@ -42,7 +42,7 @@ import {
   suggestCatalogValue
 } from "../workspace/api";
 import { ParticipantSelector } from "../workspace/ParticipantSelector";
-import type { DocumentKind } from "../workspace/documentModel";
+import { documentKind, documentKinds, type DocumentKind } from "../workspace/documentModel";
 import type {
   Booking,
   FlightLeg,
@@ -363,6 +363,15 @@ function costCategoryFor(type: TimelineEventType): CostCategory {
   if (type === "hotel_check_in") return "hotel";
   return "other";
 }
+function defaultDocumentKindFor(type: TimelineEventType): DocumentKind {
+  if (type === "flight") return "flight_ticket";
+  if (type === "hotel_check_in") return "hotel_confirmation";
+  if (["train", "bus", "ferry", "cab", "transport"].includes(type)) return "journey_ticket";
+  if (type === "activity") return "activity_confirmation";
+  if (type === "meal") return "meal_voucher";
+  if (type === "preparation") return "other";
+  return "booking_confirmation";
+}
 type SavedEvent = {
   title: string;
   itineraryItemId: string;
@@ -425,7 +434,8 @@ export function AddEventForm({
       ? { scope: "selected", travelerIds: [preferredTravelerId] }
       : { scope: "everyone", travelerIds: [] }
   );
-  const [flightDocumentFile, setFlightDocumentFile] = useState<File | null>(null);
+  const [officialDocumentFile, setOfficialDocumentFile] = useState<File | null>(null);
+  const [officialDocumentKind, setOfficialDocumentKind] = useState<DocumentKind>("flight_ticket");
   const [flightLegDrafts, setFlightLegDrafts] = useState<Record<string, FlightLegDraft>>({});
   const [saved, setSaved] = useState<SavedCompletion | null>(null);
   const [documentSaveState, setDocumentSaveState] = useState<{
@@ -1047,8 +1057,8 @@ export function AddEventForm({
       setSaved(created);
       const documentHandoff = documentToAttach
         ? { documentId: documentToAttach.id }
-        : type === "flight" && flightDocumentFile
-          ? { file: flightDocumentFile, kind: "flight_ticket" as const }
+        : officialDocumentFile
+          ? { file: officialDocumentFile, kind: officialDocumentKind }
           : null;
       if (documentHandoff && onAddDocument) {
         setDocumentSaveState({ status: "saving" });
@@ -1081,7 +1091,8 @@ export function AddEventForm({
     setJourneyStructure("direct");
     setReservationState(next === "flight" || next === "hotel_check_in" ? "booked" : "planned");
     setTransportSubtype("metro");
-    setFlightDocumentFile(null);
+    setOfficialDocumentFile(null);
+    setOfficialDocumentKind(defaultDocumentKindFor(next));
     setDocumentSaveState({ status: "idle" });
   };
   if (saved)
@@ -1283,27 +1294,6 @@ export function AddEventForm({
                   onClick={() => setLegKeys((keys) => [...keys, crypto.randomUUID()])}
                 />
               )}
-              <section className="rounded-2xl border border-line bg-surface/70 p-4">
-                <p className="text-sm font-extrabold">Official flight document</p>
-                <p className="mt-1 text-xs leading-5 text-muted">
-                  Choose the ticket or confirmation now. When you save the flight, Trip Vault names
-                  the document from its type, this event, and the selected travelers, then adds it
-                  directly to the Vault.
-                </p>
-                <div className="mt-3">
-                  <FileDropzone
-                    name="flightDocument"
-                    label="Official flight document"
-                    prompt="Choose a flight ticket or confirmation"
-                    file={flightDocumentFile}
-                    onFileChange={setFlightDocumentFile}
-                  />
-                </div>
-                <p className="mt-2 text-xs text-muted">
-                  It is visible to trip members by default and remains editable from Document Info.
-                  If it is not available yet, add it from the saved flight later.
-                </p>
-              </section>
             </>
           )}
           {groundMode && (
@@ -1380,6 +1370,44 @@ export function AddEventForm({
                   <BookingFields type={type} hideProvider={type === "hotel_check_in"} />
                 )}
             </>
+          )}
+          {onAddDocument && !documentToAttach && (
+            <section className="rounded-2xl border border-line bg-surface/70 p-4">
+              <p className="text-sm font-extrabold">Attach an official document (optional)</p>
+              <p className="mt-1 text-xs leading-5 text-muted">
+                Add a ticket, confirmation, voucher, or other supporting file now. It will inherit
+                this event's travelers, remain visible to trip members by default, and can be
+                changed later from Document Info.
+              </p>
+              <label className="form-label mt-4">
+                Document type
+                <select
+                  className="form-input"
+                  name="officialDocumentKind"
+                  value={officialDocumentKind}
+                  onChange={(event) => setOfficialDocumentKind(event.target.value as DocumentKind)}
+                >
+                  {documentKinds.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label} — {option.hint}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="mt-3">
+                <FileDropzone
+                  name="officialDocument"
+                  label="Official document"
+                  prompt={`Choose ${documentKind(officialDocumentKind).label.toLowerCase()}`}
+                  file={officialDocumentFile}
+                  onFileChange={setOfficialDocumentFile}
+                />
+              </div>
+              <p className="mt-2 text-xs text-muted">
+                If it is not available yet, save the event and attach one or more documents from its
+                details later.
+              </p>
+            </section>
           )}
           <CostFields trip={trip} travelers={travelers} />
           {mutation.error && (

@@ -544,12 +544,12 @@ begin
   ) values
     (check_in_id, target_trip_id, target_booking_id, left(title_value, 148) || ' · Check in', 'hotel_check_in', check_in_at, null, source_zone,
      nullif(requested_booking->'location', 'null'::jsonb), requested_booking->>'notes', scope_value = 'everyone', false,
-     case when coalesce((requested_milestones->>'check_in_has_time')::boolean, true) then 'exact'::public.event_timing_mode else 'date_only'::public.event_timing_mode end,
+     case when coalesce((requested_milestones->>'check_in_has_time')::boolean, true) then 'exact' else 'date_only' end,
      case when coalesce((requested_milestones->>'check_in_has_time')::boolean, true) then null else (check_in_at at time zone source_zone)::date end,
      coalesce((requested_milestones->>'check_in_has_time')::boolean, true), 'planned', check_in_at::text || ':' || check_in_id::text, actor, null),
     (check_out_id, target_trip_id, target_booking_id, left(title_value, 148) || ' · Check out', 'hotel_check_out', check_out_at, null, source_zone,
      nullif(requested_booking->'location', 'null'::jsonb), requested_booking->>'notes', scope_value = 'everyone', false,
-     case when coalesce((requested_milestones->>'check_out_has_time')::boolean, true) then 'exact'::public.event_timing_mode else 'date_only'::public.event_timing_mode end,
+     case when coalesce((requested_milestones->>'check_out_has_time')::boolean, true) then 'exact' else 'date_only' end,
      case when coalesce((requested_milestones->>'check_out_has_time')::boolean, true) then null else (check_out_at at time zone source_zone)::date end,
      coalesce((requested_milestones->>'check_out_has_time')::boolean, true), 'planned', check_out_at::text || ':' || check_out_id::text, actor, null)
   on conflict (id) do update set
