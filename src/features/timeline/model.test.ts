@@ -174,6 +174,87 @@ describe("timeline model", () => {
       "After Shantanu Hotel – Palm Springs"
     );
   });
+  it("keeps an after event behind its anchor when its explicit timestamp is earlier", () => {
+    const checkout = {
+      ...event("hotel-checkout", "2026-09-26T03:30:00.000Z"),
+      event_type: "hotel_check_out" as const,
+      timezone: "Asia/Kolkata"
+    };
+    const bus = {
+      ...event("bus", "2026-09-26T03:00:00.000Z"),
+      event_type: "bus" as const,
+      timezone: "Asia/Kolkata",
+      timing_mode: "relative" as const,
+      anchor_itinerary_item_id: checkout.id,
+      relative_position: "after" as const,
+      has_explicit_start_time: true
+    };
+
+    expect(
+      buildTripTimelineEntries([bus, checkout], [], "Asia/Kolkata").map((entry) => entry.id)
+    ).toEqual(["hotel-checkout", "bus"]);
+  });
+  it("keeps a before event ahead of its anchor when its explicit timestamp is later", () => {
+    const checkout = {
+      ...event("hotel-checkout", "2026-09-26T03:30:00.000Z"),
+      event_type: "hotel_check_out" as const,
+      timezone: "Asia/Kolkata"
+    };
+    const bus = {
+      ...event("bus", "2026-09-26T04:00:00.000Z"),
+      event_type: "bus" as const,
+      timezone: "Asia/Kolkata",
+      timing_mode: "relative" as const,
+      anchor_itinerary_item_id: checkout.id,
+      relative_position: "before" as const,
+      has_explicit_start_time: true
+    };
+
+    expect(
+      buildTripTimelineEntries([checkout, bus], [], "Asia/Kolkata").map((entry) => entry.id)
+    ).toEqual(["bus", "hotel-checkout"]);
+  });
+  it("merges readiness tasks by time without breaking relative event order", () => {
+    const checkout = {
+      ...event("hotel-checkout", "2026-09-26T10:00:00.000Z"),
+      event_type: "hotel_check_out" as const
+    };
+    const bus = {
+      ...event("bus", "2026-09-26T09:00:00.000Z"),
+      event_type: "bus" as const,
+      timing_mode: "relative" as const,
+      anchor_itinerary_item_id: checkout.id,
+      relative_position: "after" as const,
+      has_explicit_start_time: true
+    };
+    const museum = event("museum", "2026-09-26T12:00:00.000Z");
+    const beforeCheckout = {
+      id: "pack",
+      trip_id: "trip",
+      title: "Pack bags",
+      status: "to_check",
+      timing_mode: "relative",
+      anchor_itinerary_item_id: checkout.id,
+      relative_position: "before",
+      offset_minutes: 60
+    } as Requirement;
+    const afterCheckout = {
+      id: "return-key",
+      trip_id: "trip",
+      title: "Return room key",
+      status: "to_check",
+      timing_mode: "relative",
+      anchor_itinerary_item_id: checkout.id,
+      relative_position: "after",
+      offset_minutes: 60
+    } as Requirement;
+
+    expect(
+      buildTripTimelineEntries([bus, museum, checkout], [afterCheckout, beforeCheckout], "UTC").map(
+        (entry) => entry.id
+      )
+    ).toEqual(["requirement:pack", "hotel-checkout", "bus", "requirement:return-key", "museum"]);
+  });
   it("never labels a relation-only event as current and still shows its planned duration", () => {
     const relative = {
       ...event("relative", "2026-09-11T10:00:00Z"),

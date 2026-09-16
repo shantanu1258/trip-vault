@@ -9,6 +9,7 @@ import {
   Trash2
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { CurrencySelect } from "../../components/CurrencySelect";
 import { ModalSheet } from "../../components/ModalSheet";
 import { useConfirmDialog } from "../../components/ConfirmDialogProvider";
@@ -25,6 +26,7 @@ import {
 } from "./api";
 import { getErrorMessage } from "./presentation";
 import {
+  isJourneyEventType,
   timelineEventTypes,
   type CreateCostInput,
   type CreateItineraryInput,
@@ -143,6 +145,32 @@ export function AddItineraryForm({
           Check-in and checkout stay together. Open the hotel booking to edit both milestones
           safely.
         </p>
+      </ModalSheet>
+    );
+  }
+
+  if (item?.booking_id && isJourneyEventType(item.event_type)) {
+    const bookingLabel = item.event_type === "flight" ? "flight" : item.event_type;
+    return (
+      <ModalSheet eyebrow={trip.title} title={`Edit ${bookingLabel} journey`} onClose={onClose}>
+        <div className="mt-6 rounded-2xl bg-brand-soft p-4 text-sm leading-6 text-muted">
+          <p>
+            Pickup, drop-off, route, local times, and traveler seats belong to the journey booking,
+            not to a separate timeline location.
+          </p>
+          {item.event_type === "flight" ? (
+            <p className="mt-2 font-bold text-ink">
+              Open the flight details from this event to change its route or airport information.
+            </p>
+          ) : (
+            <Link
+              className="primary-button mt-4 w-full"
+              to={`/trips/${trip.id}/bookings/${item.booking_id}`}
+            >
+              <TicketCheck className="size-4" /> Open {bookingLabel} booking
+            </Link>
+          )}
+        </div>
       </ModalSheet>
     );
   }

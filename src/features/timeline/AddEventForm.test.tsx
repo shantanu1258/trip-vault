@@ -497,6 +497,65 @@ describe("event form architecture", () => {
     );
   });
 
+  it("keeps international bus country codes optional while requiring endpoint time zones", async () => {
+    const { user } = renderForm();
+    await user.click(screen.getByRole("button", { name: /Bus Coach, shuttle, or local bus/i }));
+    await user.click(screen.getByRole("radio", { name: "International" }));
+
+    const departureCountry = screen.getByLabelText("Departure country code (optional)");
+    const arrivalCountry = screen.getByLabelText("Arrival country code (optional)");
+    expect(departureCountry).not.toBeRequired();
+    expect(arrivalCountry).not.toBeRequired();
+    expect(departureCountry).toHaveAttribute("pattern", "[A-Za-z]{2}");
+    await user.type(departureCountry, "S");
+    expect(departureCountry).toBeInvalid();
+    await user.clear(departureCountry);
+    expect(departureCountry).toBeValid();
+
+    const originTimezone = document.querySelector<HTMLInputElement>(
+      'input[name="journey.0.originTimezone"]'
+    );
+    const destinationTimezone = document.querySelector<HTMLInputElement>(
+      'input[name="journey.0.destinationTimezone"]'
+    );
+    expect(originTimezone).toHaveAttribute("required");
+    expect(destinationTimezone).toHaveAttribute("required");
+    expect(originTimezone).toHaveValue("");
+    expect(destinationTimezone).toHaveValue("");
+
+    await user.click(screen.getByRole("button", { name: "Origin time zone" }));
+    await user.type(
+      screen.getByRole("combobox", { name: "Search city or time zone" }),
+      "Singapore"
+    );
+    await user.click(screen.getByRole("option", { name: /Singapore.*Asia\/Singapore/i }));
+    await user.click(screen.getByRole("button", { name: "Destination time zone" }));
+    await user.type(screen.getByRole("combobox", { name: "Search city or time zone" }), "Dubai");
+    await user.click(screen.getByRole("option", { name: /Dubai.*Asia\/Dubai/i }));
+
+    await user.type(screen.getByLabelText("Timeline title"), "International bus");
+    await user.type(screen.getByLabelText("Boarding point"), "Bugis MRT Exit D");
+    await user.type(screen.getByLabelText("Drop-off point"), "City terminal");
+    await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
+
+    await waitFor(() =>
+      expect(mocks.addJourneyBooking).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "bus",
+          journeyScope: "international",
+          legs: [
+            expect.objectContaining({
+              originCountryCode: undefined,
+              originTimezone: "Asia/Singapore",
+              destinationCountryCode: undefined,
+              destinationTimezone: "Asia/Dubai"
+            })
+          ]
+        })
+      )
+    );
+  });
+
   it("always accepts ferry passenger references but only asks for seats and cabins when assigned", async () => {
     const { user } = renderForm(travelers);
     await user.click(

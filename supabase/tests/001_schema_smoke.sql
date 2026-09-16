@@ -174,23 +174,26 @@ begin
     or strpos(participant_sync_definition, 'delete from public.booking_travelers') = 0
     or strpos(participant_sync_definition, 'delete from public.flight_leg_travelers') = 0
     or strpos(participant_sync_definition, 'delete from public.journey_leg_travelers') = 0
+    or participant_sync_definition !~ 'delete from public\.flight_leg_travelers allocation[^;]*and requested_scope = ''selected''[^;]*;'
+    or participant_sync_definition !~ 'delete from public\.journey_leg_travelers allocation[^;]*and requested_scope = ''selected''[^;]*;'
     or strpos(participant_sync_definition, 'allocation.traveler_id <> all') = 0
+    or participant_sync_definition ~ 'delete from public\.(flight|journey)_leg_travelers allocation[^;]*requested_scope = ''everyone'''
     or strpos(participant_sync_definition, 'update public.itinerary_items') = 0
     or strpos(participant_sync_definition, 'delete from public.itinerary_participants') = 0 then
-    raise exception 'Booking/event participant synchronization is not authorized or complete';
+    raise exception 'Booking/event participant synchronization is not authorized, complete, or allocation-safe';
   end if;
   if to_regprocedure('public.canonicalize_parent_participant_scope()') is null then
     raise exception 'Parent-side participant scope canonicalization is missing';
   end if;
   parent_scope_definition := lower(pg_get_functiondef('public.canonicalize_parent_participant_scope()'::regprocedure));
   if strpos(parent_scope_definition, 'delete from public.booking_travelers') = 0
-    or strpos(parent_scope_definition, 'delete from public.flight_leg_travelers') = 0
-    or strpos(parent_scope_definition, 'delete from public.journey_leg_travelers') = 0
+    or strpos(parent_scope_definition, 'delete from public.flight_leg_travelers') > 0
+    or strpos(parent_scope_definition, 'delete from public.journey_leg_travelers') > 0
     or strpos(parent_scope_definition, 'delete from public.itinerary_participants') = 0
     or strpos(parent_scope_definition, 'to_jsonb(new)') = 0
     or strpos(parent_scope_definition, 'new.participant_scope') > 0
     or strpos(parent_scope_definition, 'new.applies_to_all_travelers') > 0 then
-    raise exception 'Parent-side participant scope canonicalization is incomplete';
+    raise exception 'Parent-side participant scope canonicalization is incomplete or erases leg allocations';
   end if;
   if to_regprocedure('public.valid_journey_leg_details(public.journey_mode,jsonb)') is null then
     raise exception 'Mode-specific journey detail validation is missing';

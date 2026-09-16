@@ -3649,18 +3649,19 @@ for each row execute function public.enforce_explicit_participant_row();
 -- child rows remain safe rather than committing a contradictory state.
 create or replace function public.canonicalize_parent_participant_scope()
 returns trigger language plpgsql security definer set search_path = public as $function$
-declare row_data jsonb := to_jsonb(new);
+declare
+  row_data jsonb := to_jsonb(new);
 begin
+  -- bookings and itinerary_items have different composite row types. Read
+  -- table-specific fields from JSON so PostgreSQL never tries to resolve
+  -- NEW.participant_scope on itinerary_items (or the inverse field on bookings).
   if tg_table_name = 'bookings' then
     if coalesce(row_data->>'participant_scope', '') = 'everyone' then
+      -- Everyone has no explicit participant rows, but its travelers may still
+      -- have seats, boarding details, and passenger references on individual
+      -- legs. Those allocations remain valid and must survive the scope change.
       delete from public.booking_travelers assignment
       where assignment.booking_id = new.id;
-      delete from public.flight_leg_travelers allocation
-      using public.flight_legs leg
-      where allocation.flight_leg_id = leg.id and leg.booking_id = new.id;
-      delete from public.journey_leg_travelers allocation
-      using public.journey_legs leg
-      where allocation.journey_leg_id = leg.id and leg.booking_id = new.id;
     end if;
   elsif tg_table_name = 'itinerary_items' then
     if coalesce((row_data->>'applies_to_all_travelers')::boolean, false) then
@@ -3755,20 +3756,21 @@ begin
   where item.booking_id = requested_booking_id
   for update;
 
-  -- Per-leg allocations contain traveler-specific private details. Keep rows
-  -- only for travelers who remain explicitly selected; switching to Everyone
-  -- intentionally clears every allocation instead of retaining stale seats or
-  -- passenger references from the previous selected roster.
+  -- Selected scope permits allocations only for travelers who remain on its
+  -- explicit roster. Everyone includes all active trip travelers, so changing
+  -- to or re-saving Everyone must preserve their per-leg details.
   delete from public.flight_leg_travelers allocation
   using public.flight_legs leg
   where allocation.flight_leg_id = leg.id
     and leg.booking_id = requested_booking_id
-    and (requested_scope = 'everyone' or allocation.traveler_id <> all(selected_traveler_ids));
+    and requested_scope = 'selected'
+    and allocation.traveler_id <> all(selected_traveler_ids);
   delete from public.journey_leg_travelers allocation
   using public.journey_legs leg
   where allocation.journey_leg_id = leg.id
     and leg.booking_id = requested_booking_id
-    and (requested_scope = 'everyone' or allocation.traveler_id <> all(selected_traveler_ids));
+    and requested_scope = 'selected'
+    and allocation.traveler_id <> all(selected_traveler_ids);
 
   delete from public.booking_travelers assignment
   where assignment.booking_id = requested_booking_id;

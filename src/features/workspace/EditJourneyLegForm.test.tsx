@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Trip } from "../trips/types";
@@ -17,9 +17,15 @@ vi.mock("../../components/ModalSheet", () => ({
   )
 }));
 vi.mock("../../components/TimeZoneAutocomplete", () => ({
-  TimeZoneAutocomplete: ({ name, defaultValue }: { name: string; defaultValue?: string }) => (
-    <input aria-label={name} name={name} defaultValue={defaultValue} />
-  )
+  TimeZoneAutocomplete: ({
+    name,
+    defaultValue,
+    required
+  }: {
+    name: string;
+    defaultValue?: string;
+    required?: boolean;
+  }) => <input aria-label={name} name={name} defaultValue={defaultValue} required={required} />
 }));
 vi.mock("../metadata/JourneyOperatorPicker", () => ({
   JourneyOperatorPicker: ({ name, defaultValue }: { name: string; defaultValue?: string }) => (
@@ -161,6 +167,56 @@ describe("journey leg enrichment", () => {
           })
         ),
       { timeout: 3000 }
+    );
+  });
+
+  it("edits an international bus without country codes but still validates supplied codes", async () => {
+    const internationalBooking: Booking = {
+      ...booking,
+      title: "International bus",
+      journey_scope: "international"
+    };
+    const internationalLeg: JourneyLeg = {
+      ...leg,
+      origin_name: "Bugis",
+      origin_code: null,
+      origin_country_code: null,
+      origin_timezone: "Asia/Singapore",
+      destination_name: "City terminal",
+      destination_code: null,
+      destination_country_code: null,
+      destination_timezone: "Asia/Dubai"
+    };
+    const { user } = renderForm(internationalBooking, internationalLeg);
+
+    const departureCountry = screen.getByLabelText("Departure country code (optional)");
+    const destinationCountry = screen.getByLabelText("Destination country code (optional)");
+    expect(departureCountry).not.toBeRequired();
+    expect(destinationCountry).not.toBeRequired();
+    expect(departureCountry).toHaveAttribute("pattern", "[A-Za-z]{2}");
+    expect(screen.getByLabelText("originTimezone")).toBeRequired();
+    expect(screen.getByLabelText("destinationTimezone")).toBeRequired();
+
+    await user.type(departureCountry, "S");
+    expect(departureCountry).toBeInvalid();
+    fireEvent.submit(screen.getByRole("button", { name: "Save journey leg" }).closest("form")!);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Use a 2-letter departure country code."
+    );
+    expect(mocks.updateJourneyLeg).not.toHaveBeenCalled();
+
+    await user.clear(departureCountry);
+    await user.click(screen.getByRole("button", { name: "Save journey leg" }));
+
+    await waitFor(() =>
+      expect(mocks.updateJourneyLeg).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originCountryCode: undefined,
+          originTimezone: "Asia/Singapore",
+          destinationCountryCode: undefined,
+          destinationTimezone: "Asia/Dubai"
+        })
+      )
     );
   });
 

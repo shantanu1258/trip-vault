@@ -691,14 +691,15 @@ export function GroundJourneyLegFields({
         </label>
         {international && (
           <label className="form-label">
-            Departure country code
-            <RequiredMark />
+            Departure country code (optional)
             <input
               className="form-input uppercase"
+              minLength={2}
               maxLength={2}
               name={`${prefix}.originCountry`}
+              pattern="[A-Za-z]{2}"
               placeholder="Enter the 2-letter country code"
-              required
+              title="Use a 2-letter country code"
             />
           </label>
         )}
@@ -770,14 +771,15 @@ export function GroundJourneyLegFields({
         </label>
         {international && (
           <label className="form-label">
-            Arrival country code
-            <RequiredMark />
+            Arrival country code (optional)
             <input
               className="form-input uppercase"
+              minLength={2}
               maxLength={2}
               name={`${prefix}.destinationCountry`}
+              pattern="[A-Za-z]{2}"
               placeholder="Enter the 2-letter country code"
-              required
+              title="Use a 2-letter country code"
             />
           </label>
         )}

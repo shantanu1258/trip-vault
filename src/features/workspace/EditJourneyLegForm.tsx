@@ -23,16 +23,27 @@ import type {
 } from "./types";
 import { z } from "zod";
 
+function optionalCountryCode(label: string) {
+  return z
+    .string()
+    .trim()
+    .refine(
+      (value) => !value || /^[A-Za-z]{2}$/.test(value),
+      `Use a 2-letter ${label} country code.`
+    )
+    .optional();
+}
+
 const legSchema = z.object({
   operatorName: z.string().trim().max(160).optional(),
   serviceNumber: z.string().trim().max(80).optional(),
   originName: z.string().trim().min(1, "Add the departure place.").max(220),
   originCode: z.string().trim().max(16).optional(),
-  originCountryCode: z.string().trim().max(2).optional(),
+  originCountryCode: optionalCountryCode("departure"),
   originTimezone: z.string().trim().min(1, "Choose the departure time zone."),
   destinationName: z.string().trim().min(1, "Add the destination place.").max(220),
   destinationCode: z.string().trim().max(16).optional(),
-  destinationCountryCode: z.string().trim().max(2).optional(),
+  destinationCountryCode: optionalCountryCode("destination"),
   destinationTimezone: z.string().trim().min(1, "Choose the destination time zone."),
   departureLocal: z.string().min(1, "Add the local departure time."),
   arrivalLocal: z.string().optional(),
@@ -706,8 +717,6 @@ export function EditJourneyLegForm({
     }
     try {
       const data = parsed.data;
-      if (international && (!data.originCountryCode || !data.destinationCountryCode))
-        throw new Error("Add both country codes for an international journey.");
       const departureAt = localDateTimeToIso(
         data.departureLocal,
         data.originTimezone,
@@ -741,12 +750,14 @@ export function EditJourneyLegForm({
           serviceNumber: data.serviceNumber || undefined,
           originName: data.originName,
           originCode: data.originCode?.toUpperCase() || undefined,
-          originCountryCode: international ? data.originCountryCode?.toUpperCase() : undefined,
+          originCountryCode: international
+            ? data.originCountryCode?.toUpperCase() || undefined
+            : undefined,
           originTimezone: data.originTimezone,
           destinationName: data.destinationName,
           destinationCode: data.destinationCode?.toUpperCase() || undefined,
           destinationCountryCode: international
-            ? data.destinationCountryCode?.toUpperCase()
+            ? data.destinationCountryCode?.toUpperCase() || undefined
             : undefined,
           destinationTimezone: data.destinationTimezone,
           departureAt,
@@ -848,25 +859,29 @@ export function EditJourneyLegForm({
             {international ? (
               <>
                 <label className="form-label">
-                  Departure country code
+                  Departure country code (optional)
                   <input
                     className="form-input uppercase"
                     name="originCountryCode"
+                    minLength={2}
                     maxLength={2}
                     defaultValue={leg.origin_country_code ?? ""}
+                    pattern="[A-Za-z]{2}"
                     placeholder="Enter the 2-letter country code"
-                    required
+                    title="Use a 2-letter country code"
                   />
                 </label>
                 <label className="form-label">
-                  Destination country code
+                  Destination country code (optional)
                   <input
                     className="form-input uppercase"
                     name="destinationCountryCode"
+                    minLength={2}
                     maxLength={2}
                     defaultValue={leg.destination_country_code ?? ""}
+                    pattern="[A-Za-z]{2}"
                     placeholder="Enter the 2-letter country code"
-                    required
+                    title="Use a 2-letter country code"
                   />
                 </label>
                 <label className="form-label">

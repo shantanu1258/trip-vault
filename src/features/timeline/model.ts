@@ -204,20 +204,21 @@ export function buildTripTimelineEntries(
   fallbackTimezone: string
 ): TripTimelineEntry[] {
   const orderedEvents = sortTimelineItems(itinerary);
-  const entries: Array<TripTimelineEntry & { sortValue: number; stableOrder: number }> =
-    orderedEvents.map((item, index) => ({
-      kind: "event",
-      id: item.id,
-      startsAt: item.starts_at,
-      timezone: item.timezone,
-      item,
-      sortValue: new Date(item.starts_at).getTime(),
-      stableOrder: index * 2
-    }));
+  type SortableEntry = TripTimelineEntry & { sortValue: number; stableOrder: number };
+  const eventEntries: SortableEntry[] = orderedEvents.map((item, index) => ({
+    kind: "event",
+    id: item.id,
+    startsAt: item.starts_at,
+    timezone: item.timezone,
+    item,
+    sortValue: new Date(item.starts_at).getTime(),
+    stableOrder: index * 2
+  }));
+  const requirementEntries: SortableEntry[] = [];
   requirements.forEach((requirement, index) => {
     const schedule = requirementTimelineSchedule(requirement, orderedEvents, fallbackTimezone);
     if (!schedule) return;
-    entries.push({
+    requirementEntries.push({
       kind: "requirement",
       id: `requirement:${requirement.id}`,
       startsAt: schedule.startsAt,
@@ -228,9 +229,28 @@ export function buildTripTimelineEntries(
       stableOrder: orderedEvents.length * 2 + index
     });
   });
-  return entries
-    .sort((left, right) => left.sortValue - right.sortValue || left.stableOrder - right.stableOrder)
-    .map(({ sortValue: _sortValue, stableOrder: _stableOrder, ...entry }) => entry);
+  requirementEntries.sort(
+    (left, right) => left.sortValue - right.sortValue || left.stableOrder - right.stableOrder
+  );
+
+  // sortTimelineItems has already made explicit before/after relationships
+  // authoritative. Merge readiness tasks around that fixed event sequence so
+  // an absolute timestamp can never move a relative event across its anchor.
+  const entries: SortableEntry[] = [];
+  let requirementIndex = 0;
+  for (const event of eventEntries) {
+    while (
+      requirementIndex < requirementEntries.length &&
+      requirementEntries[requirementIndex].sortValue < event.sortValue
+    ) {
+      entries.push(requirementEntries[requirementIndex]);
+      requirementIndex += 1;
+    }
+    entries.push(event);
+  }
+  entries.push(...requirementEntries.slice(requirementIndex));
+
+  return entries.map(({ sortValue: _sortValue, stableOrder: _stableOrder, ...entry }) => entry);
 }
 
 export function timelineEntryPhase(entry: TripTimelineEntry, now = new Date()): TimelinePhase {

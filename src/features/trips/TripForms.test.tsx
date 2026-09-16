@@ -145,6 +145,34 @@ describe("AddItineraryForm participant scope", () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
   });
+
+  it("keeps bus pickup and route editing inside the linked journey booking", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <AddItineraryForm
+            trip={trip}
+            travelers={travelers}
+            item={{ ...item, booking_id: "bus-1", event_type: "bus" }}
+            onClose={vi.fn()}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+
+    expect(
+      screen.getByText(/Pickup, drop-off, route, local times, and traveler seats belong/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Location (optional)")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open bus booking" })).toHaveAttribute(
+      "href",
+      `/trips/${trip.id}/bookings/bus-1`
+    );
+  });
 });
 
 describe("AddCostForm optional expense splitting", () => {
