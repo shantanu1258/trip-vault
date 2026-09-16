@@ -660,20 +660,45 @@ export async function listFlightTravelers(flightLegId: string): Promise<FlightTr
   });
 }
 
+export async function listTripFlightTravelers(tripId: string, flightLegIds: string[]): Promise<FlightTraveler[]> {
+  const key = `flight-travelers:${tripId}`;
+  if (!navigator.onLine) {
+    const perLeg = (await Promise.all(flightLegIds.map((flightLegId) => readEntityList<FlightTraveler>(`flight-travelers:${flightLegId}`)))).flat();
+    if (perLeg.length || !flightLegIds.length) return perLeg;
+    return readEntityList<FlightTraveler>(key);
+  }
+  if (!flightLegIds.length) { await cacheEntityList(key, []); return []; }
+  const { data, error } = await client().from("flight_leg_travelers").select("flight_leg_id,traveler_id,seat,boarding_group,ticket_number").in("flight_leg_id", flightLegIds);
+  if (error) throw error;
+  const rows = (data ?? []).map((row) => ({ ...row, id: `${row.flight_leg_id}:${row.traveler_id}` })) as FlightTraveler[];
+  await Promise.all([
+    cacheEntityList(key, rows),
+    ...flightLegIds.map((flightLegId) => cacheEntityList(`flight-travelers:${flightLegId}`, rows.filter((row) => row.flight_leg_id === flightLegId)))
+  ]);
+  return rows;
+}
+
 export async function setFlightTravelerDetails(input: { tripId: string; flightLegId: string; travelerId: string; seat?: string; boardingGroup?: string; ticketNumber?: string }) {
   const row: FlightTraveler = { id: `${input.flightLegId}:${input.travelerId}`, flight_leg_id: input.flightLegId, traveler_id: input.travelerId, seat: input.seat || null, boarding_group: input.boardingGroup || null, ticket_number: input.ticketNumber || null };
   const serverRow = { flight_leg_id: input.flightLegId, traveler_id: input.travelerId, seat: row.seat, boarding_group: row.boarding_group, ticket_number: row.ticket_number };
-  if (!navigator.onLine) { await queueUpsert({ entityType: `flight-travelers:${input.flightLegId}`, table: "flight_leg_travelers", row, serverRow }); return row; }
+  if (!navigator.onLine) {
+    await queueUpsert({ entityType: `flight-travelers:${input.flightLegId}`, table: "flight_leg_travelers", row, serverRow });
+    await cacheEntity(`flight-travelers:${input.tripId}`, row);
+    return row;
+  }
   const { data, error } = await client().from("flight_leg_travelers").upsert(serverRow).select("flight_leg_id,traveler_id,seat,boarding_group,ticket_number").single();
   if (error) throw error;
   const result = { ...data, id: `${data.flight_leg_id}:${data.traveler_id}` } as FlightTraveler;
-  await cacheEntity(`flight-travelers:${input.flightLegId}`, result);
+  await Promise.all([
+    cacheEntity(`flight-travelers:${input.flightLegId}`, result),
+    cacheEntity(`flight-travelers:${input.tripId}`, result)
+  ]);
   return result;
 }
 
-export async function listFlightLegsForTrip(tripId: string): Promise<FlightLeg[]> {
+export async function listFlightLegsForTrip(tripId: string, knownBookings?: Booking[]): Promise<FlightLeg[]> {
   return networkWithCache(`flights:${tripId}`, async () => {
-    const bookings = await listBookings(tripId);
+    const bookings = knownBookings ?? await listBookings(tripId);
     const flightIds = bookings.filter((booking) => booking.type === "flight").map((booking) => booking.id);
     if (!flightIds.length) return [];
     const { data, error } = await client().from("flight_legs").select("*").in("booking_id", flightIds).is("deleted_at", null).order("scheduled_departure_at");
@@ -692,9 +717,9 @@ export async function listFlightLegsForBooking(bookingId: string, tripId: string
   return rows;
 }
 
-export async function listJourneyLegsForTrip(tripId: string): Promise<JourneyLeg[]> {
+export async function listJourneyLegsForTrip(tripId: string, knownBookings?: Booking[]): Promise<JourneyLeg[]> {
   return networkWithCache(`journey-legs:${tripId}`, async () => {
-    const bookings = await listBookings(tripId);
+    const bookings = knownBookings ?? await listBookings(tripId);
     const ids = bookings.filter((booking) => ["train", "bus", "ferry", "cab"].includes(booking.type)).map((booking) => booking.id);
     if (!ids.length) return [];
     const { data, error } = await client().from("journey_legs").select("*").in("booking_id", ids).is("deleted_at", null).order("scheduled_departure_at");
@@ -1405,7 +1430,7 @@ export async function associateAccountDocument(input: AssociateAccountDocumentIn
   const existingAssociation = uploadOperations
     .find((operation) => operation.operation === "associate_account_document");
   if (existingAssociation) {
-    await database.outbox.update(existingAssociation.operationId, { lastErrorCode: undefined, attemptCount: 0 });
+    await database.outbox.update(existingAssociation.operationId, { lastErrorCode: undefined, nextAttemptAt: undefined, attemptCount: 0 });
     if (navigator.onLine) await syncOutbox();
     const stillPending = await database.outbox.get(existingAssociation.operationId);
     const existingDocumentId = String((existingAssociation.payload as { rpc?: { requested_document_id?: string } }).rpc?.requested_document_id ?? "");
@@ -1480,7 +1505,7 @@ export async function retryAccountDocumentUpload(uploadId: string) {
     }
     return { synced: 0, failed: 0 };
   }
-  for (const operation of operations) await database.outbox.update(operation.operationId, { lastErrorCode: undefined, attemptCount: 0 });
+  for (const operation of operations) await database.outbox.update(operation.operationId, { lastErrorCode: undefined, nextAttemptAt: undefined, attemptCount: 0 });
   const result = await syncOutbox();
   if (navigator.onLine) {
     const [remaining, response] = await Promise.all([

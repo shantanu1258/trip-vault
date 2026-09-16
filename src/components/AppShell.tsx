@@ -3,9 +3,9 @@ import { matchPath, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Brand } from "./Brand";
 import { ThemeToggle } from "./ThemeToggle";
 import { useEffect, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { isSupabaseConfigured } from "../lib/supabase/client";
-import { loadAlertInputs } from "../features/alerts/load";
+import { alertInputsQueryOptions } from "../features/alerts/load";
 import { deriveAlerts, unreadAlertCount } from "../features/alerts/engine";
 import { SyncStatus } from "../features/sync/SyncStatus";
 import { tripIntentNavigationState } from "../features/trips/navigation";
@@ -19,12 +19,13 @@ const nav = [
 ];
 
 export function AppShell({ children, demo = false }: { children: ReactNode; demo?: boolean }) {
+  const queryClient = useQueryClient();
   const [online, setOnline] = useState(navigator.onLine);
   const location = useLocation();
   const navigate = useNavigate();
   const tripMatch = matchPath({ path: "/trips/:tripId/*", end: false }, location.pathname);
   const activeTripId = tripMatch?.params.tripId && tripMatch.params.tripId !== "new" ? tripMatch.params.tripId : null;
-  const alertInputs = useQuery({ queryKey: ["alerts"], queryFn: loadAlertInputs, enabled: !demo && isSupabaseConfigured, refetchInterval: 60_000 });
+  const alertInputs = useQuery({ ...alertInputsQueryOptions(queryClient), enabled: !demo && isSupabaseConfigured, refetchInterval: 60_000 });
   const visibleAlerts = alertInputs.data ? deriveAlerts(alertInputs.data) : [];
   const alertCount = alertInputs.data ? unreadAlertCount(visibleAlerts, alertInputs.data.states) : 0;
   useEffect(() => {

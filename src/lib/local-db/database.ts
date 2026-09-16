@@ -41,6 +41,7 @@ export type OutboxOperation = {
   dependsOn: string[];
   attemptCount: number;
   lastErrorCode?: string;
+  nextAttemptAt?: string;
   createdAt: string;
 };
 

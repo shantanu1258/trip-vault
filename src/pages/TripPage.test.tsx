@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ItineraryItem, Trip, TripCost } from "../features/trips/types";
 import { tripIntentNavigationState } from "../features/trips/navigation";
 import { CostDetailsSheet, TripExpensesContent } from "../features/trips/TripExpenses";
-import type { Booking, FlightLeg, JourneyLeg, Requirement, Traveler, TripNote } from "../features/workspace/types";
+import type { Booking, FlightLeg, FlightTraveler, JourneyLeg, Requirement, Traveler, TripNote } from "../features/workspace/types";
 
 const mocks = vi.hoisted(() => ({
   getTrip: vi.fn(),
@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   listBookings: vi.fn().mockResolvedValue([]),
   listCosts: vi.fn().mockResolvedValue([]),
   listFlightLegsForTrip: vi.fn().mockResolvedValue([]),
-  listFlightTravelers: vi.fn(),
+  listTripFlightTravelers: vi.fn().mockResolvedValue([]),
   listJourneyLegTravelers: vi.fn().mockResolvedValue([]),
   listItinerary: vi.fn().mockResolvedValue([]),
   listJourneyLegsForTrip: vi.fn().mockResolvedValue([]),
@@ -67,7 +67,7 @@ vi.mock("../features/workspace/api", async () => {
     attachDocumentsToEvent: mocks.attachDocumentsToEvent,
     listBookings: mocks.listBookings,
     listFlightLegsForTrip: mocks.listFlightLegsForTrip,
-    listFlightTravelers: mocks.listFlightTravelers,
+    listTripFlightTravelers: mocks.listTripFlightTravelers,
     listJourneyLegTravelers: mocks.listJourneyLegTravelers,
     listJourneyLegsForTrip: mocks.listJourneyLegsForTrip,
     listMembers: mocks.listMembers,
@@ -91,6 +91,7 @@ afterEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   mocks.listJourneyLegTravelers.mockReset().mockResolvedValue([]);
+  mocks.listTripFlightTravelers.mockReset().mockResolvedValue([]);
   mocks.listVaultDocuments.mockReset().mockResolvedValue([]);
   mocks.attachDocumentsToEvent.mockReset().mockResolvedValue(undefined);
   mocks.uploadDocument.mockReset().mockResolvedValue({ id: "document-auto" });
@@ -152,10 +153,10 @@ const ownerTrip: Trip = {
   updated_at: "2026-09-01T00:00:00.000Z"
 };
 
-function renderDetails({ item = activity, itinerary = [], booking, flights = [], journeys = [], travelers = [], costs = [], focusedTravelerId, editable = true, onAddBooking = vi.fn(), onEdit = vi.fn(), onViewCost = vi.fn() }: { item?: ItineraryItem; itinerary?: ItineraryItem[]; booking?: Booking; flights?: FlightLeg[]; journeys?: JourneyLeg[]; travelers?: Traveler[]; costs?: TripCost[]; focusedTravelerId?: string | null; editable?: boolean; onAddBooking?: () => void; onEdit?: () => void; onViewCost?: (cost: TripCost) => void } = {}) {
+function renderDetails({ item = activity, itinerary = [], booking, flights = [], flightTravelers = [], journeys = [], travelers = [], costs = [], focusedTravelerId, editable = true, onAddBooking = vi.fn(), onEdit = vi.fn(), onViewCost = vi.fn() }: { item?: ItineraryItem; itinerary?: ItineraryItem[]; booking?: Booking; flights?: FlightLeg[]; flightTravelers?: FlightTraveler[]; journeys?: JourneyLeg[]; travelers?: Traveler[]; costs?: TripCost[]; focusedTravelerId?: string | null; editable?: boolean; onAddBooking?: () => void; onEdit?: () => void; onViewCost?: (cost: TripCost) => void } = {}) {
   const noop = vi.fn();
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={queryClient}><MemoryRouter><EventDetailsSheet item={item} itinerary={itinerary} tripId="trip-1" booking={booking} flights={flights} journeys={journeys} travelerIds={[]} travelers={travelers} costs={costs} focusedTravelerId={focusedTravelerId} editable={editable} canMoveUp={false} canMoveDown={false} onClose={noop} onEdit={onEdit} onArchive={noop} onAddBooking={onAddBooking} onAddCost={noop} onViewCost={onViewCost} onUploadDocument={noop} onStatus={noop} onMoveUp={noop} onMoveDown={noop} /></MemoryRouter></QueryClientProvider>);
+  render(<QueryClientProvider client={queryClient}><MemoryRouter><EventDetailsSheet item={item} itinerary={itinerary} tripId="trip-1" booking={booking} flights={flights} flightTravelers={flightTravelers} journeys={journeys} travelerIds={[]} travelers={travelers} costs={costs} focusedTravelerId={focusedTravelerId} editable={editable} canMoveUp={false} canMoveDown={false} onClose={noop} onEdit={onEdit} onArchive={noop} onAddBooking={onAddBooking} onAddCost={noop} onViewCost={onViewCost} onUploadDocument={noop} onStatus={noop} onMoveUp={noop} onMoveDown={noop} /></MemoryRouter></QueryClientProvider>);
   return { onAddBooking, onEdit, onViewCost };
 }
 
@@ -502,7 +503,7 @@ describe("timeline booking-at-a-glance details", () => {
     mocks.listMembers.mockResolvedValue([{ user_id: "owner-user", role: "owner", participation_type: "traveler", joined_at: "2026-09-01T00:00:00.000Z", display_name: "Shantanu" }]);
     mocks.listTripBookingTravelers.mockResolvedValue([]);
     mocks.listTripItineraryParticipants.mockResolvedValue([]);
-    mocks.listFlightTravelers.mockResolvedValue([{ id: "flight-leg:traveler-1", flight_leg_id: flight.id, traveler_id: "traveler-1", seat: "12A", boarding_group: "2", ticket_number: null }]);
+    mocks.listTripFlightTravelers.mockResolvedValue([{ id: "flight-leg:traveler-1", flight_leg_id: flight.id, traveler_id: "traveler-1", seat: "12A", boarding_group: "2", ticket_number: null }]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
 
@@ -760,12 +761,12 @@ describe("flight event details", () => {
       { id: "traveler-1", trip_id: "trip-1", display_name: "Shantanu", is_minor: false, created_at: "2026-09-01T00:00:00.000Z" },
       { id: "traveler-2", trip_id: "trip-1", display_name: "Rahul", is_minor: false, created_at: "2026-09-01T00:00:00.000Z" }
     ];
-    mocks.listFlightTravelers.mockResolvedValue([
+    const flightTravelers: FlightTraveler[] = [
       { id: "flight-1:traveler-1", flight_leg_id: "flight-1", traveler_id: "traveler-1", seat: "12A", boarding_group: "2", ticket_number: null },
       { id: "flight-1:traveler-2", flight_leg_id: "flight-1", traveler_id: "traveler-2", seat: "14C", boarding_group: "3", ticket_number: "098765" }
-    ]);
+    ];
 
-    renderDetails({ item: { ...activity, event_type: "flight", booking_id: booking.id }, booking, flights: [flight], travelers, focusedTravelerId: "traveler-2" });
+    renderDetails({ item: { ...activity, event_type: "flight", booking_id: booking.id }, booking, flights: [flight], flightTravelers, travelers, focusedTravelerId: "traveler-2" });
 
     expect(screen.getByRole("link", { name: "Open booking details for Flight to Dubai" })).toHaveAttribute("href", "/trips/trip-1/flights/flight-1");
     expect(await screen.findByText("Rahul · Seat 14C · Group 3 · Ticket 098765")).toBeInTheDocument();

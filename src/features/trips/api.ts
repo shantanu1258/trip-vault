@@ -116,6 +116,20 @@ async function retryQueuedTripDocumentCleanup(ownerId: string, tripId?: string) 
   );
 }
 
+const cleanupCheckIntervalMs = 5 * 60_000;
+const cleanupChecks = new Map<string, { checkedAt: number; pending?: Promise<void> }>();
+
+async function retryQueuedTripDocumentCleanupOnce(ownerId: string) {
+  const current = cleanupChecks.get(ownerId);
+  if (current?.pending) return current.pending;
+  if (current && Date.now() - current.checkedAt < cleanupCheckIntervalMs) return;
+  const pending = retryQueuedTripDocumentCleanup(ownerId).finally(() => {
+    cleanupChecks.set(ownerId, { checkedAt: Date.now() });
+  });
+  cleanupChecks.set(ownerId, { checkedAt: current?.checkedAt ?? 0, pending });
+  return pending;
+}
+
 function statusForDates(startDate: string, endDate: string): TripStatus {
   const today = new Date().toISOString().slice(0, 10);
   if (endDate < today) return "completed";
@@ -131,7 +145,7 @@ function localDateForInstant(value: string, timeZone: string) {
 export async function listTrips(includeArchived = false): Promise<Trip[]> {
   if (navigator.onLine) {
     const profileId = await currentUserId();
-    await retryQueuedTripDocumentCleanup(profileId);
+    await retryQueuedTripDocumentCleanupOnce(profileId);
   }
   const trips = await networkWithCache("trips", async () => {
     let query = client().from("trips").select(tripSelect).is("deleted_at", null);

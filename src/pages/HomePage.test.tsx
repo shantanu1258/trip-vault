@@ -25,7 +25,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../components/AppShell", () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("../features/alerts/engine", () => ({ deriveAlerts: mocks.deriveAlerts }));
-vi.mock("../features/alerts/load", () => ({ loadAlertInputs: mocks.loadAlertInputs }));
+vi.mock("../features/alerts/load", () => ({
+  loadAlertInputs: mocks.loadAlertInputs,
+  alertInputsQueryOptions: () => ({ queryKey: ["alerts"], queryFn: mocks.loadAlertInputs })
+}));
 vi.mock("../features/trips/api", () => ({
   getSavedTripFocus: mocks.getSavedTripFocus,
   listCosts: mocks.listCosts,

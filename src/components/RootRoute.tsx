@@ -4,14 +4,15 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useDeviceAuthentication } from "../lib/auth/useDeviceAuthentication";
 import { WelcomePage } from "../pages/WelcomePage";
-import { getSavedTripFocus, listTrips } from "../features/trips/api";
+import { getSavedTripFocus } from "../features/trips/api";
 import { selectFocusedTrip, tripPhase } from "../features/trips/presentation";
+import { tripQueries } from "../features/queries/tripQueries";
 
 export function RootRoute() {
   const authenticated = useDeviceAuthentication();
   const [savedFocus, setSavedFocus] = useState<string | null>(null);
   const [focusReady, setFocusReady] = useState(false);
-  const trips = useQuery({ queryKey: ["trips"], queryFn: () => listTrips(), enabled: authenticated === true });
+  const trips = useQuery({ ...tripQueries.trips(), enabled: authenticated === true });
   useEffect(() => {
     if (!authenticated) { setFocusReady(false); return; }
     let active = true;

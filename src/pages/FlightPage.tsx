@@ -7,9 +7,8 @@ import { DocumentVisibilityBadge } from "../components/DocumentVisibilityBadge";
 import { ModalSheet } from "../components/ModalSheet";
 import { ErrorCard, LoadingCard } from "../components/TripUi";
 import { localDateTimeToIso } from "../features/trips/validation";
-import { getTrip } from "../features/trips/api";
 import { getErrorMessage } from "../features/trips/presentation";
-import { getBooking, getFlightLeg, listBookingTravelerIds, listFlightLegsForBooking, listFlightTravelers, listMembers, listTravelers, listTripAirlines, listVaultDocuments, updateFlightLeg } from "../features/workspace/api";
+import { getBooking, getFlightLeg, listBookingTravelerIds, listFlightLegsForBooking, listFlightTravelers, listTripAirlines, updateFlightLeg } from "../features/workspace/api";
 import { delayMinutes, flightCountdown, flightSeatLabels, primaryFlightDocument, resolveBoardingInstant, toDateTimeLocal, trackerUrl } from "../features/workspace/flight";
 import { flightStatuses } from "../features/workspace/types";
 import { UploadDocumentForm } from "../features/workspace/WorkspaceForms";
@@ -22,18 +21,19 @@ import { documentMatchesTraveler } from "../features/workspace/documentModel";
 import { readTravelerFocus } from "../features/workspace/travelerFocus";
 import { AddFlightConnectionForm } from "../features/workspace/AddFlightConnectionForm";
 import { tripChildNavigationState, tripReturnNavigation } from "../features/trips/navigation";
+import { tripQueries } from "../features/queries/tripQueries";
 
 type FlightEditTarget = "status" | "scheduledDeparture" | "scheduledArrival" | "boardingAt" | "arrivalTerminal";
 
 export function FlightPage() {
   const { tripId = "", flightLegId = "" } = useParams(); const locationState = useLocation().state; const queryClient = useQueryClient(); const [editing, setEditing] = useState(false); const [editTarget, setEditTarget] = useState<FlightEditTarget>("status"); const [editMessage, setEditMessage] = useState(""); const [uploading, setUploading] = useState(false); const [addingConnection, setAddingConnection] = useState(false); const [userId, setUserId] = useState("");
   useEffect(() => { void localProfileId().then((profileId) => setUserId(profileId ?? "")); }, []);
-  const tripQuery = useQuery({ queryKey: ["trip", tripId], queryFn: () => getTrip(tripId), enabled: Boolean(tripId) });
-  const travelersQuery = useQuery({ queryKey: ["travelers", tripId], queryFn: () => listTravelers(tripId), enabled: Boolean(tripId) });
-  const membersQuery = useQuery({ queryKey: ["members", tripId], queryFn: () => listMembers(tripId), enabled: Boolean(tripId) });
+  const tripQuery = useQuery({ ...tripQueries.trip(tripId), enabled: Boolean(tripId) });
+  const travelersQuery = useQuery({ ...tripQueries.travelers(tripId), enabled: Boolean(tripId) });
+  const membersQuery = useQuery({ ...tripQueries.members(tripId), enabled: Boolean(tripId) });
   const airlinesQuery = useQuery({ queryKey: ["trip-airlines", tripId], queryFn: () => listTripAirlines(tripId), enabled: Boolean(tripId) });
   const flightQuery = useQuery({ queryKey: ["flight", flightLegId], queryFn: () => getFlightLeg(flightLegId), enabled: Boolean(flightLegId) });
-  const documentsQuery = useQuery({ queryKey: ["documents", tripId], queryFn: () => listVaultDocuments(tripId), enabled: Boolean(tripId) });
+  const documentsQuery = useQuery({ ...tripQueries.documents(tripId), enabled: Boolean(tripId) });
   const flight = flightQuery.data;
   const bookingQuery = useQuery({ queryKey: ["booking", flight?.booking_id], queryFn: () => getBooking(flight!.booking_id), enabled: Boolean(flight?.booking_id) });
   const bookingTravelersQuery = useQuery({ queryKey: ["booking-traveler-ids", flight?.booking_id], queryFn: () => listBookingTravelerIds(flight!.booking_id, tripId), enabled: Boolean(flight?.booking_id && tripId) });

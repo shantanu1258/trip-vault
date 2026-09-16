@@ -3,11 +3,11 @@ import { CalendarPlus, FileUp, MapPinned, NotebookPen, ReceiptIndianRupee, Ticke
 import { Link } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { ErrorCard, LoadingCard, PageHeader } from "../components/TripUi";
-import { listTrips } from "../features/trips/api";
 import { sortTripsByRelevance } from "../features/trips/presentation";
+import { tripQueries } from "../features/queries/tripQueries";
 
 export function QuickAddPage() {
-  const query = useQuery({ queryKey: ["trips"], queryFn: () => listTrips() });
+  const query = useQuery(tripQueries.trips());
   const trip = sortTripsByRelevance(query.data ?? [])[0];
   const actions = [
     { title: "Create a trip", text: "Dates, destination, and currency", icon: MapPinned, to: "/trips/new", enabled: true },

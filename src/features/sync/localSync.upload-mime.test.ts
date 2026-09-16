@@ -110,4 +110,33 @@ describe("offline upload MIME restoration", () => {
     expect(mocks.eq).toHaveBeenCalledWith("id", "booking-1");
     expect(mocks.upsert).toHaveBeenCalledTimes(2);
   });
+
+  it("coalesces overlapping foreground sync runs", async () => {
+    const upload = { id: "upload-1", mime_type: "application/pdf" };
+    mocks.toArray.mockResolvedValue([operation("upload_account_document", { upload, storagePath: "profile-1/upload-1/ticket.pdf" })]);
+    mocks.rpc
+      .mockResolvedValueOnce({ data: null, error: { message: "Document file is not stored yet" } })
+      .mockResolvedValueOnce({ data: "2026-09-13T01:00:00.000Z", error: null });
+
+    await expect(Promise.all([syncOutbox(), syncOutbox()])).resolves.toEqual([
+      { synced: 1, failed: 0 },
+      { synced: 1, failed: 0 }
+    ]);
+
+    expect(mocks.upload).toHaveBeenCalledOnce();
+  });
+
+  it("does not automatically repeat a deterministic permission failure", async () => {
+    const upload = { id: "upload-1", mime_type: "application/pdf" };
+    mocks.toArray.mockResolvedValue([{
+      ...operation("upload_account_document", { upload, storagePath: "profile-1/upload-1/ticket.pdf" }),
+      attemptCount: 1,
+      lastErrorCode: "permission"
+    }]);
+
+    await expect(syncOutbox()).resolves.toEqual({ synced: 0, failed: 0 });
+
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.upload).not.toHaveBeenCalled();
+  });
 });

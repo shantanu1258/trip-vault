@@ -34,6 +34,9 @@ import { ParticipantSelector } from "./ParticipantSelector";
 import { useFormDraft } from "../../lib/forms/useFormDraft";
 import { AddEventForm } from "../timeline/AddEventForm";
 import { VendorPicker } from "../metadata/VendorPicker";
+import { suppressRealtimeRefresh } from "../sync/RealtimeRefresh";
+import { upsertById } from "../queries/cache";
+import type { VaultDocument } from "./types";
 
 const requiredText = (message: string, max = 160) => z.string().trim().min(1, message).max(max);
 
@@ -359,7 +362,18 @@ export function UploadDocumentForm({ trip, travelers, preferredTravelerId, onClo
   const defaultTitle = suggestedDocumentTitle(kind, assignmentMode, selectedTravelerIds, travelers, contextTitle);
   const title = customTitle.trim() || defaultTitle;
   const draft = useFormDraft(`document:new:${trip.id}:${flightLegId ?? journeyLegId ?? bookingId ?? "trip"}`);
-  const mutation = useMutation({ mutationFn: uploadDocument, onSuccess: async (document) => { draft.clearDraft(); await Promise.all([queryClient.invalidateQueries({ queryKey: ["documents"] }), queryClient.invalidateQueries({ queryKey: ["documents", trip.id] }), queryClient.invalidateQueries({ queryKey: ["account-document-uploads"] })]); await onUploaded?.(document.id); if (document.sync_state === "queued") setQueuedMessage(document.sync_error === "permission" || document.sync_error === "schema" ? "The file is safe in Profile → Private document inbox, but Supabase refused its cloud action. Run the latest document-inbox migration, then retry it there." : document.sync_error === "authentication" ? "The file is safe in your private inbox on this device. Sign in again, then retry it from Profile." : "The file is safe in Profile → Private document inbox and on this device. Its cloud upload or trip association will retry when synchronization succeeds."); else onClose(); } });
+  const mutation = useMutation({
+    mutationFn: uploadDocument,
+    onMutate: () => suppressRealtimeRefresh(["documents", "account-document-uploads"], 15_000),
+    onSuccess: async (document) => {
+      draft.clearDraft();
+      queryClient.setQueryData<VaultDocument[]>(["documents", trip.id], (items) => upsertById(items, [document]));
+      queryClient.setQueryData<VaultDocument[]>(["documents"], (items) => upsertById(items, [document]));
+      await queryClient.invalidateQueries({ queryKey: ["account-document-uploads"] });
+      await onUploaded?.(document.id);
+      if (document.sync_state === "queued") setQueuedMessage(document.sync_error === "permission" || document.sync_error === "schema" ? "The file is safe in Profile → Private document inbox, but Supabase refused its cloud action. Run the latest document-inbox migration, then retry it there." : document.sync_error === "authentication" ? "The file is safe in your private inbox on this device. Sign in again, then retry it from Profile." : "The file is safe in Profile → Private document inbox and on this device. Its cloud upload or trip association will retry when synchronization succeeds."); else onClose();
+    }
+  });
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setMessage(""); setQueuedMessage("");
     const form = new FormData(event.currentTarget); const file = selectedFile; const travelerIds = assignmentMode === "selected" ? selectedTravelerIds : []; const selectedUserIds = form.getAll("selectedUserIds").map(String); const effectiveVisibility: DocumentVisibility = privateOnly ? "private" : visibility;

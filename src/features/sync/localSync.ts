@@ -282,7 +282,8 @@ async function prepareOutboxForCurrentSchema(operations: OutboxOperation[]) {
       payload: operation.payload,
       dependsOn: operation.dependsOn,
       attemptCount: 0,
-      lastErrorCode: undefined
+      lastErrorCode: undefined,
+      nextAttemptAt: undefined
     });
   }
   return result.operations;
@@ -417,8 +418,8 @@ export async function resolveSyncIssue(operationId: string, resolution: "keep_lo
     const serverVersion = payload.conflictServer?.version;
     if (typeof serverVersion !== "number") throw new Error("Reconnect and refresh the server version before keeping this edit.");
     const { conflictServer: _ignored, ...cleanPayload } = payload;
-    await database.outbox.update(operationId, { baseVersion: serverVersion, payload: cleanPayload, lastErrorCode: undefined, attemptCount: 0 });
-  } else await database.outbox.update(operationId, { lastErrorCode: undefined, attemptCount: 0 });
+    await database.outbox.update(operationId, { baseVersion: serverVersion, payload: cleanPayload, lastErrorCode: undefined, nextAttemptAt: undefined, attemptCount: 0 });
+  } else await database.outbox.update(operationId, { lastErrorCode: undefined, nextAttemptAt: undefined, attemptCount: 0 });
   await syncOutbox();
 }
 
@@ -485,13 +486,38 @@ async function pushDocumentAssociation(operation: OutboxOperation) {
   }
 }
 
-export async function syncOutbox() {
-  if (!navigator.onLine || !supabase) return { synced: 0, failed: 0 };
+type InternalSyncResult = { synced: number; failed: number; changedTables: string[] };
+
+function changedTablesForOperation(operation: OutboxOperation) {
+  if (operation.operation === "upload_document") return ["documents", "document_versions"];
+  if (operation.operation === "upload_account_document") return ["account_document_uploads"];
+  if (operation.operation === "associate_account_document") return ["documents", "document_versions", "document_travelers", "document_access"];
+  const payload = operation.payload as { table?: unknown; functionName?: unknown };
+  if (typeof payload.table === "string") return [payload.table];
+  if (payload.functionName === "sync_booking_participants") return ["bookings", "booking_travelers"];
+  return ["*"];
+}
+
+function canAutomaticallyAttempt(operation: OutboxOperation, now = Date.now()) {
+  if (!operation.lastErrorCode) return true;
+  if (operation.lastErrorCode !== "retryable") return false;
+  return !operation.nextAttemptAt || new Date(operation.nextAttemptAt).getTime() <= now;
+}
+
+function retryAt(attemptCount: number) {
+  const delay = Math.min(15 * 60_000, 30_000 * 2 ** Math.max(0, attemptCount - 1));
+  return new Date(Date.now() + delay).toISOString();
+}
+
+async function executeSyncOutbox(): Promise<InternalSyncResult> {
+  if (!navigator.onLine || !supabase) return { synced: 0, failed: 0, changedTables: [] };
   const api = supabase;
-  const profileId = await localProfileId(); if (!profileId) return { synced: 0, failed: 0 };
+  const profileId = await localProfileId(); if (!profileId) return { synced: 0, failed: 0, changedTables: [] };
   const pending = await database.outbox.where("profileId").equals(profileId).toArray();
   const operations = orderOutbox(await prepareOutboxForCurrentSchema(pending)); let synced = 0; let failed = 0;
+  const changedTables = new Set<string>();
   for (const operation of operations) {
+    if (!canAutomaticallyAttempt(operation)) continue;
     const unresolvedDependencies = operation.dependsOn.length
       ? (await database.outbox.bulkGet(operation.dependsOn)).some(Boolean)
       : false;
@@ -534,7 +560,9 @@ export async function syncOutbox() {
           const { error } = await request; if (error) throw error;
         }
       }
-      await database.outbox.delete(operation.operationId); synced += 1;
+      await database.outbox.delete(operation.operationId);
+      changedTablesForOperation(operation).forEach((table) => changedTables.add(table));
+      synced += 1;
     } catch (error) {
       failed += 1;
       const classification = classifySyncError(error);
@@ -544,8 +572,31 @@ export async function syncOutbox() {
         const { data } = await supabase.from(currentPayload.table).select("*").eq("id", operation.entityId).maybeSingle();
         payload = { ...currentPayload, conflictServer: data ?? null };
       }
-      await database.outbox.update(operation.operationId, { attemptCount: operation.attemptCount + 1, lastErrorCode: classification, payload });
+      const attemptCount = operation.attemptCount + 1;
+      await database.outbox.update(operation.operationId, {
+        attemptCount,
+        lastErrorCode: classification,
+        nextAttemptAt: classification === "retryable" ? retryAt(attemptCount) : undefined,
+        payload
+      });
     }
   }
+  return { synced, failed, changedTables: [...changedTables] };
+}
+
+let activeSync: Promise<InternalSyncResult> | null = null;
+
+function sharedSyncRun() {
+  if (activeSync) return activeSync;
+  activeSync = executeSyncOutbox().finally(() => { activeSync = null; });
+  return activeSync;
+}
+
+export async function syncOutbox() {
+  const { synced, failed } = await sharedSyncRun();
   return { synced, failed };
+}
+
+export function syncOutboxWithChanges() {
+  return sharedSyncRun();
 }

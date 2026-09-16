@@ -6,13 +6,11 @@ import { AppShell } from "../components/AppShell";
 import { DocumentVisibilityBadge } from "../components/DocumentVisibilityBadge";
 import { ErrorCard, LoadingCard } from "../components/TripUi";
 import { arrivalDayOffset, journeyDuration, journeyRoute, phoneActionUrls } from "../features/timeline/model";
-import { getTrip } from "../features/trips/api";
 import { formatEventTime } from "../features/trips/presentation";
 import { localProfileId } from "../features/sync/localSync";
 import {
   archiveBooking, getBooking, googleMapsDirectionsUrl, googleMapsSearchUrl,
-  listBookingTravelerIds, listJourneyLegsForBooking, listMembers, listTravelers,
-  listVaultDocuments
+  listBookingTravelerIds, listJourneyLegsForBooking
 } from "../features/workspace/api";
 import { EditBookingForm, UploadDocumentForm } from "../features/workspace/WorkspaceForms";
 import { documentMatchesTraveler } from "../features/workspace/documentModel";
@@ -21,6 +19,7 @@ import { EditJourneyLegForm } from "../features/workspace/EditJourneyLegForm";
 import { readTravelerFocus } from "../features/workspace/travelerFocus";
 import { tripChildNavigationState, tripReturnNavigation } from "../features/trips/navigation";
 import { useConfirmDialog } from "../components/ConfirmDialogProvider";
+import { tripQueries } from "../features/queries/tripQueries";
 
 export function BookingPage() {
   const confirm = useConfirmDialog();
@@ -28,11 +27,11 @@ export function BookingPage() {
   const [editing, setEditing] = useState(false); const [editingLeg, setEditingLeg] = useState<import("../features/workspace/types").JourneyLeg | null>(null); const [uploadTarget, setUploadTarget] = useState<{ journeyLegId?: string; contextTitle?: string } | null>(null); const [userId, setUserId] = useState("");
   useEffect(() => { void localProfileId().then((id) => setUserId(id ?? "")); }, []);
   const query = useQuery({ queryKey: ["booking", bookingId], queryFn: () => getBooking(bookingId), enabled: Boolean(bookingId) });
-  const tripQuery = useQuery({ queryKey: ["trip", tripId], queryFn: () => getTrip(tripId), enabled: Boolean(tripId) });
-  const travelersQuery = useQuery({ queryKey: ["travelers", tripId], queryFn: () => listTravelers(tripId), enabled: Boolean(tripId) });
-  const membersQuery = useQuery({ queryKey: ["members", tripId], queryFn: () => listMembers(tripId), enabled: Boolean(tripId) });
+  const tripQuery = useQuery({ ...tripQueries.trip(tripId), enabled: Boolean(tripId) });
+  const travelersQuery = useQuery({ ...tripQueries.travelers(tripId), enabled: Boolean(tripId) });
+  const membersQuery = useQuery({ ...tripQueries.members(tripId), enabled: Boolean(tripId) });
   const travelerIdsQuery = useQuery({ queryKey: ["booking-traveler-ids", bookingId], queryFn: () => listBookingTravelerIds(bookingId, tripId), enabled: Boolean(bookingId && tripId) });
-  const documentsQuery = useQuery({ queryKey: ["documents", tripId], queryFn: () => listVaultDocuments(tripId), enabled: Boolean(tripId) });
+  const documentsQuery = useQuery({ ...tripQueries.documents(tripId), enabled: Boolean(tripId) });
   const legsQuery = useQuery({ queryKey: ["journey-legs", tripId, bookingId], queryFn: () => listJourneyLegsForBooking(bookingId, tripId), enabled: Boolean(bookingId && tripId) });
   const booking = query.data; const role = membersQuery.data?.find((member) => member.user_id === userId)?.role; const editable = role === "owner" || role === "editor";
   const bookingTimezone = booking?.source_timezone ?? tripQuery.data?.primary_timezone ?? "UTC";

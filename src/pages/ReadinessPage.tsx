@@ -4,25 +4,25 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { ErrorCard, LoadingCard, PageHeader } from "../components/TripUi";
-import { getTrip, listItinerary } from "../features/trips/api";
 import { requirementTimelineSchedule } from "../features/timeline/model";
-import { archiveRequirement, listMembers, listRequirements, listTravelers, listTripRequirementAssignees, updateRequirementStatus } from "../features/workspace/api";
+import { archiveRequirement, listTripRequirementAssignees, updateRequirementStatus } from "../features/workspace/api";
 import { AddRequirementForm } from "../features/workspace/WorkspaceForms";
 import { type Requirement, type RequirementStatus } from "../features/workspace/types";
 import { localProfileId } from "../features/sync/localSync";
 import { readTravelerFocus, requirementAudienceLabel, requirementMatchesTraveler } from "../features/workspace/travelerFocus";
 import { tripReturnNavigation } from "../features/trips/navigation";
 import { useConfirmDialog } from "../components/ConfirmDialogProvider";
+import { tripQueries } from "../features/queries/tripQueries";
 
 export function ReadinessPage() {
   const confirm = useConfirmDialog();
   const { tripId = "" } = useParams(); const locationState = useLocation().state; const queryClient = useQueryClient(); const [adding, setAdding] = useState(false); const [editing, setEditing] = useState<Requirement | null>(null); const [userId, setUserId] = useState(""); const [statusMessage, setStatusMessage] = useState("");
   useEffect(() => { void localProfileId().then((profileId) => setUserId(profileId ?? "")); }, []);
-  const tripQuery = useQuery({ queryKey: ["trip", tripId], queryFn: () => getTrip(tripId), enabled: Boolean(tripId) });
-  const query = useQuery({ queryKey: ["requirements", tripId], queryFn: () => listRequirements(tripId), enabled: Boolean(tripId) });
-  const itineraryQuery = useQuery({ queryKey: ["itinerary", tripId], queryFn: () => listItinerary(tripId), enabled: Boolean(tripId) });
-  const travelersQuery = useQuery({ queryKey: ["travelers", tripId], queryFn: () => listTravelers(tripId), enabled: Boolean(tripId) });
-  const membersQuery = useQuery({ queryKey: ["members", tripId], queryFn: () => listMembers(tripId), enabled: Boolean(tripId) });
+  const tripQuery = useQuery({ ...tripQueries.trip(tripId), enabled: Boolean(tripId) });
+  const query = useQuery({ ...tripQueries.requirements(tripId), enabled: Boolean(tripId) });
+  const itineraryQuery = useQuery({ ...tripQueries.itinerary(tripId), enabled: Boolean(tripId) });
+  const travelersQuery = useQuery({ ...tripQueries.travelers(tripId), enabled: Boolean(tripId) });
+  const membersQuery = useQuery({ ...tripQueries.members(tripId), enabled: Boolean(tripId) });
   const focusedTravelerId = readTravelerFocus(tripId); const requirementIds = (query.data ?? []).map((item) => item.id);
   const assigneesQuery = useQuery({ queryKey: ["requirement-assignees", tripId, requirementIds], queryFn: () => listTripRequirementAssignees(tripId, requirementIds), enabled: Boolean(tripId) && query.isSuccess });
   const mutation = useMutation({

@@ -8,13 +8,13 @@ import { EmptyState, ErrorCard, LoadingCard, PageHeader } from "../components/Tr
 import { deriveAlerts, unreadAlertCount } from "../features/alerts/engine";
 import { addReminder, listTrips, setAlertState } from "../features/trips/api";
 import { localDateTimeToIso } from "../features/trips/validation";
-import { loadAlertInputs } from "../features/alerts/load";
+import { alertInputsQueryOptions } from "../features/alerts/load";
 
 export function AlertsPage() {
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [view, setView] = useState<"visible" | "dismissed">("visible");
-  const query = useQuery({ queryKey: ["alerts"], queryFn: loadAlertInputs, refetchInterval: 60_000 });
+  const query = useQuery(alertInputsQueryOptions(queryClient));
   const visibleAlerts = query.data ? deriveAlerts(query.data) : [];
   const alerts = query.data ? deriveAlerts(query.data, view) : [];
   const unread = query.data ? unreadAlertCount(visibleAlerts, query.data.states) : 0;
