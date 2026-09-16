@@ -1082,6 +1082,57 @@ export async function updateDocumentVisibility(input: { documentId: string; visi
   if (error) throw error;
 }
 
+export async function updateDocumentDetails(input: { document: VaultDocument; title: string; assignmentMode: DocumentAssignmentMode; travelerIds?: string[] }) {
+  if (!navigator.onLine) throw new Error("Connect to change this document's title or travelers.");
+  const actor = await userId();
+  const title = input.title.trim();
+  if (!title) throw new Error("Add a document title.");
+  const travelerIds = input.assignmentMode === "selected" ? [...new Set(input.travelerIds ?? [])] : [];
+  if (input.assignmentMode === "selected" && !travelerIds.length) throw new Error("Choose at least one traveler, or select Assign later.");
+  const previousMode = input.document.assignment_mode ?? (input.document.traveler_id ? "selected" : "shared");
+  const previousTravelerIds = input.document.traveler_ids?.length
+    ? input.document.traveler_ids
+    : input.document.traveler_id ? [input.document.traveler_id] : [];
+  const patch = {
+    title,
+    assignment_mode: input.assignmentMode,
+    traveler_id: travelerIds.length === 1 ? travelerIds[0] : null
+  };
+  let documentUpdated = false;
+  let assignmentsCleared = false;
+  try {
+    const { error: documentError } = await client().from("documents").update(patch).eq("id", input.document.id);
+    if (documentError) throw documentError;
+    documentUpdated = true;
+    const { error: clearError } = await client().from("document_travelers").delete().eq("document_id", input.document.id);
+    if (clearError) throw clearError;
+    assignmentsCleared = true;
+    if (travelerIds.length) {
+      const { error: travelerError } = await client().from("document_travelers").insert(travelerIds.map((travelerId) => ({ document_id: input.document.id, traveler_id: travelerId, assigned_by: actor })));
+      if (travelerError) throw travelerError;
+    }
+  } catch (error) {
+    // These tables already permit document managers to edit them, but they are
+    // separate rows. Restore the previous state if the second write fails so a
+    // partial network response cannot silently change who the document is for.
+    if (documentUpdated) {
+      await client().from("documents").update({
+        title: input.document.title,
+        assignment_mode: previousMode,
+        traveler_id: previousTravelerIds.length === 1 ? previousTravelerIds[0] : null
+      }).eq("id", input.document.id);
+    }
+    if (assignmentsCleared) {
+      await client().from("document_travelers").delete().eq("document_id", input.document.id);
+      if (previousTravelerIds.length) await client().from("document_travelers").insert(previousTravelerIds.map((travelerId) => ({ document_id: input.document.id, traveler_id: travelerId, assigned_by: actor })));
+    }
+    throw error;
+  }
+  const updated: VaultDocument = { ...input.document, ...patch, traveler_ids: travelerIds, updated_at: new Date().toISOString() };
+  await Promise.all([cacheEntity(`documents:${input.document.trip_id}`, updated), cacheEntity("documents", updated)]);
+  return updated;
+}
+
 const documentSelect = "id,trip_id,booking_id,flight_leg_id,journey_leg_id,traveler_id,assignment_mode,title,category,purpose,short_label,visibility,uploaded_by,current_version_id,version,updated_at,deleted_at,document_travelers(traveler_id),current_version:document_versions!documents_current_version_id_fkey(id,storage_bucket,storage_path,original_filename,mime_type,byte_size,sha256,version_number,created_at)";
 const accountDocumentUploadSelect = "id,owner_id,storage_path,original_filename,mime_type,byte_size,sha256,associated_document_id,stored_at,created_at,updated_at";
 

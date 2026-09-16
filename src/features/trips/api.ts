@@ -163,8 +163,9 @@ export async function getTrip(tripId: string): Promise<Trip> {
     .select(tripSelect)
     .eq("id", tripId)
     .is("deleted_at", null)
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error("This trip no longer exists or you no longer have access to it.");
   return data as Trip;
 }
 

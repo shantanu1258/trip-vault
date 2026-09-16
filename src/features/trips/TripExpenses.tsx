@@ -1,5 +1,5 @@
 import { ChevronRight, Pencil, Trash2 } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { ModalSheet } from "../../components/ModalSheet";
 import { CostTotals } from "../../components/TripUi";
 import type { Booking, Traveler } from "../workspace/types";
@@ -33,24 +33,28 @@ export function CostDetailsSheet({ cost, travelers, itinerary, bookings = [], ed
   </ModalSheet>;
 }
 
-export function TripExpensesContent({ costs, balances, travelers, onViewCost }: { costs: TripCost[]; balances: TravelerBalance[]; travelers: Traveler[]; onViewCost: (cost: TripCost) => void }) {
+export function TripExpensesContent({ costs, balances, travelers, onViewCost, expenseSplittingControl }: { costs: TripCost[]; balances: TravelerBalance[]; travelers: Traveler[]; onViewCost: (cost: TripCost) => void; expenseSplittingControl?: ReactNode }) {
   const [showBalances, setShowBalances] = useState(false);
   const balancesId = useId();
 
   return <>
-    <div className="flex flex-wrap items-start gap-3"><div className="min-w-0 flex-1"><CostTotals costs={costs} /></div><label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-line px-3 text-xs font-extrabold text-muted"><input type="checkbox" checked={showBalances} aria-controls={balancesId} onChange={(event) => setShowBalances(event.target.checked)} /> Show balances</label></div>
+    <CostTotals costs={costs} />
+    <div className="mt-3 overflow-hidden rounded-2xl border border-line bg-surface">
+      <label className="flex min-h-16 cursor-pointer items-center justify-between gap-4 p-4 text-sm"><span><strong className="block">Show balances</strong><span className="mt-1 block text-xs leading-5 text-muted">See what each traveler owes or should receive.</span></span><input aria-label="Show balances" className="size-5 shrink-0 accent-brand" type="checkbox" checked={showBalances} aria-controls={balancesId} onChange={(event) => setShowBalances(event.target.checked)} /></label>
+      {expenseSplittingControl && <div className="border-t border-line">{expenseSplittingControl}</div>}
+    </div>
     {showBalances && <div id={balancesId} className="mt-4 rounded-2xl border border-line p-4"><p className="eyebrow">Balances by currency</p>{balances.length > 0 ? <><div className="mt-3 grid gap-2 sm:grid-cols-2">{balances.map((balance) => <div key={`${balance.currencyCode}:${balance.travelerId}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl bg-elevated px-3 py-2 text-sm"><span className="truncate">{travelers.find((traveler) => traveler.id === balance.travelerId)?.display_name ?? "Traveler"}</span><strong className={`whitespace-nowrap text-right ${balance.amountMinor > 0 ? "text-success" : "text-warning"}`}>{balance.amountMinor > 0 ? "gets " : "owes "}{formatMoney(Math.abs(balance.amountMinor), balance.currencyCode)}</strong></div>)}</div><p className="mt-3 text-xs text-muted">Positive means this traveler should receive money; negative means they owe money. Different currencies are never silently combined.</p></> : <p className="mt-3 text-sm text-muted">No balances to settle yet.</p>}</div>}
-    <div className="mt-4 space-y-2">{costs.map((cost) => {
+    <div className="mt-5"><p className="eyebrow">Itemized expenses</p><div className="mt-3 space-y-2">{costs.map((cost) => {
       const paidBy = travelers.find((traveler) => traveler.id === cost.paid_by_traveler_id)?.display_name;
       const participantCount = cost.participants?.length ?? 0;
       return <button type="button" onClick={() => onViewCost(cost)} className="group grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-xl bg-elevated p-3 text-left text-sm transition hover:-translate-y-0.5 hover:shadow-soft focus-visible:ring-2 focus-visible:ring-brand motion-reduce:hover:translate-y-0" key={cost.id} aria-label={`View details for ${cost.title}`}><span className="min-w-0"><span className="block truncate font-bold">{cost.title}</span><span className="mt-0.5 block truncate text-xs capitalize text-muted">{paidBy ? `Paid by ${paidBy} · ` : ""}{cost.category.replaceAll("_", " ")} · {cost.payment_status.replaceAll("_", " ")}{participantCount ? ` · ${participantCount} traveler${participantCount === 1 ? "" : "s"}` : ""}</span></span><span className="flex items-center gap-2"><strong className="whitespace-nowrap">{cost.amount_minor === 0 ? "Free" : formatMoney(cost.amount_minor, cost.currency_code)}</strong><ChevronRight className="size-4 shrink-0 text-muted transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" /></span></button>;
-    })}{costs.length === 0 && <p className="rounded-xl bg-elevated p-4 text-sm text-muted">No expenses have been added yet.</p>}</div>
+    })}{costs.length === 0 && <p className="rounded-xl bg-elevated p-4 text-sm text-muted">No expenses have been added yet.</p>}</div></div>
   </>;
 }
 
-export function TripExpensesSheet({ title = "Trip expenses", costs, balances, travelers, onClose, onViewCost }: { title?: string; costs: TripCost[]; balances: TravelerBalance[]; travelers: Traveler[]; onClose: () => void; onViewCost: (cost: TripCost) => void }) {
+export function TripExpensesSheet({ title = "Trip expenses", costs, balances, travelers, onClose, onViewCost, expenseSplittingControl }: { title?: string; costs: TripCost[]; balances: TravelerBalance[]; travelers: Traveler[]; onClose: () => void; onViewCost: (cost: TripCost) => void; expenseSplittingControl?: ReactNode }) {
   return <ModalSheet eyebrow="Money" title={title} onClose={onClose}>
-    <p className="mt-3 text-sm leading-6 text-muted">Review itemized expenses, who paid, and how each cost is shared.</p>
-    <div className="mt-5"><TripExpensesContent costs={costs} balances={balances} travelers={travelers} onViewCost={onViewCost} /></div>
+    <p className="mt-3 text-sm leading-6 text-muted">Review every expense and choose whether traveler balances should be calculated.</p>
+    <div className="mt-6"><TripExpensesContent costs={costs} balances={balances} travelers={travelers} onViewCost={onViewCost} expenseSplittingControl={expenseSplittingControl} /></div>
   </ModalSheet>;
 }

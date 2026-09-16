@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   listTravelers: vi.fn(),
   listDocumentVersions: vi.fn(),
   listDocumentAccessUserIds: vi.fn(),
+  updateDocumentDetails: vi.fn(),
   updateDocumentVisibility: vi.fn(),
   localProfileId: vi.fn(),
   readOfflineFile: vi.fn()
@@ -28,6 +29,7 @@ vi.mock("../features/workspace/api", () => ({
   listTravelers: mocks.listTravelers,
   listDocumentVersions: mocks.listDocumentVersions,
   listDocumentAccessUserIds: mocks.listDocumentAccessUserIds,
+  updateDocumentDetails: mocks.updateDocumentDetails,
   updateDocumentVisibility: mocks.updateDocumentVisibility,
   archiveDocument: vi.fn(),
   downloadDocumentVersion: vi.fn(),
@@ -50,9 +52,13 @@ describe("DocumentPage", () => {
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
     mocks.localProfileId.mockResolvedValue("user-1");
     mocks.listMembers.mockResolvedValue([{ user_id: "user-1", role: "owner", display_name: "Owner" }]);
-    mocks.listTravelers.mockResolvedValue([]);
+    mocks.listTravelers.mockResolvedValue([
+      { id: "traveler-1", trip_id: "trip-1", display_name: "Ankita", is_minor: false, created_at: "" },
+      { id: "traveler-2", trip_id: "trip-1", display_name: "Shantanu", is_minor: false, created_at: "" }
+    ]);
     mocks.listDocumentVersions.mockResolvedValue([]);
     mocks.listDocumentAccessUserIds.mockResolvedValue([]);
+    mocks.updateDocumentDetails.mockImplementation(async ({ document, title, assignmentMode, travelerIds }) => ({ ...document, title, assignment_mode: assignmentMode, traveler_ids: travelerIds }));
     mocks.updateDocumentVisibility.mockResolvedValue(undefined);
     mocks.readOfflineFile.mockResolvedValue(new Blob(["%PDF-test"], { type: "application/pdf" }));
     mocks.getVaultDocument.mockResolvedValue({
@@ -61,6 +67,8 @@ describe("DocumentPage", () => {
       booking_id: null,
       flight_leg_id: null,
       traveler_id: null,
+      assignment_mode: "selected",
+      traveler_ids: ["traveler-1"],
       title: longTitle,
       category: "visa",
       purpose: "visa",
@@ -114,5 +122,26 @@ describe("DocumentPage", () => {
     await user.click(screen.getByRole("button", { name: "Save visibility" }));
 
     expect(mocks.updateDocumentVisibility).toHaveBeenCalledWith({ documentId: "document-1", visibility: "selected_members", selectedUserIds: ["user-2"] });
+  });
+
+  it("lets a document manager edit the generated title and traveler assignment", async () => {
+    const user = userEvent.setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<MemoryRouter initialEntries={["/trips/trip-1/documents/document-1"]}><QueryClientProvider client={client}><Routes><Route path="/trips/:tripId/documents/:documentId" element={<DocumentPage />} /></Routes></QueryClientProvider></MemoryRouter>);
+
+    await user.click(await screen.findByRole("button", { name: "Document information and actions" }));
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    const title = screen.getByLabelText("Title");
+    await user.clear(title);
+    await user.type(title, "Dubai flight tickets");
+    await user.click(screen.getByRole("checkbox", { name: "Shantanu" }));
+    await user.click(screen.getByRole("button", { name: "Save document details" }));
+
+    expect(mocks.updateDocumentDetails).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Dubai flight tickets",
+      assignmentMode: "selected",
+      travelerIds: ["traveler-1", "traveler-2"]
+    }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Document title and travelers updated");
   });
 });

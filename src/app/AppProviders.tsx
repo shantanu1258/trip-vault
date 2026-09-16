@@ -7,6 +7,7 @@ import { PwaUpdatePrompt } from "../components/PwaUpdatePrompt";
 import { PublishedConfigSync } from "../features/metadata/PublishedConfigSync";
 import { InstallAppManager } from "../components/InstallAppButton";
 import { ModalHistoryProvider } from "../components/ModalHistoryProvider";
+import { ConfirmDialogProvider } from "../components/ConfirmDialogProvider";
 import { RouteScrollManager } from "./RouteScrollManager";
 
 export function AppProviders({ children }: { children: ReactNode }) {
@@ -22,7 +23,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider><ModalHistoryProvider><RouteScrollManager /><InstallAppManager /><ForegroundSync /><RealtimeRefresh /><PublishedConfigSync />{children}<PwaUpdatePrompt /></ModalHistoryProvider></ThemeProvider>
+      <ThemeProvider><ModalHistoryProvider><ConfirmDialogProvider><RouteScrollManager /><InstallAppManager /><ForegroundSync /><RealtimeRefresh /><PublishedConfigSync />{children}<PwaUpdatePrompt /></ConfirmDialogProvider></ModalHistoryProvider></ThemeProvider>
     </QueryClientProvider>
   );
 }

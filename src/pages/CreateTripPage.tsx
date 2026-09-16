@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { CurrencySelect } from "../components/CurrencySelect";
+import { RequiredMark } from "../components/RequiredMark";
 import { createTrip } from "../features/trips/api";
 import { getErrorMessage } from "../features/trips/presentation";
 import { firstValidationMessage, tripFormSchema } from "../features/trips/validation";
@@ -73,11 +74,11 @@ export function CreateTripPage() {
             <p className="mt-2 text-sm text-surface/70">Start with the basics. You can add people, bookings, documents, and readiness tasks next.</p>
           </div>
           <form ref={draft.formRef} className="space-y-5 p-6 sm:p-8" onSubmit={submit}>
-            <label className="form-label">Trip name<input className="form-input" name="title" placeholder="Give this trip a name everyone will recognize" autoFocus /></label>
-            <label className="form-label">Destination<input className="form-input" name="destination" placeholder="List the cities, regions, or countries on this trip" /></label>
-            <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Start date<input ref={startDateRef} className="form-input" name="startDate" type="date" defaultValue={dateInput(15)} onChange={(event) => updateSuggestedEndDate(event.currentTarget.value)} /></label><label className="form-label">End date<input ref={endDateRef} className="form-input" name="endDate" type="date" defaultValue={dateInput(22)} onChange={() => { endDateWasEdited.current = true; }} /></label></div>
+            <label className="form-label">Trip name<RequiredMark /><input className="form-input" name="title" placeholder="Give this trip a name everyone will recognize" autoFocus required /></label>
+            <label className="form-label">Destination<RequiredMark /><input className="form-input" name="destination" placeholder="List the cities, regions, or countries on this trip" required /></label>
+            <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Start date<RequiredMark /><input ref={startDateRef} className="form-input" name="startDate" type="date" defaultValue={dateInput(15)} onChange={(event) => updateSuggestedEndDate(event.currentTarget.value)} required /></label><label className="form-label">End date<RequiredMark /><input ref={endDateRef} className="form-input" name="endDate" type="date" defaultValue={dateInput(22)} onChange={() => { endDateWasEdited.current = true; }} required /></label></div>
             <input type="hidden" name="timezone" value={Intl.DateTimeFormat().resolvedOptions().timeZone} />
-            <label className="form-label sm:max-w-64">Currency<CurrencySelect name="baseCurrency" defaultValue="INR" /></label>
+            <label className="form-label sm:max-w-64">Currency<RequiredMark /><CurrencySelect name="baseCurrency" defaultValue="INR" required /></label>
             <p className="-mt-2 text-xs leading-5 text-muted">Departure and arrival time zones are recorded on each journey, just as they appear on the ticket.</p>
             <p className="rounded-xl bg-elevated px-4 py-3 text-xs leading-5 text-muted">Your unfinished trip is saved on this device while you type, so you can safely switch apps and return later.</p>
             {(message || mutation.error) && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">{message || getErrorMessage(mutation.error)}</p>}

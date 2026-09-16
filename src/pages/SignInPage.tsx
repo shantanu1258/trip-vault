@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Brand } from "../components/Brand";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { RequiredMark } from "../components/RequiredMark";
 import { rememberDeviceProfile } from "../lib/auth/deviceSession";
 import { isSupabaseConfigured, supabase } from "../lib/supabase/client";
 
@@ -100,16 +101,16 @@ export function SignInPage({ admin = false }: { admin?: boolean }) {
           <form onSubmit={submit} className="space-y-5">
             {mode === "sign-up" && (
               <div>
-                <label htmlFor="display-name" className="text-sm font-extrabold">Your name</label>
+                <label htmlFor="display-name" className="text-sm font-extrabold">Your name<RequiredMark /></label>
                 <div className="relative mt-2"><UserRound className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted" /><input id="display-name" type="text" autoComplete="name" required minLength={2} maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Name shown to your travel group" className="h-[3.25rem] w-full rounded-2xl border border-line bg-elevated py-3 pl-12 pr-4 text-ink placeholder:text-muted/60" /></div>
               </div>
             )}
             <div>
-              <label htmlFor="email" className="text-sm font-extrabold">Email address</label>
+              <label htmlFor="email" className="text-sm font-extrabold">Email address<RequiredMark /></label>
               <div className="relative mt-2"><Mail className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted" /><input id="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Enter the email you will use for Trip Vault" className="h-[3.25rem] w-full rounded-2xl border border-line bg-elevated py-3 pl-12 pr-4 text-ink placeholder:text-muted/60" /></div>
             </div>
             <div>
-              <label htmlFor="password" className="text-sm font-extrabold">Password</label>
+              <label htmlFor="password" className="text-sm font-extrabold">Password<RequiredMark /></label>
               <div className="relative mt-2">
                 <KeyRound className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted" />
                 <input id="password" type={showPassword ? "text" : "password"} autoComplete={mode === "sign-up" ? "new-password" : "current-password"} required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 8 characters" className="h-[3.25rem] w-full rounded-2xl border border-line bg-elevated py-3 pl-12 pr-14 text-ink placeholder:text-muted/60" />
@@ -120,7 +121,7 @@ export function SignInPage({ admin = false }: { admin?: boolean }) {
             </div>
             {mode === "sign-up" && (
               <div>
-                <label htmlFor="confirm-password" className="text-sm font-extrabold">Confirm password</label>
+                <label htmlFor="confirm-password" className="text-sm font-extrabold">Confirm password<RequiredMark /></label>
                 <div className="relative mt-2">
                   <KeyRound className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted" />
                   <input id="confirm-password" type={showConfirmation ? "text" : "password"} autoComplete="new-password" required minLength={8} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Enter the same password again" className="h-[3.25rem] w-full rounded-2xl border border-line bg-elevated py-3 pl-12 pr-14 text-ink placeholder:text-muted/60" />

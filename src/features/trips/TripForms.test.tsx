@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   listItineraryParticipantIds: vi.fn(),
   updateItineraryItem: vi.fn(),
   addTripCost: vi.fn(),
+  deleteTripPermanently: vi.fn(),
   clearDraft: vi.fn()
 }));
 
@@ -25,7 +26,7 @@ vi.mock("./api", () => ({
   addItineraryItem: vi.fn(),
   addTripCost: mocks.addTripCost,
   archiveTrip: vi.fn(),
-  deleteTripPermanently: vi.fn(),
+  deleteTripPermanently: mocks.deleteTripPermanently,
   deleteTripRecoverably: vi.fn(),
   listItinerary: mocks.listItinerary,
   updateItineraryItem: mocks.updateItineraryItem,
@@ -33,7 +34,7 @@ vi.mock("./api", () => ({
   updateTripCost: vi.fn()
 }));
 
-import { AddCostForm, AddItineraryForm } from "./TripForms";
+import { AddCostForm, AddItineraryForm, TripSettingsForm } from "./TripForms";
 
 const trip: Trip = {
   id: "trip-1",
@@ -131,5 +132,27 @@ describe("AddCostForm optional expense splitting", () => {
     render(<MemoryRouter><QueryClientProvider client={queryClient}><AddCostForm trip={{ ...trip, expense_splitting_enabled: true }} travelers={travelers} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
 
     expect(screen.getByRole("radio", { name: "Selected travelers" })).toBeInTheDocument();
+  });
+});
+
+describe("TripSettingsForm permanent deletion", () => {
+  it("clears queries for the deleted trip and leaves the trip page before refreshing the list", async () => {
+    const user = userEvent.setup();
+    const onArchived = vi.fn();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    queryClient.setQueryData(["trip", trip.id], trip);
+    queryClient.setQueryData(["itinerary", trip.id], [item]);
+    queryClient.setQueryData(["trip", "another-trip"], { ...trip, id: "another-trip" });
+    mocks.deleteTripPermanently.mockResolvedValue(undefined);
+
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><TripSettingsForm trip={trip} onClose={vi.fn()} onArchived={onArchived} /></QueryClientProvider></MemoryRouter>);
+
+    await user.type(screen.getByLabelText("Confirm permanent trip deletion"), trip.title);
+    await user.click(screen.getByRole("button", { name: "Permanently delete test trip" }));
+
+    await waitFor(() => expect(onArchived).toHaveBeenCalledOnce());
+    expect(queryClient.getQueryData(["trip", trip.id])).toBeUndefined();
+    expect(queryClient.getQueryData(["itinerary", trip.id])).toBeUndefined();
+    expect(queryClient.getQueryData(["trip", "another-trip"])).toBeDefined();
   });
 });

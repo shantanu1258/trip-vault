@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Trip } from "../features/trips/types";
 import { tripChildNavigationState } from "../features/trips/navigation";
 import type { Requirement } from "../features/workspace/types";
+import { ConfirmDialogProvider } from "../components/ConfirmDialogProvider";
 
 const mocks = vi.hoisted(() => ({
   archiveRequirement: vi.fn(),
@@ -88,9 +89,11 @@ function renderPage(initialEntry: string | { pathname: string; state: unknown } 
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Routes><Route path="/trips/:tripId/readiness" element={<ReadinessPage />} /></Routes>
-      </MemoryRouter>
+      <ConfirmDialogProvider>
+        <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <Routes><Route path="/trips/:tripId/readiness" element={<ReadinessPage />} /></Routes>
+        </MemoryRouter>
+      </ConfirmDialogProvider>
     </QueryClientProvider>
   );
 }
@@ -110,7 +113,6 @@ describe("readiness checklist interactions", () => {
   });
 
   it("checks a task off without opening edit and keeps edit and archive separate", async () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
     renderPage();
 
@@ -124,8 +126,9 @@ describe("readiness checklist interactions", () => {
     expect(screen.queryByRole("region", { name: "Edit task" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Archive Passport ready" }));
+    expect(screen.getByRole("dialog", { name: "Archive task?" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Archive" }));
     await waitFor(() => expect(mocks.archiveRequirement).toHaveBeenCalledWith(requirement));
-    expect(confirm).toHaveBeenCalledWith("Archive Passport ready?");
     expect(screen.queryByRole("region", { name: "Edit task" })).not.toBeInTheDocument();
 
     await user.click(editTask);

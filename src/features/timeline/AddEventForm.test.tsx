@@ -28,10 +28,10 @@ const secondTraveler: Traveler = { id: "traveler-2", trip_id: trip.id, display_n
 const anchor: ItineraryItem = { id: "anchor-1", trip_id: trip.id, booking_id: "hotel-1", title: "Marina hotel · Check in", event_type: "hotel_check_in", starts_at: "2026-09-28T09:30:00.000Z", ends_at: null, timezone: "Asia/Kolkata", location: null, notes: null, applies_to_all_travelers: true, is_all_day: false, timing_mode: "exact", scheduled_date: "2026-09-28", has_explicit_start_time: true, event_status: "planned", created_at: "2026-09-01T00:00:00.000Z" };
 const linkedFlight = { id: "dd406f17-d2c8-4e72-bdea-1f1239c2bded", booking_id: "booking-flight", segment_order: 0, airline_name: "Air India", flight_number: "AI 909", departure_airport_code: "BLR", departure_airport_name: "Bengaluru", arrival_airport_code: "DXB", arrival_airport_name: "Dubai" } as FlightLeg;
 
-function renderForm(withTravelers: Traveler[] = []) {
+function renderForm(withTravelers: Traveler[] = [], tripValue: Trip = trip) {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
   const onClose = vi.fn(); const onAddDocument = vi.fn(); const user = userEvent.setup();
-  render(<QueryClientProvider client={client}><AddEventForm trip={trip} travelers={withTravelers} onClose={onClose} onAddDocument={onAddDocument} /></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><AddEventForm trip={tripValue} travelers={withTravelers} onClose={onClose} onAddDocument={onAddDocument} /></QueryClientProvider>);
   return { user, onClose, onAddDocument };
 }
 
@@ -98,7 +98,7 @@ describe("event form architecture", () => {
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
     await waitFor(() => expect(mocks.addFlightBooking).toHaveBeenCalledWith(expect.objectContaining({ referenceCode: "PNR123", participantScope: "everyone", travelerIds: [], legs: [expect.objectContaining({ airlineName: "Air India", departureCode: "BLR", arrivalCode: "DXB", boardingLeadMinutes: 45, travelerAllocations: [expect.objectContaining({ travelerId: "traveler-1", seat: "14A", boardingGroup: "2" })] })] })));
     await waitFor(() => expect(onAddDocument).toHaveBeenCalledWith(
-      { title: "Flight to Dubai", bookingId: "booking-1", itineraryItemId: "item-1" },
+      { title: "Flight to Dubai", bookingId: "booking-1", itineraryItemId: "item-1", participantScope: "everyone", travelerIds: [] },
       { file: ticket, kind: "flight_ticket" }
     ));
   });
@@ -299,8 +299,8 @@ describe("event form architecture", () => {
     await user.click(screen.getByText("More details"));
     await user.type(screen.getByLabelText("Provider or organization (optional)"), "VFS Global");
     await user.click(screen.getByText("Cost"));
-    await user.click(screen.getByRole("radio", { name: "Add amount" }));
-    await user.type(screen.getByLabelText("Amount"), "2500");
+    expect(screen.queryByRole("radio", { name: /Add later|Free|Add amount/ })).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("Amount (optional)"), "2500");
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
 
     expect(await screen.findByRole("heading", { name: "Visa appointment" })).toBeInTheDocument();
@@ -311,6 +311,28 @@ describe("event form architecture", () => {
       itineraryItemId: "item-1",
       amountMinor: 250000
     }));
+  });
+
+  it("keeps an event cost optional and hides traveler splitting while the trip setting is off", async () => {
+    const { user } = renderForm([travelers[0], secondTraveler], { ...trip, expense_splitting_enabled: false });
+    await user.click(screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i }));
+    await user.click(screen.getByText("Cost"));
+
+    expect(screen.getByText(/leave it blank and add the cost from the event later/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Amount (optional)")).not.toBeRequired();
+    await user.click(screen.getByText("Payment and sharing (optional)"));
+    expect(screen.queryByRole("radio", { name: "Split among everyone" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Choose people" })).not.toBeInTheDocument();
+  });
+
+  it("shows traveler split choices in an event cost only when the trip setting is on", async () => {
+    const { user } = renderForm([travelers[0], secondTraveler], { ...trip, expense_splitting_enabled: true });
+    await user.click(screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i }));
+    await user.click(screen.getByText("Cost"));
+    await user.click(screen.getByText("Payment and sharing (optional)"));
+
+    expect(screen.getByRole("radio", { name: "Split among everyone" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Choose people" })).toBeInTheDocument();
   });
 
   it("keeps a relative activity duration and only exposes booking fields after Booked is selected", async () => {

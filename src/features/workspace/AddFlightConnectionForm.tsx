@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, PlaneTakeoff } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { ModalSheet } from "../../components/ModalSheet";
+import { RequiredMark } from "../../components/RequiredMark";
 import { AirlinePicker } from "../metadata/AirlinePicker";
 import { AirportPicker } from "../metadata/AirportPicker";
 import { getErrorMessage } from "../trips/presentation";
@@ -85,7 +86,7 @@ export function AddFlightConnectionForm({ trip, booking, lastLeg, onClose }: { t
   return <ModalSheet eyebrow={booking.title} title="Add a connecting flight" onClose={onClose}>
     <p className="mt-3 rounded-2xl bg-brand-soft p-4 text-sm text-muted">The current journey ends at <strong className="text-ink">{lastLeg.arrival_airport_code || lastLeg.arrival_airport_name}</strong> on {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: lastLeg.arrival_timezone }).format(new Date(lastLeg.scheduled_arrival_at))}. The new leg will become the next connection.</p>
     <form className="mt-5 space-y-5" onSubmit={submit}>
-      <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Airline<AirlinePicker /></label><label className="form-label">Flight number<input className="form-input uppercase" name="flightNumber" placeholder="Enter the number printed on the ticket" required /></label></div>
+      <div className="grid gap-4 sm:grid-cols-2"><label className="form-label">Airline<RequiredMark /><AirlinePicker /></label><label className="form-label">Flight number<input className="form-input uppercase" name="flightNumber" placeholder="Enter the number printed on the ticket" required /></label></div>
       <div className="rounded-2xl border border-line bg-elevated p-4"><p className="eyebrow">From airport</p><p className="mt-2 font-display text-lg font-black">{lastLeg.arrival_airport_code || lastLeg.arrival_airport_name}</p><p className="mt-1 text-sm text-muted">Fixed to the previous flight's arrival so this journey stays connected.</p></div>
       <input type="hidden" name="departureName" value={lastLeg.arrival_airport_name} />
       <input type="hidden" name="departureCode" value={lastLeg.arrival_airport_code ?? ""} />

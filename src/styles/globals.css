@@ -98,6 +98,11 @@ textarea:focus-visible {
     @apply block text-sm font-extrabold text-ink;
   }
 
+  .form-label:has(input:required, select:required, textarea:required):not(:has(.required-mark))::before {
+    content: "*";
+    @apply mr-0.5 text-danger;
+  }
+
   .form-input {
     @apply mt-2 block min-h-11 w-full min-w-0 max-w-full rounded-xl border border-line bg-elevated px-3.5 py-2.5 text-sm font-medium text-ink placeholder:text-muted/70 disabled:cursor-not-allowed disabled:opacity-50;
   }
@@ -110,9 +115,22 @@ textarea:focus-visible {
     @apply tap-target inline-flex items-center gap-2 rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm font-extrabold text-ink hover:border-brand/40 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
+  .document-page .secondary-button.min-h-9 {
+    min-height: 2.75rem;
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .document-page .secondary-button .lucide-pencil {
+    width: 1.125rem;
+    height: 1.125rem;
+    flex: none;
+  }
+
   .hero-action {
     @apply tap-target inline-flex items-center gap-2 rounded-xl border border-surface/20 bg-surface/10 px-4 py-2.5 text-sm font-extrabold text-surface transition-colors hover:bg-surface/20;
   }
+
 }
 
 @keyframes page-enter {

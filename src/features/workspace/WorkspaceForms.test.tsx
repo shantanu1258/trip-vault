@@ -399,18 +399,21 @@ describe("Upload document flow", () => {
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
     const ticket = new window.File(["%PDF-flight-ticket"], "cleartrip-ticket.pdf", { type: "application/pdf" });
     const user = userEvent.setup();
-    render(<MemoryRouter><QueryClientProvider client={queryClient}><UploadDocumentForm trip={trip} travelers={travelers} bookingId="booking-flight" contextTitle="Flight to Dubai" initialFile={ticket} initialKind="flight_ticket" onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><UploadDocumentForm trip={trip} travelers={travelers} bookingId="booking-flight" contextTitle="Flight to Dubai" initialFile={ticket} initialKind="flight_ticket" assignmentPreset={{ mode: "selected", travelerIds: ["asha", "ravi"] }} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
 
     expect(screen.getByRole("region", { name: "Finish attaching flight document" })).toBeInTheDocument();
     expect(screen.getByText("Flight saved safely")).toBeInTheDocument();
     expect(screen.getByText("cleartrip-ticket.pdf")).toBeInTheDocument();
     expect(screen.getByLabelText("Document type")).toHaveValue("flight_ticket");
+    expect(screen.queryByRole("group", { name: "Who is it for?" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Document travelers")).toHaveTextContent("Asha, Ravi");
     await user.click(screen.getByRole("button", { name: /Save to Vault/i }));
 
     await waitFor(() => expect(mocks.uploadDocument).toHaveBeenCalledWith(expect.objectContaining({
       bookingId: "booking-flight",
       purpose: "ticket",
-      assignmentMode: "shared",
+      assignmentMode: "selected",
+      travelerIds: ["asha", "ravi"],
       file: ticket
     })));
   });

@@ -12,8 +12,10 @@ import { type Requirement, type RequirementStatus } from "../features/workspace/
 import { localProfileId } from "../features/sync/localSync";
 import { readTravelerFocus, requirementAudienceLabel, requirementMatchesTraveler } from "../features/workspace/travelerFocus";
 import { tripReturnNavigation } from "../features/trips/navigation";
+import { useConfirmDialog } from "../components/ConfirmDialogProvider";
 
 export function ReadinessPage() {
+  const confirm = useConfirmDialog();
   const { tripId = "" } = useParams(); const locationState = useLocation().state; const queryClient = useQueryClient(); const [adding, setAdding] = useState(false); const [editing, setEditing] = useState<Requirement | null>(null); const [userId, setUserId] = useState(""); const [statusMessage, setStatusMessage] = useState("");
   useEffect(() => { void localProfileId().then((profileId) => setUserId(profileId ?? "")); }, []);
   const tripQuery = useQuery({ queryKey: ["trip", tripId], queryFn: () => getTrip(tripId), enabled: Boolean(tripId) });
@@ -116,7 +118,7 @@ export function ReadinessPage() {
                           <button type="button" className="tap-target grid size-11 place-items-center rounded-xl text-muted hover:bg-elevated hover:text-ink" onClick={() => setEditing(item)} aria-label={`Edit ${item.title}`}>
                             <Pencil className="size-4" />
                           </button>
-                          <button type="button" className="tap-target grid size-11 place-items-center rounded-xl text-muted hover:bg-danger/10 hover:text-danger" disabled={archive.isPending} onClick={() => window.confirm(`Archive ${item.title}?`) && archive.mutate(item)} aria-label={`Archive ${item.title}`}>
+                          <button type="button" className="tap-target grid size-11 place-items-center rounded-xl text-muted hover:bg-danger/10 hover:text-danger" disabled={archive.isPending} onClick={async () => { if (await confirm({ title: "Archive task?", message: `Archive ${item.title}?`, confirmLabel: "Archive", tone: "danger" })) archive.mutate(item); }} aria-label={`Archive ${item.title}`}>
                             <Archive className="size-4" />
                           </button>
                         </div>

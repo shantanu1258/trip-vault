@@ -33,7 +33,7 @@ vi.mock("./participantSync", () => ({
   queueBookingParticipantSync: vi.fn()
 }));
 
-import { cleanupQueuedTripDocuments, createTrip, deleteTripPermanently, linkBookingToItineraryItem } from "./api";
+import { cleanupQueuedTripDocuments, createTrip, deleteTripPermanently, getTrip, linkBookingToItineraryItem } from "./api";
 import type { ItineraryItem, Trip } from "./types";
 
 describe("trip creation", () => {
@@ -63,6 +63,21 @@ describe("trip creation", () => {
     }));
     expect(trip).toEqual(expect.objectContaining({ version: 1, deleted_at: null }));
     expect(mocks.cacheEntity).toHaveBeenCalledWith("trips", trip);
+  });
+});
+
+describe("trip lookup", () => {
+  it("treats a deleted or inaccessible trip as a normal empty result instead of a 406 single-row response", async () => {
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+    const is = vi.fn().mockReturnValue({ maybeSingle });
+    const eq = vi.fn().mockReturnValue({ is });
+    const select = vi.fn().mockReturnValue({ eq });
+    mocks.from.mockReturnValue({ select });
+
+    await expect(getTrip("deleted-trip")).rejects.toThrow("This trip no longer exists or you no longer have access to it.");
+
+    expect(maybeSingle).toHaveBeenCalledOnce();
   });
 });
 

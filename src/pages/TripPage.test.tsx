@@ -27,13 +27,15 @@ const mocks = vi.hoisted(() => ({
   listTripRequirementAssignees: vi.fn().mockResolvedValue([]),
   listVaultDocuments: vi.fn().mockResolvedValue([]),
   attachDocumentsToEvent: vi.fn().mockResolvedValue(undefined),
-  updateRequirementStatus: vi.fn().mockResolvedValue(undefined)
+  uploadDocument: vi.fn().mockResolvedValue({ id: "document-auto" }),
+  updateRequirementStatus: vi.fn().mockResolvedValue(undefined),
+  updateTripExpenseSplitting: vi.fn()
 }));
 
 vi.mock("../components/AppShell", () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("../components/ModalSheet", () => ({ ModalSheet: ({ children, title, onClose }: { children: React.ReactNode; title: string; onClose: () => void }) => <section aria-label={title}><button type="button" onClick={onClose}>Back</button>{children}</section> }));
 vi.mock("../features/readiness/OfflinePackControl", () => ({ OfflinePackControl: () => null }));
-vi.mock("../features/timeline/AddEventForm", () => ({ AddEventForm: ({ onAddDocument }: { onAddDocument?: (saved: { title: string; itineraryItemId: string; bookingId?: string }, handoff?: { file?: File; kind?: "flight_ticket" }) => void }) => <section aria-label="Add event test form"><button type="button" onClick={() => onAddDocument?.({ title: "Bus to Kuala Lumpur", itineraryItemId: "saved-event", bookingId: "booking-1" })}>Add official document</button><button type="button" onClick={() => onAddDocument?.({ title: "Flight to Dubai", itineraryItemId: "saved-flight", bookingId: "booking-flight" }, { file: new File(["%PDF-ticket"], "flight-ticket.pdf", { type: "application/pdf" }), kind: "flight_ticket" })}>Save flight with selected document</button></section> }));
+vi.mock("../features/timeline/AddEventForm", () => ({ AddEventForm: ({ onAddDocument }: { onAddDocument?: (saved: { title: string; itineraryItemId: string; bookingId?: string; participantScope: "everyone" | "selected"; travelerIds: string[] }, handoff?: { file?: File; kind?: "flight_ticket" }) => void | Promise<void> }) => <section aria-label="Add event test form"><button type="button" onClick={() => onAddDocument?.({ title: "Bus to Kuala Lumpur", itineraryItemId: "saved-event", bookingId: "booking-1", participantScope: "everyone", travelerIds: [] })}>Add official document</button><button type="button" onClick={() => onAddDocument?.({ title: "Flight to Dubai", itineraryItemId: "saved-flight", bookingId: "booking-flight", participantScope: "everyone", travelerIds: [] }, { file: new File(["%PDF-ticket"], "flight-ticket.pdf", { type: "application/pdf" }), kind: "flight_ticket" })}>Save flight with selected document</button></section> }));
 vi.mock("../features/sync/localSync", () => ({ localProfileId: vi.fn().mockResolvedValue("owner-user") }));
 vi.mock("../features/trips/api", async () => {
   const actual = await vi.importActual<typeof import("../features/trips/api")>("../features/trips/api");
@@ -42,7 +44,8 @@ vi.mock("../features/trips/api", async () => {
     getTrip: mocks.getTrip,
     listArchivedTripItems: mocks.listArchivedTripItems,
     listCosts: mocks.listCosts,
-    listItinerary: mocks.listItinerary
+    listItinerary: mocks.listItinerary,
+    updateTripExpenseSplitting: mocks.updateTripExpenseSplitting
   };
 });
 vi.mock("../features/workspace/EventDocuments", () => ({
@@ -75,6 +78,7 @@ vi.mock("../features/workspace/api", async () => {
     listTripItineraryParticipants: mocks.listTripItineraryParticipants,
     listTripRequirementAssignees: mocks.listTripRequirementAssignees,
     listVaultDocuments: mocks.listVaultDocuments,
+    uploadDocument: mocks.uploadDocument,
     updateRequirementStatus: mocks.updateRequirementStatus
   };
 });
@@ -89,7 +93,9 @@ afterEach(() => {
   mocks.listJourneyLegTravelers.mockReset().mockResolvedValue([]);
   mocks.listVaultDocuments.mockReset().mockResolvedValue([]);
   mocks.attachDocumentsToEvent.mockReset().mockResolvedValue(undefined);
+  mocks.uploadDocument.mockReset().mockResolvedValue({ id: "document-auto" });
   mocks.updateRequirementStatus.mockReset().mockResolvedValue(undefined);
+  mocks.updateTripExpenseSplitting.mockReset().mockImplementation(async (trip: Trip, enabled: boolean) => ({ ...trip, expense_splitting_enabled: enabled }));
 });
 
 const activity: ItineraryItem = {
@@ -401,9 +407,15 @@ describe("trip expense summary", () => {
       </QueryClientProvider>
     );
 
-    await userEvent.click(await screen.findByRole("button", { name: "Open itemized trip expenses" }));
+    const openExpenses = await screen.findByRole("button", { name: "Open itemized trip expenses" });
+    expect(screen.queryByRole("checkbox", { name: /^Enable expense splitting/ })).not.toBeInTheDocument();
+    await userEvent.click(openExpenses);
 
-    expect(screen.getByRole("region", { name: "Trip expenses" })).toBeInTheDocument();
+    const summary = screen.getByRole("region", { name: "Trip expenses" });
+    const splitting = within(summary).getByRole("checkbox", { name: /^Enable expense splitting/ });
+    expect(splitting).toBeInTheDocument();
+    await userEvent.click(splitting);
+    await waitFor(() => expect(mocks.updateTripExpenseSplitting).toHaveBeenCalledWith(ownerTrip, true));
   });
 });
 
@@ -827,7 +839,7 @@ describe("new event document handoff", () => {
     await waitFor(() => expect(mocks.attachDocumentsToEvent).toHaveBeenCalledWith(savedEvent, ["document-1"]));
   });
 
-  it("carries a flight ticket selected during creation into the safe upload step", async () => {
+  it("persists a flight ticket selected during creation without reopening the document form", async () => {
     const savedFlight: ItineraryItem = { ...activity, id: "saved-flight", booking_id: "booking-flight", title: "Flight to Dubai", event_type: "flight" };
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listItinerary.mockResolvedValue([savedFlight]);
@@ -837,13 +849,18 @@ describe("new event document handoff", () => {
     render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/trips/trip-1?add=event"]}><Routes><Route path="/trips/:tripId" element={<TripPage />} /></Routes></MemoryRouter></QueryClientProvider>);
 
     await userEvent.click(await screen.findByRole("button", { name: "Save flight with selected document" }));
-    const upload = screen.getByRole("region", { name: "Upload official document" });
-    expect(upload).toHaveAttribute("data-booking-id", "booking-flight");
-    expect(upload).toHaveAttribute("data-context-title", "Flight to Dubai");
-    expect(upload).toHaveAttribute("data-initial-file", "flight-ticket.pdf");
-    expect(upload).toHaveAttribute("data-initial-kind", "flight_ticket");
-    await userEvent.click(within(upload).getByRole("button", { name: "Complete test upload" }));
-
-    await waitFor(() => expect(mocks.attachDocumentsToEvent).toHaveBeenCalledWith(savedFlight, ["document-1"]));
+    await waitFor(() => expect(mocks.uploadDocument).toHaveBeenCalledWith(expect.objectContaining({
+      tripId: "trip-1",
+      title: "Flight ticket · Everyone · Flight to Dubai",
+      category: "flight",
+      purpose: "ticket",
+      assignmentMode: "shared",
+      visibility: "trip",
+      travelerIds: [],
+      bookingId: "booking-flight",
+      file: expect.objectContaining({ name: "flight-ticket.pdf" })
+    })));
+    expect(screen.queryByRole("region", { name: "Upload official document" })).not.toBeInTheDocument();
+    await waitFor(() => expect(mocks.attachDocumentsToEvent).toHaveBeenCalledWith(savedFlight, ["document-auto"]));
   });
 });

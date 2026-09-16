@@ -3,6 +3,7 @@ import { CloudUpload, FilePlus2, Loader2, RefreshCw, Trash2 } from "lucide-react
 import { useMemo, useState, type FormEvent } from "react";
 import { ModalSheet } from "../../components/ModalSheet";
 import { FileDropzone } from "../../components/FileDropzone";
+import { useConfirmDialog } from "../../components/ConfirmDialogProvider";
 import { localProfileId } from "../sync/localSync";
 import { listTrips } from "../trips/api";
 import { getErrorMessage } from "../trips/presentation";
@@ -11,6 +12,7 @@ import { documentKind, documentKinds, suggestedDocumentTitle, type DocumentKind 
 import type { AccountDocumentUpload, DocumentAssignmentMode, DocumentVisibility } from "./types";
 
 export function DocumentInboxPanel() {
+  const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const uploads = useQuery({ queryKey: ["account-document-uploads"], queryFn: listAccountDocumentUploads });
   const trips = useQuery({ queryKey: ["trips"], queryFn: () => listTrips() });
@@ -73,7 +75,7 @@ export function DocumentInboxPanel() {
                 ? "cloud action required"
                 : "cloud upload pending";
         return <div className="rounded-2xl bg-elevated p-4" key={upload.id}>
-          <div className="flex items-start gap-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-extrabold">{upload.original_filename}</p><p className="mt-1 text-xs text-muted">{(upload.byte_size / 1_000_000).toFixed(2)} MB · {cloudStatus}</p>{needsOriginalFile && <p className="mt-2 text-xs font-bold leading-5 text-warning">This device does not have the original file. Delete this unfinished entry and select the file again here, or retry on the device where it was added.</p>}</div><button type="button" className="tap-target grid size-9 place-items-center text-danger" disabled={remove.isPending} onClick={() => window.confirm(`Delete ${upload.original_filename} permanently?`) && remove.mutate(upload)} aria-label={`Delete ${upload.original_filename}`}><Trash2 className="size-4" /></button></div>
+          <div className="flex items-start gap-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-extrabold">{upload.original_filename}</p><p className="mt-1 text-xs text-muted">{(upload.byte_size / 1_000_000).toFixed(2)} MB · {cloudStatus}</p>{needsOriginalFile && <p className="mt-2 text-xs font-bold leading-5 text-warning">This device does not have the original file. Delete this unfinished entry and select the file again here, or retry on the device where it was added.</p>}</div><button type="button" className="tap-target grid size-9 place-items-center text-danger" disabled={remove.isPending} onClick={async () => { if (await confirm({ title: "Delete unfinished upload?", message: `Delete ${upload.original_filename} permanently?`, confirmLabel: "Delete", tone: "danger" })) remove.mutate(upload); }} aria-label={`Delete ${upload.original_filename}`}><Trash2 className="size-4" /></button></div>
           <div className="mt-3 flex flex-wrap items-center gap-2">{upload.association_pending ? <span className="rounded-full bg-brand-soft px-3 py-2 text-xs font-bold text-brand">Trip details saved</span> : upload.stored_at && <button type="button" className="secondary-button min-h-9 px-3 py-2 text-xs" onClick={() => openAssociation(upload)}>Attach to trip</button>}{upload.sync_state === "queued" && (upload.can_retry || canCheckCloud) && <button type="button" className="secondary-button min-h-9 px-3 py-2 text-xs" disabled={retry.isPending || !navigator.onLine} onClick={() => retry.mutate(upload.id)}><RefreshCw className="size-3.5" /> {upload.association_pending ? "Finish association" : upload.can_retry ? "Retry cloud" : "Check cloud"}</button>}</div>
         </div>;
       })}{uploads.isLoading && <p className="flex items-center gap-2 text-sm text-muted"><Loader2 className="size-4 animate-spin" /> Opening inbox</p>}{uploads.data?.length === 0 && <p className="text-sm text-muted">No unfinished uploads.</p>}</div>
