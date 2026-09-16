@@ -260,6 +260,7 @@ export function TripPage() {
   const [costReturnsToExpenses, setCostReturnsToExpenses] = useState(false);
   const [costTargetItem, setCostTargetItem] = useState<ItineraryItem | null>(null);
   const [documentTargetItem, setDocumentTargetItem] = useState<DocumentUploadTarget | null>(null);
+  const [documentToAttach, setDocumentToAttach] = useState<{ id: string; title: string } | null>(null);
   const [eventBookingTarget, setEventBookingTarget] = useState<ItineraryItem | null>(null);
   const [focusedTravelerId, setFocusedTravelerId] = useState<string | null>(() => readTravelerFocus(tripId));
   const [travelerAnnouncement, setTravelerAnnouncement] = useState("");
@@ -398,7 +399,7 @@ export function TripPage() {
     setSearchParams(nextParams, { state: tripIntentNavigationState(location.state, tripId, "current", { view: "timeline" }) });
   };
   const closeForm = () => {
-    setOpenForm(null); setCostTargetItem(null); setDocumentTargetItem(null);
+    setOpenForm(null); setCostTargetItem(null); setDocumentTargetItem(null); setDocumentToAttach(null);
     if (!searchParams.has("add")) return;
     const next = new URLSearchParams(searchParams); next.delete("add");
     setSearchParams(next, { replace: true, state: tripEntryNavigationState(location.state, tripId, view) });
@@ -557,35 +558,39 @@ export function TripPage() {
   {trip && showingExpenses && <TripExpensesSheet title={focusedTraveler ? `${focusedTraveler.display_name}'s trip expenses` : "Trip expenses"} costs={visibleCosts} balances={balances} travelers={travelers} onClose={() => { setShowingExpenses(false); setViewingCost(null); setCostReturnsToExpenses(false); }} onViewCost={(cost) => { setShowingExpenses(false); setCostReturnsToExpenses(true); setViewingCost(cost); }} expenseSplittingControl={editable ? <><label className="flex min-h-16 cursor-pointer items-center justify-between gap-4 p-4 text-sm"><span><strong className="block">Enable expense splitting</strong><span className="mt-1 block text-xs leading-5 text-muted">Choose specific travelers for each cost. When off, every cost applies equally to everyone.</span></span><input type="checkbox" className="size-5 shrink-0 accent-brand" checked={Boolean(trip.expense_splitting_enabled)} disabled={updateExpenseSplitting.isPending} onChange={(event) => updateExpenseSplitting.mutate({ trip, enabled: event.target.checked })} /></label>{updateExpenseSplitting.error && <p role="alert" className="border-t border-line bg-danger/10 p-3 text-sm font-bold text-danger">{getErrorMessage(updateExpenseSplitting.error)}</p>}</> : undefined} />}
   {trip && viewingItinerary && <EventDetailsSheet item={viewingItinerary} itinerary={visibleItinerary} tripId={trip.id} booking={viewingItinerary.booking_id ? visibleBookings.find((booking) => booking.id === viewingItinerary.booking_id) : undefined} flights={flights} flightTravelers={flightTravelers} journeys={journeys} travelerIds={participantRows.filter((row) => row.itinerary_item_id === viewingItinerary.id).map((row) => row.traveler_id)} travelers={travelers} costs={visibleCosts} focusedTravelerId={focusedTravelerId} navigationState={childNavigationState} editable={editable} canMoveUp={viewingItinerary.timing_mode !== "relative" && viewingItineraryIndex > 0 && itinerary[viewingItineraryIndex - 1]?.starts_at === viewingItinerary.starts_at} canMoveDown={viewingItinerary.timing_mode !== "relative" && viewingItineraryIndex >= 0 && itinerary[viewingItineraryIndex + 1]?.starts_at === viewingItinerary.starts_at} onClose={() => setViewingItineraryId(null)} onEdit={() => editTimelineItem(viewingItinerary)} onArchive={async () => { if (await confirm({ title: "Archive event?", message: `Archive ${viewingItinerary.title}? ${viewingItinerary.booking_id ? "Its complete booking group leaves the timeline." : "It leaves the timeline."} Linked documents and costs remain.`, confirmLabel: "Archive", tone: "danger" })) { setViewingItineraryId(null); archiveItinerary.mutate(viewingItinerary); } }} onAddBooking={() => setEventBookingTarget(viewingItinerary)} onAddCost={() => { setCostTargetItem(viewingItinerary); setOpenForm("cost"); }} onViewCost={(cost) => { setCostReturnEventId(viewingItinerary.id); setCostReturnsToExpenses(false); setViewingItineraryId(null); setViewingCost(cost); }} onUploadDocument={() => { const travelerIds = participantRows.filter((row) => row.itinerary_item_id === viewingItinerary.id).map((row) => row.traveler_id); setDocumentTargetItem({ ...viewingItinerary, assignmentPreset: { mode: viewingItinerary.applies_to_all_travelers ? "shared" : "selected", travelerIds } }); setOpenForm("document"); }} onStatus={(status) => updateEventStatus.mutate({ item: viewingItinerary, status })} onMoveUp={() => reorderItinerary.mutate({ itemId: viewingItinerary.id, direction: "up" })} onMoveDown={() => reorderItinerary.mutate({ itemId: viewingItinerary.id, direction: "down" })} />}
   {viewingCost && <CostDetailsSheet cost={viewingCost} travelers={travelers} itinerary={visibleItinerary} bookings={visibleBookings} editable={editable} onClose={closeCostDetails} onEdit={() => { setViewingCost(null); setCostReturnEventId(null); setCostReturnsToExpenses(false); setEditingCost(viewingCost); }} onArchive={async () => { if (await confirm({ title: "Archive cost?", message: `Archive ${viewingCost.title}? You can restore it from Archived trip items.`, confirmLabel: "Archive", tone: "danger" })) { archiveCost.mutate(viewingCost); closeCostDetails(); } }} />}
-  {trip && openForm === "event" && editable && <AddEventForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} onClose={closeForm} onAddDocument={async (saved, handoff) => {
+  {trip && openForm === "event" && editable && <AddEventForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} documentToAttach={documentToAttach ?? undefined} onClose={closeForm} onAddDocument={async (saved, handoff) => {
     const assignmentPreset: DocumentAssignmentPreset = { mode: saved.participantScope === "everyone" ? "shared" : "selected", travelerIds: saved.travelerIds };
-    if (handoff?.file && handoff.kind) {
-      const kind = documentKind(handoff.kind);
-      let documentId: string;
-      try {
-        suppressRealtimeRefresh(["documents", "account-document-uploads"], 15_000);
-        const document = await uploadDocument({
-          tripId: trip.id,
-          title: suggestedDocumentTitle(handoff.kind, assignmentPreset.mode, assignmentPreset.travelerIds, travelers, saved.title),
-          category: kind.category,
-          purpose: kind.purpose,
-          assignmentMode: assignmentPreset.mode,
-          visibility: "trip",
-          travelerIds: assignmentPreset.travelerIds,
-          bookingId: saved.bookingId,
-          file: handoff.file
-        });
-        documentId = document.id;
-        queryClient.setQueryData<VaultDocument[]>(["documents", trip.id], (items) => upsertById(items, [document]));
-        queryClient.setQueryData<VaultDocument[]>(["documents"], (items) => upsertById(items, [document]));
-      } catch (error) {
-        if (!(error instanceof DuplicateDocumentError)) throw error;
-        documentId = error.existingDocumentId;
+    if (handoff?.documentId || (handoff?.file && handoff.kind)) {
+      let documentId = handoff.documentId;
+      if (!documentId && handoff.file && handoff.kind) {
+        const kind = documentKind(handoff.kind);
+        try {
+          suppressRealtimeRefresh(["documents", "account-document-uploads"], 15_000);
+          const document = await uploadDocument({
+            tripId: trip.id,
+            title: suggestedDocumentTitle(handoff.kind, assignmentPreset.mode, assignmentPreset.travelerIds, travelers, saved.title),
+            category: kind.category,
+            purpose: kind.purpose,
+            assignmentMode: assignmentPreset.mode,
+            visibility: "trip",
+            travelerIds: assignmentPreset.travelerIds,
+            bookingId: saved.bookingId,
+            file: handoff.file
+          });
+          documentId = document.id;
+          queryClient.setQueryData<VaultDocument[]>(["documents", trip.id], (items) => upsertById(items, [document]));
+          queryClient.setQueryData<VaultDocument[]>(["documents"], (items) => upsertById(items, [document]));
+        } catch (error) {
+          if (!(error instanceof DuplicateDocumentError)) throw error;
+          documentId = error.existingDocumentId;
+        }
       }
       const target = itinerary.find((item) => item.id === saved.itineraryItemId) ?? (await listItinerary(trip.id)).find((item) => item.id === saved.itineraryItemId);
       if (!target) throw new Error("The document was saved, but its new timeline event could not be linked. Open the event and attach it from there.");
+      if (!documentId) throw new Error("The document was saved, but it could not be selected for the new event.");
       await attachDocumentsToEvent(target, [documentId]);
       await queryClient.invalidateQueries({ queryKey: ["event-documents", saved.itineraryItemId] });
+      setDocumentToAttach(null);
       return;
     }
     setDocumentTargetItem({ id: saved.itineraryItemId, booking_id: saved.bookingId, title: saved.title, assignmentPreset });
@@ -593,7 +598,7 @@ export function TripPage() {
   }} />}
   {trip && openForm === "people" && <PeopleSheet trip={trip} travelers={travelers} members={members} selectedId={focusedTravelerId} editable={editable} isOwner={isOwner} onSelect={selectTraveler} onEdit={(traveler) => { setOpenForm(null); setEditingTraveler(traveler); }} onAdd={() => setOpenForm("traveler")} onShare={() => setOpenForm("share")} onClose={closePeople} onRefresh={() => void membersQuery.refetch()} />}
   {trip && openForm === "cost" && editable && <AddCostForm trip={trip} travelers={travelers} bookingId={costTargetItem?.booking_id ?? undefined} itineraryItemId={costTargetItem?.id} sourceTitle={costTargetItem?.title} onClose={closeForm} />}
-  {trip && openForm === "document" && <UploadDocumentForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} members={members} privateOnly={!editable} bookingId={documentTargetItem?.booking_id ?? undefined} contextTitle={documentTargetItem?.title} assignmentPreset={documentTargetItem?.assignmentPreset} onUploaded={documentTargetItem ? async (documentId) => { const target = itinerary.find((item) => item.id === documentTargetItem.id) ?? (await listItinerary(trip.id)).find((item) => item.id === documentTargetItem.id); if (!target) throw new Error("The document was saved, but its new timeline event could not be linked. Open the event and attach it from there."); await attachDocumentsToEvent(target, [documentId]); await queryClient.invalidateQueries({ queryKey: ["event-documents", documentTargetItem.id] }); } : undefined} onClose={closeForm} />}
+  {trip && openForm === "document" && <UploadDocumentForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} members={members} privateOnly={!editable} bookingId={documentTargetItem?.booking_id ?? undefined} contextTitle={documentTargetItem?.title} assignmentPreset={documentTargetItem?.assignmentPreset} onUploaded={documentTargetItem ? async (documentId) => { const target = itinerary.find((item) => item.id === documentTargetItem.id) ?? (await listItinerary(trip.id)).find((item) => item.id === documentTargetItem.id); if (!target) throw new Error("The document was saved, but its new timeline event could not be linked. Open the event and attach it from there."); await attachDocumentsToEvent(target, [documentId]); await queryClient.invalidateQueries({ queryKey: ["event-documents", documentTargetItem.id] }); } : undefined} onCreateEvent={editable && !documentTargetItem ? async (document) => { setDocumentToAttach(document); setOpenForm("event"); } : undefined} onClose={closeForm} />}
   {trip && openForm === "traveler" && editable && <AddTravelerForm trip={trip} onClose={closeForm} />}
   {trip && openForm === "share" && isOwner && <ShareTripForm trip={trip} travelers={travelers} onClose={closeForm} />}
   {trip && openForm === "requirement" && editable && <AddRequirementForm trip={trip} travelers={travelers} preferredTravelerId={focusedTravelerId ?? undefined} onClose={closeForm} />}

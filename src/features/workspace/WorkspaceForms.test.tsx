@@ -122,7 +122,7 @@ describe("Upload document flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
-    mocks.uploadDocument.mockResolvedValue({ id: "document-1", sync_state: "synced" });
+    mocks.uploadDocument.mockResolvedValue({ id: "document-1", title: "Other document · Everyone", sync_state: "synced" });
     mocks.listInvitations.mockResolvedValue([]);
     mocks.listAssociatedAccounts.mockResolvedValue([{ user_id: "account-ravi", display_name: "Ravi Singh" }]);
     mocks.createTripMembershipOffer.mockResolvedValue("offer-1");
@@ -200,7 +200,7 @@ describe("Upload document flow", () => {
     const user = userEvent.setup();
     render(<MemoryRouter><QueryClientProvider client={queryClient}><AddRequirementForm trip={trip} travelers={travelers} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
 
-    expect(screen.getByRole("radio", { name: "Everyone" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /^Everyone/ })).toBeChecked();
     await user.click(screen.getByRole("radio", { name: "Selected travelers" }));
     await user.click(screen.getByRole("checkbox", { name: "Ravi" }));
     await user.type(screen.getByLabelText("Task"), "Ravi passport check");
@@ -334,6 +334,7 @@ describe("Upload document flow", () => {
     render(<MemoryRouter><QueryClientProvider client={queryClient}><UploadDocumentForm trip={trip} travelers={travelers} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
 
     expect(screen.getByLabelText("Who can open it?")).toHaveValue("trip");
+    expect(screen.getByRole("radio", { name: /^Everyone/ })).toBeChecked();
     const file = new window.File(["%PDF-shared"], "shared-booking.pdf", { type: "application/pdf" });
     await user.upload(screen.getByLabelText<HTMLInputElement>("File"), file);
     await user.click(screen.getByRole("button", { name: /Save to Vault/i }));
@@ -342,6 +343,20 @@ describe("Upload document flow", () => {
       visibility: "trip",
       file
     })));
+  });
+
+  it("can continue a standalone upload directly into a linked timeline event", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const onCreateEvent = vi.fn();
+    const user = userEvent.setup();
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><UploadDocumentForm trip={trip} travelers={travelers} onCreateEvent={onCreateEvent} onClose={vi.fn()} /></QueryClientProvider></MemoryRouter>);
+
+    const file = new window.File(["%PDF-event"], "museum-ticket.pdf", { type: "application/pdf" });
+    await user.upload(screen.getByLabelText<HTMLInputElement>("File"), file);
+    await user.click(screen.getByRole("checkbox", { name: /Add a timeline event after upload/i }));
+    await user.click(screen.getByRole("button", { name: /Save to Vault/i }));
+
+    await waitFor(() => expect(onCreateEvent).toHaveBeenCalledWith({ id: "document-1", title: "Other document · Everyone" }));
   });
 
   it("lets an editor change an upload from the trip default to private", async () => {
@@ -395,7 +410,7 @@ describe("Upload document flow", () => {
     })));
   });
 
-  it("continues a newly saved flight with its already selected ticket", async () => {
+  it("starts a later event upload with its travelers and lets the user change them", async () => {
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
     const ticket = new window.File(["%PDF-flight-ticket"], "cleartrip-ticket.pdf", { type: "application/pdf" });
     const user = userEvent.setup();
@@ -405,15 +420,18 @@ describe("Upload document flow", () => {
     expect(screen.getByText("Flight saved safely")).toBeInTheDocument();
     expect(screen.getByText("cleartrip-ticket.pdf")).toBeInTheDocument();
     expect(screen.getByLabelText("Document type")).toHaveValue("flight_ticket");
-    expect(screen.queryByRole("group", { name: "Who is it for?" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Document travelers")).toHaveTextContent("Asha, Ravi");
+    expect(screen.getByRole("group", { name: "Who is it for?" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /^Traveler\(s\)/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Asha" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Ravi" })).toBeChecked();
+    await user.click(screen.getByRole("radio", { name: /^Everyone/ }));
     await user.click(screen.getByRole("button", { name: /Save to Vault/i }));
 
     await waitFor(() => expect(mocks.uploadDocument).toHaveBeenCalledWith(expect.objectContaining({
       bookingId: "booking-flight",
       purpose: "ticket",
-      assignmentMode: "selected",
-      travelerIds: ["asha", "ravi"],
+      assignmentMode: "shared",
+      travelerIds: [],
       file: ticket
     })));
   });

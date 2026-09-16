@@ -29,10 +29,10 @@ const secondTraveler: Traveler = { id: "traveler-2", trip_id: trip.id, display_n
 const anchor: ItineraryItem = { id: "anchor-1", trip_id: trip.id, booking_id: "hotel-1", title: "Marina hotel · Check in", event_type: "hotel_check_in", starts_at: "2026-09-28T09:30:00.000Z", ends_at: null, timezone: "Asia/Kolkata", location: null, notes: null, applies_to_all_travelers: true, is_all_day: false, timing_mode: "exact", scheduled_date: "2026-09-28", has_explicit_start_time: true, event_status: "planned", created_at: "2026-09-01T00:00:00.000Z" };
 const linkedFlight = { id: "dd406f17-d2c8-4e72-bdea-1f1239c2bded", booking_id: "booking-flight", segment_order: 0, airline_name: "Air India", flight_number: "AI 909", departure_airport_code: "BLR", departure_airport_name: "Bengaluru", arrival_airport_code: "DXB", arrival_airport_name: "Dubai" } as FlightLeg;
 
-function renderForm(withTravelers: Traveler[] = [], tripValue: Trip = trip) {
+function renderForm(withTravelers: Traveler[] = [], tripValue: Trip = trip, documentToAttach?: { id: string; title: string }) {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
   const onClose = vi.fn(); const onAddDocument = vi.fn(); const user = userEvent.setup();
-  render(<QueryClientProvider client={client}><AddEventForm trip={tripValue} travelers={withTravelers} onClose={onClose} onAddDocument={onAddDocument} /></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><AddEventForm trip={tripValue} travelers={withTravelers} documentToAttach={documentToAttach} onClose={onClose} onAddDocument={onAddDocument} /></QueryClientProvider>);
   return { user, onClose, onAddDocument };
 }
 
@@ -53,6 +53,20 @@ describe("event form architecture", () => {
       "BusCoach, shuttle, or local bus", "CabLocal ride, transfer, or outstation", "Ferry / boatPassenger or vehicle sailing",
       "TrainRail plan, ticket, or connection", "MealLunch, dinner, or reservation"
     ]);
+  });
+
+  it("links a previously uploaded document after its new event is saved", async () => {
+    const { user, onAddDocument } = renderForm([], trip, { id: "document-1", title: "Museum admission · Everyone" });
+    expect(screen.getByText(/Create the timeline event for “Museum admission · Everyone”/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i }));
+    await user.type(screen.getByLabelText("Activity name"), "Museum visit");
+    await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
+
+    await waitFor(() => expect(onAddDocument).toHaveBeenCalledWith(
+      { title: "Museum visit", itineraryItemId: "item-1", participantScope: "everyone", travelerIds: [] },
+      { documentId: "document-1" }
+    ));
+    expect(await screen.findByText("Document linked to this event.")).toBeInTheDocument();
   });
 
   it("keeps hotel times optional, validates checkout, and saves both milestone time flags", async () => {
@@ -127,7 +141,16 @@ describe("event form architecture", () => {
     await user.type(screen.getByLabelText("Timeline title"), "Bus to Kuala Lumpur");
     await user.type(screen.getByLabelText("Bus operator"), "Qistna Express");
     await user.type(screen.getByLabelText("Boarding point"), "Bugis MRT Exit D");
+    await user.type(screen.getByLabelText("Boarding point code (optional)"), "BUG");
     await user.type(screen.getByLabelText("Drop-off point"), "KL Sentral");
+    await user.type(screen.getByLabelText("Drop-off point code (optional)"), "KLS");
+    const routeHeading = screen.getByText("BUG → KLS bus");
+    const routeDetails = routeHeading.closest("details");
+    expect(routeDetails).toHaveAttribute("open");
+    await user.click(routeHeading);
+    expect(routeDetails).not.toHaveAttribute("open");
+    await user.click(routeHeading);
+    expect(screen.getByLabelText("Boarding point")).toHaveValue("Bugis MRT Exit D");
     await user.click(screen.getByText("Traveler ticket details"));
     await user.type(screen.getByLabelText("Seat"), "5");
     expect(screen.queryByLabelText(/Coach|Cabin/)).not.toBeInTheDocument();
