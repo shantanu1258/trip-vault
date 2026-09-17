@@ -132,7 +132,9 @@ describe("alert engine", () => {
       offlineManifests: [{ tripId: "t", state: "stale", checkedAt: "2026-09-01" }],
       conflicts: [{ entityId: "f", entityType: "flights:t" }]
     });
-    expect(alerts.some((alert) => alert.key.startsWith("offline-pack"))).toBe(true);
+    expect(alerts.find((alert) => alert.key.startsWith("offline-pack"))).toMatchObject({
+      target: "/trips/t?view=details&section=offline"
+    });
     expect(alerts.some((alert) => alert.key.startsWith("sync-conflict"))).toBe(true);
   });
   it("alerts for an event-linked task and removes it as soon as it is complete", () => {

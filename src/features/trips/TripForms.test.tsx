@@ -167,11 +167,55 @@ describe("AddItineraryForm participant scope", () => {
     expect(
       screen.getByText(/Pickup, drop-off, route, local times, and traveler seats belong/i)
     ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Event name/i)).toHaveValue("Dinner");
     expect(screen.queryByLabelText("Location (optional)")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open bus booking" })).toHaveAttribute(
       "href",
       `/trips/${trip.id}/bookings/bus-1`
+    );
+  });
+
+  it("edits a flight event name and opens its journey booking for managed details", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    });
+    const flightItem = {
+      ...item,
+      id: "flight-1",
+      booking_id: "flight-booking-1",
+      event_type: "flight" as const,
+      title: "Flight to Delhi",
+      applies_to_all_travelers: true
+    };
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <AddItineraryForm trip={trip} travelers={travelers} item={flightItem} onClose={onClose} />
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+
+    const name = screen.getByLabelText(/Event name/i);
+    await user.clear(name);
+    await user.type(name, "Morning flight to Delhi");
+    await user.click(screen.getByRole("button", { name: "Save event name" }));
+
+    await waitFor(() =>
+      expect(mocks.updateItineraryItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: flightItem.id,
+          bookingId: flightItem.booking_id,
+          eventType: "flight",
+          title: "Morning flight to Delhi"
+        })
+      )
+    );
+    expect(screen.getByRole("link", { name: "Open flight booking" })).toHaveAttribute(
+      "href",
+      `/trips/${trip.id}/bookings/${flightItem.booking_id}`
     );
   });
 });

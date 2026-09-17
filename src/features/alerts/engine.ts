@@ -161,7 +161,7 @@ export function deriveAlerts(
             : "Offline trip needs attention",
         detail: "Open the trip while online and prepare its current plans and documents again.",
         group: "urgent",
-        target: `/trips/${manifest.tripId}`
+        target: `/trips/${manifest.tripId}?view=details&section=offline`
       })
     );
   (input.conflicts ?? []).forEach((conflict) =>

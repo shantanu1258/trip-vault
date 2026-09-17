@@ -138,6 +138,52 @@ export function AddItineraryForm({
     }
   };
 
+  const submitJourneyName = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!item) return;
+    setMessage("");
+    if (!item.applies_to_all_travelers && !participants.isSuccess) {
+      setMessage("Wait for the journey travelers to load before saving its name.");
+      return;
+    }
+    const form = new FormData(event.currentTarget);
+    const parsed = itineraryFormSchema.safeParse({
+      title: form.get("title"),
+      startsAt: item.starts_at,
+      endsAt: item.ends_at ?? undefined,
+      location: item.location?.label ?? item.location?.address,
+      notes: item.notes ?? undefined
+    });
+    if (!parsed.success) {
+      setMessage(firstValidationMessage(parsed.error));
+      return;
+    }
+    mutation.mutate({
+      tripId: trip.id,
+      bookingId: item.booking_id ?? undefined,
+      eventType: item.event_type ?? "custom",
+      title: parsed.data.title,
+      startsAt: item.starts_at,
+      endsAt: item.ends_at ?? undefined,
+      timezone: item.timezone,
+      location: item.location?.label ?? item.location?.address,
+      mapUrl: item.location?.map_url,
+      notes: item.notes ?? undefined,
+      participantScope: item.applies_to_all_travelers ? "everyone" : "selected",
+      travelerIds: item.applies_to_all_travelers ? [] : (participants.data ?? []),
+      isAllDay: item.is_all_day,
+      completedAt: item.completed_at,
+      timingMode: item.timing_mode,
+      scheduledDate: item.scheduled_date ?? undefined,
+      anchorItineraryItemId: item.anchor_itinerary_item_id ?? undefined,
+      relativePosition: item.relative_position ?? undefined,
+      hasExplicitStartTime: item.has_explicit_start_time,
+      durationMinutes: item.duration_minutes ?? undefined,
+      eventStatus: item.event_status,
+      sortKey: item.sort_key
+    });
+  };
+
   if (item?.booking_id && ["hotel_check_in", "hotel_check_out"].includes(item.event_type ?? "")) {
     return (
       <ModalSheet eyebrow={trip.title} title="Edit hotel stay" onClose={onClose}>
@@ -153,23 +199,52 @@ export function AddItineraryForm({
     const bookingLabel = item.event_type === "flight" ? "flight" : item.event_type;
     return (
       <ModalSheet eyebrow={trip.title} title={`Edit ${bookingLabel} journey`} onClose={onClose}>
+        <form className="mt-6 space-y-4" onSubmit={submitJourneyName}>
+          <label className="form-label">
+            Event name
+            <RequiredMark />
+            <input
+              autoFocus
+              className="form-input"
+              name="title"
+              defaultValue={item.title}
+              placeholder="Name this journey on the timeline"
+            />
+            <span className="mt-1 block text-xs font-normal leading-5 text-muted">
+              This changes the name shown on the timeline without changing the route or booking.
+            </span>
+          </label>
+          {(message || mutation.error || participants.error) && (
+            <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">
+              {message || getErrorMessage(mutation.error || participants.error)}
+            </p>
+          )}
+          <button
+            className="primary-button w-full"
+            type="submit"
+            disabled={
+              mutation.isPending || (!item.applies_to_all_travelers && participants.isLoading)
+            }
+          >
+            {mutation.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Save className="size-4" />
+            )}{" "}
+            Save event name
+          </button>
+        </form>
         <div className="mt-6 rounded-2xl bg-brand-soft p-4 text-sm leading-6 text-muted">
           <p>
             Pickup, drop-off, route, local times, and traveler seats belong to the journey booking,
             not to a separate timeline location.
           </p>
-          {item.event_type === "flight" ? (
-            <p className="mt-2 font-bold text-ink">
-              Open the flight details from this event to change its route or airport information.
-            </p>
-          ) : (
-            <Link
-              className="primary-button mt-4 w-full"
-              to={`/trips/${trip.id}/bookings/${item.booking_id}`}
-            >
-              <TicketCheck className="size-4" /> Open {bookingLabel} booking
-            </Link>
-          )}
+          <Link
+            className="primary-button mt-4 w-full"
+            to={`/trips/${trip.id}/bookings/${item.booking_id}`}
+          >
+            <TicketCheck className="size-4" /> Open {bookingLabel} booking
+          </Link>
         </div>
       </ModalSheet>
     );
