@@ -39,7 +39,7 @@ import type { Booking } from "../workspace/types";
 const itinerarySelect =
   "id,trip_id,booking_id,title,event_type,starts_at,ends_at,timezone,location,notes,applies_to_all_travelers,is_all_day,completed_at,timing_mode,scheduled_date,anchor_itinerary_item_id,relative_position,has_explicit_start_time,duration_minutes,event_status,sort_key,version,created_at,updated_at,deleted_at";
 const costSelect =
-  "id,trip_id,booking_id,itinerary_item_id,title,category,amount_minor,currency_code,payment_status,paid_by_traveler_id,notes,version,created_at,updated_at,deleted_at,trip_cost_participants(traveler_id,share_amount_minor)";
+  "id,trip_id,booking_id,itinerary_item_id,cab_stop_id,title,category,amount_minor,currency_code,payment_status,paid_by_traveler_id,notes,version,created_at,updated_at,deleted_at,trip_cost_participants(traveler_id,share_amount_minor)";
 const tripSelect =
   "id,title,destination_summary,start_date,end_date,primary_timezone,base_currency,expense_splitting_enabled,status,version,created_at,updated_at,deleted_at";
 
@@ -1207,6 +1207,7 @@ export async function addTripCost(input: CreateCostInput): Promise<TripCost> {
     trip_id: input.tripId,
     booking_id: input.bookingId || null,
     itinerary_item_id: input.itineraryItemId || null,
+    cab_stop_id: input.cabStopId || null,
     title: input.title,
     category: input.category,
     amount_minor: input.amountMinor,
@@ -1225,11 +1226,25 @@ export async function addTripCost(input: CreateCostInput): Promise<TripCost> {
     paid_by: input.paymentStatus === "paid" ? userId : null
   };
   if (!navigator.onLine) {
+    const { database } = await import("../../lib/local-db/database");
+    const cabStopOperation = input.cabStopId
+      ? await database.outbox
+          .where("entityId")
+          .equals(input.cabStopId)
+          .filter(
+            (operation) =>
+              operation.operation === "create" &&
+              (operation.payload as { table?: string } | undefined)?.table === "cab_stops"
+          )
+          .first()
+      : undefined;
     const parent = await queueCreate({
       entityType: `costs:${input.tripId}`,
       table: "trip_costs",
       row,
-      dependsOn: input.dependsOn
+      dependsOn: [cabStopOperation?.operationId, ...(input.dependsOn ?? [])].filter(
+        (id): id is string => Boolean(id)
+      )
     });
     for (const participant of participants)
       await queueCreate({
@@ -1248,6 +1263,7 @@ export async function addTripCost(input: CreateCostInput): Promise<TripCost> {
       trip_id: input.tripId,
       booking_id: input.bookingId || null,
       itinerary_item_id: input.itineraryItemId || null,
+      cab_stop_id: input.cabStopId || null,
       title: input.title,
       category: input.category,
       amount_minor: input.amountMinor,
@@ -1280,6 +1296,7 @@ export async function updateTripCost(input: UpdateCostInput): Promise<TripCost> 
   const patch = {
     booking_id: input.bookingId || existing.booking_id || null,
     itinerary_item_id: input.itineraryItemId || existing.itinerary_item_id || null,
+    cab_stop_id: input.cabStopId || existing.cab_stop_id || null,
     title: input.title,
     category: input.category,
     amount_minor: input.amountMinor,

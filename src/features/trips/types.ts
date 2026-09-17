@@ -91,6 +91,7 @@ export type TripCost = {
   trip_id: string;
   booking_id?: string | null;
   itinerary_item_id: string | null;
+  cab_stop_id?: string | null;
   title: string;
   category: CostCategory;
   amount_minor: number;
@@ -192,6 +193,7 @@ export type CreateCostInput = {
   tripId: string;
   bookingId?: string;
   itineraryItemId?: string;
+  cabStopId?: string;
   title: string;
   category: CostCategory;
   amountMinor: number;

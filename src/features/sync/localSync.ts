@@ -210,6 +210,7 @@ export async function queueUpdate<T extends { id: string }>(input: {
   row: T;
   patch: Record<string, unknown>;
   baseVersion?: number;
+  dependsOn?: string[];
 }) {
   const profileId = await localProfileId();
   if (!profileId) throw new Error("Sign in online once before saving offline.");
@@ -223,7 +224,7 @@ export async function queueUpdate<T extends { id: string }>(input: {
     operation: "update",
     payload: { table: input.table, patch: input.patch },
     baseVersion: input.baseVersion,
-    dependsOn: [],
+    dependsOn: input.dependsOn ?? [],
     attemptCount: 0,
     createdAt: new Date().toISOString()
   });

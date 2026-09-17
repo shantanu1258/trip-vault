@@ -15,7 +15,7 @@ declare
     'trip_requirements', 'requirement_assignees', 'trip_costs', 'trip_cost_participants', 'reminders', 'alert_states',
     'activity_events', 'config_releases', 'airline_catalog_entries', 'airport_catalog_entries',
     'booking_vendor_catalog_entries', 'catalog_suggestions', 'journey_legs', 'journey_leg_travelers',
-    'trip_membership_offers',
+    'cab_stops', 'trip_membership_offers',
     'metadata_defaults', 'theme_palettes', 'config_audit_events'
   ];
   expected_table_name text;
@@ -442,6 +442,16 @@ begin
     where table_schema = 'public' and table_name = 'trip_costs' and column_name = 'paid_by_traveler_id'
   ) then
     raise exception 'Trip expense payer support is missing';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'trip_costs' and column_name = 'cab_stop_id'
+  ) or not exists (
+    select 1 from pg_trigger where tgname = 'cab_stop_context' and not tgisinternal
+  ) or not exists (
+    select 1 from pg_trigger where tgname = 'trip_cost_cab_stop' and not tgisinternal
+  ) then
+    raise exception 'Ordered cab stops or stop-specific cost validation is missing';
   end if;
   if not exists (
     select 1 from information_schema.columns

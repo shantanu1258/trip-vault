@@ -7,6 +7,7 @@ import type { FlightLeg, Traveler } from "../workspace/types";
 
 const mocks = vi.hoisted(() => ({
   addBookedTimelineEvent: vi.fn(),
+  addCabStop: vi.fn(),
   addFlightBooking: vi.fn(),
   addItineraryItem: vi.fn(),
   addJourneyBooking: vi.fn(),
@@ -101,6 +102,7 @@ vi.mock("../trips/api", () => ({
 }));
 vi.mock("../workspace/api", () => ({
   addBookedTimelineEvent: mocks.addBookedTimelineEvent,
+  addCabStop: mocks.addCabStop,
   addFlightBooking: mocks.addFlightBooking,
   addJourneyBooking: mocks.addJourneyBooking,
   listFlightLegsForTrip: mocks.listFlightLegsForTrip,
@@ -215,9 +217,10 @@ describe("event form architecture", () => {
     });
     mocks.addJourneyBooking.mockResolvedValue({
       booking: { id: "booking-1" },
-      legs: [],
+      legs: [{ id: "journey-leg-1" }],
       itinerary: { ...anchor, id: "item-1" }
     });
+    mocks.addCabStop.mockResolvedValue({ id: "cab-stop-1" });
     mocks.listFlightLegsForTrip.mockResolvedValue([linkedFlight]);
     mocks.saveOptionalCostForCreatedEvent.mockResolvedValue(undefined);
     mocks.setItineraryItemStatus.mockResolvedValue(undefined);
@@ -764,6 +767,41 @@ describe("event form architecture", () => {
     expect(screen.queryByRole("button", { name: "Event time zone" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pickup time zone" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Drop-off time zone" })).toBeInTheDocument();
+  });
+
+  it("adds ordered optional stops and their costs to one cab journey", async () => {
+    const { user } = renderForm();
+    await user.click(
+      screen.getByRole("button", { name: /Cab Local ride, transfer, or outstation/i })
+    );
+    await user.type(screen.getByLabelText("Timeline title"), "Cab for the day");
+    await user.type(screen.getByLabelText("Pickup"), "Hotel");
+    await user.type(screen.getByLabelText("Drop-off"), "Hotel");
+    await user.click(screen.getByRole("button", { name: "Add stop" }));
+    await user.type(screen.getByLabelText(/Stop name/), "Museum");
+    await user.type(screen.getByLabelText("Place"), "National Museum");
+    await user.type(screen.getByLabelText("Extra cost (optional)"), "500");
+    await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
+
+    await waitFor(() =>
+      expect(mocks.addCabStop).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tripId: trip.id,
+          journeyLegId: "journey-leg-1",
+          stopOrder: 100,
+          title: "Museum",
+          location: "National Museum"
+        })
+      )
+    );
+    expect(mocks.saveOptionalCostForCreatedEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cabStopId: "cab-stop-1",
+        title: "Museum cost",
+        amountMinor: 50000,
+        currencyCode: "INR"
+      })
+    );
   });
 
   it("links an airport-transfer cab using a readable flight picker", async () => {

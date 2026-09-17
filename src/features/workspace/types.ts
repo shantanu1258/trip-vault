@@ -280,6 +280,48 @@ export type JourneyLeg = {
   updated_at?: string;
 };
 
+export type CabStop = {
+  id: string;
+  journey_leg_id: string;
+  stop_order: number;
+  title: string;
+  location: {
+    label?: string;
+    address?: string;
+    map_url?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
+  arrives_at: string | null;
+  departs_at: string | null;
+  timezone: string;
+  notes: string | null;
+  linked_itinerary_item_id: string | null;
+  version?: number;
+  created_at?: string;
+  updated_at?: string;
+  deleted_at?: string | null;
+};
+
+export type CabStopInput = {
+  tripId: string;
+  journeyLegId: string;
+  title: string;
+  location?: string;
+  mapUrl?: string;
+  arrivesAt?: string;
+  departsAt?: string;
+  timezone: string;
+  notes?: string;
+  linkedItineraryItemId?: string;
+  stopOrder?: number;
+};
+
+export type UpdateCabStopInput = CabStopInput & {
+  id: string;
+  version?: number;
+};
+
 export type JourneyLegTraveler = {
   id: string;
   journey_leg_id: string;

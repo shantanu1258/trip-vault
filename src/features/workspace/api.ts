@@ -41,6 +41,8 @@ import { listAvailableAirlines } from "../metadata/publishedConfig";
 import type {
   Booking,
   BookingTraveler,
+  CabStop,
+  CabStopInput,
   AccountDocumentUpload,
   AssociatedAccount,
   AddFlightConnectionInput,
@@ -75,6 +77,7 @@ import type {
   TripNote,
   UserProfile,
   UpdateBookingInput,
+  UpdateCabStopInput,
   UpdateJourneyLegInput,
   UpdateRequirementInput,
   VaultDocument
@@ -1692,6 +1695,259 @@ export async function listJourneyLegsForBooking(
     ...rows
   ]);
   return rows;
+}
+
+const cabStopEntityType = (tripId: string) => `cab-stops:${tripId}`;
+
+function cabStopLocation(input: Pick<CabStopInput, "location" | "mapUrl">) {
+  if (!input.location?.trim() && !input.mapUrl?.trim()) return null;
+  return {
+    ...(input.location?.trim() ? { label: input.location.trim() } : {}),
+    ...(input.mapUrl?.trim() ? { map_url: input.mapUrl.trim() } : {})
+  };
+}
+
+async function pendingCreateOperationId(table: string, entityId: string) {
+  if (navigator.onLine) return undefined;
+  return (
+    await database.outbox
+      .where("entityId")
+      .equals(entityId)
+      .filter(
+        (operation) =>
+          operation.operation === "create" &&
+          (operation.payload as { table?: string } | undefined)?.table === table
+      )
+      .first()
+  )?.operationId;
+}
+
+async function latestPendingMutationId(table: string, entityId: string) {
+  if (navigator.onLine) return undefined;
+  const operations = await database.outbox
+    .where("entityId")
+    .equals(entityId)
+    .filter(
+      (operation) =>
+        ["create", "update"].includes(operation.operation) &&
+        (operation.payload as { table?: string } | undefined)?.table === table
+    )
+    .toArray();
+  return operations.sort((left, right) => left.createdAt.localeCompare(right.createdAt)).at(-1)
+    ?.operationId;
+}
+
+export async function listCabStopsForTrip(
+  tripId: string,
+  journeyLegIds: string[]
+): Promise<CabStop[]> {
+  if (!journeyLegIds.length) return [];
+  const allowed = new Set(journeyLegIds);
+  const cached = await readEntityList<CabStop>(cabStopEntityType(tripId));
+  let rows = cached.filter((stop) => allowed.has(stop.journey_leg_id) && !stop.deleted_at);
+  if (navigator.onLine) {
+    const { data, error } = await client()
+      .from("cab_stops")
+      .select("*")
+      .in("journey_leg_id", journeyLegIds)
+      .is("deleted_at", null)
+      .order("stop_order")
+      .order("id");
+    if (error) {
+      if (!rows.length) throw error;
+    } else {
+      rows = (data ?? []) as CabStop[];
+      await cacheEntityList(cabStopEntityType(tripId), [
+        ...cached.filter((stop) => !allowed.has(stop.journey_leg_id)),
+        ...rows
+      ]);
+    }
+  }
+  return rows
+    .filter((stop) => allowed.has(stop.journey_leg_id) && !stop.deleted_at)
+    .sort((left, right) => left.stop_order - right.stop_order || left.id.localeCompare(right.id));
+}
+
+export async function addCabStop(input: CabStopInput): Promise<CabStop> {
+  const now = new Date().toISOString();
+  const existing = await readEntityList<CabStop>(cabStopEntityType(input.tripId));
+  const stop: CabStop = {
+    id: crypto.randomUUID(),
+    journey_leg_id: input.journeyLegId,
+    stop_order:
+      input.stopOrder ??
+      Math.max(
+        0,
+        ...existing
+          .filter((candidate) => candidate.journey_leg_id === input.journeyLegId)
+          .map((candidate) => candidate.stop_order)
+      ) + 100,
+    title: input.title.trim(),
+    location: cabStopLocation(input),
+    arrives_at: input.arrivesAt || null,
+    departs_at: input.departsAt || null,
+    timezone: input.timezone,
+    notes: input.notes?.trim() || null,
+    linked_itinerary_item_id: input.linkedItineraryItemId || null,
+    created_at: now,
+    updated_at: now,
+    deleted_at: null
+  };
+  if (!stop.title) throw new Error("Name this cab stop.");
+  if (stop.arrives_at && stop.departs_at && stop.departs_at < stop.arrives_at)
+    throw new Error("A cab stop cannot depart before it arrives.");
+  if (!navigator.onLine) {
+    const legOperation = await pendingCreateOperationId("journey_legs", input.journeyLegId);
+    await queueCreate({
+      entityType: cabStopEntityType(input.tripId),
+      table: "cab_stops",
+      row: stop,
+      dependsOn: legOperation ? [legOperation] : []
+    });
+    return stop;
+  }
+  const { data, error } = await client().from("cab_stops").insert(stop).select("*").single();
+  if (error) throw error;
+  await cacheEntity(cabStopEntityType(input.tripId), data as CabStop);
+  return data as CabStop;
+}
+
+export async function updateCabStop(input: UpdateCabStopInput): Promise<CabStop> {
+  const existing = (await readEntityList<CabStop>(cabStopEntityType(input.tripId))).find(
+    (candidate) => candidate.id === input.id
+  );
+  if (!existing) throw new Error("Refresh the cab stops before editing this one.");
+  const patch = {
+    title: input.title.trim(),
+    location: cabStopLocation(input),
+    arrives_at: input.arrivesAt || null,
+    departs_at: input.departsAt || null,
+    timezone: input.timezone,
+    notes: input.notes?.trim() || null,
+    linked_itinerary_item_id: input.linkedItineraryItemId || null
+  };
+  if (!patch.title) throw new Error("Name this cab stop.");
+  if (patch.arrives_at && patch.departs_at && patch.departs_at < patch.arrives_at)
+    throw new Error("A cab stop cannot depart before it arrives.");
+  if (!navigator.onLine) {
+    const pendingMutation = await latestPendingMutationId("cab_stops", input.id);
+    const updated: CabStop = {
+      ...existing,
+      ...patch,
+      version: (existing.version ?? 1) + 1,
+      updated_at: new Date().toISOString()
+    };
+    await queueUpdate({
+      entityType: cabStopEntityType(input.tripId),
+      table: "cab_stops",
+      row: updated,
+      patch,
+      baseVersion: existing.version,
+      dependsOn: pendingMutation ? [pendingMutation] : []
+    });
+    return updated;
+  }
+  let request = client().from("cab_stops").update(patch).eq("id", input.id);
+  if (input.version !== undefined) request = request.eq("version", input.version);
+  const { data, error } = await request.select("*").maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("This cab stop changed on another device. Refresh before saving.");
+  await cacheEntity(cabStopEntityType(input.tripId), data as CabStop);
+  return data as CabStop;
+}
+
+export async function archiveCabStop(stop: CabStop, tripId: string) {
+  if (!navigator.onLine) {
+    const profileId = await localProfileId();
+    const pendingMutation = await latestPendingMutationId("cab_stops", stop.id);
+    if (profileId) await database.entities.delete([profileId, cabStopEntityType(tripId), stop.id]);
+    await queueDelete({
+      entityType: cabStopEntityType(tripId),
+      table: "cab_stops",
+      entityId: stop.id,
+      dependsOn: pendingMutation ? [pendingMutation] : []
+    });
+    return;
+  }
+  let request = client()
+    .from("cab_stops")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", stop.id);
+  if (stop.version !== undefined) request = request.eq("version", stop.version);
+  const { data, error } = await request.select("id").maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("This cab stop changed on another device. Refresh before archiving.");
+  const profileId = await localProfileId();
+  if (profileId) await database.entities.delete([profileId, cabStopEntityType(tripId), stop.id]);
+}
+
+export async function reorderCabStops(
+  tripId: string,
+  stops: CabStop[],
+  stopId: string,
+  direction: "up" | "down"
+): Promise<CabStop[]> {
+  const ordered = [...stops].sort(
+    (left, right) => left.stop_order - right.stop_order || left.id.localeCompare(right.id)
+  );
+  const from = ordered.findIndex((stop) => stop.id === stopId);
+  const to = direction === "up" ? from - 1 : from + 1;
+  if (from < 0 || to < 0 || to >= ordered.length) return ordered;
+  const moving = ordered[from];
+  const adjacent = ordered[to];
+  const movingOrder = moving.stop_order;
+  const adjacentOrder = adjacent.stop_order;
+  const temporaryOrder = Math.max(...ordered.map((stop) => stop.stop_order), 0) + 1000;
+  const steps = [
+    { stop: moving, order: temporaryOrder },
+    { stop: adjacent, order: movingOrder },
+    { stop: moving, order: adjacentOrder }
+  ];
+  if (!navigator.onLine) {
+    const pendingMutations = new Map<string, string | undefined>();
+    for (const stop of [moving, adjacent])
+      pendingMutations.set(stop.id, await latestPendingMutationId("cab_stops", stop.id));
+    let previousOperation: string | undefined;
+    for (const step of steps) {
+      const updated = { ...step.stop, stop_order: step.order };
+      previousOperation = await queueUpdate({
+        entityType: cabStopEntityType(tripId),
+        table: "cab_stops",
+        row: updated,
+        patch: { stop_order: step.order },
+        baseVersion: undefined,
+        dependsOn: [pendingMutations.get(step.stop.id), previousOperation].filter(
+          (id): id is string => Boolean(id)
+        )
+      });
+    }
+  } else {
+    for (const step of steps) {
+      const { error } = await client()
+        .from("cab_stops")
+        .update({ stop_order: step.order })
+        .eq("id", step.stop.id);
+      if (error) throw error;
+    }
+  }
+  const swapped = ordered.map((stop) =>
+    stop.id === moving.id
+      ? {
+          ...stop,
+          stop_order: adjacentOrder,
+          version: stop.version === undefined ? undefined : stop.version + 2
+        }
+      : stop.id === adjacent.id
+        ? {
+            ...stop,
+            stop_order: movingOrder,
+            version: stop.version === undefined ? undefined : stop.version + 1
+          }
+        : stop
+  );
+  await Promise.all(swapped.map((stop) => cacheEntity(cabStopEntityType(tripId), stop)));
+  if (!navigator.onLine) return swapped.sort((a, b) => a.stop_order - b.stop_order);
+  return listCabStopsForTrip(tripId, [...new Set(swapped.map((stop) => stop.journey_leg_id))]);
 }
 
 export async function updateJourneyLeg(

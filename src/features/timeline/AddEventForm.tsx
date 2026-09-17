@@ -22,6 +22,7 @@ import {
 } from "../trips/validation";
 import {
   addBookedTimelineEvent,
+  addCabStop,
   addFlightBooking,
   addJourneyBooking,
   listFlightLegsForTrip,
@@ -60,6 +61,7 @@ import {
   type GroundLegDraft,
   type RouteStructure
 } from "./JourneyEventFields";
+import { CabStopsFields } from "./CabStopsFields";
 import {
   EventTimeZoneField,
   JourneyTimelinePlacementFields,
@@ -409,11 +411,46 @@ type SavedCompletion = SavedEvent & {
     itinerary: import("../trips/types").ItineraryItem;
   };
   refreshCosts?: boolean;
+  refreshCabStops?: boolean;
 };
 const FERRY_CONFIRMATION_WARNING =
   "This ferry is saved, but it still needs an official confirmation or ticket, or a booking reference, before you rely on it during travel.";
 function completionWarnings(...warnings: Array<string | undefined | false>) {
   return warnings.filter((warning): warning is string => Boolean(warning));
+}
+
+function cabStopsFromForm(form: FormData, keys: string[], defaultTimezone: string) {
+  return keys.map((key, index) => {
+    const prefix = `cab.stop.${key}`;
+    const title = text(form, `${prefix}.title`);
+    if (!title) throw new Error(`Name cab stop ${index + 1}.`);
+    const timezone = text(form, `${prefix}.timezone`) || defaultTimezone;
+    if (!isValidTimeZone(timezone))
+      throw new Error(`Choose a valid time zone for cab stop ${index + 1}.`);
+    const arrivesAt = text(form, `${prefix}.arrivesAt`)
+      ? localDateTimeToIso(text(form, `${prefix}.arrivesAt`), timezone)
+      : undefined;
+    const departsAt = text(form, `${prefix}.departsAt`)
+      ? localDateTimeToIso(text(form, `${prefix}.departsAt`), timezone)
+      : undefined;
+    if (arrivesAt && departsAt && departsAt < arrivesAt)
+      throw new Error(`Cab stop ${index + 1} cannot depart before it arrives.`);
+    const costAmount = text(form, `${prefix}.costAmount`);
+    if (costAmount && (!/^\d+(?:\.\d+)?$/.test(costAmount) || Number(costAmount) <= 0))
+      throw new Error(`Enter a cost greater than zero for cab stop ${index + 1}.`);
+    return {
+      title,
+      location: text(form, `${prefix}.location`) || undefined,
+      mapUrl: optionalHttps(text(form, `${prefix}.mapUrl`), `Map link for cab stop ${index + 1}`),
+      arrivesAt,
+      departsAt,
+      timezone,
+      notes: text(form, `${prefix}.notes`) || undefined,
+      linkedItineraryItemId: text(form, `${prefix}.linkedItineraryItemId`) || undefined,
+      costAmount,
+      paymentStatus: (text(form, `${prefix}.paymentStatus`) || "planned") as "planned" | "paid"
+    };
+  });
 }
 
 export function AddEventForm({
@@ -466,6 +503,7 @@ export function AddEventForm({
   const [officialDocumentKind, setOfficialDocumentKind] = useState<DocumentKind>("flight_ticket");
   const [flightLegDrafts, setFlightLegDrafts] = useState<Record<string, FlightLegDraft>>({});
   const [groundLegDrafts, setGroundLegDrafts] = useState<Record<string, GroundLegDraft>>({});
+  const [cabStopKeys, setCabStopKeys] = useState<string[]>([]);
   const [saved, setSaved] = useState<SavedCompletion | null>(null);
   const [documentSaveState, setDocumentSaveState] = useState<{
     status: "idle" | "saving" | "saved" | "error";
@@ -854,6 +892,7 @@ export function AddEventForm({
             : undefined,
           final_dropoff: text(form, "cab.dropoff") || undefined
         };
+        const cabStops = cabStopsFromForm(form, cabStopKeys, timing.timezone);
         const created = await addJourneyBooking({
           tripId: trip.id,
           title,
@@ -890,6 +929,43 @@ export function AddEventForm({
           ],
           cost
         });
+        const stopWarnings: string[] = [];
+        for (const [index, stop] of cabStops.entries()) {
+          try {
+            const savedStop = await addCabStop({
+              tripId: trip.id,
+              journeyLegId: created.legs[0].id,
+              stopOrder: (index + 1) * 100,
+              title: stop.title,
+              location: stop.location,
+              mapUrl: stop.mapUrl,
+              arrivesAt: stop.arrivesAt,
+              departsAt: stop.departsAt,
+              timezone: stop.timezone,
+              notes: stop.notes,
+              linkedItineraryItemId: stop.linkedItineraryItemId
+            });
+            if (stop.costAmount) {
+              const warning = await saveOptionalCostForCreatedEvent({
+                tripId: trip.id,
+                bookingId: created.booking.id,
+                itineraryItemId: stop.linkedItineraryItemId,
+                cabStopId: savedStop.id,
+                title: `${stop.title} cost`,
+                category: "transport",
+                amountMinor: amountStringToMinor(stop.costAmount, trip.base_currency),
+                currencyCode: trip.base_currency,
+                paymentStatus: stop.paymentStatus,
+                participantTravelerIds: [...participants.allowedIds]
+              });
+              if (warning) stopWarnings.push(`${stop.title}: ${warning}`);
+            }
+          } catch {
+            stopWarnings.push(
+              `${stop.title} was not added. Open this cab event to add the stop without recreating the journey.`
+            );
+          }
+        }
         if (text(form, "cab.operatorSource") === "other" && text(form, "cab.operator"))
           await suggestCatalogValue({
             type: "service_provider",
@@ -903,8 +979,9 @@ export function AddEventForm({
           itineraryItemId: created.itinerary.id,
           participantScope: participants.participantScope,
           travelerIds: participants.travelerIds,
-          warnings: completionWarnings(created.costWarning),
-          refreshCosts: Boolean(cost)
+          warnings: completionWarnings(created.costWarning, ...stopWarnings),
+          refreshCosts: Boolean(cost || cabStops.some((stop) => stop.costAmount)),
+          refreshCabStops: cabStops.length > 0
         };
       }
       const timezone = text(form, "timezone") || trip.primary_timezone;
@@ -1066,7 +1143,7 @@ export function AddEventForm({
     },
     onMutate: () =>
       suppressRealtimeRefresh(
-        ["bookings", "flights", "journey-legs", "itinerary", "costs", "trip-airlines"],
+        ["bookings", "flights", "journey-legs", "cab-stops", "itinerary", "costs", "trip-airlines"],
         15_000
       ),
     onSuccess: async (created) => {
@@ -1099,6 +1176,7 @@ export function AddEventForm({
           roots.add("bookings");
         if (type && ["train", "bus", "ferry", "cab"].includes(type)) roots.add("journey-legs");
         if (created.refreshCosts) roots.add("costs");
+        if (created.refreshCabStops) roots.add("cab-stops");
         await Promise.all(
           [...roots].map((key) => queryClient.invalidateQueries({ queryKey: [key, trip.id] }))
         );
@@ -1137,6 +1215,7 @@ export function AddEventForm({
     setType(next);
     onTypeChange?.(next);
     setLegKeys([crypto.randomUUID()]);
+    setCabStopKeys([]);
     setJourneyScope("domestic");
     setJourneyStructure("direct");
     setReservationState(next === "flight" || next === "hotel_check_in" ? "booked" : "planned");
@@ -1428,6 +1507,16 @@ export function AddEventForm({
                     showTimezone={showTimezone}
                   />
                 )}
+              />
+              <CabStopsFields
+                stopKeys={cabStopKeys}
+                itinerary={itineraryQuery.data ?? []}
+                defaultTimezone={defaultTimezone}
+                currencyCode={trip.base_currency}
+                onAdd={() => setCabStopKeys((keys) => [...keys, crypto.randomUUID()])}
+                onRemove={(key) =>
+                  setCabStopKeys((keys) => keys.filter((candidate) => candidate !== key))
+                }
               />
             </>
           )}

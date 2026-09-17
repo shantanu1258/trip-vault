@@ -114,6 +114,7 @@ import {
 } from "../features/workspace/AddActivityBookingForm";
 import { documentKind, suggestedDocumentTitle } from "../features/workspace/documentModel";
 import { JourneyTravelerBadges } from "../features/workspace/JourneyTravelerDetails";
+import { CabStopsManager } from "../features/workspace/CabStopsManager";
 import {
   filterTravelerWorkspace,
   readTravelerFocus,
@@ -810,6 +811,7 @@ export function EventDetailsSheet({
   travelerIds,
   travelers,
   costs,
+  tripCurrency,
   focusedTravelerId,
   navigationState,
   editable,
@@ -837,6 +839,7 @@ export function EventDetailsSheet({
   travelerIds: string[];
   travelers: Traveler[];
   costs: TripCost[];
+  tripCurrency?: string;
   focusedTravelerId?: string | null;
   navigationState?: unknown;
   editable: boolean;
@@ -926,16 +929,35 @@ export function EventDetailsSheet({
         </p>
       )}
       {booking && (
-        <BookingEventDetails
-          tripId={tripId}
-          booking={booking}
-          flights={flights}
-          flightTravelers={flightTravelers}
-          journeys={journeys}
-          travelers={travelers}
-          focusedTravelerId={focusedTravelerId}
-          navigationState={navigationState}
-        />
+        <>
+          <BookingEventDetails
+            tripId={tripId}
+            booking={booking}
+            flights={flights}
+            flightTravelers={flightTravelers}
+            journeys={journeys}
+            travelers={travelers}
+            focusedTravelerId={focusedTravelerId}
+            navigationState={navigationState}
+          />
+          {booking.type === "cab" &&
+            journeys
+              .filter((leg) => leg.booking_id === booking.id && leg.mode === "cab")
+              .map((leg) => (
+                <CabStopsManager
+                  key={leg.id}
+                  tripId={tripId}
+                  leg={leg}
+                  itinerary={itinerary}
+                  costs={costs}
+                  currencyCode={tripCurrency ?? "USD"}
+                  participantTravelerIds={
+                    item.applies_to_all_travelers ? travelers.map((row) => row.id) : travelerIds
+                  }
+                  editable={editable}
+                />
+              ))}
+        </>
       )}
       {editable && canAddEventBooking(item) && (
         <div className="mt-4 rounded-2xl border border-line bg-surface/70 p-4">
@@ -2527,6 +2549,7 @@ export function TripPage() {
               .map((row) => row.traveler_id)}
             travelers={travelers}
             costs={visibleCosts}
+            tripCurrency={trip.base_currency}
             focusedTravelerId={focusedTravelerId}
             navigationState={childNavigationState}
             editable={editable}

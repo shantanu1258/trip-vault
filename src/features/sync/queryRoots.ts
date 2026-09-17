@@ -10,6 +10,7 @@ const realtimeQueryRoots: Record<string, string[]> = {
   flight_leg_travelers: ["flight-travelers"],
   journey_legs: ["journey-legs", "journey-leg"],
   journey_leg_travelers: ["journey-leg-travelers"],
+  cab_stops: ["cab-stops"],
   itinerary_items: ["itinerary", "archived-trip-items"],
   itinerary_participants: ["itinerary-participants"],
   trip_costs: ["costs", "archived-trip-items"],
