@@ -115,6 +115,7 @@ import {
 import { documentKind, suggestedDocumentTitle } from "../features/workspace/documentModel";
 import { JourneyTravelerBadges } from "../features/workspace/JourneyTravelerDetails";
 import { CabStopsManager } from "../features/workspace/CabStopsManager";
+import { CabTimelineStops } from "../features/workspace/CabTimelineStops";
 import {
   filterTravelerWorkspace,
   readTravelerFocus,
@@ -125,6 +126,7 @@ import { resolveBoardingInstant } from "../features/workspace/flight";
 import {
   archiveNote,
   attachDocumentsToEvent,
+  listCabStopsForTrip,
   listTripFlightTravelers,
   removeMember,
   removeTraveler,
@@ -148,6 +150,7 @@ import {
 } from "../features/workspace/WorkspaceForms";
 import type {
   Booking,
+  CabStop,
   FlightLeg,
   FlightTraveler,
   JourneyLeg,
@@ -692,7 +695,9 @@ function BookingEventSummary({
   flightTravelers,
   journeys,
   travelers,
-  focusedTravelerId
+  focusedTravelerId,
+  cabStops,
+  eventTimezone
 }: {
   tripId: string;
   booking: Booking;
@@ -701,6 +706,8 @@ function BookingEventSummary({
   journeys: JourneyLeg[];
   travelers: Traveler[];
   focusedTravelerId?: string | null;
+  cabStops: CabStop[];
+  eventTimezone: string;
 }) {
   const flightLegs = flights
     .filter((leg) => leg.booking_id === booking.id)
@@ -709,6 +716,8 @@ function BookingEventSummary({
     .filter((leg) => leg.booking_id === booking.id)
     .sort((a, b) => a.segment_order - b.segment_order);
   const legs = flightLegs.length ? flightLegs : travelLegs;
+  const travelLegIds = new Set(travelLegs.map((leg) => leg.id));
+  const bookingCabStops = cabStops.filter((stop) => travelLegIds.has(stop.journey_leg_id));
   const reservationState = booking.type === "flight" ? "booked" : booking.reservation_state;
   const phone =
     booking.type === "cab" && booking.contact_phone ? phoneActionUrls(booking.contact_phone) : null;
@@ -788,6 +797,9 @@ function BookingEventSummary({
           legCount={travelLegs.length}
         />
       ))}
+      {booking.type === "cab" && (
+        <CabTimelineStops stops={bookingCabStops} eventTimezone={eventTimezone} />
+      )}
       {phone && (
         <a
           className="relative z-20 mt-2 inline-flex min-h-9 items-center gap-1.5 rounded-full bg-brand-soft px-3 font-extrabold text-brand"
@@ -951,6 +963,7 @@ export function EventDetailsSheet({
                   itinerary={itinerary}
                   costs={costs}
                   currencyCode={tripCurrency ?? "USD"}
+                  eventTimezone={item.timezone}
                   participantTravelerIds={
                     item.applies_to_all_travelers ? travelers.map((row) => row.id) : travelerIds
                   }
@@ -1315,6 +1328,14 @@ export function TripPage() {
     ...tripQueries.journeys(tripId, bookingsQuery.data),
     enabled: Boolean(tripId) && bookingsQuery.isSuccess
   });
+  const cabJourneyIds = (journeysQuery.data ?? [])
+    .filter((leg) => leg.mode === "cab")
+    .map((leg) => leg.id);
+  const cabStopsQuery = useQuery({
+    queryKey: ["cab-stops", tripId, cabJourneyIds],
+    queryFn: () => listCabStopsForTrip(tripId, cabJourneyIds),
+    enabled: Boolean(tripId) && journeysQuery.isSuccess && cabJourneyIds.length > 0
+  });
   const flightIds = (flightsQuery.data ?? []).map((flight) => flight.id);
   const flightTravelersQuery = useQuery({
     queryKey: ["flight-travelers", tripId, flightIds],
@@ -1369,6 +1390,7 @@ export function TripPage() {
   const flights = flightsQuery.data ?? [];
   const flightTravelers = flightTravelersQuery.data ?? [];
   const journeys = journeysQuery.data ?? [];
+  const cabStops = cabStopsQuery.data ?? [];
   const documents = documentsQuery.data ?? [];
   const requirements = requirementsQuery.data ?? [];
   const participantRows = participantsQuery.data ?? [];
@@ -2334,6 +2356,8 @@ export function TripPage() {
                                   journeys={journeys}
                                   travelers={travelers}
                                   focusedTravelerId={focusedTravelerId}
+                                  cabStops={cabStops}
+                                  eventTimezone={item.timezone}
                                 />
                               )}
                               <span className="mt-4 flex items-center justify-end gap-1 text-xs font-extrabold text-brand">

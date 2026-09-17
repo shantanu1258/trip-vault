@@ -14,7 +14,7 @@ import {
   Trash2
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { TripBackLink } from "../components/TripBackLink";
 import { DocumentVisibilityBadge } from "../components/DocumentVisibilityBadge";
@@ -52,6 +52,7 @@ export function BookingPage() {
   const confirm = useConfirmDialog();
   const { tripId = "", bookingId = "" } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const currentLocation = useLocation();
   const locationState = currentLocation.state;
   const queryClient = useQueryClient();
@@ -114,6 +115,13 @@ export function BookingPage() {
   );
   const phone = booking?.contact_phone ? phoneActionUrls(booking.contact_phone) : null;
   const journeyLegs = legsQuery.data ?? [];
+  useEffect(() => {
+    if (searchParams.get("editJourney") !== "true" || !editable || !journeyLegs[0]) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("editJourney");
+    setSearchParams(next, { replace: true, state: locationState });
+    setEditingLeg(journeyLegs[0]);
+  }, [editable, journeyLegs, locationState, searchParams, setSearchParams]);
   const bookingItineraryItem = itineraryQuery.data?.find((item) => item.booking_id === bookingId);
   const firstLeg = journeyLegs[0];
   const lastLeg = journeyLegs.at(-1);

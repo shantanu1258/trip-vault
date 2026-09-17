@@ -303,6 +303,9 @@ describe("journey leg enrichment", () => {
     expect(screen.queryByText("Boarding and platform")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Pickup instructions")).toHaveValue("Door 3");
     expect(screen.queryByText("Departure time zone")).not.toBeInTheDocument();
+    expect(screen.getByText("Journey time zone")).toBeInTheDocument();
+    expect(screen.getByLabelText("Departure (local time)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Arrival (local time, optional)")).toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Cross-border ride"));
 

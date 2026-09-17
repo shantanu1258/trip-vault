@@ -4,14 +4,12 @@ import type { ItineraryItem } from "../trips/types";
 export function CabStopsFields({
   stopKeys,
   itinerary,
-  defaultTimezone,
   currencyCode,
   onAdd,
   onRemove
 }: {
   stopKeys: string[];
   itinerary: ItineraryItem[];
-  defaultTimezone: string;
   currencyCode: string;
   onAdd: () => void;
   onRemove: (key: string) => void;
@@ -75,15 +73,6 @@ export function CabStopsFields({
                       className="form-input"
                       type="datetime-local"
                       name={`${prefix}.departsAt`}
-                    />
-                  </label>
-                  <label className="form-label sm:col-span-2">
-                    Time zone <span aria-hidden="true">*</span>
-                    <input
-                      className="form-input"
-                      name={`${prefix}.timezone`}
-                      defaultValue={defaultTimezone}
-                      required
                     />
                   </label>
                   <label className="form-label sm:col-span-2">

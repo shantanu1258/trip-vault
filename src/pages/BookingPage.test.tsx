@@ -289,6 +289,14 @@ describe("booking detail card interactions", () => {
     expect(screen.queryByRole("region", { name: "Edit booking form" })).not.toBeInTheDocument();
   });
 
+  it("opens the first journey editor directly when requested from the timeline", async () => {
+    renderPage("/trips/trip-1/bookings/booking-1?editJourney=true");
+
+    expect(await screen.findByRole("region", { name: "Edit journey leg form" })).toHaveTextContent(
+      "Delhi"
+    );
+  });
+
   it("starts a leg-associated upload without triggering the card editor", async () => {
     const user = userEvent.setup();
     renderPage();

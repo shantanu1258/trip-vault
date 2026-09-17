@@ -37,21 +37,19 @@ type Draft = {
   mapUrl: string;
   arrivesLocal: string;
   departsLocal: string;
-  timezone: string;
   notes: string;
   linkedItineraryItemId: string;
   costAmount: string;
   paymentStatus: "planned" | "paid";
 };
 
-function emptyDraft(timezone: string): Draft {
+function emptyDraft(): Draft {
   return {
     title: "",
     location: "",
     mapUrl: "",
     arrivesLocal: "",
     departsLocal: "",
-    timezone,
     notes: "",
     linkedItineraryItemId: "",
     costAmount: "",
@@ -59,15 +57,14 @@ function emptyDraft(timezone: string): Draft {
   };
 }
 
-function draftFor(stop: CabStop): Draft {
+function draftFor(stop: CabStop, eventTimezone: string): Draft {
   return {
     id: stop.id,
     title: stop.title,
     location: stop.location?.label ?? stop.location?.address ?? "",
     mapUrl: stop.location?.map_url ?? "",
-    arrivesLocal: isoToLocalDateTime(stop.arrives_at, stop.timezone),
-    departsLocal: isoToLocalDateTime(stop.departs_at, stop.timezone),
-    timezone: stop.timezone,
+    arrivesLocal: isoToLocalDateTime(stop.arrives_at, eventTimezone),
+    departsLocal: isoToLocalDateTime(stop.departs_at, eventTimezone),
     notes: stop.notes ?? "",
     linkedItineraryItemId: stop.linked_itinerary_item_id ?? "",
     costAmount: "",
@@ -94,6 +91,7 @@ export function CabStopsManager({
   itinerary,
   costs,
   currencyCode,
+  eventTimezone,
   participantTravelerIds,
   editable
 }: {
@@ -102,6 +100,7 @@ export function CabStopsManager({
   itinerary: ItineraryItem[];
   costs: TripCost[];
   currencyCode: string;
+  eventTimezone: string;
   participantTravelerIds: string[];
   editable: boolean;
 }) {
@@ -124,12 +123,12 @@ export function CabStopsManager({
   const save = useMutation({
     mutationFn: async (next: Draft) => {
       if (!next.title.trim()) throw new Error("Name this cab stop.");
-      if (!isValidTimeZone(next.timezone)) throw new Error("Choose a valid stop time zone.");
+      if (!isValidTimeZone(eventTimezone)) throw new Error("Choose a valid cab event time zone.");
       const arrivesAt = next.arrivesLocal
-        ? localDateTimeToIso(next.arrivesLocal, next.timezone)
+        ? localDateTimeToIso(next.arrivesLocal, eventTimezone)
         : undefined;
       const departsAt = next.departsLocal
-        ? localDateTimeToIso(next.departsLocal, next.timezone)
+        ? localDateTimeToIso(next.departsLocal, eventTimezone)
         : undefined;
       if (arrivesAt && departsAt && departsAt < arrivesAt)
         throw new Error("A cab stop cannot depart before it arrives.");
@@ -142,7 +141,7 @@ export function CabStopsManager({
         mapUrl,
         arrivesAt,
         departsAt,
-        timezone: next.timezone,
+        timezone: eventTimezone,
         notes: next.notes,
         linkedItineraryItemId: next.linkedItineraryItemId || undefined
       };
@@ -213,7 +212,7 @@ export function CabStopsManager({
           <button
             type="button"
             className="secondary-button min-h-9 px-3 py-2 text-xs"
-            onClick={() => setDraft(emptyDraft(leg.origin_timezone))}
+            onClick={() => setDraft(emptyDraft())}
           >
             <Plus className="size-3.5" /> Add stop
           </button>
@@ -245,11 +244,11 @@ export function CabStopsManager({
                     {(stop.arrives_at || stop.departs_at) && (
                       <p className="mt-1 text-xs text-muted">
                         {stop.arrives_at
-                          ? `Arrive ${formatEventTime(stop.arrives_at, stop.timezone)}`
+                          ? `Arrive ${formatEventTime(stop.arrives_at, eventTimezone)}`
                           : ""}
                         {stop.arrives_at && stop.departs_at ? " · " : ""}
                         {stop.departs_at
-                          ? `Leave ${formatEventTime(stop.departs_at, stop.timezone)}`
+                          ? `Leave ${formatEventTime(stop.departs_at, eventTimezone)}`
                           : ""}
                       </p>
                     )}
@@ -300,7 +299,7 @@ export function CabStopsManager({
                     <button
                       type="button"
                       className="rounded-lg p-2 text-muted"
-                      onClick={() => setDraft(draftFor(stop))}
+                      onClick={() => setDraft(draftFor(stop, eventTimezone))}
                       aria-label={`Edit ${stop.title}`}
                     >
                       <Pencil className="size-4" />
@@ -385,16 +384,6 @@ export function CabStopsManager({
                 type="datetime-local"
                 value={draft.departsLocal}
                 onChange={(event) => setDraft({ ...draft, departsLocal: event.target.value })}
-              />
-            </label>
-            <label className="form-label sm:col-span-2">
-              Time zone <span aria-hidden="true">*</span>
-              <input
-                className="form-input"
-                required
-                value={draft.timezone}
-                onChange={(event) => setDraft({ ...draft, timezone: event.target.value })}
-                placeholder="Asia/Kolkata"
               />
             </label>
             <label className="form-label sm:col-span-2">

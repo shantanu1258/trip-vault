@@ -170,9 +170,9 @@ describe("AddItineraryForm participant scope", () => {
     expect(screen.getByLabelText(/Event name/i)).toHaveValue("Dinner");
     expect(screen.queryByLabelText("Location (optional)")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open bus booking" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Edit bus route & times" })).toHaveAttribute(
       "href",
-      `/trips/${trip.id}/bookings/bus-1`
+      `/trips/${trip.id}/bookings/bus-1?editJourney=true`
     );
   });
 
@@ -213,9 +213,9 @@ describe("AddItineraryForm participant scope", () => {
         })
       )
     );
-    expect(screen.getByRole("link", { name: "Open flight booking" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Edit flight route & times" })).toHaveAttribute(
       "href",
-      `/trips/${trip.id}/bookings/${flightItem.booking_id}`
+      `/trips/${trip.id}/bookings/${flightItem.booking_id}?editJourney=true`
     );
   });
 });

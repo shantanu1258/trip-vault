@@ -83,6 +83,7 @@ function renderManager() {
         itinerary={[]}
         costs={[]}
         currencyCode="INR"
+        eventTimezone="Asia/Kolkata"
         participantTravelerIds={["traveler-1"]}
         editable
       />
@@ -107,6 +108,7 @@ describe("CabStopsManager", () => {
     const user = renderManager();
     await screen.findByText(/No intermediate stops yet/i);
     await user.click(screen.getByRole("button", { name: "Add stop" }));
+    expect(screen.queryByLabelText(/Time zone/)).not.toBeInTheDocument();
     await user.type(screen.getByLabelText(/Stop name/), "Museum");
     await user.type(screen.getByLabelText("Place"), "National Museum");
     await user.click(screen.getByRole("button", { name: "Add stop" }));

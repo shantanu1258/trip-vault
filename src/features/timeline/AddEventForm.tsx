@@ -424,7 +424,7 @@ function cabStopsFromForm(form: FormData, keys: string[], defaultTimezone: strin
     const prefix = `cab.stop.${key}`;
     const title = text(form, `${prefix}.title`);
     if (!title) throw new Error(`Name cab stop ${index + 1}.`);
-    const timezone = text(form, `${prefix}.timezone`) || defaultTimezone;
+    const timezone = defaultTimezone;
     if (!isValidTimeZone(timezone))
       throw new Error(`Choose a valid time zone for cab stop ${index + 1}.`);
     const arrivesAt = text(form, `${prefix}.arrivesAt`)
@@ -1511,7 +1511,6 @@ export function AddEventForm({
               <CabStopsFields
                 stopKeys={cabStopKeys}
                 itinerary={itineraryQuery.data ?? []}
-                defaultTimezone={defaultTimezone}
                 currencyCode={trip.base_currency}
                 onAdd={() => setCabStopKeys((keys) => [...keys, crypto.randomUUID()])}
                 onRemove={(key) =>

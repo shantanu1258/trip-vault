@@ -241,9 +241,9 @@ export function AddItineraryForm({
           </p>
           <Link
             className="primary-button mt-4 w-full"
-            to={`/trips/${trip.id}/bookings/${item.booking_id}`}
+            to={`/trips/${trip.id}/bookings/${item.booking_id}?editJourney=true`}
           >
-            <TicketCheck className="size-4" /> Open {bookingLabel} booking
+            <TicketCheck className="size-4" /> Edit {bookingLabel} route &amp; times
           </Link>
         </div>
       </ModalSheet>
