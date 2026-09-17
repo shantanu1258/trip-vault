@@ -536,7 +536,7 @@ describe("trip summary interactions", () => {
     expect(detailsCard?.querySelector("a a, a button, button a, button button")).toBeNull();
   });
 
-  it("renders an event-linked readiness task in the main timeline and completes it in place", async () => {
+  it("opens an event-linked readiness task modal and completes it only from the checkbox", async () => {
     const linkedTask: Requirement = {
       id: "visa-task",
       trip_id: ownerTrip.id,
@@ -556,7 +556,7 @@ describe("trip summary interactions", () => {
       official_guidance_url: null,
       guidance_checked_at: null,
       linked_document_id: null,
-      notes: null
+      notes: "Submit the application before the flight."
     };
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listItinerary.mockResolvedValue([activity]);
@@ -611,6 +611,16 @@ describe("trip summary interactions", () => {
     expect(taskRow?.children[2]).not.toHaveClass("sm:grid");
     expect(taskCard).toHaveClass("xl:px-4");
     expect(taskCard).not.toHaveClass("sm:px-4");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "View details for Prepare Bali visa" })
+    );
+    const taskDetails = screen.getByRole("region", { name: "Prepare Bali visa" });
+    expect(
+      within(taskDetails).getByText("Submit the application before the flight.")
+    ).toBeInTheDocument();
+    expect(mocks.updateRequirementStatus).not.toHaveBeenCalled();
+    await userEvent.click(within(taskDetails).getByRole("button", { name: "Back" }));
 
     const eventCard = screen
       .getByRole("button", { name: "Open details for Museum visit" })

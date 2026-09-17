@@ -102,6 +102,7 @@ import {
 } from "../features/trips/navigation";
 import { CostDetailsSheet, TripExpensesSheet } from "../features/trips/TripExpenses";
 import { TripDetailsView } from "../features/trips/TripDetailsView";
+import { RequirementDetailsSheet } from "../features/readiness/RequirementDetailsSheet";
 import { localProfileId } from "../features/sync/localSync";
 import { suppressRealtimeRefresh } from "../features/sync/RealtimeRefresh";
 import { tripQueries } from "../features/queries/tripQueries";
@@ -1201,6 +1202,8 @@ export function TripPage() {
   const [editingCost, setEditingCost] = useState<TripCost | null>(null);
   const [editingTraveler, setEditingTraveler] = useState<Traveler | null>(null);
   const [editingNote, setEditingNote] = useState<TripNote | null>(null);
+  const [editingRequirement, setEditingRequirement] = useState<Requirement | null>(null);
+  const [viewingRequirement, setViewingRequirement] = useState<Requirement | null>(null);
   const [showingExpenses, setShowingExpenses] = useState(false);
   const [viewingCost, setViewingCost] = useState<TripCost | null>(null);
   const [costReturnEventId, setCostReturnEventId] = useState<string | null>(null);
@@ -2122,10 +2125,11 @@ export function TripPage() {
                                     })
                                   }
                                 />
-                                <Link
-                                  to={`/trips/${trip.id}/readiness`}
-                                  state={childNavigationState}
-                                  className="min-w-0 flex-1 rounded-lg focus-visible:ring-2 focus-visible:ring-brand"
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingRequirement(item)}
+                                  className="min-w-0 flex-1 rounded-lg text-left focus-visible:ring-2 focus-visible:ring-brand"
+                                  aria-label={`View details for ${item.title}`}
                                 >
                                   <strong
                                     className={`block truncate text-sm ${done ? "text-muted line-through" : "text-ink"}`}
@@ -2137,7 +2141,7 @@ export function TripPage() {
                                     {audience ? ` · ${audience}` : ""}
                                     {done ? " · Done" : " · Readiness task"}
                                   </span>
-                                </Link>
+                                </button>
                                 {current && !done && (
                                   <span className="shrink-0 rounded-full bg-coral px-2 py-1 text-[.6rem] font-black uppercase text-white">
                                     Next
@@ -2778,6 +2782,32 @@ export function TripPage() {
           travelers={travelers}
           preferredTravelerId={focusedTravelerId ?? undefined}
           onClose={closeForm}
+        />
+      )}
+      {trip && viewingRequirement && (
+        <RequirementDetailsSheet
+          requirement={viewingRequirement}
+          itinerary={visibleItinerary}
+          timezone={trip.primary_timezone}
+          audience={requirementAudienceLabel(
+            viewingRequirement.id,
+            requirementAssigneesQuery.data ?? [],
+            travelers
+          )}
+          editable={editable}
+          onClose={() => setViewingRequirement(null)}
+          onEdit={() => {
+            setViewingRequirement(null);
+            setEditingRequirement(viewingRequirement);
+          }}
+        />
+      )}
+      {trip && editingRequirement && editable && (
+        <AddRequirementForm
+          trip={trip}
+          requirement={editingRequirement}
+          travelers={travelers}
+          onClose={() => setEditingRequirement(null)}
         />
       )}
       {trip && openForm === "note" && editable && <AddNoteForm trip={trip} onClose={closeForm} />}

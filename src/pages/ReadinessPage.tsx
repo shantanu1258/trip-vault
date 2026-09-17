@@ -11,8 +11,8 @@ import {
 import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
-import { ModalSheet } from "../components/ModalSheet";
 import { ErrorCard, LoadingCard, PageHeader } from "../components/TripUi";
+import { RequirementDetailsSheet } from "../features/readiness/RequirementDetailsSheet";
 import { requirementTimelineSchedule } from "../features/timeline/model";
 import {
   archiveRequirement,
@@ -98,10 +98,6 @@ export function ReadinessPage() {
   const role = membersQuery.data?.find((member) => member.user_id === userId)?.role;
   const editable = role === "owner" || role === "editor";
   const returnNavigation = tripReturnNavigation(locationState, tripId);
-  const viewingSchedule =
-    viewing && trip
-      ? requirementTimelineSchedule(viewing, itineraryQuery.data ?? [], trip.primary_timezone)
-      : null;
   const viewingAudience = viewing
     ? requirementAudienceLabel(viewing.id, assigneesQuery.data ?? [], travelersQuery.data ?? [])
     : "";
@@ -305,46 +301,18 @@ export function ReadinessPage() {
           />
         )}
         {viewing && trip && (
-          <ModalSheet
-            eyebrow="Readiness task"
-            title={viewing.title}
+          <RequirementDetailsSheet
+            requirement={viewing}
+            itinerary={itineraryQuery.data ?? []}
+            timezone={trip.primary_timezone}
+            audience={viewingAudience}
+            editable={editable}
             onClose={() => setViewing(null)}
-          >
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl bg-elevated p-4">
-                <p className="eyebrow">Status</p>
-                <p className="mt-2 font-bold capitalize">{viewing.status.replaceAll("_", " ")}</p>
-              </div>
-              <div className="rounded-2xl bg-elevated p-4">
-                <p className="eyebrow">When</p>
-                <p className="mt-2 font-bold">{viewingSchedule?.label ?? "No date or event set"}</p>
-              </div>
-              {viewingAudience && (
-                <div className="rounded-2xl bg-elevated p-4 sm:col-span-2">
-                  <p className="eyebrow">For</p>
-                  <p className="mt-2 font-bold">{viewingAudience}</p>
-                </div>
-              )}
-            </div>
-            <div className="mt-4 rounded-2xl border border-line p-4">
-              <p className="eyebrow">Notes</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
-                {viewing.notes || "No notes added."}
-              </p>
-            </div>
-            {editable && (
-              <button
-                type="button"
-                className="secondary-button mt-4 w-full"
-                onClick={() => {
-                  setViewing(null);
-                  setEditing(viewing);
-                }}
-              >
-                <Pencil className="size-4" /> Edit task
-              </button>
-            )}
-          </ModalSheet>
+            onEdit={() => {
+              setViewing(null);
+              setEditing(viewing);
+            }}
+          />
         )}
         {editing && trip && (
           <AddRequirementForm
