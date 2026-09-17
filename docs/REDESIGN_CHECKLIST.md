@@ -541,7 +541,7 @@ P0 can use a normalized local index over IndexedDB records. A PostgreSQL full-te
 - [x] Provide a reviewed regional starter set for the current India, Singapore, Malaysia, and Indonesia personal-use scope; expand it through Admin review rather than claiming worldwide completeness.
 - [ ] Record the source, license, snapshot date, and update process before importing airport data.
 - [x] Search by the catalog's airport code, airport name, city, and aliases.
-- [x] When entering an unknown airport for an International flight, require a display name, airport code, two-letter country, and strict IANA timezone; Domestic keeps the zone hidden and uses the compatibility fallback.
+- [x] When entering an unknown airport for an International flight, require a display name, airport code, two-letter country, and strict IANA timezone; Domestic uses the single visible journey timezone, defaulted from the chronologically furthest event.
 - [x] Use the unknown airport immediately as a flight-leg snapshot.
 - [ ] Send only non-sensitive airport metadata to an administrator review queue.
 - [ ] Let Admin correct and publish the airport without rewriting the original flight automatically.

@@ -4,7 +4,7 @@ description: "Prioritized inventory of Trip Vault capabilities, MVP boundaries, 
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [features, product-scope, mvp, acceptance-criteria, roadmap]
-last_verified: 2026-09-16
+last_verified: 2026-09-17
 ---
 
 # Trip Vault Feature Catalog
@@ -15,7 +15,7 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 
 **Catalog status:** Personal MVP 1.0
 
-**Implementation status:** Implemented locally; an existing Supabase project already current through `202609130007_relative_event_timing.sql` needs the single new `202609140001_event_form_data_model.sql` migration, followed by the remote smoke and manual acceptance runs
+**Implementation status:** Implemented locally; an existing Supabase project must apply each missing immutable migration through `202609170001_journey_timeline_and_timezone.sql`, followed by the remote smoke and manual acceptance runs
 
 ### Timeline-first release additions
 
@@ -27,7 +27,7 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 - Ask Direct or Connecting for Flight, Single or Connecting service for Train/Bus/Ferry, and no route-structure question for Cab; store one or several ordered legs and show every stop in the route summary.
 - Ask an event-appropriate Plan/Walk-up/Booked question before revealing booking-only fields; Flight is always booked, Hotel defaults to booked, and the other eligible forms begin in their non-booked choice and can gain booking details later without duplicating their timeline identity.
 - Require both printed times for Flight, allow Train/Bus/Ferry/Cab arrival to stay unknown, and store mode-appropriate ticket details per included traveler and leg: Train seat/berth + coach + reference, Bus seat + reference, and Ferry reference plus seat/cabin only for assigned seating.
-- Keep strict endpoint IANA time zones in storage while deriving known airport zones automatically, hiding controls for Domestic journeys and local events, and asking for manual zones only for an International Other airport or an International non-flight endpoint without a catalog.
+- Keep one inherited IANA zone for a local event, expose it when editing that event, and retain separate endpoint-zone controls only where an International journey requires them; a Bus booking's Before/After placement remains editable without being reset by later route changes.
 - Require flight PNR, support domestic/international classification, boarding lead or exact time, and manual operational updates.
 - Store booked-via vendor/website and optional phone; reconcile the website when the vendor changes in create or edit, and expose phone handlers through Call and WhatsApp actions.
 - Search authorized cached trip metadata locally and jump to the matching event or detail.
@@ -147,7 +147,7 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | DSH-007 | Day-by-day itinerary | P0 | MVP | Items are grouped using their stored timezone and remain readable offline |
 | DSH-008 | Add custom itinerary item | P0 | MVP | Authorized user can add a timed or date-only item without requiring a booking |
 | DSH-009 | Reorder equal-time items | P1 | MVP | Stable manual ordering is preserved across clients |
-| DSH-010 | Timezone clarity | P0 | MVP | Stored times retain a strict IANA zone and never silently shift date; Domestic journeys and local events hide zone controls, known airports derive them, and International Other/non-flight endpoints request them. Domestic manual endpoints use one hidden fallback zone, so a same-country route crossing time-zone regions must be entered as International |
+| DSH-010 | Timezone clarity | P0 | MVP | Stored times retain a strict IANA zone and never silently shift date; new Domestic/local entries inherit one visible event-level zone with a Default/local shortcut, editing applies that zone across every connection, known airports derive International endpoint zones, and International journeys use their endpoint controls without a duplicate event-zone field. A same-country route crossing time-zone regions must be entered as International |
 | DSH-011 | Tasks in the main timeline | P0 | MVP | Dated and event-linked tasks appear as compact checkbox rows in the same chronological timeline; completion immediately advances its active highlight |
 | DSH-012 | Calendar view | P1 | Later | Month or week presentation complements, but does not replace, the timeline |
 | DSH-013 | Calendar export | P1 | MVP | User can export selected itinerary items and preparation deadlines without exposing private documents |
@@ -193,14 +193,14 @@ Counts are planning aids, exclude `Not planned` items, and should be updated whe
 | BKG-013 | Duplicate detection | P2 | Later | Likely duplicate bookings are suggested using explainable matching |
 | BKG-014 | Provider change tracking | P2 | Later | The app records changes without claiming live provider truth when none exists |
 | BKG-015 | Boarding-pass wallet integration | Explore | Later | Platform feasibility and native requirements are assessed first |
-| BKG-016 | Journey structure prompt | P0 | MVP | Flight asks Direct or Connecting; Train, Bus, and Ferry ask Single or Connecting service; Cab asks neither. A single/direct journey has one leg and Connecting starts with two and supports more; each later origin must match the prior destination, and ordered-leg count remains the source of truth; appending a Flight later fixes its origin to the prior arrival and the server revalidates continuity |
-| BKG-017 | Complete journey route | P0 | MVP | Cards and details derive the route from all ordered legs, such as `BLR → DEL → DXB`, and do not ask for a generic journey location |
-| BKG-018 | Type-specific booking fields | P0 | MVP | Flights and trains omit contact name; hotels use property name plus Booked via without service-provider or clock-repeat controls; Domestic journeys ask for neither journey country nor time zone; International endpoints use their strict source zones |
+| BKG-016 | Journey structure prompt | P0 | MVP | Flight asks Direct or Connecting; Train, Bus, and Ferry ask Single or Connecting service; Cab asks neither. A single/direct journey has one connection and Connecting starts with two and supports more; each later origin is filled from the prior destination and remains fixed, while ordered connection count remains the source of truth; appending a Flight later fixes its origin to the prior arrival and the server revalidates continuity. Collapsible cards use route-aware labels such as `Connection 2 · DEL → DXB`, never the technical word “leg” |
+| BKG-017 | Complete journey route | P0 | MVP | Cards and details derive the route from all ordered connections, such as `BLR → DEL → DXB`, and do not ask for a generic journey location |
+| BKG-018 | Type-specific booking fields | P0 | MVP | Flights and trains omit contact name; hotels use property name plus Booked via without service-provider or clock-repeat controls; Domestic journeys ask for one event zone and no per-connection country/zone fields; International endpoints use their strict source zones |
 | BKG-019 | Add booking to planned event | P1 | MVP | While online, an editor can add provider, reference, Booked via, website, contact, and participant details to an unbooked Activity, Meal, Transport, Preparation, or Custom event without creating a second timeline event. The new reservation is Booked; Selected preserves the event's travelers and Everyone writes no redundant traveler links. Exact or explicitly timed relative events copy their schedule; every other timing mode keeps nullable booking times, and the event editor retains the existing-booking link option |
 | BKG-020 | Booking-vendor website reconciliation | P0 | MVP | In create and edit, a saved Booked via choice fills its catalog URL or clears an outdated value when none exists; Other clears the catalog URL before manual entry while leaving the picker available |
 | BKG-021 | Progressive reservation intent | P0 | MVP | Flight is always Booked and Hotel defaults to Booked but may switch to Plan. Activity/Meal/Train/Bus/Ferry/Cab and eligible Transport/Custom forms begin in a non-booked choice; reservation fields appear for Booked/Reserved, while Cab's Already took this ride path may record actual/reference detail. Preparation and Walk have no booking fields. The saved intent remains independent from later lifecycle status |
 | BKG-022 | Ground-journey schedule and detail | P0 | MVP | Train, Bus, Ferry, and Cab require departure but allow arrival to remain unknown; when arrival is supplied it must follow departure. Each kind saves only its allowlisted ticket details, while a Domestic entry stays compact and an International entry collects strict endpoint zones |
-| BKG-023 | Per-traveler journey ticket details | P0 | MVP | Flight stores seat, boarding group, and ticket number. Train stores seat/berth, coach, and reference; Bus stores seat and reference; Ferry stores passenger reference and shows seat/cabin only for assigned seating. Values belong to each included traveler and leg, while Cab exposes no passenger-seat grid |
+| BKG-023 | Per-traveler journey ticket details | P0 | MVP | Flight stores seat, boarding group, and ticket number. Train stores seat/berth, coach, and reference; Bus stores seat and reference; Ferry stores passenger reference and shows seat/cabin only for assigned seating. Values belong to each included traveler and connection, while Cab exposes no passenger-seat grid |
 | BKG-024 | Atomic hotel stay creation | P0 | MVP | One save creates the Hotel booking, traveler scope, and both check-in/check-out milestones as one transaction; omitted printed times create date-only milestones with neutral hidden ordering instants, either all records succeed or none do, and checkout must follow check-in |
 | BKG-025 | Full reservation index | P0 | MVP | View all reservations opens a chronological compact list with complete route summaries, provider/reference search, category counts and filters, document counts, and an Everyone or one-traveler filter; selecting a row opens the existing Flight or Booking details route |
 
@@ -558,7 +558,7 @@ The MVP is ready for private travel use only when:
 39. If a document's cloud upload or trip association is interrupted, the file remains visible only to its signed-in owner in Profile and can be retried or associated without reselecting the bytes. Only a never-attempted pending upload can be discarded offline; attempted/cloud-backed unassociated files require an online delete, and associated originals use the Vault lifecycle.
 40. A new-trip form initially suggests a start 15 days from today and an end seven days later without overwriting a user-adjusted end date.
 41. Flight Direct and ground Single service start with one journey leg; Connecting starts with two and permits more; Cab asks neither question. Every later leg starts where the previous leg ends, and every summary shows all ordered stops without a generic journey Location field. A later-added Flight connection fixes its origin to the previous arrival, country-filters Domestic destinations, and is rejected server-side if endpoint/zone continuity, positive layover, scope, or Domestic country is invalid.
-42. Domestic journeys ask for neither journey country nor timezone; hotels, activities, meals, and local events also show no timezone chooser. Known international airports derive zones, while an International Other airport and every International non-flight endpoint require strict IANA selections. Domestic Flight editing hides repeated-clock controls.
+42. Domestic journeys, hotels, activities, meals, and other local events show one prefilled event-timezone chooser with **Default / local**, never one chooser per connection. Known international airports derive endpoint zones, while an International Other airport and every International non-flight endpoint require strict IANA selections and no duplicate event zone. Domestic Flight editing hides repeated-clock controls and changes all connections together.
 43. Flight requires both printed endpoint times. Train, Bus, Ferry, and Cab require departure but may omit an unknown arrival; when both times exist, cross-zone elapsed time is calculated from their endpoint zones, including overnight/offset changes, and arrival/overall end renders in the destination zone.
 44. Compact cost totals on Home and the trip header open the same itemized Trip expenses section.
 45. An unrelated route never inherits the trip timeline's scroll position, and returning to that trip still resolves or restores its intended active position.
@@ -617,7 +617,7 @@ The MVP is ready for private travel use only when:
 | 37 | Independent expense product | Deferred | Revisit a full Splitwise-style experience only after trip-scoped expenses are proven |
 | 38 | Admin experience redesign | Deferred | Finish and retest the trip application before rebuilding the responsive administrator experience |
 | 39 | Journey structure prompt | Accepted | Ask Direct/Connecting for Flight, Single/Connecting service for Train/Bus/Ferry, and neither for Cab; leg count remains authoritative and no redundant route-type schema field is added |
-| 40 | Visible timezone boundary | Accepted | Keep strict zones in storage but hide the control for Domestic and local entries, including Domestic Flight editing; manual zone entry is required for an International Other airport or International non-flight endpoint without a catalog |
+| 40 | Visible timezone boundary | Accepted | Prefill one visible local event zone on creation and editing, avoid per-connection controls on Domestic connected journeys, and use endpoint-zone controls without a duplicate event field for International journeys |
 | 41 | Provider-local schedule math | Accepted | Flight requires both printed times; ground journeys allow arrival to remain unknown; when both exist, convert each with its endpoint zone, derive elapsed time, and display arrival/end in the destination zone |
 | 42 | Expense presentation | Accepted | Keep Home/header totals compact and route both to one itemized trip-expense view |
 | 43 | Trip date defaults | Accepted | Suggest +15 days and seven nights later without replacing deliberate edits |
@@ -685,5 +685,6 @@ Feature behavior is implemented under `src/features/` and exposed through `src/p
 | Trip Storage cleanup migration | `supabase/migrations/202609130006_trip_storage_cleanup_queue.sql` | Persistent cleanup queue, owner-only permanent purge, guarded legacy Storage deletion, and hardened appended-flight continuity |
 | Relative-event timing migration | `supabase/migrations/202609130007_relative_event_timing.sql` | Separates anchor placement from optional duration and real start/end, with authoritative derivation and bounds checks |
 | Event-form data-model migration | `supabase/migrations/202609140001_event_form_data_model.sql` | Single new tail for reservation state, participant scope, optional ground arrival, typed journey details, per-leg traveler allocations, and atomic hotel save |
+| Journey placement/timezone migration | `supabase/migrations/202609170001_journey_timeline_and_timezone.sql` | Preserves or explicitly changes Train, Bus, and Ferry Exact versus Before/After placement, applies a Domestic journey timezone across all connections, and saves connected Domestic flight timezone edits atomically |
 | Redesign checklist | `docs/REDESIGN_CHECKLIST.md` | Proposed decisions, schema impact, and small preview slices |
 | Documentation conventions | `docs/doc-conventions.md` | Decision and maintenance rules |

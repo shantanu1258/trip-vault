@@ -135,7 +135,12 @@ export function AirportPicker({
           <label className="form-label sm:col-span-2">
             {direction} airport time zone
             <RequiredMark />
-            <TimeZoneAutocomplete name={timezoneName} requireSelection required />
+            <TimeZoneAutocomplete
+              name={timezoneName}
+              localDefaultValue={defaultTimezone}
+              requireSelection
+              required
+            />
           </label>
         ) : (
           <input type="hidden" name={timezoneName} value={defaultTimezone} />

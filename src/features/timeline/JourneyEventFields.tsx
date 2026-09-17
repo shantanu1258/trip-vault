@@ -22,6 +22,11 @@ import type {
 
 export type RouteStructure = "direct" | "connecting";
 export type FlightLegDraft = { arrivalAirport: AvailableAirport | null; arrivalLocal: string };
+export type GroundLegDraft = {
+  destinationName: string;
+  destinationCode: string;
+  arrivalLocal: string;
+};
 
 export function suggestedFlightLocalTime(
   local: string,
@@ -288,6 +293,7 @@ function TravelerAllocationFields({
 export function FlightLegFields({
   index,
   trip,
+  defaultTimezone,
   scope,
   travelers,
   direct,
@@ -298,6 +304,7 @@ export function FlightLegFields({
 }: {
   index: number;
   trip: Trip;
+  defaultTimezone?: string;
   scope: JourneyScope;
   travelers: Traveler[];
   direct: boolean;
@@ -337,14 +344,14 @@ export function FlightLegFields({
     arrivalAirport?.iataCode ?? arrivalAirport?.icaoCode,
     arrivalAirport?.name
   );
-  const heading =
-    departureLabel && arrivalLabel
-      ? `${departureLabel} → ${arrivalLabel} flight`
-      : direct
-        ? "Flight details"
-        : index
-          ? `Connection ${index + 1}`
-          : "First flight";
+  const flightRoute = departureLabel && arrivalLabel ? `${departureLabel} → ${arrivalLabel}` : "";
+  const heading = direct
+    ? flightRoute
+      ? `${flightRoute} flight`
+      : "Flight details"
+    : flightRoute
+      ? `Connection ${index + 1} · ${flightRoute}`
+      : `Connection ${index + 1}`;
   const routeDescription =
     departureAirport && arrivalAirport
       ? `${departureAirport.city || departureAirport.name} to ${arrivalAirport.city || arrivalAirport.name}`
@@ -357,7 +364,8 @@ export function FlightLegFields({
   useEffect(() => {
     if (arrivalEdited || !arrivalAirport) return;
     const departureTimeZone =
-      departureAirport?.timezone ?? (international ? "" : trip.primary_timezone);
+      departureAirport?.timezone ??
+      (international ? "" : (defaultTimezone ?? trip.primary_timezone));
     const suggestion = suggestedFlightLocalTime(
       departure,
       departureTimeZone,
@@ -371,6 +379,7 @@ export function FlightLegFields({
     departure,
     departureAirport,
     international,
+    defaultTimezone,
     trip.primary_timezone
   ]);
   useEffect(() => {
@@ -380,7 +389,7 @@ export function FlightLegFields({
     <JourneyLegCard
       title={heading}
       subtitle={routeDescription}
-      removeLabel={`Remove flight leg ${index + 1}`}
+      removeLabel={`Remove flight connection ${index + 1}`}
       onRemove={removable ? onRemove : undefined}
     >
       <div className="grid gap-4 sm:grid-cols-2">
@@ -407,7 +416,7 @@ export function FlightLegFields({
           timezoneName={`${prefix}.departureTimezone`}
           countryName={`${prefix}.departureCountry`}
           label="From airport"
-          defaultTimezone={trip.primary_timezone}
+          defaultTimezone={defaultTimezone ?? trip.primary_timezone}
           showManualTimezone={international}
           initialAirport={previousLeg?.arrivalAirport}
           onAirportChange={setDepartureAirport}
@@ -448,7 +457,7 @@ export function FlightLegFields({
           timezoneName={`${prefix}.arrivalTimezone`}
           countryName={`${prefix}.arrivalCountry`}
           label="To airport"
-          defaultTimezone={trip.primary_timezone}
+          defaultTimezone={defaultTimezone ?? trip.primary_timezone}
           countryFilter={international ? undefined : departureCountry}
           showManualTimezone={international}
           onAirportChange={setArrivalAirport}
@@ -577,31 +586,38 @@ export function GroundJourneyLegFields({
   index,
   mode,
   trip,
+  defaultTimezone,
   scope,
   travelers,
   reservationState,
   direct,
   removable,
+  previousLeg,
+  onDestinationChange,
   onRemove
 }: {
   index: number;
   mode: Exclude<JourneyMode, "cab">;
   trip: Trip;
+  defaultTimezone?: string;
   scope: JourneyScope;
   travelers: Traveler[];
   reservationState: ReservationState;
   direct: boolean;
   removable: boolean;
+  previousLeg?: GroundLegDraft;
+  onDestinationChange?: (value: GroundLegDraft) => void;
   onRemove: () => void;
 }) {
   const prefix = `journey.${index}`;
   const labels = routeLabels[mode];
   const [departure, setDeparture] = useState(`${trip.start_date}T09:00`);
   const [boardingLead, setBoardingLead] = useState("");
-  const [originName, setOriginName] = useState("");
-  const [originCode, setOriginCode] = useState("");
+  const [originName, setOriginName] = useState(previousLeg?.destinationName ?? "");
+  const [originCode, setOriginCode] = useState(previousLeg?.destinationCode ?? "");
   const [destinationName, setDestinationName] = useState("");
   const [destinationCode, setDestinationCode] = useState("");
+  const [arrival, setArrival] = useState("");
   const [ferrySeating, setFerrySeating] = useState("unknown");
   const [vehicle, setVehicle] = useState(false);
   const international = scope === "international";
@@ -612,23 +628,32 @@ export function GroundJourneyLegFields({
   const noun = mode === "ferry" ? "sailing" : mode;
   const originLabel = endpointLabel(originCode, originName);
   const destinationLabel = endpointLabel(destinationCode, destinationName);
-  const heading =
-    originLabel && destinationLabel
-      ? `${originLabel} → ${destinationLabel} ${noun}`
-      : direct
-        ? `${noun} details`
-        : index
-          ? `Connection ${index + 1}`
-          : `First ${noun}`;
+  const journeyRoute =
+    originLabel && destinationLabel ? `${originLabel} → ${destinationLabel}` : "";
+  const heading = direct
+    ? journeyRoute
+      ? `${journeyRoute} ${noun}`
+      : `${noun} details`
+    : journeyRoute
+      ? `Connection ${index + 1} · ${journeyRoute}`
+      : `Connection ${index + 1}`;
   const routeDescription =
     originName && destinationName && (originCode || destinationCode)
       ? `${originName} to ${destinationName}`
       : undefined;
+  useEffect(() => {
+    if (!previousLeg) return;
+    setOriginName(previousLeg.destinationName);
+    setOriginCode(previousLeg.destinationCode);
+  }, [previousLeg?.destinationCode, previousLeg?.destinationName]);
+  useEffect(() => {
+    onDestinationChange?.({ destinationName, destinationCode, arrivalLocal: arrival });
+  }, [arrival, destinationCode, destinationName]);
   return (
     <JourneyLegCard
       title={heading}
       subtitle={routeDescription}
-      removeLabel={`Remove ${mode} leg ${index + 1}`}
+      removeLabel={`Remove ${mode} connection ${index + 1}`}
       onRemove={removable ? onRemove : undefined}
     >
       <div className="grid gap-4 sm:grid-cols-2">
@@ -669,7 +694,9 @@ export function GroundJourneyLegFields({
           <input
             className="form-input"
             name={`${prefix}.originName`}
+            value={originName}
             onChange={(event) => setOriginName(event.target.value)}
+            readOnly={Boolean(previousLeg)}
             placeholder={
               mode === "train"
                 ? "Search by station name or code"
@@ -685,7 +712,9 @@ export function GroundJourneyLegFields({
           <input
             className="form-input uppercase"
             name={`${prefix}.originCode`}
+            value={originCode}
             onChange={(event) => setOriginCode(event.target.value)}
+            readOnly={Boolean(previousLeg)}
             placeholder="Enter the station or terminal code, if used"
           />
         </label>
@@ -709,13 +738,18 @@ export function GroundJourneyLegFields({
             <RequiredMark />
             <TimeZoneAutocomplete
               name={`${prefix}.originTimezone`}
+              localDefaultValue={defaultTimezone ?? trip.primary_timezone}
               requireSelection
               required
               aria-label="Origin time zone"
             />
           </label>
         ) : (
-          <input type="hidden" name={`${prefix}.originTimezone`} value={trip.primary_timezone} />
+          <input
+            type="hidden"
+            name={`${prefix}.originTimezone`}
+            value={defaultTimezone ?? trip.primary_timezone}
+          />
         )}
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -789,6 +823,7 @@ export function GroundJourneyLegFields({
             <RequiredMark />
             <TimeZoneAutocomplete
               name={`${prefix}.destinationTimezone`}
+              localDefaultValue={defaultTimezone ?? trip.primary_timezone}
               requireSelection
               required
               aria-label="Destination time zone"
@@ -798,7 +833,7 @@ export function GroundJourneyLegFields({
           <input
             type="hidden"
             name={`${prefix}.destinationTimezone`}
-            value={trip.primary_timezone}
+            value={defaultTimezone ?? trip.primary_timezone}
           />
         )}
       </div>
@@ -811,6 +846,8 @@ export function GroundJourneyLegFields({
             name={`${prefix}.arrivalAt`}
             min={`${trip.start_date}T00:00`}
             max={`${trip.end_date}T23:59`}
+            value={arrival}
+            onChange={(event) => setArrival(event.target.value)}
           />
         </label>
         {international ? (
@@ -1120,13 +1157,15 @@ export function AddConnectionButton({
 
 export function CabFields({
   trip,
+  defaultTimezone,
   reservationState,
-  itineraryTiming,
+  renderItineraryTiming,
   flightLegs
 }: {
   trip: Trip;
+  defaultTimezone?: string;
   reservationState: ReservationState;
-  itineraryTiming: ReactNode;
+  renderItineraryTiming: (showTimezone: boolean) => ReactNode;
   flightLegs: FlightLeg[];
 }) {
   const [rideType, setRideType] = useState<"local" | "airport_transfer" | "outstation" | "hourly">(
@@ -1193,7 +1232,7 @@ export function CabFields({
           </label>
         </div>
       </fieldset>
-      {itineraryTiming}
+      {renderItineraryTiming(!crossBorder)}
       {(booked || completed) && (
         <details open className="rounded-2xl border border-line p-4">
           <summary className="cursor-pointer text-sm font-extrabold">
@@ -1364,12 +1403,24 @@ export function CabFields({
               <label className="form-label">
                 Pickup time zone
                 <RequiredMark />
-                <TimeZoneAutocomplete name="cab.originTimezone" requireSelection required />
+                <TimeZoneAutocomplete
+                  name="timezone"
+                  localDefaultValue={defaultTimezone ?? trip.primary_timezone}
+                  requireSelection
+                  required
+                  aria-label="Pickup time zone"
+                />
               </label>
               <label className="form-label">
                 Drop-off time zone
                 <RequiredMark />
-                <TimeZoneAutocomplete name="cab.destinationTimezone" requireSelection required />
+                <TimeZoneAutocomplete
+                  name="cab.destinationTimezone"
+                  localDefaultValue={defaultTimezone ?? trip.primary_timezone}
+                  requireSelection
+                  required
+                  aria-label="Drop-off time zone"
+                />
               </label>
             </>
           )}

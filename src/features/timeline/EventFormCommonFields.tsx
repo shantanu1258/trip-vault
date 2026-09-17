@@ -5,6 +5,7 @@ import { VendorPicker } from "../metadata/VendorPicker";
 import type { TimelineEventType, Trip } from "../trips/types";
 import { defaultHotelCheckoutLocal } from "../trips/validation";
 import type { ReservationState, Traveler } from "../workspace/types";
+import { EventTimeZoneField } from "./TimingFields";
 
 type BookableEventType = Exclude<TimelineEventType, "preparation">;
 export type OtherTransportSubtype = "metro" | "rental" | "private_transfer" | "walk" | "other";
@@ -205,9 +206,9 @@ export function BookingFields({
   const [website, setWebsite] = useState("");
   const showContactName = !["flight", "train", "bus", "ferry"].includes(type);
   return (
-    <fieldset className="rounded-2xl border border-line p-4">
-      <legend className="px-1 text-sm font-extrabold">Booking details</legend>
-      <div className="mt-2 grid gap-4 sm:grid-cols-2">
+    <details open className="rounded-2xl border border-line p-4">
+      <summary className="cursor-pointer text-sm font-extrabold">Booking details</summary>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
         {!hideProvider && (
           <label className="form-label">
             {labels.provider}
@@ -267,11 +268,17 @@ export function BookingFields({
           />
         </label>
       </div>
-    </fieldset>
+    </details>
   );
 }
 
-export function HotelStayFields({ trip }: { trip: Trip }) {
+export function HotelStayFields({
+  trip,
+  defaultTimezone
+}: {
+  trip: Trip;
+  defaultTimezone?: string;
+}) {
   const initialCheckIn = `${trip.start_date}T15:00`;
   const [checkInDate, setCheckInDate] = useState(trip.start_date);
   const [checkInTime, setCheckInTime] = useState("");
@@ -340,11 +347,17 @@ export function HotelStayFields({ trip }: { trip: Trip }) {
         If the property only gives dates, Trip Vault uses neutral local milestone times for ordering
         and does not present them as printed times.
       </p>
+      <div className="mt-4">
+        <EventTimeZoneField
+          value={defaultTimezone ?? trip.primary_timezone}
+          localDefaultValue={defaultTimezone ?? trip.primary_timezone}
+          label="Stay time zone"
+        />
+      </div>
       <input type="hidden" name="startsAt" value={`${checkInDate}T${checkInTime || "12:00"}`} />
       <input type="hidden" name="checkoutAt" value={`${checkoutDate}T${checkoutTime || "12:00"}`} />
       <input type="hidden" name="checkInHasTime" value={checkInTime ? "yes" : "no"} />
       <input type="hidden" name="checkoutHasTime" value={checkoutTime ? "yes" : "no"} />
-      <input type="hidden" name="timezone" value={trip.primary_timezone} />
       <input type="hidden" name="occurrence" value="earlier" />
       <input type="hidden" name="checkoutOccurrence" value="earlier" />
     </fieldset>

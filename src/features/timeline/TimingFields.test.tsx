@@ -271,6 +271,7 @@ describe("relative event timing", () => {
     expect(screen.getByLabelText("Start date & time (optional)")).toHaveValue("2026-09-27T10:00");
     expect(screen.getByLabelText("Duration (optional)")).toHaveValue(2);
     expect(screen.getByLabelText("Duration unit")).toHaveValue("hours");
+    expect(screen.getByRole("button", { name: "Event time zone" })).toHaveTextContent("Kolkata");
   });
 
   it("retains the saved order while the anchor options load", () => {

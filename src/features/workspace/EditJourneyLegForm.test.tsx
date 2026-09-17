@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Trip } from "../trips/types";
+import type { ItineraryItem, Trip } from "../trips/types";
 import type { Booking, JourneyLeg } from "./types";
 
 const mocks = vi.hoisted(() => ({
@@ -105,6 +105,31 @@ const leg: JourneyLeg = {
   version: 3
 };
 
+const itineraryItem: ItineraryItem = {
+  id: "bus-event",
+  trip_id: trip.id,
+  booking_id: booking.id,
+  title: booking.title,
+  event_type: "bus",
+  starts_at: leg.scheduled_departure_at,
+  ends_at: null,
+  timezone: leg.origin_timezone,
+  location: null,
+  notes: null,
+  applies_to_all_travelers: true,
+  timing_mode: "exact",
+  created_at: "2026-09-01T00:00:00.000Z"
+};
+
+const anchor: ItineraryItem = {
+  ...itineraryItem,
+  id: "hotel-checkout",
+  booking_id: "hotel-1",
+  title: "Hotel checkout",
+  event_type: "hotel_check_out",
+  starts_at: "2026-09-28T02:30:00.000Z"
+};
+
 function renderForm(currentBooking = booking, currentLeg = leg) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
@@ -118,6 +143,8 @@ function renderForm(currentBooking = booking, currentLeg = leg) {
           booking={currentBooking}
           leg={currentLeg}
           legNumber={1}
+          itinerary={[anchor, itineraryItem]}
+          itineraryItem={itineraryItem}
           onClose={mocks.onClose}
         />
       </QueryClientProvider>
@@ -132,6 +159,21 @@ beforeEach(() => {
 });
 
 describe("journey leg enrichment", () => {
+  it.each(["train", "ferry"] as const)(
+    "keeps booking-level timeline placement available while editing a %s",
+    (mode) => {
+      renderForm(
+        { ...booking, type: mode },
+        { ...leg, mode, details: mode === "train" ? { kind: "train" } : { kind: "ferry" } }
+      );
+
+      expect(screen.getByRole("group", { name: "Timeline placement" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Place in timeline")).toHaveTextContent(
+        `Use ${mode} departure time`
+      );
+    }
+  );
+
   it("lets a planned domestic bus be enriched without asking for time zones", async () => {
     const { user } = renderForm();
 
@@ -139,9 +181,11 @@ describe("journey leg enrichment", () => {
     expect(screen.getByLabelText("Bus class or layout")).toHaveValue("Volvo");
     expect(screen.queryByText("Departure time zone")).not.toBeInTheDocument();
     expect(screen.queryByText("Destination time zone")).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Place in timeline"), "relative");
+    await user.selectOptions(screen.getByLabelText("Event"), anchor.id);
 
     await user.type(screen.getByLabelText("Service number"), "KIA-9");
-    await user.click(screen.getByRole("button", { name: "Save journey leg" }));
+    await user.click(screen.getByRole("button", { name: "Save journey changes" }));
 
     await waitFor(
       () =>
@@ -159,6 +203,11 @@ describe("journey leg enrichment", () => {
             departureAt: "2026-09-28T03:30:00.000Z",
             arrivalAt: undefined,
             boardingAt: "2026-09-28T03:00:00.000Z",
+            itineraryTiming: {
+              timingMode: "relative",
+              anchorItineraryItemId: anchor.id,
+              relativePosition: "after"
+            },
             details: expect.objectContaining({
               kind: "bus",
               bus_class_or_layout: "Volvo",
@@ -199,14 +248,14 @@ describe("journey leg enrichment", () => {
 
     await user.type(departureCountry, "S");
     expect(departureCountry).toBeInvalid();
-    fireEvent.submit(screen.getByRole("button", { name: "Save journey leg" }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: "Save journey changes" }).closest("form")!);
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Use a 2-letter departure country code."
     );
     expect(mocks.updateJourneyLeg).not.toHaveBeenCalled();
 
     await user.clear(departureCountry);
-    await user.click(screen.getByRole("button", { name: "Save journey leg" }));
+    await user.click(screen.getByRole("button", { name: "Save journey changes" }));
 
     await waitFor(() =>
       expect(mocks.updateJourneyLeg).toHaveBeenCalledWith(
@@ -267,8 +316,8 @@ describe("journey leg enrichment", () => {
     renderForm();
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      "leg, booking summary, and timeline are updated together"
+      "connection, booking summary, and timeline are updated together"
     );
-    expect(screen.getByRole("button", { name: "Save journey leg" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save journey changes" })).toBeDisabled();
   });
 });

@@ -783,7 +783,7 @@ describe("Upload document flow", () => {
             travelers={travelers}
             bookingId="booking-bus"
             journeyLegId="bus-leg-2"
-            contextTitle="Leg 2 · DEL to DXB"
+            contextTitle="Connection 2 · DEL to DXB"
             onClose={vi.fn()}
           />
         </QueryClientProvider>
@@ -792,7 +792,7 @@ describe("Upload document flow", () => {
 
     expect(screen.getByLabelText("Document type")).toHaveValue("journey_ticket");
     expect(
-      screen.getByText("Train, bus, ferry or cab ticket · Everyone · Leg 2 · DEL to DXB")
+      screen.getByText("Train, bus, ferry or cab ticket · Everyone · Connection 2 · DEL to DXB")
     ).toBeInTheDocument();
     const file = new window.File(["%PDF-ticket"], "operator-ticket.pdf", {
       type: "application/pdf"
@@ -1019,7 +1019,7 @@ describe("Upload document flow", () => {
     expect(website).toHaveValue("https://www.cleartrip.com");
   });
 
-  it("uses the hotel name as the property provider without exposing a timezone control", async () => {
+  it("uses the hotel name as the property provider and exposes the stay timezone", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { mutations: { retry: false }, queries: { retry: false } }
     });
@@ -1042,8 +1042,9 @@ describe("Upload document flow", () => {
     await user.clear(property);
     await user.type(property, "Marina Bay Hotel");
     expect(screen.queryByText("Service provider")).not.toBeInTheDocument();
-    expect(screen.queryByText("Booking time zone")).not.toBeInTheDocument();
     await screen.findByLabelText("Printed check-in time (optional)");
+    await user.click(screen.getByRole("button", { name: "Stay time zone" }));
+    await user.click(screen.getByRole("option", { name: /Dubai.*Asia\/Dubai/i }));
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() =>
@@ -1053,7 +1054,9 @@ describe("Upload document flow", () => {
           eventType: "hotel_check_in",
           title: "Marina Bay Hotel",
           provider: "Marina Bay Hotel",
-          timezone: "Asia/Kolkata"
+          timezone: "Asia/Dubai",
+          startsAt: "2026-09-26T06:00:00.000Z",
+          endsAt: "2026-09-26T09:30:00.000Z"
         })
       )
     );

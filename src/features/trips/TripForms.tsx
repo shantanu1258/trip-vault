@@ -47,7 +47,7 @@ import { ParticipantSelector } from "../workspace/ParticipantSelector";
 import { listItineraryParticipantIds } from "../workspace/api";
 import { listItinerary } from "./api";
 import { useFormDraft } from "../../lib/forms/useFormDraft";
-import { readEventTiming, TimingFields } from "../timeline/TimingFields";
+import { furthestEventTimezone, readEventTiming, TimingFields } from "../timeline/TimingFields";
 
 export function AddItineraryForm({
   trip,
@@ -221,7 +221,12 @@ export function AddItineraryForm({
             autoFocus
           />
         </label>
-        <TimingFields trip={trip} itinerary={itinerary.data ?? []} item={item} />
+        <TimingFields
+          trip={trip}
+          itinerary={itinerary.data ?? []}
+          item={item}
+          defaultTimezone={furthestEventTimezone(itinerary.data ?? [], trip.primary_timezone)}
+        />
         <label className="form-label">
           Location (optional)
           <input

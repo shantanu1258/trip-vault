@@ -356,10 +356,10 @@ export function validateLegOrder(legs: Array<{ departureAt: string; arrivalAt?: 
   for (let index = 0; index < legs.length; index += 1) {
     const arrivalAt = legs[index].arrivalAt;
     if (arrivalAt && new Date(arrivalAt) <= new Date(legs[index].departureAt))
-      return `Leg ${index + 1} must arrive after it departs.`;
+      return `Connection ${index + 1} must arrive after it departs.`;
     const previousArrival = index > 0 ? legs[index - 1].arrivalAt : undefined;
     if (previousArrival && new Date(legs[index].departureAt) < new Date(previousArrival))
-      return `Leg ${index + 1} starts before leg ${index} arrives.`;
+      return `Connection ${index + 1} starts before connection ${index} arrives.`;
   }
   return null;
 }

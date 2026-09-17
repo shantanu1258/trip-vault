@@ -1699,10 +1699,10 @@ export async function updateJourneyLeg(
 ): Promise<{ leg: JourneyLeg; booking: Booking; itinerary: ItineraryItem[] }> {
   if (!navigator.onLine)
     throw new Error(
-      "Reconnect to edit this journey leg. Its route, booking summary, and timeline are saved together."
+      "Reconnect to edit this journey connection. Its route, booking summary, and timeline are saved together."
     );
   const details = normalizeJourneyLegDetails(input.details.kind, input.details);
-  const { data, error } = await client().rpc("save_journey_leg", {
+  const { data, error } = await client().rpc("save_journey_leg_with_timing", {
     requested_leg_id: input.legId,
     requested_leg: {
       ...(input.version === undefined ? {} : { version: input.version }),
@@ -1723,7 +1723,15 @@ export async function updateJourneyLeg(
       departure_platform: input.departurePlatform?.trim() || null,
       arrival_platform: input.arrivalPlatform?.trim() || null,
       details
-    }
+    },
+    requested_itinerary_timing: input.itineraryTiming
+      ? {
+          timing_mode: input.itineraryTiming.timingMode,
+          anchor_itinerary_item_id: input.itineraryTiming.anchorItineraryItemId ?? null,
+          relative_position: input.itineraryTiming.relativePosition ?? null
+        }
+      : null,
+    requested_event_timezone: input.eventTimezone ?? null
   });
   if (error) throw error;
   const result = data as {
@@ -1732,7 +1740,7 @@ export async function updateJourneyLeg(
     itinerary_items?: ItineraryItem[];
   } | null;
   if (!result?.leg || !result.booking)
-    throw new Error("Supabase did not return the saved journey leg.");
+    throw new Error("Supabase did not return the saved journey connection.");
   const itinerary = result.itinerary_items ?? [];
   await Promise.all([
     cacheEntity(`journey-legs:${input.tripId}`, result.leg),
@@ -2068,7 +2076,12 @@ export async function getFlightLeg(flightLegId: string): Promise<FlightLeg> {
 }
 
 export async function updateFlightLeg(
-  input: Partial<FlightLeg> & { id: string; tripId?: string; status: FlightStatus }
+  input: Partial<FlightLeg> & {
+    id: string;
+    tripId?: string;
+    status: FlightStatus;
+    eventTimezone?: string;
+  }
 ): Promise<FlightLeg> {
   const actor = await userId();
   const scheduleChanged = Boolean(input.scheduled_departure_at && input.scheduled_arrival_at);
@@ -2098,6 +2111,10 @@ export async function updateFlightLeg(
   if (!navigator.onLine && input.tripId) {
     const existing = await readEntityById<FlightLeg>("flights:", input.id);
     if (!existing) throw new Error("This flight was not cached for offline editing.");
+    if (input.eventTimezone && input.eventTimezone !== existing.departure_timezone)
+      throw new Error(
+        "Reconnect to change a flight journey's time zone so every connection stays synchronized."
+      );
     const updated = { ...existing, ...allowed, version: (existing.version ?? 1) + 1 };
     await queueUpdate({
       entityType: `flights:${input.tripId}`,
@@ -2148,6 +2165,17 @@ export async function updateFlightLeg(
       }
     }
     return updated;
+  }
+  if (input.eventTimezone) {
+    const { data, error } = await client().rpc("save_domestic_flight_update", {
+      requested_leg_id: input.id,
+      requested_version: input.version ?? null,
+      requested_patch: allowed,
+      requested_event_timezone: input.eventTimezone
+    });
+    if (error) throw error;
+    if (input.tripId) await cacheEntity(`flights:${input.tripId}`, data as FlightLeg);
+    return data as FlightLeg;
   }
   let request = client().from("flight_legs").update(allowed).eq("id", input.id);
   if (input.version !== undefined) request = request.eq("version", input.version);

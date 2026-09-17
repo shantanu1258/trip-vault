@@ -43,7 +43,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. For a new Supabase project, paste and run the single `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` file in the SQL Editor; it already contains the current event-form schema. For an existing database already current through `202609130007_relative_event_timing.sql`, run the single new `202609140001_event_form_data_model.sql` migration and then the schema smoke test. Older databases apply every missing migration in filename order. Real signed-in flows also require the two browser-safe values in `.env.local`.
+Open `http://127.0.0.1:5173`. Follow the [Supabase database workflow](supabase/README.md) to install a new project from the canonical two-phase rollup or upgrade an existing project with its pending immutable migrations, then run the schema smoke test. Real signed-in flows also require the two browser-safe values in `.env.local`.
 
 ## Verify
 

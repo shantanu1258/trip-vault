@@ -643,4 +643,10 @@ export type UpdateJourneyLegInput = {
   departurePlatform?: string;
   arrivalPlatform?: string;
   details: JourneyLegDetails;
+  itineraryTiming?: {
+    timingMode: "exact" | "relative";
+    anchorItineraryItemId?: string;
+    relativePosition?: "before" | "after";
+  };
+  eventTimezone?: string;
 };

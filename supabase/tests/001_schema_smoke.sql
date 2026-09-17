@@ -1,4 +1,5 @@
--- Run in Supabase SQL Editor after every migration.
+-- Run in Supabase SQL Editor after both phases of the canonical setup, or after
+-- applying every pending migration to an existing project.
 -- It leaves no changes behind: trigger probes run inside a rolled-back transaction.
 -- A missing essential LLD invariant raises a clear error.
 
@@ -25,6 +26,8 @@ declare
   flight_connection_definition text;
   hotel_save_definition text;
   journey_save_definition text;
+  journey_timing_save_definition text;
+  domestic_flight_save_definition text;
   participant_sync_definition text;
   parent_scope_definition text;
   explicit_participant_definition text;
@@ -165,6 +168,32 @@ begin
     or strpos(journey_save_definition, 'lock order invariant: every editor next locks all active route legs')
       >= strpos(journey_save_definition, 'select journey.* into target_leg') then
     raise exception 'Journey leg editing does not lock booking then route legs in deterministic order';
+  end if;
+  if to_regprocedure('public.save_journey_leg_with_timing(uuid,jsonb,jsonb,text)') is null then
+    raise exception 'Journey timeline-preserving edit RPC is missing';
+  end if;
+  journey_timing_save_definition := lower(
+    pg_get_functiondef('public.save_journey_leg_with_timing(uuid,jsonb,jsonb,text)'::regprocedure)
+  );
+  if strpos(journey_timing_save_definition, 'public.save_journey_leg(requested_leg_id, requested_leg)') = 0
+    or strpos(journey_timing_save_definition, 'existing_timing_mode = ''relative''') = 0
+    or strpos(journey_timing_save_definition, 'target_mode in (''train'', ''bus'', ''ferry'')') = 0
+    or strpos(journey_timing_save_definition, 'normalized_event_timezone') = 0
+    or strpos(journey_timing_save_definition, 'set ends_at = null') = 0
+    or strpos(journey_timing_save_definition, 'anchor_itinerary_item_id = requested_anchor_id') = 0 then
+    raise exception 'Journey editing does not preserve placement or apply domestic event time zones safely';
+  end if;
+  if to_regprocedure('public.save_domestic_flight_update(uuid,integer,jsonb,text)') is null then
+    raise exception 'Atomic domestic flight timezone edit RPC is missing';
+  end if;
+  domestic_flight_save_definition := lower(
+    pg_get_functiondef('public.save_domestic_flight_update(uuid,integer,jsonb,text)'::regprocedure)
+  );
+  if strpos(domestic_flight_save_definition, 'coalesce(target_booking.journey_scope::text, ''domestic'') <> ''domestic''') = 0
+    or strpos(domestic_flight_save_definition, 'flight.id <> requested_leg_id') = 0
+    or strpos(domestic_flight_save_definition, 'departure_timezone = event_zone') = 0
+    or strpos(domestic_flight_save_definition, 'update public.itinerary_items') = 0 then
+    raise exception 'Domestic flight timezone editing does not keep every connection and timeline row synchronized';
   end if;
   if to_regprocedure('public.sync_booking_participants(uuid,public.participant_scope,uuid[],uuid,integer)') is null then
     raise exception 'Atomic booking/event participant synchronization RPC is missing';

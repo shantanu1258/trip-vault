@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { TimeZoneAutocomplete } from "../../components/TimeZoneAutocomplete";
 import type { EventTimingMode, ItineraryItem, Trip } from "../trips/types";
 import { isoToLocalDateTime, localDateTimeToIso } from "../trips/validation";
 import { RequiredMark } from "../../components/RequiredMark";
@@ -104,7 +105,10 @@ export function readEventTiming(form: FormData, trip: Trip, itinerary: Itinerary
     const anchor = itinerary.find((item) => item.id === anchorItineraryItemId);
     if (!anchor || ["relative", "unscheduled"].includes(anchor.timing_mode ?? "exact"))
       throw new Error("Choose a dated event to place this before or after.");
-    const relativeTimezone = text(form, "itemTimezone") || anchor.timezone;
+    const relativeTimezone =
+      (text(form, "timezoneOverride") === "yes" ? text(form, "timezone") : "") ||
+      text(form, "itemTimezone") ||
+      anchor.timezone;
     const schedule = resolveExplicitSchedule(form, relativeTimezone, assertDate, false);
     return {
       timingMode,
@@ -134,6 +138,50 @@ export function readEventTiming(form: FormData, trip: Trip, itinerary: Itinerary
   }
   const schedule = resolveExplicitSchedule(form, timezone, assertDate, true);
   return { timingMode, timezone, ...schedule, startsAt: schedule.startsAt!, isAllDay: false };
+}
+
+export function furthestEventTimezone(itinerary: ItineraryItem[], fallback: string) {
+  let furthest: ItineraryItem | undefined;
+  let furthestAt = Number.NEGATIVE_INFINITY;
+  itinerary.forEach((item) => {
+    if (item.timing_mode === "unscheduled") return;
+    const chronologicalAt = Date.parse(item.ends_at ?? item.starts_at);
+    if (!Number.isFinite(chronologicalAt)) return;
+    if (!furthest || chronologicalAt >= furthestAt) {
+      furthest = item;
+      furthestAt = chronologicalAt;
+    }
+  });
+  return furthest?.timezone || fallback;
+}
+
+export function EventTimeZoneField({
+  name = "timezone",
+  value,
+  localDefaultValue,
+  label = "Event time zone",
+  hint = "The latest scheduled event supplies the default. Choose Default / local or another zone when this event uses a different local clock."
+}: {
+  name?: string;
+  value: string;
+  localDefaultValue: string;
+  label?: string;
+  hint?: string;
+}) {
+  return (
+    <label className="form-label">
+      {label}
+      <RequiredMark />
+      <TimeZoneAutocomplete
+        name={name}
+        defaultValue={value}
+        localDefaultValue={localDefaultValue}
+        required
+        aria-label={label}
+      />
+      <span className="mt-1 block text-xs font-medium leading-5 text-muted">{hint}</span>
+    </label>
+  );
 }
 
 function ScheduleFields({
@@ -236,16 +284,122 @@ const timingModeOptions: Array<{ value: EventTimingMode; label: string }> = [
   { value: "unscheduled", label: "No date yet" }
 ];
 
+function RelativePlacementFields({
+  itinerary,
+  item,
+  positionName = "relativePosition",
+  anchorName = "anchorItineraryItemId"
+}: {
+  itinerary: ItineraryItem[];
+  item?: ItineraryItem;
+  positionName?: string;
+  anchorName?: string;
+}) {
+  const [relativePosition, setRelativePosition] = useState(item?.relative_position ?? "after");
+  const [anchorItineraryItemId, setAnchorItineraryItemId] = useState(
+    item?.anchor_itinerary_item_id ?? ""
+  );
+  return (
+    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <label className="form-label">
+        Position
+        <select
+          className="form-input"
+          name={positionName}
+          value={relativePosition}
+          onChange={(event) => setRelativePosition(event.target.value as "before" | "after")}
+        >
+          <option value="before">Before</option>
+          <option value="after">After</option>
+        </select>
+      </label>
+      <label className="form-label">
+        Event
+        <RequiredMark />
+        <select
+          className="form-input"
+          name={anchorName}
+          value={anchorItineraryItemId}
+          onChange={(event) => setAnchorItineraryItemId(event.target.value)}
+          required
+        >
+          <option value="">Choose a dated event</option>
+          {itinerary
+            .filter(
+              (candidate) =>
+                candidate.id !== item?.id &&
+                !["relative", "unscheduled"].includes(candidate.timing_mode ?? "exact")
+            )
+            .map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.title}
+              </option>
+            ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
+export function JourneyTimelinePlacementFields({
+  itinerary,
+  journeyLabel,
+  item
+}: {
+  itinerary: ItineraryItem[];
+  journeyLabel: string;
+  item?: ItineraryItem;
+}) {
+  const [mode, setMode] = useState<"exact" | "relative">(
+    item?.timing_mode === "relative" ? "relative" : "exact"
+  );
+  return (
+    <fieldset className="rounded-2xl border border-line p-4">
+      <legend className="px-1 text-sm font-extrabold">Timeline placement</legend>
+      <label className="form-label mt-2">
+        Place in timeline
+        <select
+          className="form-input"
+          name="journeyTimingMode"
+          value={mode}
+          onChange={(event) => setMode(event.target.value as "exact" | "relative")}
+        >
+          <option value="exact">Use {journeyLabel} departure time</option>
+          <option value="relative">Before or after another event</option>
+        </select>
+      </label>
+      {mode === "relative" && (
+        <>
+          <RelativePlacementFields
+            itinerary={itinerary}
+            item={item}
+            positionName="journeyRelativePosition"
+            anchorName="journeyAnchorItineraryItemId"
+          />
+          <p className="mt-3 text-xs leading-5 text-muted">
+            This controls timeline order only. The entered local departure and arrival times stay
+            attached to the {journeyLabel} booking.
+          </p>
+        </>
+      )}
+    </fieldset>
+  );
+}
+
 export function TimingFields({
   trip,
   itinerary,
   item,
-  allowedModes
+  allowedModes,
+  defaultTimezone,
+  showTimezone = true
 }: {
   trip: Trip;
   itinerary: ItineraryItem[];
   item?: ItineraryItem;
   allowedModes?: EventTimingMode[];
+  defaultTimezone?: string;
+  showTimezone?: boolean;
 }) {
   const availableModes = allowedModes?.length
     ? allowedModes
@@ -253,10 +407,6 @@ export function TimingFields({
   const initialMode = item?.timing_mode ?? (item?.is_all_day ? "all_day" : "exact");
   const [mode, setMode] = useState<EventTimingMode>(
     availableModes.includes(initialMode) ? initialMode : availableModes[0]
-  );
-  const [relativePosition, setRelativePosition] = useState(item?.relative_position ?? "after");
-  const [anchorItineraryItemId, setAnchorItineraryItemId] = useState(
-    item?.anchor_itinerary_item_id ?? ""
   );
   const localStart = item
     ? isoToLocalDateTime(item.starts_at, item.timezone)
@@ -310,44 +460,7 @@ export function TimingFields({
       )}
       {mode === "relative" && (
         <>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <label className="form-label">
-              Position
-              <select
-                className="form-input"
-                name="relativePosition"
-                value={relativePosition}
-                onChange={(event) => setRelativePosition(event.target.value as "before" | "after")}
-              >
-                <option value="before">Before</option>
-                <option value="after">After</option>
-              </select>
-            </label>
-            <label className="form-label">
-              Event
-              <RequiredMark />
-              <select
-                className="form-input"
-                name="anchorItineraryItemId"
-                value={anchorItineraryItemId}
-                onChange={(event) => setAnchorItineraryItemId(event.target.value)}
-                required
-              >
-                <option value="">Choose a dated event</option>
-                {itinerary
-                  .filter(
-                    (candidate) =>
-                      candidate.id !== item?.id &&
-                      !["relative", "unscheduled"].includes(candidate.timing_mode ?? "exact")
-                  )
-                  .map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {candidate.title}
-                    </option>
-                  ))}
-              </select>
-            </label>
-          </div>
+          <RelativePlacementFields itinerary={itinerary} item={item} />
           <fieldset className="mt-4 rounded-2xl border border-line/80 p-4">
             <legend className="px-1 text-xs font-black uppercase tracking-[.1em] text-muted">
               Optional schedule details
@@ -371,7 +484,20 @@ export function TimingFields({
           This stays in the Unscheduled section until you edit it and choose a date or position.
         </p>
       )}
-      <input type="hidden" name="timezone" value={item?.timezone ?? trip.primary_timezone} />
+      {showTimezone && (
+        <div className="mt-4">
+          <EventTimeZoneField
+            value={item?.timezone ?? defaultTimezone ?? trip.primary_timezone}
+            localDefaultValue={defaultTimezone ?? trip.primary_timezone}
+            hint={
+              item
+                ? "Changing this keeps the entered local clock time and recalculates its exact instant."
+                : undefined
+            }
+          />
+        </div>
+      )}
+      <input type="hidden" name="timezoneOverride" value="yes" />
       <input type="hidden" name="itemTimezone" value={item?.timezone ?? ""} />
       <input type="hidden" name="occurrence" value="earlier" />
     </fieldset>

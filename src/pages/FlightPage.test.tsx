@@ -184,6 +184,9 @@ describe("flight edit time-zone controls", () => {
     );
     expect(occurrence).toHaveAttribute("type", "hidden");
     expect(occurrence).toHaveValue("earlier");
+    expect(
+      screen.getByRole("button", { name: "Local time zone for this flight journey" })
+    ).toHaveTextContent("Kolkata");
   });
 
   it("keeps repeated-clock choices visible for international flights", async () => {
@@ -194,6 +197,9 @@ describe("flight edit time-zone controls", () => {
       'select[name="scheduledDepartureOccurrence"]'
     );
     expect(occurrence).toHaveValue("automatic");
+    expect(
+      screen.queryByRole("button", { name: "Local time zone for this flight journey" })
+    ).not.toBeInTheDocument();
   });
 
   it("opens the editor from the whole departure information card", async () => {

@@ -264,7 +264,7 @@ describe("booking detail card interactions", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit booking source" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit booking contact" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Edit journey leg 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit journey connection 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit Location" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit booking notes" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit Bus to Dubai" })).toHaveTextContent(
@@ -281,7 +281,7 @@ describe("booking detail card interactions", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole("button", { name: "Edit journey leg 1" }));
+    await user.click(await screen.findByRole("button", { name: "Edit journey connection 1" }));
 
     expect(screen.getByRole("region", { name: "Edit journey leg form" })).toHaveTextContent(
       "Delhi"
@@ -294,12 +294,12 @@ describe("booking detail card interactions", () => {
     renderPage();
 
     await user.click(
-      await screen.findByRole("button", { name: "Upload document for journey leg 1" })
+      await screen.findByRole("button", { name: "Upload document for journey connection 1" })
     );
 
     const upload = screen.getByRole("region", { name: "Upload document form" });
     expect(upload).toHaveAttribute("data-journey-leg-id", leg.id);
-    expect(upload).toHaveAttribute("data-context-title", "Leg 1 · DEL to DXB");
+    expect(upload).toHaveAttribute("data-context-title", "DEL to DXB");
     expect(screen.queryByRole("region", { name: "Edit journey leg form" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Edit booking form" })).not.toBeInTheDocument();
     expect(document.querySelector("button button, button a, a button, a a")).toBeNull();

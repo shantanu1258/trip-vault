@@ -467,7 +467,7 @@ function BookingEventDetails({
                 <span
                   className={`rounded-full px-2 py-1 text-[.6rem] font-black uppercase ${leg.status === "cancelled" ? "bg-danger/10 text-danger" : leg.status === "delayed" ? "bg-warning/10 text-warning" : "bg-brand-soft text-brand"}`}
                 >
-                  {flightLegs.length > 1 ? `Leg ${index + 1} · ` : ""}
+                  {flightLegs.length > 1 ? `Connection ${index + 1} · ` : ""}
                   {leg.status.replaceAll("_", " ")}
                 </span>
               </div>
@@ -536,7 +536,7 @@ function BookingEventDetails({
                 </strong>
                 {travelLegs.length > 1 && (
                   <span className="rounded-full bg-brand-soft px-2 py-1 text-[.6rem] font-black uppercase text-brand">
-                    Leg {index + 1}
+                    Connection {index + 1}
                   </span>
                 )}
               </div>
@@ -761,8 +761,8 @@ function BookingEventSummary({
           <div key={leg.id} className={index ? "mt-2 border-t border-line/70 pt-2" : "mt-2"}>
             {flightLegs.length > 1 && (
               <p className="font-black text-ink">
-                Leg {index + 1} · {leg.departure_airport_code || leg.departure_airport_name} →{" "}
-                {leg.arrival_airport_code || leg.arrival_airport_name}
+                Connection {index + 1} · {leg.departure_airport_code || leg.departure_airport_name}{" "}
+                → {leg.arrival_airport_code || leg.arrival_airport_name}
               </p>
             )}
             {operations && <p className="mt-1 font-bold text-ink">{operations}</p>}

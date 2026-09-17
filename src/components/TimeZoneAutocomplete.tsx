@@ -77,6 +77,7 @@ function zoneDetails(timeZone: string) {
 type TimeZoneAutocompleteProps = {
   name: string;
   defaultValue?: string;
+  localDefaultValue?: string;
   className?: string;
   required?: boolean;
   requireSelection?: boolean;
@@ -87,6 +88,7 @@ type TimeZoneAutocompleteProps = {
 export function TimeZoneAutocomplete({
   name,
   defaultValue,
+  localDefaultValue,
   className = "form-input",
   required,
   requireSelection = false,
@@ -207,6 +209,18 @@ export function TimeZoneAutocomplete({
   };
 
   const selectedDetails = selected ? zoneDetails(selected) : null;
+  const localDefaultDetails =
+    localDefaultValue && isSupportedTimeZone(localDefaultValue)
+      ? zoneDetails(localDefaultValue)
+      : null;
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const showLocalDefault = Boolean(
+    localDefaultDetails &&
+    (!normalizedQuery ||
+      `default local ${localDefaultValue} ${localDefaultDetails.city} ${localDefaultDetails.region}`
+        .toLocaleLowerCase()
+        .includes(normalizedQuery))
+  );
 
   return (
     <div className="relative">
@@ -303,6 +317,35 @@ export function TimeZoneAutocomplete({
                 role="listbox"
                 className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-xl border border-line"
               >
+                {showLocalDefault && localDefaultDetails && localDefaultValue && (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={localDefaultValue === selected}
+                    onClick={() => choose(localDefaultValue)}
+                    className={`flex min-h-16 w-full items-center gap-3 border-b border-line px-3 py-2 text-left hover:bg-brand-soft ${localDefaultValue === selected ? "bg-brand-soft" : "bg-surface"}`}
+                  >
+                    <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
+                      {localDefaultValue === selected ? (
+                        <Check className="size-4" />
+                      ) : (
+                        <Clock3 className="size-4" />
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <strong className="block text-sm">Default / local</strong>
+                      <span className="block truncate text-[.68rem] text-muted">
+                        {localDefaultDetails.city} · {localDefaultValue}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <strong className="block text-xs">{localDefaultDetails.offset}</strong>
+                      <span className="block text-[.65rem] text-muted">
+                        {localDefaultDetails.localTime}
+                      </span>
+                    </span>
+                  </button>
+                )}
                 {options.map((timeZone) => {
                   const details = zoneDetails(timeZone);
                   const active = timeZone === selected;

@@ -19,7 +19,7 @@ import { TripBackLink } from "../components/TripBackLink";
 import { DocumentVisibilityBadge } from "../components/DocumentVisibilityBadge";
 import { ModalSheet } from "../components/ModalSheet";
 import { ErrorCard, LoadingCard } from "../components/TripUi";
-import { localDateTimeToIso } from "../features/trips/validation";
+import { isoToLocalDateTime, localDateTimeToIso } from "../features/trips/validation";
 import { getErrorMessage } from "../features/trips/presentation";
 import {
   getBooking,
@@ -57,6 +57,7 @@ import { AddFlightConnectionForm } from "../features/workspace/AddFlightConnecti
 import { tripChildNavigationState, tripReturnNavigation } from "../features/trips/navigation";
 import { tripQueries } from "../features/queries/tripQueries";
 import { WhatsAppIcon } from "../components/WhatsAppIcon";
+import { EventTimeZoneField, furthestEventTimezone } from "../features/timeline/TimingFields";
 
 type FlightEditTarget =
   | "status"
@@ -93,6 +94,7 @@ export function FlightPage() {
     enabled: Boolean(flightLegId)
   });
   const documentsQuery = useQuery({ ...tripQueries.documents(tripId), enabled: Boolean(tripId) });
+  const itineraryQuery = useQuery({ ...tripQueries.itinerary(tripId), enabled: Boolean(tripId) });
   const flight = flightQuery.data;
   const bookingQuery = useQuery({
     queryKey: ["booking", flight?.booking_id],
@@ -222,8 +224,13 @@ export function FlightPage() {
       return value ? localDateTimeToIso(value, timezone, occurrence) : null;
     };
     try {
-      const scheduledDeparture = convert("scheduledDeparture", flight.departure_timezone);
-      const scheduledArrival = convert("scheduledArrival", flight.arrival_timezone);
+      const eventTimezone = showTimeZoneControls
+        ? undefined
+        : String(form.get("eventTimezone") ?? "").trim() || flight.departure_timezone;
+      const departureTimezone = eventTimezone ?? flight.departure_timezone;
+      const arrivalTimezone = eventTimezone ?? flight.arrival_timezone;
+      const scheduledDeparture = convert("scheduledDeparture", departureTimezone);
+      const scheduledArrival = convert("scheduledArrival", arrivalTimezone);
       if (!scheduledDeparture || !scheduledArrival)
         throw new Error("Scheduled departure and arrival are required.");
       if (scheduledArrival <= scheduledDeparture)
@@ -236,13 +243,27 @@ export function FlightPage() {
                 scheduled_departure_at: scheduledDeparture,
                 scheduled_arrival_at: scheduledArrival
               }
-            : leg
+            : eventTimezone
+              ? {
+                  ...leg,
+                  scheduled_departure_at: localDateTimeToIso(
+                    isoToLocalDateTime(leg.scheduled_departure_at, leg.departure_timezone),
+                    eventTimezone,
+                    "earlier"
+                  ),
+                  scheduled_arrival_at: localDateTimeToIso(
+                    isoToLocalDateTime(leg.scheduled_arrival_at, leg.arrival_timezone),
+                    eventTimezone,
+                    "earlier"
+                  )
+                }
+              : leg
         )
         .sort((left, right) => left.segment_order - right.segment_order);
       for (let index = 1; index < reordered.length; index += 1)
         if (reordered[index].scheduled_departure_at < reordered[index - 1].scheduled_arrival_at)
           throw new Error(`Connection ${index + 1} departs before the previous flight arrives.`);
-      const boardingAt = convert("boardingAt", flight.departure_timezone);
+      const boardingAt = convert("boardingAt", departureTimezone);
       if (boardingAt && boardingAt > scheduledDeparture)
         throw new Error("Boarding cannot be after departure.");
       const boardingLeadValue = String(form.get("boardingLeadMinutes") ?? "").trim();
@@ -259,12 +280,13 @@ export function FlightPage() {
         tripId,
         version: flight.version,
         status: String(form.get("status")) as never,
+        eventTimezone,
         scheduled_departure_at: scheduledDeparture,
         scheduled_arrival_at: scheduledArrival,
-        estimated_departure_at: convert("estimatedDeparture", flight.departure_timezone),
-        estimated_arrival_at: convert("estimatedArrival", flight.arrival_timezone),
-        actual_departure_at: convert("actualDeparture", flight.departure_timezone),
-        actual_arrival_at: convert("actualArrival", flight.arrival_timezone),
+        estimated_departure_at: convert("estimatedDeparture", departureTimezone),
+        estimated_arrival_at: convert("estimatedArrival", arrivalTimezone),
+        actual_departure_at: convert("actualDeparture", departureTimezone),
+        actual_arrival_at: convert("actualArrival", arrivalTimezone),
         boarding_at: boardingAt,
         boarding_lead_minutes: boardingLeadMinutes,
         departure_terminal: String(form.get("departureTerminal") ?? ""),
@@ -580,6 +602,25 @@ export function FlightPage() {
                   ))}
                 </select>
               </label>
+              {!showTimeZoneControls && tripQuery.data && (
+                <fieldset className="rounded-2xl border border-line p-4">
+                  <legend className="px-1 font-display text-lg font-black">
+                    Journey time zone
+                  </legend>
+                  <div className="mt-3">
+                    <EventTimeZoneField
+                      name="eventTimezone"
+                      value={flight.departure_timezone}
+                      localDefaultValue={furthestEventTimezone(
+                        itineraryQuery.data ?? [],
+                        tripQuery.data.primary_timezone
+                      )}
+                      label="Local time zone for this flight journey"
+                      hint="This applies to every connection while keeping each entered local clock time."
+                    />
+                  </div>
+                </fieldset>
+              )}
               <fieldset className="rounded-2xl border border-line p-4">
                 <legend className="px-1 font-display text-lg font-black">Ticket schedule</legend>
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">

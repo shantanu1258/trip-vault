@@ -70,6 +70,7 @@ import { VendorPicker } from "../metadata/VendorPicker";
 import { suppressRealtimeRefresh } from "../sync/RealtimeRefresh";
 import { upsertById } from "../queries/cache";
 import type { VaultDocument } from "./types";
+import { EventTimeZoneField, furthestEventTimezone } from "../timeline/TimingFields";
 
 const requiredText = (message: string, max = 160) => z.string().trim().min(1, message).max(max);
 
@@ -158,12 +159,14 @@ function HotelStayEditFields({
   trip,
   booking,
   milestones,
-  timezone
+  timezone,
+  localDefaultTimezone
 }: {
   trip: Trip;
   booking: Booking;
   milestones: import("../trips/types").ItineraryItem[];
   timezone: string;
+  localDefaultTimezone: string;
 }) {
   const checkIn = milestones.find((item) => item.event_type === "hotel_check_in");
   const checkout = milestones.find((item) => item.event_type === "hotel_check_out");
@@ -244,6 +247,14 @@ function HotelStayEditFields({
         Leave a printed time empty when the confirmation only gives a date. Trip Vault keeps a
         neutral local time for ordering without presenting it as a confirmed time.
       </p>
+      <div className="mt-4">
+        <EventTimeZoneField
+          value={timezone}
+          localDefaultValue={localDefaultTimezone}
+          label="Stay time zone"
+          hint="Changing this keeps the entered check-in and checkout clocks and recalculates their exact instants together."
+        />
+      </div>
       <input type="hidden" name="startsAt" value={`${checkInDate}T${checkInTime || "12:00"}`} />
       <input type="hidden" name="endsAt" value={`${checkoutDate}T${checkoutTime || "12:00"}`} />
       <input type="hidden" name="checkInHasTime" value={checkInTime ? "yes" : "no"} />
@@ -331,16 +342,16 @@ export function EditBookingForm({
   const [message, setMessage] = useState("");
   const [bookedViaUrl, setBookedViaUrl] = useState(booking.booked_via_url ?? "");
   const isHotel = booking.type === "hotel";
-  const hotelMilestones = useQuery({
-    queryKey: ["hotel-stay-milestones", trip.id, booking.id],
-    queryFn: async () =>
-      (await listItinerary(trip.id)).filter(
-        (item) =>
-          item.booking_id === booking.id &&
-          (item.event_type === "hotel_check_in" || item.event_type === "hotel_check_out")
-      ),
+  const itinerary = useQuery({
+    queryKey: ["itinerary", trip.id],
+    queryFn: () => listItinerary(trip.id),
     enabled: isHotel
   });
+  const hotelMilestones = (itinerary.data ?? []).filter(
+    (item) =>
+      item.booking_id === booking.id &&
+      (item.event_type === "hotel_check_in" || item.event_type === "hotel_check_out")
+  );
   const mutation = useMutation({
     mutationFn: async (input: BookingEditMutationInput) => {
       if (input.type !== "hotel") return updateBooking(input);
@@ -354,8 +365,7 @@ export function EditBookingForm({
         queryClient.invalidateQueries({ queryKey: ["booking-traveler-ids", booking.id] }),
         queryClient.invalidateQueries({ queryKey: ["booking-travelers", trip.id] }),
         queryClient.invalidateQueries({ queryKey: ["itinerary-participants", trip.id] }),
-        queryClient.invalidateQueries({ queryKey: ["itinerary", trip.id] }),
-        queryClient.invalidateQueries({ queryKey: ["hotel-stay-milestones", trip.id, booking.id] })
+        queryClient.invalidateQueries({ queryKey: ["itinerary", trip.id] })
       ]);
       onClose();
     }
@@ -418,7 +428,7 @@ export function EditBookingForm({
     <ModalSheet eyebrow={trip.title} title="Edit booking" onClose={onClose}>
       <form className="mt-6 space-y-4" onSubmit={submit}>
         <input type="hidden" name="type" value={booking.type} />
-        <input type="hidden" name="timezone" value={timezone} />
+        {!isHotel && <input type="hidden" name="timezone" value={timezone} />}
         {booking.type === "flight" ? (
           <input type="hidden" name="reservationState" value="booked" />
         ) : (
@@ -454,7 +464,7 @@ export function EditBookingForm({
                 <span className="mt-1 block text-xs text-muted">
                   {isHotel
                     ? "Uses the hotel / property name above"
-                    : booking.provider || "Derived from the journey legs"}
+                    : booking.provider || "Derived from the journey connections"}
                 </span>
               </div>
             </>
@@ -492,26 +502,28 @@ export function EditBookingForm({
         )}
         {isHotel ? (
           <>
-            {hotelMilestones.isLoading && (
+            {itinerary.isLoading && (
               <p className="rounded-xl bg-elevated p-4 text-sm text-muted">
                 Loading the paired check-in and checkout…
               </p>
             )}
-            {hotelMilestones.isError && (
+            {itinerary.isError && (
               <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">
                 The paired hotel timeline items could not be loaded. Refresh before editing this
                 stay.
               </p>
             )}
-            {hotelMilestones.isSuccess && (
+            {itinerary.isSuccess && (
               <HotelStayEditFields
-                key={hotelMilestones.data
-                  .map((item) => `${item.id}:${item.version ?? ""}`)
-                  .join("|")}
+                key={hotelMilestones.map((item) => `${item.id}:${item.version ?? ""}`).join("|")}
                 trip={trip}
                 booking={booking}
-                milestones={hotelMilestones.data}
+                milestones={hotelMilestones}
                 timezone={timezone}
+                localDefaultTimezone={furthestEventTimezone(
+                  itinerary.data ?? [],
+                  trip.primary_timezone
+                )}
               />
             )}
             <label className="form-label">
@@ -647,9 +659,7 @@ export function EditBookingForm({
         )}
         <button
           className="primary-button w-full"
-          disabled={
-            mutation.isPending || (isHotel && (!hotelMilestones.isSuccess || !navigator.onLine))
-          }
+          disabled={mutation.isPending || (isHotel && (!itinerary.isSuccess || !navigator.onLine))}
         >
           {mutation.isPending ? (
             <Loader2 className="size-4 animate-spin" />

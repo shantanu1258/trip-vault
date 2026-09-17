@@ -81,6 +81,7 @@ export function BookingPage() {
     enabled: Boolean(bookingId && tripId)
   });
   const documentsQuery = useQuery({ ...tripQueries.documents(tripId), enabled: Boolean(tripId) });
+  const itineraryQuery = useQuery({ ...tripQueries.itinerary(tripId), enabled: Boolean(tripId) });
   const legsQuery = useQuery({
     queryKey: ["journey-legs", tripId, bookingId],
     queryFn: () => listJourneyLegsForBooking(bookingId, tripId),
@@ -113,6 +114,7 @@ export function BookingPage() {
   );
   const phone = booking?.contact_phone ? phoneActionUrls(booking.contact_phone) : null;
   const journeyLegs = legsQuery.data ?? [];
+  const bookingItineraryItem = itineraryQuery.data?.find((item) => item.booking_id === bookingId);
   const firstLeg = journeyLegs[0];
   const lastLeg = journeyLegs.at(-1);
   const bookingTravelerIds = travelerIdsQuery.data ?? [];
@@ -303,7 +305,11 @@ export function BookingPage() {
                             leg.destination_timezone
                           )
                         : null;
-                      const legTitle = `Leg ${index + 1} · ${leg.origin_code || leg.origin_name} to ${leg.destination_code || leg.destination_name}`;
+                      const routeTitle = `${leg.origin_code || leg.origin_name} to ${leg.destination_code || leg.destination_name}`;
+                      const legTitle =
+                        journeyLegs.length > 1
+                          ? `Connection ${index + 1} · ${routeTitle}`
+                          : routeTitle;
                       return (
                         <article
                           className={`group relative rounded-2xl border border-line bg-elevated p-4 ${editable ? "transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft" : ""}`}
@@ -311,13 +317,13 @@ export function BookingPage() {
                         >
                           {editable && (
                             <CardEditTarget
-                              label={`Edit journey leg ${index + 1}`}
+                              label={`Edit journey connection ${index + 1}`}
                               onEdit={() => setEditingLeg(leg)}
                             />
                           )}
                           <div className="flex items-center justify-between">
                             <strong>
-                              Leg {index + 1}
+                              {journeyLegs.length > 1 ? `Connection ${index + 1}` : "Journey"}
                               {leg.service_number ? ` · ${leg.service_number}` : ""}
                             </strong>
                             <span className="text-xs capitalize text-muted">{leg.mode}</span>
@@ -364,7 +370,7 @@ export function BookingPage() {
                             onClick={() =>
                               setUploadTarget({ journeyLegId: leg.id, contextTitle: legTitle })
                             }
-                            aria-label={`Upload document for journey leg ${index + 1}`}
+                            aria-label={`Upload document for journey connection ${index + 1}`}
                           >
                             <FileUp className="size-4" /> Upload document
                           </button>
@@ -477,6 +483,9 @@ export function BookingPage() {
             booking={booking}
             leg={editingLeg}
             legNumber={editingLeg.segment_order + 1}
+            legCount={journeyLegs.length}
+            itinerary={itineraryQuery.data ?? []}
+            itineraryItem={bookingItineraryItem}
             onClose={() => setEditingLeg(null)}
           />
         )}

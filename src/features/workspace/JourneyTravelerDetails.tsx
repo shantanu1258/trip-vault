@@ -36,7 +36,7 @@ function allocationDetails(row: JourneyLegTraveler | undefined, leg: JourneyLeg)
 
 function legLabel(leg: JourneyLeg, index?: number, count?: number) {
   const route = `${leg.origin_code || leg.origin_name} → ${leg.destination_code || leg.destination_name}`;
-  return count && count > 1 ? `Leg ${(index ?? 0) + 1} · ${route}` : route;
+  return count && count > 1 ? `Connection ${(index ?? 0) + 1} · ${route}` : route;
 }
 
 export function JourneyTravelerBadges({
@@ -91,7 +91,7 @@ export function JourneyTravelerBadges({
         <span
           className={`rounded-lg px-2 py-1 font-bold ${inverse ? "bg-surface/10 text-surface" : "bg-brand-soft text-brand"}`}
         >
-          {legCount && legCount > 1 ? `Leg ${(legIndex ?? 0) + 1} · ` : ""}
+          {legCount && legCount > 1 ? `Connection ${(legIndex ?? 0) + 1} · ` : ""}
           {legacy}
         </span>
       </div>
@@ -105,7 +105,7 @@ export function JourneyTravelerBadges({
           key={row.id}
           className={`rounded-lg px-2 py-1 font-bold ${inverse ? "bg-surface/10 text-surface" : "bg-brand-soft text-brand"}`}
         >
-          {legCount && legCount > 1 ? `Leg ${(legIndex ?? 0) + 1} · ` : ""}
+          {legCount && legCount > 1 ? `Connection ${(legIndex ?? 0) + 1} · ` : ""}
           {traveler?.display_name ?? "Traveler"} · {details.join(" · ")}
         </span>
       ))}
@@ -296,7 +296,7 @@ export function JourneyTravelerDetails({
       </p>
       <p className="mt-2 text-sm text-muted">
         Keep each passenger's assigned place and individual ticket reference with the correct
-        journey leg.
+        journey connection.
       </p>
       <div className="mt-4 space-y-3">
         {passengerDetailLegs.map((leg) => (

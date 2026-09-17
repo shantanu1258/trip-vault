@@ -48,10 +48,12 @@ describe("strict time-zone autocomplete", () => {
     expect(screen.getByRole("button", { name: "Arrival time zone" })).toHaveTextContent("Dubai");
   });
 
-  it("can require an explicit international endpoint selection instead of silently using the device zone", () => {
+  it("offers the furthest-event local zone without silently choosing it for an international endpoint", async () => {
+    const user = userEvent.setup();
     const { container } = render(
       <TimeZoneAutocomplete
         name="timezone"
+        localDefaultValue="Asia/Singapore"
         requireSelection
         required
         aria-label="Required endpoint time zone"
@@ -60,6 +62,11 @@ describe("strict time-zone autocomplete", () => {
     expect(container.querySelector<HTMLInputElement>('input[name="timezone"]')?.value).toBe("");
     expect(screen.getByRole("button", { name: "Required endpoint time zone" })).toHaveTextContent(
       "Choose time zone"
+    );
+    await user.click(screen.getByRole("button", { name: "Required endpoint time zone" }));
+    await user.click(screen.getByRole("option", { name: /Default \/ local.*Asia\/Singapore/i }));
+    expect(container.querySelector<HTMLInputElement>('input[name="timezone"]')?.value).toBe(
+      "Asia/Singapore"
     );
   });
 

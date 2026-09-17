@@ -320,7 +320,7 @@ describe("timeline model", () => {
         { departureAt: "2026-09-11T10:00:00Z", arrivalAt: "2026-09-11T12:00:00Z" },
         { departureAt: "2026-09-11T11:00:00Z", arrivalAt: "2026-09-11T14:00:00Z" }
       ])
-    ).toContain("Leg 2"));
+    ).toContain("Connection 2"));
   it("allows a non-flight journey without a supplied arrival", () =>
     expect(validateLegOrder([{ departureAt: "2026-09-11T10:00:00Z" }])).toBeNull());
   it("builds call and WhatsApp actions from an international number", () =>

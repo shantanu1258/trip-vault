@@ -327,6 +327,9 @@ describe("event form architecture", () => {
     expect(screen.getByText("Flight details")).toBeInTheDocument();
     expect(screen.queryByLabelText("Contact name")).not.toBeInTheDocument();
     await user.click(screen.getByRole("radio", { name: "International" }));
+    expect(
+      screen.queryByRole("button", { name: "Local time zone for this journey" })
+    ).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("Timeline title"), "Flight to Dubai");
     await user.type(screen.getByLabelText(/Booking reference \/ PNR/), "PNR123");
     await user.type(screen.getByLabelText("Airline"), "Air India");
@@ -497,6 +500,75 @@ describe("event form architecture", () => {
     );
   });
 
+  it.each([
+    {
+      mode: "bus",
+      choice: /Bus Coach, shuttle, or local bus/i,
+      origin: "Boarding point",
+      destination: "Drop-off point"
+    },
+    {
+      mode: "train",
+      choice: /Train Rail plan, ticket, or connection/i,
+      origin: "Boarding station",
+      destination: "Destination station"
+    },
+    {
+      mode: "ferry",
+      choice: /Ferry \/ boat Passenger or vehicle sailing/i,
+      origin: "Departure terminal or pier",
+      destination: "Arrival terminal or pier"
+    }
+  ])(
+    "lets a $mode keep its local ticket time while placing it before or after another event",
+    async ({ mode, choice, origin, destination }) => {
+      mocks.listItinerary.mockResolvedValue([
+        anchor,
+        {
+          ...anchor,
+          id: "furthest-event",
+          title: "Furthest local event",
+          starts_at: "2026-10-01T01:00:00.000Z",
+          timezone: "Asia/Singapore",
+          created_at: "2026-08-01T00:00:00.000Z"
+        }
+      ]);
+      const { user } = renderForm();
+      await user.click(screen.getByRole("button", { name: choice }));
+      expect(
+        screen.getByRole("button", { name: "Local time zone for this journey" })
+      ).toHaveTextContent("Singapore");
+      await user.selectOptions(screen.getByLabelText("Place in timeline"), "relative");
+      await waitFor(() => expect(screen.getByLabelText("Event")).toHaveTextContent(anchor.title));
+      await user.selectOptions(screen.getByLabelText("Event"), anchor.id);
+      await user.type(screen.getByLabelText("Timeline title"), `${mode} after hotel checkout`);
+      await user.type(screen.getByLabelText(origin), "Hotel entrance");
+      await user.type(screen.getByLabelText(destination), "KL Sentral");
+      await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
+
+      await waitFor(() =>
+        expect(mocks.addJourneyBooking).toHaveBeenCalledWith(
+          expect.objectContaining({
+            mode,
+            legs: [
+              expect.objectContaining({
+                originTimezone: "Asia/Singapore",
+                destinationTimezone: "Asia/Singapore"
+              })
+            ],
+            itineraryTiming: expect.objectContaining({
+              timingMode: "relative",
+              anchorItineraryItemId: anchor.id,
+              relativePosition: "after",
+              hasExplicitStartTime: true,
+              timezone: "Asia/Singapore"
+            })
+          })
+        )
+      );
+    }
+  );
+
   it("keeps international bus country codes optional while requiring endpoint time zones", async () => {
     const { user } = renderForm();
     await user.click(screen.getByRole("button", { name: /Bus Coach, shuttle, or local bus/i }));
@@ -605,10 +677,21 @@ describe("event form architecture", () => {
       "Enter the train name if it is already known"
     );
     expect(screen.queryByLabelText(/Booked from station/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "Connecting trains" }));
+    const origins = screen.getAllByLabelText("Boarding station");
+    const destinations = screen.getAllByLabelText("Destination station");
+    await user.type(origins[0], "New Delhi");
+    await user.type(destinations[0], "Jaipur");
+    expect(origins[1]).toHaveValue("Jaipur");
+    expect(origins[1]).toHaveAttribute("readonly");
+    await user.type(destinations[1], "Agra");
+    expect(screen.getByText("Connection 1 · New Delhi → Jaipur")).toBeInTheDocument();
+    expect(screen.getByText("Connection 2 · Jaipur → Agra")).toBeInTheDocument();
     await user.click(screen.getByRole("radio", { name: /^Ticket booked/ }));
     expect(screen.getByLabelText("PNR or booking reference (optional)")).toBeInTheDocument();
-    await user.click(screen.getByText("Train ticket details"));
-    expect(screen.getByLabelText("Booked from station (optional)")).toHaveAttribute(
+    expect(screen.getAllByText("Train ticket details")).toHaveLength(2);
+    await user.click(screen.getAllByText("Train ticket details")[0]);
+    expect(screen.getAllByLabelText("Booked from station (optional)")[0]).toHaveAttribute(
       "placeholder",
       "Only add this if it differs from the boarding station"
     );
@@ -668,6 +751,19 @@ describe("event form architecture", () => {
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Choose the cab company or app");
     expect(mocks.addJourneyBooking).not.toHaveBeenCalled();
+  });
+
+  it("uses endpoint time zones instead of a duplicate event zone for a cross-border cab", async () => {
+    const { user } = renderForm();
+    await user.click(
+      screen.getByRole("button", { name: /Cab Local ride, transfer, or outstation/i })
+    );
+    expect(screen.getByRole("button", { name: "Event time zone" })).toBeInTheDocument();
+    await user.click(screen.getByText("More ride details"));
+    await user.click(screen.getByLabelText("Cross-border ride"));
+    expect(screen.queryByRole("button", { name: "Event time zone" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pickup time zone" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Drop-off time zone" })).toBeInTheDocument();
   });
 
   it("links an airport-transfer cab using a readable flight picker", async () => {
@@ -868,6 +964,12 @@ describe("event form architecture", () => {
     await user.type(screen.getByLabelText("Duration (optional)"), "90");
     await user.click(screen.getByRole("radio", { name: /^Booked/ }));
     expect(screen.getByLabelText("Booking reference (optional)")).toBeInTheDocument();
+    const bookingDetails = screen.getByText("Booking details").closest("details");
+    const moreDetails = screen.getByText("More details").closest("details");
+    expect(bookingDetails).toHaveAttribute("open");
+    expect(
+      bookingDetails!.compareDocumentPosition(moreDetails!) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
     await waitFor(() =>
       expect(mocks.addBookedTimelineEvent).toHaveBeenCalledWith(

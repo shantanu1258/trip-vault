@@ -4,13 +4,18 @@ import { useState, type FormEvent } from "react";
 import { ModalSheet } from "../../components/ModalSheet";
 import { TimeZoneAutocomplete } from "../../components/TimeZoneAutocomplete";
 import { JourneyOperatorPicker } from "../metadata/JourneyOperatorPicker";
-import type { Trip } from "../trips/types";
+import type { ItineraryItem, Trip } from "../trips/types";
 import {
   firstValidationMessage,
   isoToLocalDateTime,
   localDateTimeToIso
 } from "../trips/validation";
 import { getErrorMessage } from "../trips/presentation";
+import {
+  EventTimeZoneField,
+  furthestEventTimezone,
+  JourneyTimelinePlacementFields
+} from "../timeline/TimingFields";
 import { normalizeJourneyLegDetails, suggestCatalogValue, updateJourneyLeg } from "./api";
 import type {
   Booking,
@@ -672,12 +677,18 @@ export function EditJourneyLegForm({
   booking,
   leg,
   legNumber,
+  legCount = 1,
+  itinerary = [],
+  itineraryItem,
   onClose
 }: {
   trip: Trip;
   booking: Booking;
   leg: JourneyLeg;
   legNumber: number;
+  legCount?: number;
+  itinerary?: ItineraryItem[];
+  itineraryItem?: ItineraryItem;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -705,11 +716,19 @@ export function EditJourneyLegForm({
     setMessage("");
     if (!navigator.onLine) {
       setMessage(
-        "Reconnect to edit this journey leg. It is saved together with the booking summary and timeline so they cannot drift apart."
+        "Reconnect to edit this journey connection. It is saved together with the booking summary and timeline so they cannot drift apart."
       );
       return;
     }
     const form = new FormData(event.currentTarget);
+    const eventTimezone =
+      !international && leg.segment_order === 0
+        ? text(form, "eventTimezone") || leg.origin_timezone || trip.primary_timezone
+        : undefined;
+    if (eventTimezone) {
+      form.set("originTimezone", eventTimezone);
+      form.set("destinationTimezone", eventTimezone);
+    }
     const parsed = legSchema.safeParse(Object.fromEntries(form));
     if (!parsed.success) {
       setMessage(firstValidationMessage(parsed.error));
@@ -741,6 +760,21 @@ export function EditJourneyLegForm({
       if (boardingAt && Date.parse(boardingAt) > Date.parse(departureAt))
         throw new Error("Boarding cannot be after departure.");
       const details = normalizeJourneyLegDetails(leg.mode, detailsForForm(form, leg));
+      const itineraryTiming =
+        leg.mode !== "cab" && leg.segment_order === 0
+          ? text(form, "journeyTimingMode") === "relative"
+            ? {
+                timingMode: "relative" as const,
+                anchorItineraryItemId: text(form, "journeyAnchorItineraryItemId"),
+                relativePosition:
+                  text(form, "journeyRelativePosition") === "before"
+                    ? ("before" as const)
+                    : ("after" as const)
+              }
+            : { timingMode: "exact" as const }
+          : undefined;
+      if (itineraryTiming?.timingMode === "relative" && !itineraryTiming.anchorItineraryItemId)
+        throw new Error("Choose a dated event to place this journey before or after.");
       mutation.mutate(
         {
           tripId: trip.id,
@@ -766,7 +800,9 @@ export function EditJourneyLegForm({
           boardingLeadMinutes: lead,
           departurePlatform: leg.mode === "cab" ? undefined : data.departurePlatform || undefined,
           arrivalPlatform: leg.mode === "cab" ? undefined : data.arrivalPlatform || undefined,
-          details
+          details,
+          itineraryTiming,
+          eventTimezone
         },
         {
           onSuccess: () => {
@@ -785,7 +821,7 @@ export function EditJourneyLegForm({
 
   return (
     <ModalSheet
-      eyebrow={`${booking.title} · Leg ${legNumber}`}
+      eyebrow={`${booking.title}${legCount > 1 ? ` · Connection ${legNumber}` : ""}`}
       title={`Edit ${leg.mode} details`}
       onClose={onClose}
     >
@@ -964,6 +1000,27 @@ export function EditJourneyLegForm({
             )}
           </div>
         </fieldset>
+        {!international && leg.segment_order === 0 && (
+          <fieldset className="rounded-2xl border border-line p-4">
+            <legend className="px-1 text-sm font-extrabold">Journey time zone</legend>
+            <div className="mt-2">
+              <EventTimeZoneField
+                name="eventTimezone"
+                value={itineraryItem?.timezone ?? leg.origin_timezone ?? trip.primary_timezone}
+                localDefaultValue={furthestEventTimezone(itinerary, trip.primary_timezone)}
+                label="Local time zone for this journey"
+                hint="This applies to every connection in this journey while keeping each entered local clock time."
+              />
+            </div>
+          </fieldset>
+        )}
+        {leg.mode !== "cab" && leg.segment_order === 0 && (
+          <JourneyTimelinePlacementFields
+            itinerary={itinerary}
+            journeyLabel={leg.mode === "ferry" ? "ferry" : leg.mode}
+            item={itineraryItem}
+          />
+        )}
         {leg.mode !== "cab" && (
           <fieldset className="rounded-2xl border border-line p-4">
             <legend className="px-1 text-sm font-extrabold">Boarding and platform</legend>
@@ -1032,8 +1089,8 @@ export function EditJourneyLegForm({
         )}
         {!navigator.onLine && (
           <p role="status" className="rounded-xl bg-warning/10 p-3 text-sm font-bold text-warning">
-            Reconnect before saving route or ticket changes. The leg, booking summary, and timeline
-            are updated together.
+            Reconnect before saving route or ticket changes. The connection, booking summary, and
+            timeline are updated together.
           </p>
         )}
         {(message || mutation.error) && (
@@ -1050,7 +1107,7 @@ export function EditJourneyLegForm({
           ) : (
             <Save className="size-4" />
           )}{" "}
-          Save journey leg
+          Save journey changes
         </button>
       </form>
     </ModalSheet>

@@ -25,6 +25,7 @@ vi.mock("../../lib/forms/useFormDraft", () => ({
 }));
 vi.mock("../timeline/TimingFields", () => ({
   TimingFields: () => null,
+  furthestEventTimezone: (_itinerary: ItineraryItem[], fallback: string) => fallback,
   readEventTiming: () => ({
     startsAt: "2026-09-28T04:00:00.000Z",
     endsAt: undefined,

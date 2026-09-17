@@ -57,9 +57,16 @@ import {
   JourneyScopeFields,
   RouteStructureFields,
   type FlightLegDraft,
+  type GroundLegDraft,
   type RouteStructure
 } from "./JourneyEventFields";
-import { readEventTiming, TimingFields } from "./TimingFields";
+import {
+  EventTimeZoneField,
+  JourneyTimelinePlacementFields,
+  furthestEventTimezone,
+  readEventTiming,
+  TimingFields
+} from "./TimingFields";
 import { upsertById } from "../queries/cache";
 
 type Choice = { type: TimelineEventType; label: string; hint: string };
@@ -279,6 +286,37 @@ export function assertSequentialConnectionTimes(
   }
 }
 
+function journeyTimelineTiming(
+  form: FormData,
+  itinerary: import("../trips/types").ItineraryItem[],
+  firstLeg: { departureAt: string; originTimezone: string },
+  lastLeg: { arrivalAt?: string }
+) {
+  if (text(form, "journeyTimingMode") !== "relative") return undefined;
+  const anchorItineraryItemId = text(form, "journeyAnchorItineraryItemId");
+  const anchor = itinerary.find((item) => item.id === anchorItineraryItemId);
+  if (!anchor || ["relative", "unscheduled"].includes(anchor.timing_mode ?? "exact"))
+    throw new Error("Choose a dated event to place this journey before or after.");
+  const elapsedMinutes = lastLeg.arrivalAt
+    ? Math.round(
+        (new Date(lastLeg.arrivalAt).getTime() - new Date(firstLeg.departureAt).getTime()) / 60_000
+      )
+    : undefined;
+  return {
+    startsAt: firstLeg.departureAt,
+    endsAt: lastLeg.arrivalAt,
+    timezone: firstLeg.originTimezone,
+    timingMode: "relative" as const,
+    scheduledDate: text(form, "journey.0.departureAt").slice(0, 10),
+    anchorItineraryItemId,
+    relativePosition:
+      text(form, "journeyRelativePosition") === "before" ? ("before" as const) : ("after" as const),
+    isAllDay: false,
+    hasExplicitStartTime: true,
+    durationMinutes: elapsedMinutes
+  };
+}
+
 function detailsForJourney(
   form: FormData,
   prefix: string,
@@ -404,6 +442,7 @@ export function AddEventForm({
     queryKey: ["itinerary", trip.id],
     queryFn: () => listItinerary(trip.id)
   });
+  const defaultTimezone = furthestEventTimezone(itineraryQuery.data ?? [], trip.primary_timezone);
   const [type, setType] = useState<TimelineEventType | null>(initialType ?? null);
   const flightsQuery = useQuery({
     queryKey: ["flights", trip.id],
@@ -426,6 +465,7 @@ export function AddEventForm({
   const [officialDocumentFile, setOfficialDocumentFile] = useState<File | null>(null);
   const [officialDocumentKind, setOfficialDocumentKind] = useState<DocumentKind>("flight_ticket");
   const [flightLegDrafts, setFlightLegDrafts] = useState<Record<string, FlightLegDraft>>({});
+  const [groundLegDrafts, setGroundLegDrafts] = useState<Record<string, GroundLegDraft>>({});
   const [saved, setSaved] = useState<SavedCompletion | null>(null);
   const [documentSaveState, setDocumentSaveState] = useState<{
     status: "idle" | "saving" | "saved" | "error";
@@ -456,8 +496,14 @@ export function AddEventForm({
       const bookedViaUrl = optionalHttps(text(form, "bookedViaUrl"), "Manage booking link");
       if (type === "flight") {
         const scope = text(form, "journeyScope") === "international" ? "international" : "domestic";
+        const eventTimezone =
+          scope === "domestic" ? text(form, "journeyEventTimezone") || defaultTimezone : undefined;
         const legs = legKeys.map((_, index) => {
           const prefix = `flight.${index}`;
+          if (eventTimezone) {
+            form.set(`${prefix}.departureTimezone`, eventTimezone);
+            form.set(`${prefix}.arrivalTimezone`, eventTimezone);
+          }
           const departureAt = requiredInstant(
             form,
             `${prefix}.departureAt`,
@@ -474,7 +520,7 @@ export function AddEventForm({
           );
           if (arrivalAt <= departureAt)
             throw new Error(
-              `Flight leg ${index + 1} must arrive after it departs, after converting both local times.`
+              `Flight connection ${index + 1} must arrive after it departs, after converting both local times.`
             );
           const boardingAt = optionalInstant(
             form,
@@ -484,7 +530,7 @@ export function AddEventForm({
             `boarding time for flight ${index + 1}`
           );
           if (boardingAt && boardingAt > departureAt)
-            throw new Error(`Flight leg ${index + 1} cannot board after departure.`);
+            throw new Error(`Flight connection ${index + 1} cannot board after departure.`);
           return {
             airlineName: text(form, `${prefix}.airline`),
             flightNumber: text(form, `${prefix}.number`).toUpperCase(),
@@ -502,7 +548,7 @@ export function AddEventForm({
             boardingLeadMinutes: optionalBoardingLead(
               form,
               `${prefix}.boardingLead`,
-              `Flight leg ${index + 1}`
+              `Flight connection ${index + 1}`
             ),
             departureTerminal: text(form, `${prefix}.departureTerminal`) || undefined,
             departureGate: text(form, `${prefix}.departureGate`) || undefined,
@@ -619,8 +665,14 @@ export function AddEventForm({
       if (["train", "bus", "ferry"].includes(type)) {
         const mode = type as Exclude<JourneyMode, "cab">;
         const scope = text(form, "journeyScope") === "international" ? "international" : "domestic";
+        const eventTimezone =
+          scope === "domestic" ? text(form, "journeyEventTimezone") || defaultTimezone : undefined;
         const legs = legKeys.map((_, index) => {
           const prefix = `journey.${index}`;
+          if (eventTimezone) {
+            form.set(`${prefix}.originTimezone`, eventTimezone);
+            form.set(`${prefix}.destinationTimezone`, eventTimezone);
+          }
           const departureAt = requiredInstant(
             form,
             `${prefix}.departureAt`,
@@ -698,6 +750,12 @@ export function AddEventForm({
           "journey"
         );
         assertSequentialConnectionTimes(legs, "journey");
+        const itineraryTiming = journeyTimelineTiming(
+          form,
+          itineraryQuery.data ?? [],
+          legs[0],
+          legs[legs.length - 1]
+        );
         const created = await addJourneyBooking({
           tripId: trip.id,
           title,
@@ -710,6 +768,7 @@ export function AddEventForm({
           bookedViaUrl,
           contactPhone: text(form, "contactPhone") || undefined,
           travelerIds: participants.travelerIds,
+          itineraryTiming,
           legs,
           cost
         });
@@ -763,7 +822,7 @@ export function AddEventForm({
       if (type === "cab") {
         const timing = readEventTiming(form, trip, itineraryQuery.data ?? []);
         const crossBorder = text(form, "cab.crossBorder") === "yes";
-        const originTimezone = crossBorder ? text(form, "cab.originTimezone") : timing.timezone;
+        const originTimezone = timing.timezone;
         const destinationTimezone = crossBorder
           ? text(form, "cab.destinationTimezone")
           : timing.timezone;
@@ -1264,6 +1323,19 @@ export function AddEventForm({
               onChange={chooseJourneyStructure}
             />
           )}
+          {isJourney && type !== "cab" && journeyScope === "domestic" && (
+            <fieldset className="rounded-2xl border border-line p-4">
+              <legend className="px-1 text-sm font-extrabold">Journey time zone</legend>
+              <div className="mt-2">
+                <EventTimeZoneField
+                  name="journeyEventTimezone"
+                  value={defaultTimezone}
+                  localDefaultValue={defaultTimezone}
+                  label="Local time zone for this journey"
+                />
+              </div>
+            </fieldset>
+          )}
           {type === "flight" && (
             <>
               <BookingFields type="flight" referenceRequired hideProvider />
@@ -1272,6 +1344,7 @@ export function AddEventForm({
                   key={key}
                   index={index}
                   trip={trip}
+                  defaultTimezone={defaultTimezone}
                   scope={journeyScope}
                   travelers={allocationTravelers}
                   direct={journeyStructure === "direct"}
@@ -1300,17 +1373,33 @@ export function AddEventForm({
           {groundMode && (
             <>
               {reservationState === "booked" && <BookingFields type={groundMode} hideProvider />}
+              <JourneyTimelinePlacementFields
+                itinerary={itineraryQuery.data ?? []}
+                journeyLabel={groundMode === "ferry" ? "ferry" : groundMode}
+              />
               {legKeys.map((key, index) => (
                 <GroundJourneyLegFields
                   key={key}
                   index={index}
                   mode={groundMode}
                   trip={trip}
+                  defaultTimezone={defaultTimezone}
                   scope={journeyScope}
                   travelers={allocationTravelers}
                   reservationState={reservationState}
                   direct={journeyStructure === "direct"}
                   removable={journeyStructure === "connecting" && legKeys.length > 2}
+                  previousLeg={index > 0 ? groundLegDrafts[legKeys[index - 1]] : undefined}
+                  onDestinationChange={(value) =>
+                    setGroundLegDrafts((current) => {
+                      const previous = current[key];
+                      return previous?.destinationName === value.destinationName &&
+                        previous?.destinationCode === value.destinationCode &&
+                        previous?.arrivalLocal === value.arrivalLocal
+                        ? current
+                        : { ...current, [key]: value };
+                    })
+                  }
                   onRemove={() => setLegKeys((keys) => keys.filter((item) => item !== key))}
                 />
               ))}
@@ -1324,28 +1413,40 @@ export function AddEventForm({
           )}
           {type === "cab" && (
             <>
+              {reservationState !== "planned" && <BookingFields type="cab" hideProvider />}
               <CabFields
                 trip={trip}
+                defaultTimezone={defaultTimezone}
                 reservationState={reservationState}
                 flightLegs={flightsQuery.data ?? []}
-                itineraryTiming={
+                renderItineraryTiming={(showTimezone) => (
                   <TimingFields
                     trip={trip}
                     itinerary={itineraryQuery.data ?? []}
+                    defaultTimezone={defaultTimezone}
                     allowedModes={["exact", "relative"]}
+                    showTimezone={showTimezone}
                   />
-                }
+                )}
               />
-              {reservationState !== "planned" && <BookingFields type="cab" hideProvider />}
             </>
           )}
           {type && !isJourney && (
             <>
               {type === "hotel_check_in" ? (
-                <HotelStayFields trip={trip} />
+                <HotelStayFields trip={trip} defaultTimezone={defaultTimezone} />
               ) : (
-                <TimingFields trip={trip} itinerary={itineraryQuery.data ?? []} />
+                <TimingFields
+                  trip={trip}
+                  itinerary={itineraryQuery.data ?? []}
+                  defaultTimezone={defaultTimezone}
+                />
               )}
+              {type !== "preparation" &&
+                reservationState === "booked" &&
+                !(type === "transport" && transportSubtype === "walk") && (
+                  <BookingFields type={type} hideProvider={type === "hotel_check_in"} />
+                )}
               {type === "transport" ? (
                 <OtherTransportFields
                   subtype={transportSubtype}
@@ -1365,11 +1466,6 @@ export function AddEventForm({
                   }
                 />
               )}
-              {type !== "preparation" &&
-                reservationState === "booked" &&
-                !(type === "transport" && transportSubtype === "walk") && (
-                  <BookingFields type={type} hideProvider={type === "hotel_check_in"} />
-                )}
             </>
           )}
           {onAddDocument && !documentToAttach && (

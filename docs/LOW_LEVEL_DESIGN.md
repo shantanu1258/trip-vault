@@ -4,7 +4,7 @@ description: "Implemented routes, modules, data model, authorization, file stora
 scope: [service-wide]
 agents: [coder, reviewer, planner, debugger]
 tags: [implementation, data-model, sync, storage, authorization, testing]
-last_verified: 2026-09-16
+last_verified: 2026-09-17
 ---
 
 # Trip Vault Low-Level Design
@@ -13,7 +13,7 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 
 **Document status:** Implemented personal MVP 1.0
 
-**Implementation status:** Timeline-first implementation plus the accepted event-form and document-experience redesign are complete in the local working tree. Existing Supabase projects apply every pending migration in filename order through the single new tail `supabase/migrations/202609140001_event_form_data_model.sql`. Fresh projects run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` for the current schema, bootstrap an active administrator, and then publish the regional and booking-vendor catalog releases as described in 16.6. Remote, responsive, and airplane-mode acceptance remain pending.
+**Implementation status:** Timeline-first implementation plus the accepted event-form and document-experience redesign are complete in the local working tree. Existing Supabase projects apply every pending immutable migration in filename order. Fresh projects use the canonical two-phase `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` workflow documented in `supabase/README.md` and summarized in 16.6. Remote, responsive, and airplane-mode acceptance remain pending.
 
 ## 1. Technology Set
 
@@ -335,7 +335,7 @@ Only fixed token names and validated color values are accepted; arbitrary CSS, s
 | `destination_summary` | Text | Short destination label |
 | `start_date` | Date | Trip start |
 | `end_date` | Date | Trip end |
-| `primary_timezone` | Text | Device-captured compatibility fallback for trip-day grouping and non-journey entries; not a free-text user field |
+| `primary_timezone` | Text | Device-captured final fallback when no prior event can seed a local zone; not a free-text user field |
 | `status` | `trip_status` | Lifecycle state |
 | `cover_image_path` | Text, nullable | Optional visual |
 | `created_by` | UUID | Original owner |
@@ -586,14 +586,14 @@ Train, Bus, Ferry/Boat, and Cab bookings share one ordered-leg model.
 |---|---|
 | `booking_id`, `segment_order`, `mode` | Parent, stable connection order, and Train/Bus/Ferry/Cab discriminator |
 | `operator_name`, `service_number` | Optional operator/service snapshot; a booked Train/Bus/Ferry requires an operator in the current form |
-| origin/destination name, code, country, timezone | Independent endpoint snapshots; Domestic UI omits country/zone entry and uses the hidden strict fallback |
+| origin/destination name, code, country, timezone | Independent endpoint snapshots; Domestic UI omits country/zone entry and uses the inherited local default |
 | `scheduled_departure_at` | Required journey start instant |
 | `scheduled_arrival_at` | Nullable destination instant; when present it must be after departure |
 | boarding/platform fields | Optional exact/lead boarding information and bays/platforms |
 | `details` | Required validated discriminated object whose `kind` matches `mode`; only allowlisted mode-specific keys are accepted |
 | legacy shared coach/seat columns | Retained for compatibility but new form writes traveler allocations instead |
 
-The UI enters departure in origin-local time and an optional arrival in destination-local time. When arrival exists, it converts both to instants, rejects invalid order/DST inputs, and derives elapsed duration; when absent it displays **Arrival time not added** and does not invent a booking/timeline end. Domestic journeys hide country, zone, and repeated-clock controls and persist the strict compatibility fallback. International non-flight journeys show country and strict endpoint-zone controls because there is no station/port catalog from which to derive them. Every later leg must begin at the previous leg's destination.
+The UI enters departure in origin-local time and an optional arrival in destination-local time. When arrival exists, it converts both to instants, rejects invalid order/DST inputs, and derives elapsed duration; when absent it displays **Arrival time not added** and does not invent a booking/timeline end. Domestic journeys hide country, per-connection zone, and repeated-clock controls while showing one event-level zone prefilled from the chronologically furthest scheduled event, falling back to the trip zone only when no prior scheduled event exists. International non-flight journeys show country and strict endpoint-zone controls because there is no station/port catalog from which to derive them. Every later connection is prefilled and locked to the previous destination in the form, then independently validated on save.
 
 #### `journey_leg_travelers`
 
@@ -1536,11 +1536,11 @@ Card-wide targets use native links or buttons with visible focus. A link activat
 
 The floating Add Event sheet presents Flight, Hotel, Activity, and Bus first, followed by Cab, Ferry/Boat, Train, Meal, Preparation, Other transport, and Other. Flight asks **Direct** or **Connecting**. Train, Bus, and Ferry ask **Single service** or **Connecting services**. Cab deliberately asks neither. Single/direct renders exactly one leg; Connecting starts with two ordered legs and permits more. On submit, each later leg must depart from the endpoint where the previous leg arrived. When both endpoint codes exist, comparison uses trimmed, uppercased alphanumeric codes; otherwise it uses equivalently normalized endpoint names. The choice itself is not stored; the saved leg count is authoritative. An editor who omitted a flight connection can later append it from Flight details. That form renders the prior arrival as a fixed, non-editable origin; a Domestic connection filters its destination catalog to the same country. The RPC locks the booking and last leg, revalidates endpoint code/name and departure time zone, requires a positive layover and later arrival, preserves journey scope, and rejects a Domestic country change before inheriting travelers and extending the booking/timeline end. Every trip, booking, flight, and event summary builds the full route from those ordered legs, such as `BLR → DEL → DXB`, rather than collecting a generic journey location.
 
-Flights and Train/Bus/Ferry journeys are explicitly Domestic or International. Cab instead uses Local, Airport transfer, Long-distance/outstation, or Hourly/day, with a Cross-border switch under More details. Domestic forms show neither country nor time-zone/repeated-clock controls. A Domestic flight filters destination airports to the origin country. For a known flight airport, selecting by code or name atomically fills name, passenger code, country, and strict IANA time zone and keeps the derived code disabled. An International **Other airport** unlocks manual name, code, country, and strict IANA zone entry. International Train, Bus, and Ferry endpoints—and a Cross-border Cab—also expose country plus strict endpoint zones because no station/port catalog supplies them. Every other Domestic endpoint uses the trip's hidden strict compatibility fallback. This is a form simplification, not a claim that a multi-zone country's local offset was inferred from its place name. A same-country route that crosses time-zone regions must be entered as International so separate origin and destination zones are available.
+Flights and Train/Bus/Ferry journeys are explicitly Domestic or International. Cab instead uses Local, Airport transfer, Long-distance/outstation, or Hourly/day, with a Cross-border switch under More details. Domestic forms show neither country nor per-connection time-zone/repeated-clock controls and use one visible event-level zone even for a connected route. A Domestic flight filters destination airports to the origin country. For a known flight airport, selecting by code or name atomically fills name, passenger code, country, and strict IANA time zone and keeps the derived code disabled. An International **Other airport** unlocks manual name, code, country, and strict IANA zone entry. International Train, Bus, and Ferry endpoints—and a Cross-border Cab—also expose country plus strict endpoint zones because no station/port catalog supplies them; these journeys do not render a duplicate event-zone control. New Domestic/local entries use the zone of the scheduled event chronologically furthest along the trip, comparing an event end when available and otherwise its start; Unscheduled items are ignored. With no scheduled event they use the trip's strict compatibility fallback. Creation and editing both show the single prefilled event zone for correction. Explicit zone pickers include **Default / local**, which resolves immediately to that concrete inherited IANA zone rather than storing a sentinel. This is a form simplification, not a claim that a multi-zone country's local offset was inferred from its place name. A same-country route that crosses time-zone regions must be entered as International so separate origin and destination zones are available.
 
 Flights require departure and arrival exactly as printed. Train, Bus, Ferry, and Cab require departure but permit an unknown arrival. The client converts supplied endpoint-local values independently with their endpoint zones, rejects invalid or overlapping instants, validates chronological order and endpoint continuity, and derives elapsed time only when arrival exists. Departure fields display in the origin zone; supplied arrivals and the booking/timeline end display in the applicable destination or final-destination zone. Duration labels preserve useful remainders and use minutes/hours through exactly 24 hours, days above 24 hours through exactly seven days, and weeks above seven days. Time zones never calculate a missing printed arrival. Domestic Flight editing hides every repeated-clock/daylight-saving selector and submits the deterministic hidden `earlier` occurrence; International Flight editing retains the explicit occurrence controls.
 
-Airline means the carrier operating a flight; operator means the train, bus, ferry, or cab service; hotel/property name is the primary stay name; **Booked via** is the website, seller, or agent used to purchase the reservation. Flights and trains omit contact name. Hotel creation does not expose a separate service-provider, time-zone, or repeated-clock field: it stores the property title as `bookings.provider` and the hidden compatibility zone internally. The booking-vendor picker remains visible after **Other** is selected so the user can return to a saved value. In both create and edit, selecting a saved vendor replaces the controlled booking-website field with that catalog URL, or clears a stale value if the entry has no URL; selecting **Other** clears the prior catalog URL before allowing manual website entry. Its bundled fallback contains Airbnb and Trip.com; the optional published catalog receives them through migration `202609130005_booking_vendor_catalog_additions.sql`.
+Airline means the carrier operating a flight; operator means the train, bus, ferry, or cab service; hotel/property name is the primary stay name; **Booked via** is the website, seller, or agent used to purchase the reservation. Flights and trains omit contact name. Hotel creation does not expose a separate service-provider, time-zone, or repeated-clock field: it stores the property title as `bookings.provider` and the inherited local zone internally. The booking-vendor picker remains visible after **Other** is selected so the user can return to a saved value. In both create and edit, selecting a saved vendor replaces the controlled booking-website field with that catalog URL, or clears a stale value if the entry has no URL; selecting **Other** clears the prior catalog URL before allowing manual website entry. Its bundled fallback contains Airbnb and Trip.com; the optional published catalog receives them through migration `202609130005_booking_vendor_catalog_additions.sql`.
 
 Flight PNR/reference is mandatory. Train, Bus, and Ferry references remain optional even when booked. Boarding lead or exact boarding time is journey-only; without an exact time, the display derives boarding by subtracting the lead from scheduled departure. Train/Bus and assigned-seat Ferry allocations belong to each traveler and leg rather than one shared seat. Hotel creation and editing use `save_hotel_stay` so the booking, explicit traveler scope, check-in milestone, and checkout milestone change atomically. Printed hotel times are optional; neutral hidden times maintain ordering when only dates are known and are not presented as provider-issued times.
 
@@ -1549,6 +1549,8 @@ The event form records `reservation_state` independently from Done/Skipped/Cance
 An unbooked Activity, Meal, Transport, Preparation, or Custom event remains a standalone itinerary item and may receive generic reservation details later. The online action creates the type-appropriate booking with `reservation_state = booked`, copies the event's explicit participant scope, links only `booking_id` with an optimistic version check, and preserves the event identity, placement, timing detail, and location. A Selected event pre-fills and retains its traveler IDs; Everyone emits an empty booking-traveler set as the canonical representation. If linking fails, it archives the newly created booking; if cleanup also fails, it reports the booking ID rather than hiding the partial state. Exact events and relative events with a real start copy the event schedule into the booking. Date-only, all-day, unscheduled, relation-only, and duration-only relative events create the booking with nullable start, end, and source timezone; their storage ordering instants are never copied as reservation times. The itinerary edit form keeps **Link an existing booking** and exposes **Add new booking** independently. Booking enrichment is not queued for offline synchronization.
 
 Exact and relative schedule parsing uses the event or anchor IANA timezone. Start plus duration derives the end; start plus end derives duration in whole minutes; all three must agree. End without start, end at/before start, non-positive/non-minute-resolvable duration, and a start or derived end outside the trip bounds are rejected. Date-only, all-day, and unscheduled records never keep duration or claim an explicit start.
+
+The first-connection Train, Bus, and Ferry editor exposes timeline placement because the relationship belongs to the whole booking, not an individual connection. Saving any connection calls `save_journey_leg_with_timing`: an explicit first-connection choice changes Exact versus Before/After, while an edit to any later connection preserves the booking's existing relative anchor. The same wrapper can change a Domestic journey's one event-level zone by reinterpreting every connection's saved wall-clock fields in that zone before delegating route/booking synchronization to `save_journey_leg`; International journeys reject that event-level override. It clears the old derived interval, reapplies relative placement when required, and returns the final itinerary row in the same transaction. Domestic connected-flight timezone changes use `save_domestic_flight_update`, which performs the equivalent all-connections, booking, and itinerary update atomically.
 
 All event types may include an optional linked cost. Bookings may also retain provider/operator, booking vendor, HTTPS website, contact name, and phone number. A valid 7–15 digit phone normalization enables direct `tel:` and `https://wa.me/` actions. Location-bearing entries expose an explicit map URL or a keyless Google Maps search.
 
@@ -1817,7 +1819,7 @@ Rules:
 - Initialize a new trip at local today + 15 calendar days and suggest an end seven calendar days after that start. Continue moving the suggestion when the untouched start changes, but never overwrite an end date the user deliberately edited. The versioned form-draft key prevents an older saved default from masquerading as the new suggestion.
 - Ask Direct or Connecting before Flight details; ask Single or Connecting service for Train, Bus, and Ferry; ask neither for Cab. Render one leg for Direct/Single and at least two for Connecting, but persist only the ordered legs.
 - Require both printed endpoint-local values for Flight. For Train, Bus, Ferry, and Cab, require departure and accept a missing arrival. Convert every supplied value with its endpoint's strict IANA time zone and never derive a printed arrival from departure.
-- Hide zone and repeated-clock controls for Domestic journeys and every local event, including the Domestic Flight edit sheet. Derive zones from known airports; require strict manual origin and destination zones for International Other airports and international non-flight endpoints.
+- Show one prefilled event-zone control for Domestic journeys and local events while hiding per-connection zones and repeated-clock controls, including in the Domestic Flight edit sheet. Derive known International airport zones; require strict manual origin and destination zones for International Other airports and international non-flight endpoints.
 - Keep trip dates and readiness due/expiry dates date-only. Exact timeline events require a local start. A relative event keeps its before/after anchor while independently allowing no timing detail, a duration only, or a later explicit start and optional end. Date-only, all-day, and unscheduled modes do not claim a user-entered clock time.
 - For Exact and explicitly timed Relative events, derive end from start plus duration or derive duration from start plus end. Reject end without start, non-positive duration, an end that is not later, inconsistent start/end/duration values, and any entered or derived date outside the trip bounds.
 - Validate trip end date is not before start date.
@@ -1901,10 +1903,10 @@ Rules:
 | Check | Last verified | Result |
 |---|---|---|
 | `npm run typecheck` | 2026-09-16 | Pass |
-| `npm test` | 2026-09-16 | Pass: 78 files, 426 tests |
-| `npm run build` | 2026-09-16 | Pass; only the existing chunk-size and dynamic-import advisories remain |
+| `npm test` | 2026-09-17 | Pass: 83 files, 480 tests |
+| `npm run build` | 2026-09-17 | Pass; only the existing chunk-size and dynamic-import advisories remain |
 | `npm run format:check` | 2026-09-16 | Pass |
-| `supabase/tests/001_schema_smoke.sql` | Current local SQL includes booking-vendor, trip-cleanup, relative-event timing, reservation/scope, ground-detail, allocation, optional-arrival, and hotel-RPC assertions | Rerun remotely after the single new tail `202609140001_event_form_data_model.sql` |
+| `supabase/tests/001_schema_smoke.sql` | Current local SQL includes booking-vendor, trip-cleanup, relative-event timing, reservation/scope, ground-detail, allocation, optional-arrival, and hotel-RPC assertions | Rerun remotely after every pending existing-project migration or both fresh-install phases |
 | Phone, desktop, sharing, upload, Cloudflare, and airplane mode | Current release | Manual acceptance pending in `docs/FEATURE_TEST_CHECKLIST.md` |
 
 The lists below are the release coverage contract. They do not imply that every bullet already has a dedicated automated test; remote RLS, Storage, PWA installation, and true airplane-mode behavior require the named manual or SQL acceptance step.
@@ -2040,7 +2042,7 @@ The lists below are the release coverage contract. They do not imply that every 
 - Switching to one traveler leaves shared and selected-traveler records visible across the trip while hiding records assigned only to another traveler
 - Phone event icons remain inside the card corner while desktop icons stay centered on the connector
 - Flight creation asks Direct or Connecting; Train, Bus, and Ferry ask Single or Connecting service; Cab asks neither. Multi-leg routes reject a later origin that differs from the prior destination, and every saved stop appears in order.
-- Known international airports fill code/country/time zone atomically. An International Other airport and International non-flight endpoint require an explicit strict zone; Domestic journeys show neither journey-country nor zone controls, and Domestic Flight editing never shows repeated-clock controls.
+- Known international airports fill code/country/time zone atomically. An International Other airport and International non-flight endpoint require an explicit strict zone and offer the latest local default as a shortcut; Domestic/local entries inherit that zone without showing another form control, and Domestic Flight editing never shows repeated-clock controls.
 - Flight requires printed departure and arrival. Train, Bus, Ferry, and Cab require departure but allow arrival to remain unknown; when arrival is supplied, elapsed duration is derived from the endpoint-local times.
 - Train retains seat/berth, coach, and passenger reference per included traveler and leg; Bus retains seat and passenger reference; Ferry retains passenger reference and conditionally seat/cabin for assigned seating; Cab intentionally has no passenger-seat allocation fields.
 - Planned or walk-up journeys omit reservation-only fields. Changing a form to Booked reveals operator/property, Booked via, reference, contact, and ticket-specific fields without requiring a second timeline event.
@@ -2092,32 +2094,18 @@ The lists below are the release coverage contract. They do not imply that every 
 
 ### 16.6 Supabase rollout order
 
-For an existing Trip Vault database, apply every not-yet-run migration in filename order. The current tail is:
+For an existing Trip Vault database, do not use `TRIP_VAULT_COMPLETE_SETUP.sql` as an upgrade script. Apply every not-yet-run immutable file under `supabase/migrations/` in filename order through the current tail, `202609170001_journey_timeline_and_timezone.sql`, then run `supabase/tests/001_schema_smoke.sql`. Continue from the first file that deployment has not already applied; do not rerun or edit an applied migration. A correction to released SQL is always a new dated migration.
 
-1. `202609130004_account_document_storage_state.sql` if it has not already been applied.
-2. `202609130005_booking_vendor_catalog_additions.sql`.
-3. `202609130006_trip_storage_cleanup_queue.sql`.
-4. `202609130007_relative_event_timing.sql`.
-5. `202609140001_event_form_data_model.sql`.
-6. `supabase/tests/001_schema_smoke.sql`.
-
-Migration `202609130005` requires both an active `app_admins` row and the published release created by `202609130002_regional_travel_catalog.sql`; if either is absent, install/bootstrap it first instead of bypassing the guard.
-
-Migration `202609130006` must follow `202609130005` in filename order. It installs the persistent legacy-object cleanup queue, owner-only permanent-delete RPC, guarded Storage-delete path, and hardened appended-flight connection function. A project already current through `202609130005` runs only `202609130006` before the smoke test.
-
-Migration `202609130007` follows the cleanup migration. It adds `has_explicit_start_time` and `duration_minutes`, migrates flexible legacy rows without treating their ordering fallback as real time, validates schedule derivation and trip bounds, and propagates an anchor change only to relation-only dependants. A project already current through `202609130006` runs only `202609130007` before the smoke test.
-
-Migration `202609140001` is the single new event-form schema delta for this redesign. It adds reservation state and participant scope, optional non-flight arrival plus typed ground-journey detail JSON, per-leg traveler allocations, and the atomic hotel-stay save function. A project already current through `202609130007` runs only `202609140001` and then the smoke test.
+Migration `202609130005_booking_vendor_catalog_additions.sql` still requires both an active `app_admins` row and the published release created by `202609130002_regional_travel_catalog.sql`; if either is absent in an existing deployment, establish the prerequisite instead of bypassing the guard.
 
 For a fresh Supabase project:
 
-1. Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once to install the current schema and Storage policies, including the `202609140001` event-form data-model contract. Do not reapply the tail migration afterward.
-2. Create the dedicated Auth administrator and bootstrap its active `app_admins` row through trusted SQL.
-3. Run `202609130002_regional_travel_catalog.sql` to publish the regional airports, airlines, and initial vendors.
-4. Run `202609130005_booking_vendor_catalog_additions.sql` to publish Airbnb and Trip.com in a new immutable release.
-5. Run the schema smoke test.
+1. Follow `supabase/README.md` and run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` on the blank project. Its marked Phase 1 installs the complete current schema, functions, grants, Row Level Security policies, and Storage configuration. Its marked Phase 2 publishes 103 airports, 27 airlines, and 9 booking vendors.
+2. If Phase 2 reports that publication was deferred, create the dedicated Auth administrator and bootstrap its active `app_admins` row through a trusted administrative operation.
+3. Select and run only the SQL between `-- PHASE 2 BEGIN: ADMIN-GATED CATALOG PUBLICATION` and `-- PHASE 2 END: ADMIN-GATED CATALOG PUBLICATION`. Do not rerun Phase 1, the whole setup, or the catalog migration files.
+4. Run `supabase/tests/001_schema_smoke.sql` after both phases complete.
 
-The React bundle already contains fallback catalog JSON, so form entry does not depend on a successful remote catalog read. The SQL steps make the same metadata available through the versioned published configuration; they do not rewrite existing booking snapshots.
+Phase 2 is safe to retry because both catalog releases have stable change-note guards. The React bundle also contains fallback catalog JSON, so form entry does not depend on a successful remote catalog read. The SQL phase makes the same metadata available through the versioned published configuration; it does not rewrite existing booking snapshots.
 
 ## 17. Configuration Boundaries
 
@@ -2252,12 +2240,13 @@ These paths are the implemented ownership map. Tests are co-located with their m
 | Trip lifecycle | `src/features/trips/api.ts` | Archive, recoverable deletion, restore, and owner-only permanent purge with post-commit queued Storage cleanup |
 | Backend client | `src/lib/supabase/` | Supabase client and typed repositories |
 | Database deltas | `supabase/migrations/` | Post-baseline schema, function, grant, and RLS changes for existing projects |
+| Supabase deployment workflow | `supabase/README.md` | Canonical two-phase fresh install and immutable existing-project upgrade rules |
 | Account-document Storage hardening | `supabase/migrations/202609130004_account_document_storage_state.sql` | Verified completion, append-only Storage policies, association immutability, and unassociated cleanup boundary |
 | Booking-vendor catalog addition | `supabase/migrations/202609130005_booking_vendor_catalog_additions.sql` | Copies the published release and adds Airbnb and Trip.com |
 | Trip Storage cleanup queue | `supabase/migrations/202609130006_trip_storage_cleanup_queue.sql` | Persistent owner cleanup work, guarded legacy-object deletion, permanent-delete RPC, and server-hardened flight connection append |
 | Relative-event timing migration | `supabase/migrations/202609130007_relative_event_timing.sql` | Explicit-start marker, optional planned duration, derivation constraints, anchor fallback propagation, and trip bounds |
 | Event-form data-model migration | `supabase/migrations/202609140001_event_form_data_model.sql` | Reservation state, participant scope, optional non-flight arrival, typed ground details, per-leg traveler allocations, and atomic hotel-stay save |
-| Consolidated database setup | `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` | Full current setup for a fresh project |
+| Consolidated database setup | `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` | Canonical two-phase current schema and catalog setup for a fresh project |
 | Co-located automated tests | `src/**/*.test.ts`, `src/**/*.test.tsx` | Domain, local database, sync, alert, presentation, and route behavior |
 | Schema smoke test | `supabase/tests/001_schema_smoke.sql` | Tables, policies, functions, and Storage limit assertions |
 | Redesign checklist | `docs/REDESIGN_CHECKLIST.md` | Implemented timeline redesign scope and retained follow-ups |

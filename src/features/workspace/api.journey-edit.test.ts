@@ -111,11 +111,17 @@ describe("updateJourneyLeg", () => {
       boardingAt: savedLeg.boarding_at ?? undefined,
       boardingLeadMinutes: 30,
       departurePlatform: "Exit D",
+      itineraryTiming: {
+        timingMode: "relative",
+        anchorItineraryItemId: "44444444-4444-4444-8444-444444444444",
+        relativePosition: "after"
+      },
       details: savedLeg.details as BusJourneyDetails
     });
 
-    expect(mocks.rpc).toHaveBeenCalledWith("save_journey_leg", {
+    expect(mocks.rpc).toHaveBeenCalledWith("save_journey_leg_with_timing", {
       requested_leg_id: savedLeg.id,
+      requested_event_timezone: null,
       requested_leg: expect.objectContaining({
         version: 3,
         operator_name: "Qistna Express",
@@ -123,7 +129,12 @@ describe("updateJourneyLeg", () => {
         destination_country_code: "MY",
         scheduled_arrival_at: savedLeg.scheduled_arrival_at,
         details: savedLeg.details
-      })
+      }),
+      requested_itinerary_timing: {
+        timing_mode: "relative",
+        anchor_itinerary_item_id: "44444444-4444-4444-8444-444444444444",
+        relative_position: "after"
+      }
     });
     expect(mocks.cacheEntity).toHaveBeenCalledWith(
       `journey-legs:${savedBooking.trip_id}`,

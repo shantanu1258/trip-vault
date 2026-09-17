@@ -4,20 +4,20 @@ description: "Short manual acceptance checklist for the timeline-first Trip Vaul
 scope: [service-wide]
 agents: [tester, reviewer]
 tags: [manual-testing, acceptance, timeline, mobile, admin]
-last_verified: 2026-09-16
+last_verified: 2026-09-17
 ---
 
 # Trip Vault Feature Test Checklist
 
-For an existing Supabase project, run every not-yet-applied migration in filename order through `supabase/migrations/202609150002_participant_trigger_row_types.sql`, then run the schema smoke test. The earlier catalog addition still requires the published regional release from `202609130002` and an active `app_admins` row.
+For an existing Supabase project, do not run the complete setup rollup. Apply every not-yet-applied immutable file in `supabase/migrations/` in filename order through the current tail, `202609170001_journey_timeline_and_timezone.sql`, then run `supabase/tests/001_schema_smoke.sql`.
 
-For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it includes the readiness-timeline and document-visibility contract—bootstrap the dedicated active administrator, run `202609130002_regional_travel_catalog.sql`, run `202609130005_booking_vendor_catalog_additions.sql`, and then run `supabase/tests/001_schema_smoke.sql`. Sign in with three test accounts and use synthetic names and documents smaller than 5 MB.
+For a fresh project, follow the canonical two-phase workflow in `supabase/README.md`. Run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` on the blank project. Phase 1 installs the complete current schema and Phase 2 publishes the regional catalogs. If Phase 2 reports that publication was deferred, create the dedicated Auth administrator, bootstrap its active `app_admins` row through a trusted operation, and run only the SQL between the Phase 2 markers. Do not run the catalog migration files separately. After both phases complete, run `supabase/tests/001_schema_smoke.sql`. Sign in with three test accounts and use synthetic names and documents smaller than 5 MB.
 
 ## Database Gate
 
-- [ ] On an existing project current through `202609140001`, run `202609150001_readiness_timeline_and_document_visibility.sql` once and then run `supabase/tests/001_schema_smoke.sql`; confirm the smoke test passes before testing tasks or access changes.
-- [ ] Run `202609150002_participant_trigger_row_types.sql`, then create a Flight for Selected travelers with per-person flight details, an event cost with participants, and an attached document. Confirm the whole flow saves without a `NEW.itinerary_item_id` row-type error and all selected travelers remain attached to the booking and timeline event.
-- [ ] On a fresh project, run the complete setup and smoke test; confirm readiness timing columns/guard, `update_document_visibility`, reservation state, participant scope, typed ground details, per-leg traveler allocations, and `save_hotel_stay` are present.
+- [ ] On an existing project, apply every pending immutable migration in filename order through `202609170001_journey_timeline_and_timezone.sql`, then run `supabase/tests/001_schema_smoke.sql`; confirm the smoke test passes before testing application flows.
+- [ ] Create a Flight for Selected travelers with per-person flight details, an event cost with participants, and an attached document. Confirm the whole flow saves without a `NEW.itinerary_item_id` row-type error and all selected travelers and leg allocations remain attached after later booking edits.
+- [ ] On a fresh project, complete both marked phases of `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` as described in `supabase/README.md`, then run the smoke test; confirm readiness timing columns/guard, `update_document_visibility`, reservation state, participant scope, typed ground details, per-leg traveler allocations, `save_hotel_stay`, and the published regional catalogs are present.
 
 ## Organizer and Timeline
 
@@ -41,7 +41,8 @@ For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it includes 
 - [ ] Save a Hotel with neither printed time and confirm both check-in and checkout appear as date-only milestones without presenting a fake printed time. Repeat with one or both printed times and confirm the corresponding milestone changes to exact-time presentation.
 - [ ] Set a deliberate later checkout, move check-in while it remains earlier, and confirm the chosen checkout is preserved.
 - [ ] Manually set checkout equal to and earlier than check-in; confirm saving is blocked, no partial booking/traveler/milestone records appear, and the form remains open for correction.
-- [ ] Correct checkout, save, and confirm one atomic save creates the Hotel reservation, selected traveler scope, and both check-in/checkout milestones using the hidden local compatibility zone; no zone choice should be required.
+- [ ] Add events out of entry order with the chronologically furthest event in a different zone, then open a Hotel and a local activity form. Confirm the single event-zone control is prefilled from that furthest event and offers **Default / local**; in an empty trip, confirm it is prefilled from the trip's captured fallback zone.
+- [ ] Edit a local event, change its single event-level time zone, and confirm its entered local clock time is retained while the stored instant and display update. Confirm an International journey exposes only endpoint zones in its journey editor and no duplicate event-zone control.
 - [ ] Add a free event cost (`0`), a paid cost in a non-trip currency selected from the dropdown, and leave one event without cost; confirm `Free`, per-currency totals, and `Cost missing` are distinct.
 - [ ] Add costs with different payers and participant combinations. Enable **Show balances** and confirm equal-split balances conserve every minor unit and currencies remain separate.
 - [ ] Confirm Home and the trip header each show the compact readable per-currency total. Activate each and confirm both open the same itemized Trip expenses section with cost rows and the opt-in **Show balances** control.
@@ -84,7 +85,10 @@ For a fresh project, run `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`—it includes 
 - [ ] Choose Other for Booked via and confirm the saved-value picker remains present and the prior catalog URL is cleared before manual entry. Select a saved vendor to leave Other without restarting the form; repeat with Airbnb and Trip.com.
 - [ ] Choose saved From and To airports by name/code and confirm each airport name, country, zone, and disabled airport code are derived with no manual zone field. Choose an International Other airport and confirm manual name, code, country, and strict time-zone inputs appear.
 - [ ] Add a Domestic flight and confirm no zone or repeated-clock selector appears and the destination list stays within the origin country. Open Update flight and confirm scheduled, estimated, actual, and boarding fields also hide daylight-saving/repeated-clock controls. For a same-country route that crosses time-zone regions, choose International and confirm separate endpoint zones become available.
-- [ ] Add a Domestic Train/Bus/Ferry/Cab and confirm no journey-country, zone, or repeated-clock field appears. Add an International non-flight journey and confirm strict origin/destination zones are requested because no station/port catalog derives them.
+- [ ] Add one Domestic Train/Bus/Ferry/Cab after an event in another zone and confirm no journey-country, zone, or repeated-clock field appears and the inherited zone is used. Add one International non-flight journey, choose **Default / local** for one endpoint and another strict zone for the other, then confirm both concrete IANA zones are saved.
+- [ ] For Train, Bus, and Ferry, create a journey **After** a hotel checkout, edit its first connection, and confirm **Timeline placement** remains available with the saved anchor selected. Change it to **Before**, save, and confirm the timeline moves it without changing entered route times. Edit a later connection and confirm the booking's placement does not reset.
+- [ ] Create connected Train, Bus, Ferry, and Flight journeys. Confirm route cards are collapsible, use **Connection N · ORIGIN → DESTINATION** once filled, and automatically carry each destination into the next connection's locked origin. Confirm no traveler-facing “Leg” label remains.
+- [ ] For every form that shows booking metadata, confirm **Booking details** is collapsible, starts open, and appears before **More details**.
 - [ ] Enter an Other airline, airport, and booking source; save online and confirm each appears in the Admin Suggestions review without exposing the trip or PNR.
 - [ ] For Flight, enter departure and arrival exactly as printed and confirm both are required. For Train, Bus, Ferry, and Cab, save with departure only and confirm the unknown arrival is not invented; then add arrival and confirm it must follow departure. When both exist, confirm departure displays in the origin zone, arrival/booking end uses the destination zone, elapsed duration is derived from both instants, and a next-day marker appears where applicable.
 - [ ] Create 25-hour and eight-day examples and confirm duration labels use day and week units while retaining useful hour/day remainders.

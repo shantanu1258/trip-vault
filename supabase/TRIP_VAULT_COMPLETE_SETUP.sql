@@ -1,12 +1,83 @@
--- Trip Vault: complete Supabase setup
+-- Trip Vault: canonical two-phase Supabase deployment
 --
--- Paste this entire file into the Supabase SQL Editor for a new project.
--- It contains the full current baseline, including all historical fixes.
--- Files under supabase/migrations contain only changes made after this baseline
--- for existing deployments.
+-- Run this file once in the Supabase SQL Editor for a new project. Phase 1
+-- installs the current schema, functions, grants, Row Level Security policies,
+-- Storage policies, and every folded historical fix. Phase 2 publishes the
+-- bundled travel catalogues only when an active public.app_admins row backed by
+-- auth.users already exists.
 --
--- Safe expectation: use this complete file once on a new database. For an
--- existing database, run only migrations that have not already been applied.
+-- Blank-project behavior: Phase 1 completes, Phase 2 emits a NOTICE and safely
+-- defers its catalogue work. After creating the Auth administrator and its
+-- active app_admins row through trusted SQL, select and run only the statements
+-- between the PHASE 2 BEGIN/END markers below. Do not rerun Phase 1: this is a
+-- one-time new-project installer, not an existing-database upgrade script.
+-- Existing databases must continue to apply missing files under
+-- supabase/migrations in filename order.
+--
+-- The migration files remain the authoritative incremental history. This file
+-- is the canonical single deployment source for a fresh project and records
+-- when each folded change entered that source.
+--
+-- ROLLUP MAINTENANCE LOG
+--
+-- 2026-09-17  Consolidated the complete schema history and both catalogue
+--              releases into this canonical file; added phase progress,
+--              deferral, and completion notices for SQL Editor runs.
+-- 2026-09-17  Folded shared journey placement, Domestic event-timezone
+--              editing, and atomic connected-flight timezone updates.
+--
+-- CHANGELOG (newest first; dates use Asia/Kolkata repository timestamps)
+--
+-- 2026-09-17  202609170001  unreleased  Share Train/Bus/Ferry placement and
+--                                      Domestic journey timezone editing.
+-- 2026-09-17  202609160003  0f82f9b  Preserve per-leg traveler allocations
+--                                      when a booking uses Everyone scope.
+-- 2026-09-16  202609160002  875cec7  Isolate parent participant-trigger row
+--                                      fields through JSON-safe access.
+-- 2026-09-16  202609160001  bcfd366  Remove the stale hotel timing enum
+--                                      reference from save_hotel_stay.
+-- 2026-09-15  202609150003  b678a23  Make expense splitting an opt-in trip
+--                                      setting.
+-- 2026-09-15  202609150002  f2941cf  Isolate explicit participant-trigger row
+--                                      fields by parent table.
+-- 2026-09-15  202609150001  e486323  Add event-linked readiness timing and
+--                                      editable document visibility.
+-- 2026-09-14  202609140001  b377a31  Add booking state/scope, typed journey
+--                                      details, allocations, and atomic saves.
+-- 2026-09-13  202609130007  de13a5d  Add explicit/relative event timing,
+--                                      duration, and anchor propagation.
+-- 2026-09-13  202609130006  16e5506  Add the trip Storage cleanup queue and
+--                                      harden deletion/flight connections.
+-- 2026-09-13  202609130005  16e5506  Publish Airbnb and Trip.com in a new
+--                                      immutable catalogue release.
+-- 2026-09-13  202609130004  16e5506  Verify account-document Storage state
+--                                      before association.
+-- 2026-09-13  202609130003  0e9c7d2  Add the private account document inbox.
+-- 2026-09-13  202609130002  42d50a1  Publish the regional travel catalogue;
+--                         + 194a28a  repair the shared metadata trigger.
+-- 2026-09-13  202609130001  d0b2fbe  Add timeline lifecycle controls and trip
+--                                      expense participation.
+-- 2026-09-12  202609120001  1a2a8c8  Add known-account offers and appendable
+--                                      flight connections.
+-- 2026-09-11  202609110003  f3bb011  Add document assignment and experience
+--                                      refinements.
+-- 2026-09-11  202609110002  f3bb011  Repair the polymorphic timezone trigger.
+-- 2026-09-11  202609110001  f3bb011  Add the timeline-first event and journey
+--                                      model.
+-- 2026-09-10  202609100003  4eef135  Simplify managed-traveler document
+--                                      context for the personal MVP.
+-- 2026-09-10  202609100002  4eef135  Complete the LLD schema, validation,
+--                                      configuration, and audit model.
+-- 2026-09-10  202609100001  4eef135  Create the initial Trip Vault schema,
+--                                      grants, RLS, and document Storage.
+
+do $setup_progress$
+begin
+  raise notice 'Trip Vault setup starting: Phase 1 current schema, then admin-gated Phase 2 catalogues.';
+end
+$setup_progress$;
+
+-- PHASE 1 BEGIN: CURRENT SCHEMA
 
 -- ============================================================================
 -- 202609100001_initial_schema.sql
@@ -2122,6 +2193,14 @@ create table if not exists public.account_document_uploads (
   constraint account_document_owner_path check (storage_path like owner_id::text || '/%')
 );
 
+-- ---------------------------------------------------------------------------
+-- Folded final effects: 202609130004_account_document_storage_state.sql
+-- Introduced 2026-09-13 in 16e5506. The consolidated definition includes the
+-- verified stored_at state, append-only Storage policies, finalization RPC,
+-- and association-time object verification rather than installing the earlier
+-- inbox contract and immediately replacing it.
+-- ---------------------------------------------------------------------------
+
 alter table public.account_document_uploads
   add column if not exists stored_at timestamptz;
 
@@ -2176,8 +2255,6 @@ on conflict (id) do update set
   file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
 
--- Storage completion hardening from
--- 202609130004_account_document_storage_state.sql.
 update public.account_document_uploads upload
 set stored_at = coalesce(upload.stored_at, now())
 where upload.stored_at is null
@@ -2465,8 +2542,10 @@ commit;
 notify pgrst, 'reload schema';
 
 -- ============================================================================
--- Traveler-focused views, reusable account invitations, and flight connections
+-- 202609120001_traveler_focus_and_known_accounts.sql
 -- ============================================================================
+
+-- Traveler-focused views, reusable account invitations, and flight connections.
 
 begin;
 
@@ -3611,6 +3690,12 @@ drop trigger if exists journey_leg_traveler_same_trip on public.journey_leg_trav
 create trigger journey_leg_traveler_same_trip before insert or update on public.journey_leg_travelers
 for each row execute function public.enforce_assignment_trip();
 
+-- ---------------------------------------------------------------------------
+-- Folded final effect: 202609150002_participant_trigger_row_types.sql
+-- Introduced 2026-09-15 in f2941cf. Each trigger-table row field is resolved
+-- only inside its matching PL/pgSQL branch.
+-- ---------------------------------------------------------------------------
+
 create or replace function public.enforce_explicit_participant_row()
 returns trigger language plpgsql security definer set search_path = public as $function$
 begin
@@ -3642,6 +3727,17 @@ for each row execute function public.enforce_explicit_participant_row();
 drop trigger if exists itinerary_participant_explicit_scope on public.itinerary_participants;
 create trigger itinerary_participant_explicit_scope before insert or update on public.itinerary_participants
 for each row execute function public.enforce_explicit_participant_row();
+
+-- ---------------------------------------------------------------------------
+-- Folded final effect: 202609160002_parent_participant_trigger_row_types.sql
+-- Introduced 2026-09-16 in 875cec7. Parent-specific values are read from
+-- to_jsonb(NEW), avoiding invalid cross-table composite-field resolution.
+--
+-- Folded final effect: 202609160003_preserve_leg_traveler_allocations.sql
+-- Introduced 2026-09-17 in 0f82f9b. Everyone scope removes redundant parent
+-- assignments but preserves seats, berths, and passenger references on legs;
+-- Selected scope prunes allocations only for travelers no longer selected.
+-- ---------------------------------------------------------------------------
 
 -- A caller with direct table access must not be able to leave an Everyone
 -- parent with explicit assignment rows. Canonicalize the transition inside
@@ -3842,6 +3938,13 @@ create policy journey_leg_travelers_write on public.journey_leg_travelers for al
     where leg.id = journey_leg_id and public.can_edit_trip(booking.trip_id)
   )
 );
+
+-- ---------------------------------------------------------------------------
+-- Folded final effect: 202609160001_fix_hotel_timing_mode.sql
+-- Introduced 2026-09-16 in bcfd366. itinerary_items.timing_mode is constrained
+-- text, so the final hotel RPC writes text values and never references the
+-- non-existent public.event_timing_mode enum.
+-- ---------------------------------------------------------------------------
 
 create or replace function public.save_hotel_stay(
   requested_booking jsonb,
@@ -4189,6 +4292,473 @@ grant execute on function public.valid_journey_leg_details(public.journey_mode, 
 grant execute on function public.save_hotel_stay(jsonb, uuid[], jsonb) to authenticated;
 grant execute on function public.save_journey_leg(uuid, jsonb) to authenticated;
 
+-- Superseded baseline for the final 202609170001 folded function below.
+create or replace function public.save_journey_leg_with_timing(
+  requested_leg_id uuid,
+  requested_leg jsonb,
+  requested_itinerary_timing jsonb default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  actor uuid := auth.uid();
+  target_booking public.bookings%rowtype;
+  target_mode text;
+  itinerary_item_id uuid;
+  existing_timing_mode text;
+  existing_anchor_id uuid;
+  existing_relative_position text;
+  requested_timing_mode text;
+  requested_anchor_id uuid;
+  requested_relative_position text;
+  saved_result jsonb;
+  saved_itinerary jsonb;
+begin
+  if actor is null then
+    raise exception 'Sign in before editing a journey';
+  end if;
+
+  -- Match save_journey_leg's lock order before changing the linked itinerary.
+  select booking.* into target_booking
+  from public.bookings booking
+  where booking.id = (
+    select journey.booking_id
+    from public.journey_legs journey
+    where journey.id = requested_leg_id and journey.deleted_at is null
+  )
+    and booking.deleted_at is null
+  for update;
+  if not found then
+    raise exception 'Journey leg was not found';
+  end if;
+  if not public.can_edit_trip(target_booking.trip_id) then
+    raise exception 'Journey leg cannot be changed';
+  end if;
+
+  select journey.mode::text into target_mode
+  from public.journey_legs journey
+  where journey.id = requested_leg_id
+    and journey.booking_id = target_booking.id
+    and journey.deleted_at is null;
+
+  select item.id, item.timing_mode, item.anchor_itinerary_item_id, item.relative_position
+  into itinerary_item_id, existing_timing_mode, existing_anchor_id, existing_relative_position
+  from public.itinerary_items item
+  where item.booking_id = target_booking.id and item.deleted_at is null
+  order by item.created_at, item.id
+  limit 1
+  for update;
+
+  if requested_itinerary_timing is not null
+    and jsonb_typeof(requested_itinerary_timing) <> 'object' then
+    raise exception 'Timeline placement must be an object';
+  end if;
+
+  requested_timing_mode := nullif(trim(requested_itinerary_timing->>'timing_mode'), '');
+  if requested_timing_mode is null
+    and target_mode = 'bus'
+    and existing_timing_mode = 'relative' then
+    requested_timing_mode := existing_timing_mode;
+    requested_anchor_id := existing_anchor_id;
+    requested_relative_position := existing_relative_position;
+  elsif requested_timing_mode is not null then
+    if requested_timing_mode not in ('exact', 'relative') then
+      raise exception 'Bus timeline placement must use its departure time or another event';
+    end if;
+    if target_mode <> 'bus' and requested_timing_mode = 'relative' then
+      raise exception 'Before/after journey placement is currently available for buses only';
+    end if;
+    if requested_timing_mode = 'relative' then
+      requested_anchor_id := nullif(trim(requested_itinerary_timing->>'anchor_itinerary_item_id'), '')::uuid;
+      requested_relative_position := nullif(trim(requested_itinerary_timing->>'relative_position'), '');
+      if requested_anchor_id is null or requested_relative_position not in ('before', 'after') then
+        raise exception 'Choose a dated event and whether this bus belongs before or after it';
+      end if;
+      if not exists (
+        select 1
+        from public.itinerary_items anchor
+        where anchor.id = requested_anchor_id
+          and anchor.id is distinct from itinerary_item_id
+          and anchor.trip_id = target_booking.trip_id
+          and anchor.deleted_at is null
+          and anchor.timing_mode not in ('relative', 'unscheduled')
+      ) then
+        raise exception 'Choose a dated, non-relative event from this trip as the bus anchor';
+      end if;
+    end if;
+  end if;
+
+  update public.itinerary_items item
+  set ends_at = null,
+      duration_minutes = null
+  where item.booking_id = target_booking.id and item.deleted_at is null;
+
+  saved_result := public.save_journey_leg(requested_leg_id, requested_leg);
+
+  if requested_timing_mode = 'relative' then
+    update public.itinerary_items item
+    set timing_mode = 'relative',
+        anchor_itinerary_item_id = requested_anchor_id,
+        relative_position = requested_relative_position,
+        scheduled_date = (item.starts_at at time zone item.timezone)::date,
+        is_all_day = false,
+        has_explicit_start_time = true
+    where item.booking_id = target_booking.id and item.deleted_at is null;
+  end if;
+
+  select coalesce(
+    jsonb_agg(to_jsonb(item) order by item.starts_at, item.sort_key, item.id),
+    '[]'::jsonb
+  )
+  into saved_itinerary
+  from public.itinerary_items item
+  where item.booking_id = target_booking.id and item.deleted_at is null;
+
+  return jsonb_set(saved_result, '{itinerary_items}', saved_itinerary, true);
+end
+$function$;
+
+revoke all on function public.save_journey_leg_with_timing(uuid, jsonb, jsonb) from public, anon;
+grant execute on function public.save_journey_leg_with_timing(uuid, jsonb, jsonb) to authenticated;
+
+-- Folded final effect: 202609170001_journey_timeline_and_timezone.sql
+-- Shared Train, Bus, and Ferry placement plus event-level Domestic journey time zones.
+drop function if exists public.save_journey_leg_with_timing(uuid, jsonb, jsonb);
+
+create or replace function public.save_journey_leg_with_timing(
+  requested_leg_id uuid,
+  requested_leg jsonb,
+  requested_itinerary_timing jsonb default null,
+  requested_event_timezone text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  actor uuid := auth.uid();
+  target_booking public.bookings%rowtype;
+  target_mode text;
+  itinerary_item_id uuid;
+  existing_timing_mode text;
+  existing_anchor_id uuid;
+  existing_relative_position text;
+  requested_timing_mode text;
+  requested_anchor_id uuid;
+  requested_relative_position text;
+  saved_result jsonb;
+  saved_itinerary jsonb;
+  normalized_event_timezone text := nullif(trim(requested_event_timezone), '');
+begin
+  if actor is null then
+    raise exception 'Sign in before editing a journey';
+  end if;
+
+  -- Match save_journey_leg's lock order before changing the linked itinerary.
+  select booking.* into target_booking
+  from public.bookings booking
+  where booking.id = (
+    select journey.booking_id
+    from public.journey_legs journey
+    where journey.id = requested_leg_id and journey.deleted_at is null
+  )
+    and booking.deleted_at is null
+  for update;
+  if not found then
+    raise exception 'Journey leg was not found';
+  end if;
+  if not public.can_edit_trip(target_booking.trip_id) then
+    raise exception 'Journey leg cannot be changed';
+  end if;
+
+  select journey.mode::text into target_mode
+  from public.journey_legs journey
+  where journey.id = requested_leg_id
+    and journey.booking_id = target_booking.id
+    and journey.deleted_at is null;
+
+  -- Lock every connection before changing any of their wall-clock interpretations.
+  perform journey.id
+  from public.journey_legs journey
+  where journey.booking_id = target_booking.id and journey.deleted_at is null
+  order by journey.segment_order, journey.id
+  for update;
+
+  select item.id, item.timing_mode, item.anchor_itinerary_item_id, item.relative_position
+  into itinerary_item_id, existing_timing_mode, existing_anchor_id, existing_relative_position
+  from public.itinerary_items item
+  where item.booking_id = target_booking.id and item.deleted_at is null
+  order by item.created_at, item.id
+  limit 1
+  for update;
+
+  if requested_itinerary_timing is not null
+    and jsonb_typeof(requested_itinerary_timing) <> 'object' then
+    raise exception 'Timeline placement must be an object';
+  end if;
+
+  if normalized_event_timezone is not null then
+    if coalesce(target_booking.journey_scope::text, 'domestic') <> 'domestic' then
+      raise exception 'International journeys use their departure and arrival time zones';
+    end if;
+    if not public.valid_iana_timezone(normalized_event_timezone) then
+      raise exception 'Choose a valid journey time zone';
+    end if;
+
+    update public.journey_legs journey
+    set scheduled_departure_at =
+          (journey.scheduled_departure_at at time zone journey.origin_timezone)
+            at time zone normalized_event_timezone,
+        scheduled_arrival_at = case
+          when journey.scheduled_arrival_at is null then null
+          else (journey.scheduled_arrival_at at time zone journey.destination_timezone)
+            at time zone normalized_event_timezone
+        end,
+        boarding_at = case
+          when journey.boarding_at is null then null
+          else (journey.boarding_at at time zone journey.origin_timezone)
+            at time zone normalized_event_timezone
+        end,
+        origin_timezone = normalized_event_timezone,
+        destination_timezone = normalized_event_timezone
+    where journey.booking_id = target_booking.id
+      and journey.id <> requested_leg_id
+      and journey.deleted_at is null;
+  end if;
+
+  requested_timing_mode := nullif(trim(requested_itinerary_timing->>'timing_mode'), '');
+  if requested_timing_mode is null
+    and target_mode in ('train', 'bus', 'ferry')
+    and existing_timing_mode = 'relative' then
+    requested_timing_mode := existing_timing_mode;
+    requested_anchor_id := existing_anchor_id;
+    requested_relative_position := existing_relative_position;
+  elsif requested_timing_mode is not null then
+    if requested_timing_mode not in ('exact', 'relative') then
+      raise exception 'Journey timeline placement must use its departure time or another event';
+    end if;
+    if target_mode not in ('train', 'bus', 'ferry') and requested_timing_mode = 'relative' then
+      raise exception 'Before/after placement is available for Train, Bus, and Ferry journeys';
+    end if;
+    if requested_timing_mode = 'relative' then
+      requested_anchor_id := nullif(trim(requested_itinerary_timing->>'anchor_itinerary_item_id'), '')::uuid;
+      requested_relative_position := nullif(trim(requested_itinerary_timing->>'relative_position'), '');
+      if requested_anchor_id is null or requested_relative_position not in ('before', 'after') then
+        raise exception 'Choose a dated event and whether this journey belongs before or after it';
+      end if;
+      if not exists (
+        select 1
+        from public.itinerary_items anchor
+        where anchor.id = requested_anchor_id
+          and anchor.id is distinct from itinerary_item_id
+          and anchor.trip_id = target_booking.trip_id
+          and anchor.deleted_at is null
+          and anchor.timing_mode not in ('relative', 'unscheduled')
+      ) then
+        raise exception 'Choose a dated, non-relative event from this trip as the journey anchor';
+      end if;
+    end if;
+  end if;
+
+  -- Remove the previous derived interval first. The underlying save writes the
+  -- edited departure/arrival and lets the itinerary trigger derive a new one.
+  update public.itinerary_items item
+  set ends_at = null,
+      duration_minutes = null
+  where item.booking_id = target_booking.id and item.deleted_at is null;
+
+  saved_result := public.save_journey_leg(requested_leg_id, requested_leg);
+
+  if requested_timing_mode = 'relative' then
+    update public.itinerary_items item
+    set timing_mode = 'relative',
+        anchor_itinerary_item_id = requested_anchor_id,
+        relative_position = requested_relative_position,
+        scheduled_date = (item.starts_at at time zone item.timezone)::date,
+        is_all_day = false,
+        has_explicit_start_time = true
+    where item.booking_id = target_booking.id and item.deleted_at is null;
+  end if;
+
+  select coalesce(
+    jsonb_agg(to_jsonb(item) order by item.starts_at, item.sort_key, item.id),
+    '[]'::jsonb
+  )
+  into saved_itinerary
+  from public.itinerary_items item
+  where item.booking_id = target_booking.id and item.deleted_at is null;
+
+  return jsonb_set(saved_result, '{itinerary_items}', saved_itinerary, true);
+end
+$function$;
+
+revoke all on function public.save_journey_leg_with_timing(uuid, jsonb, jsonb, text) from public, anon;
+grant execute on function public.save_journey_leg_with_timing(uuid, jsonb, jsonb, text) to authenticated;
+
+create or replace function public.save_domestic_flight_update(
+  requested_leg_id uuid,
+  requested_version integer,
+  requested_patch jsonb,
+  requested_event_timezone text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  actor uuid := auth.uid();
+  target_leg public.flight_legs%rowtype;
+  target_booking public.bookings%rowtype;
+  event_zone text := nullif(trim(requested_event_timezone), '');
+  departure_at timestamptz;
+  arrival_at timestamptz;
+  boarding_time timestamptz;
+  boarding_lead integer;
+  first_leg public.flight_legs%rowtype;
+  last_leg public.flight_legs%rowtype;
+  saved_leg jsonb;
+begin
+  if actor is null then raise exception 'Sign in before editing a flight'; end if;
+
+  select booking.* into target_booking
+  from public.bookings booking
+  where booking.id = (
+    select flight.booking_id
+    from public.flight_legs flight
+    where flight.id = requested_leg_id and flight.deleted_at is null
+  ) and booking.deleted_at is null
+  for update;
+  if not found then raise exception 'Flight was not found'; end if;
+  if not public.can_edit_trip(target_booking.trip_id) then
+    raise exception 'Flight cannot be changed';
+  end if;
+  if coalesce(target_booking.journey_scope::text, 'domestic') <> 'domestic' then
+    raise exception 'International flights keep their departure and arrival time zones';
+  end if;
+  if event_zone is null or not public.valid_iana_timezone(event_zone) then
+    raise exception 'Choose a valid flight time zone';
+  end if;
+
+  perform flight.id
+  from public.flight_legs flight
+  where flight.booking_id = target_booking.id and flight.deleted_at is null
+  order by flight.segment_order, flight.id
+  for update;
+
+  select flight.* into target_leg
+  from public.flight_legs flight
+  where flight.id = requested_leg_id
+    and flight.booking_id = target_booking.id
+    and flight.deleted_at is null;
+  if requested_version is not null and target_leg.version <> requested_version then
+    raise exception 'version_conflict';
+  end if;
+
+  departure_at := nullif(requested_patch->>'scheduled_departure_at', '')::timestamptz;
+  arrival_at := nullif(requested_patch->>'scheduled_arrival_at', '')::timestamptz;
+  boarding_time := nullif(requested_patch->>'boarding_at', '')::timestamptz;
+  boarding_lead := nullif(requested_patch->>'boarding_lead_minutes', '')::integer;
+  if departure_at is null or arrival_at is null or arrival_at <= departure_at then
+    raise exception 'Scheduled arrival must be after departure';
+  end if;
+  if boarding_time is not null and boarding_time > departure_at then
+    raise exception 'Boarding cannot be after departure';
+  end if;
+  if boarding_lead is not null and (boarding_lead < 0 or boarding_lead > 360) then
+    raise exception 'Boarding lead must be between 0 and 360 minutes';
+  end if;
+
+  update public.flight_legs flight
+  set scheduled_departure_at =
+        (flight.scheduled_departure_at at time zone flight.departure_timezone) at time zone event_zone,
+      scheduled_arrival_at =
+        (flight.scheduled_arrival_at at time zone flight.arrival_timezone) at time zone event_zone,
+      estimated_departure_at = case when flight.estimated_departure_at is null then null else
+        (flight.estimated_departure_at at time zone flight.departure_timezone) at time zone event_zone end,
+      estimated_arrival_at = case when flight.estimated_arrival_at is null then null else
+        (flight.estimated_arrival_at at time zone flight.arrival_timezone) at time zone event_zone end,
+      actual_departure_at = case when flight.actual_departure_at is null then null else
+        (flight.actual_departure_at at time zone flight.departure_timezone) at time zone event_zone end,
+      actual_arrival_at = case when flight.actual_arrival_at is null then null else
+        (flight.actual_arrival_at at time zone flight.arrival_timezone) at time zone event_zone end,
+      boarding_at = case when flight.boarding_at is null then null else
+        (flight.boarding_at at time zone flight.departure_timezone) at time zone event_zone end,
+      departure_timezone = event_zone,
+      arrival_timezone = event_zone
+  where flight.booking_id = target_booking.id
+    and flight.id <> requested_leg_id
+    and flight.deleted_at is null;
+
+  update public.flight_legs flight
+  set status = (requested_patch->>'status')::public.flight_status,
+      scheduled_departure_at = departure_at,
+      scheduled_arrival_at = arrival_at,
+      estimated_departure_at = nullif(requested_patch->>'estimated_departure_at', '')::timestamptz,
+      estimated_arrival_at = nullif(requested_patch->>'estimated_arrival_at', '')::timestamptz,
+      actual_departure_at = nullif(requested_patch->>'actual_departure_at', '')::timestamptz,
+      actual_arrival_at = nullif(requested_patch->>'actual_arrival_at', '')::timestamptz,
+      boarding_at = boarding_time,
+      boarding_lead_minutes = boarding_lead,
+      departure_timezone = event_zone,
+      arrival_timezone = event_zone,
+      departure_terminal = nullif(trim(requested_patch->>'departure_terminal'), ''),
+      departure_gate = nullif(trim(requested_patch->>'departure_gate'), ''),
+      arrival_terminal = nullif(trim(requested_patch->>'arrival_terminal'), ''),
+      arrival_gate = nullif(trim(requested_patch->>'arrival_gate'), ''),
+      baggage_claim = nullif(trim(requested_patch->>'baggage_claim'), ''),
+      status_note = nullif(trim(requested_patch->>'status_note'), ''),
+      status_updated_by = actor,
+      status_updated_at = now()
+  where flight.id = requested_leg_id;
+
+  if exists (
+    select 1
+    from (
+      select flight.scheduled_departure_at,
+        lag(flight.scheduled_arrival_at) over (order by flight.segment_order) as previous_arrival
+      from public.flight_legs flight
+      where flight.booking_id = target_booking.id and flight.deleted_at is null
+    ) ordered
+    where ordered.previous_arrival is not null
+      and ordered.scheduled_departure_at < ordered.previous_arrival
+  ) then
+    raise exception 'A flight connection departs before the previous flight arrives';
+  end if;
+
+  select flight.* into first_leg from public.flight_legs flight
+  where flight.booking_id = target_booking.id and flight.deleted_at is null
+  order by flight.segment_order limit 1;
+  select flight.* into last_leg from public.flight_legs flight
+  where flight.booking_id = target_booking.id and flight.deleted_at is null
+  order by flight.segment_order desc limit 1;
+
+  update public.bookings booking
+  set start_at = first_leg.scheduled_departure_at,
+      end_at = last_leg.scheduled_arrival_at,
+      source_timezone = event_zone
+  where booking.id = target_booking.id;
+  update public.itinerary_items item
+  set starts_at = first_leg.scheduled_departure_at,
+      ends_at = last_leg.scheduled_arrival_at,
+      timezone = event_zone,
+      sort_key = first_leg.scheduled_departure_at::text || ':' || item.id::text
+  where item.booking_id = target_booking.id and item.deleted_at is null;
+
+  select to_jsonb(flight) into saved_leg
+  from public.flight_legs flight where flight.id = requested_leg_id;
+  return saved_leg;
+end
+$function$;
+
+revoke all on function public.save_domestic_flight_update(uuid, integer, jsonb, text) from public, anon;
+grant execute on function public.save_domestic_flight_update(uuid, integer, jsonb, text) to authenticated;
+
+
 do $migration$
 begin
   if not exists (
@@ -4347,3 +4917,328 @@ comment on column public.trips.expense_splitting_enabled is
 commit;
 
 notify pgrst, 'reload schema';
+
+-- PHASE 1 END: CURRENT SCHEMA
+
+do $setup_progress$
+begin
+  raise notice 'Trip Vault Phase 1 complete: current schema installed. Starting admin-gated Phase 2 catalogue publication.';
+end
+$setup_progress$;
+
+-- PHASE 2 BEGIN: ADMIN-GATED CATALOG PUBLICATION
+
+-- Run this phase after a trusted bootstrap has created an Auth administrator
+-- and its active public.app_admins row. Both release blocks are idempotent.
+-- On a blank project they emit NOTICEs and return without undoing Phase 1.
+
+-- ============================================================================
+-- 202609130002_regional_travel_catalog.sql
+-- ============================================================================
+-- Publish the bundled airport, airline, and booking-vendor catalogues as a new
+-- immutable configuration release. Safe to run once after the complete setup SQL.
+
+begin;
+
+-- Repair the shared metadata trigger before inserting catalogue/theme rows.
+-- Table-specific NEW fields must only be referenced inside their table branch;
+-- PostgreSQL otherwise tries to resolve airport fields for theme palette rows.
+create or replace function public.enforce_admin_metadata()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_table_name in ('airline_catalog_entries', 'trip_airlines') then
+    if not public.valid_action_template(new.check_in_url_template) or not public.valid_action_template(new.manage_booking_url_template)
+      or not public.valid_action_template(new.status_url_template) or not public.valid_action_template(new.tracker_url_template) then
+      raise exception 'Invalid HTTPS action template';
+    end if;
+    if tg_table_name = 'airline_catalog_entries' and (
+      (to_jsonb(new)->>'logo_asset_path' is not null and ((to_jsonb(new)->>'logo_asset_path') like '%..%' or (to_jsonb(new)->>'logo_asset_path') !~* '^[a-z0-9][a-z0-9/_-]*\.(png|jpe?g|webp)$'))
+      or (to_jsonb(new)->>'banner_asset_path' is not null and ((to_jsonb(new)->>'banner_asset_path') like '%..%' or (to_jsonb(new)->>'banner_asset_path') !~* '^[a-z0-9][a-z0-9/_-]*\.(png|jpe?g|webp)$'))
+    ) then raise exception 'Invalid catalog asset path'; end if;
+  elsif tg_table_name = 'airport_catalog_entries' then
+    if not public.valid_iana_timezone(new.timezone) then
+      raise exception 'Invalid IANA timezone';
+    end if;
+  elsif tg_table_name = 'theme_palettes' then
+    if not public.valid_theme_tokens(new.light_tokens) or not public.valid_theme_tokens(new.dark_tokens) then
+      raise exception 'Invalid or inaccessible theme tokens';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+do $catalog$
+declare
+  actor_id uuid;
+  source_release uuid;
+  target_release uuid;
+  next_version integer;
+  release_note constant text := 'Regional travel catalogue seed 2026-09-13';
+begin
+  if exists (select 1 from public.config_releases where change_note = release_note) then
+    raise notice 'Regional travel catalogue is already installed.';
+    return;
+  end if;
+
+  select admin.user_id into actor_id
+  from public.app_admins admin
+  join auth.users account on account.id = admin.user_id
+  where admin.status = 'active'
+  order by (lower(account.email) = 'bingalan1@gmail.com') desc, admin.created_at
+  limit 1;
+
+  if actor_id is null then
+    raise notice 'Trip Vault Phase 2 deferred: create an Auth administrator and an active public.app_admins row, then run only the PHASE 2 section.';
+    return;
+  end if;
+
+  select id into source_release
+  from public.config_releases
+  where status = 'published'
+  limit 1;
+
+  insert into public.config_releases (status, based_on_release_id, change_note, created_by)
+  values ('draft', source_release, release_note, actor_id)
+  returning id into target_release;
+
+  if source_release is not null then
+    insert into public.airline_catalog_entries (config_release_id, stable_key, name, iata_code, icao_code, aliases, check_in_url_template, manage_booking_url_template, status_url_template, tracker_url_template, brand_color, logo_asset_path, banner_asset_path, is_enabled, sort_order, updated_by)
+    select target_release, stable_key, name, iata_code, icao_code, aliases, check_in_url_template, manage_booking_url_template, status_url_template, tracker_url_template, brand_color, logo_asset_path, banner_asset_path, is_enabled, sort_order, actor_id
+    from public.airline_catalog_entries where config_release_id = source_release;
+
+    insert into public.airport_catalog_entries (config_release_id, stable_key, iata_code, icao_code, name, city, country_code, timezone, aliases, latitude, longitude, is_enabled, sort_order, updated_by)
+    select target_release, stable_key, iata_code, icao_code, name, city, country_code, timezone, aliases, latitude, longitude, is_enabled, sort_order, actor_id
+    from public.airport_catalog_entries where config_release_id = source_release;
+
+    insert into public.booking_vendor_catalog_entries (config_release_id, stable_key, name, aliases, website_url, logo_asset_path, brand_color, is_enabled, sort_order, updated_by)
+    select target_release, stable_key, name, aliases, website_url, logo_asset_path, brand_color, is_enabled, sort_order, actor_id
+    from public.booking_vendor_catalog_entries where config_release_id = source_release;
+
+    insert into public.metadata_defaults (config_release_id, namespace, key, value, updated_by, updated_at)
+    select target_release, namespace, key, value, actor_id, now()
+    from public.metadata_defaults where config_release_id = source_release;
+
+    insert into public.theme_palettes (config_release_id, light_tokens, dark_tokens, updated_by, updated_at)
+    select target_release, light_tokens, dark_tokens, actor_id, now()
+    from public.theme_palettes where config_release_id = source_release;
+  end if;
+
+  insert into public.theme_palettes (config_release_id, light_tokens, dark_tokens, updated_by)
+  values (
+    target_release,
+    '{"canvas":"#f5f1e8","surface":"#fffdf8","elevated":"#ffffff","ink":"#182728","muted":"#5d6b6a","line":"#d8d3c7","brand":"#142f31","brandSoft":"#dde9e5","coral":"#e8785b","success":"#2f7a60","warning":"#b06f28","danger":"#b04441"}'::jsonb,
+    '{"canvas":"#101819","surface":"#182223","elevated":"#1f2b2c","ink":"#eef0e9","muted":"#abb8b3","line":"#3a4949","brand":"#b4dcd0","brandSoft":"#26413e","coral":"#f49174","success":"#6fc7a3","warning":"#e8ae5c","danger":"#f1837e"}'::jsonb,
+    actor_id
+  ) on conflict (config_release_id) do nothing;
+
+  insert into public.airline_catalog_entries (config_release_id, stable_key, name, iata_code, aliases, check_in_url_template, manage_booking_url_template, status_url_template, tracker_url_template, brand_color, is_enabled, sort_order, updated_by)
+  select target_release, item->>'stableKey', item->>'name', item->>'iataCode', '{}'::text[],
+    item->>'checkInUrlTemplate', item->>'manageBookingUrlTemplate', item->>'statusUrlTemplate', item->>'trackerUrlTemplate', item->>'brandColor', true, ordinal::integer * 10, actor_id
+  from jsonb_array_elements($airlines$[{"stableKey":"air-india","name":"Air India","iataCode":"AI","checkInUrlTemplate":"https://www.airindia.com/in/en/manage/check-in.html","manageBookingUrlTemplate":"https://www.airindia.com/","statusUrlTemplate":"https://www.airindia.com/in/en/manage/flight-status.html","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#D71920"},{"stableKey":"indigo","name":"IndiGo","iataCode":"6E","checkInUrlTemplate":"https://www.goindigo.in/web-check-in.html","manageBookingUrlTemplate":"https://www.goindigo.in/","statusUrlTemplate":"https://www.goindigo.in/check-flight-status.html","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#1B1464"},{"stableKey":"air-india-express","name":"Air India Express","iataCode":"IX","checkInUrlTemplate":"https://www.airindiaexpress.com/","manageBookingUrlTemplate":"https://www.airindiaexpress.com/","statusUrlTemplate":"https://www.airindiaexpress.com/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#E31B54"},{"stableKey":"akasa-air","name":"Akasa Air","iataCode":"QP","checkInUrlTemplate":"https://www.akasaair.com/check-in","manageBookingUrlTemplate":"https://www.akasaair.com/manage-booking","statusUrlTemplate":"https://www.akasaair.com/flight-status","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#5A1F78"},{"stableKey":"spicejet","name":"SpiceJet","iataCode":"SG","checkInUrlTemplate":"https://www.spicejet.com/","manageBookingUrlTemplate":"https://www.spicejet.com/","statusUrlTemplate":"https://www.spicejet.com/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#D71920"},{"stableKey":"alliance-air","name":"Alliance Air","iataCode":"9I","checkInUrlTemplate":"https://www.allianceair.in/","manageBookingUrlTemplate":"https://www.allianceair.in/","statusUrlTemplate":"https://www.allianceair.in/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#0078A8"},{"stableKey":"singapore-airlines","name":"Singapore Airlines","iataCode":"SQ","checkInUrlTemplate":"https://www.singaporeair.com/en_UK/plan-and-book/check-in-online/","manageBookingUrlTemplate":"https://www.singaporeair.com/","statusUrlTemplate":"https://www.singaporeair.com/flightstatus/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#1D2C5E"},{"stableKey":"scoot","name":"Scoot","iataCode":"TR","checkInUrlTemplate":"https://www.flyscoot.com/en","manageBookingUrlTemplate":"https://manage.flyscoot.com/","statusUrlTemplate":"https://www.flyscoot.com/en","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#FFD100"},{"stableKey":"malaysia-airlines","name":"Malaysia Airlines","iataCode":"MH","checkInUrlTemplate":"https://www.malaysiaairlines.com/","manageBookingUrlTemplate":"https://www.malaysiaairlines.com/in/en/plan-trip/booking-and-services.html","statusUrlTemplate":"https://www.malaysiaairlines.com/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#003B70"},{"stableKey":"airasia","name":"AirAsia","iataCode":"AK","checkInUrlTemplate":"https://www.airasia.com/check-in/","manageBookingUrlTemplate":"https://www.airasia.com/","statusUrlTemplate":"https://www.airasia.com/flightstatus/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#D71920"},{"stableKey":"airasia-x","name":"AirAsia X","iataCode":"D7","checkInUrlTemplate":"https://www.airasia.com/check-in/","manageBookingUrlTemplate":"https://www.airasia.com/","statusUrlTemplate":"https://www.airasia.com/flightstatus/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#D71920"},{"stableKey":"batik-air-malaysia","name":"Batik Air Malaysia","iataCode":"OD","checkInUrlTemplate":"https://www.batikair.com.my/","manageBookingUrlTemplate":"https://www.batikair.com.my/","statusUrlTemplate":"https://www.batikair.com.my/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#8A1538"},{"stableKey":"firefly","name":"Firefly","iataCode":"FY","checkInUrlTemplate":"https://booking.fireflyz.com.my/WebCheckIn.aspx","manageBookingUrlTemplate":"https://booking.fireflyz.com.my/RetrieveBooking.aspx","statusUrlTemplate":"https://booking.fireflyz.com.my/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#F58220"},{"stableKey":"garuda-indonesia","name":"Garuda Indonesia","iataCode":"GA","checkInUrlTemplate":"https://www.garuda-indonesia.com/","manageBookingUrlTemplate":"https://www.garuda-indonesia.com/","statusUrlTemplate":"https://www.garuda-indonesia.com/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#0099A8"},{"stableKey":"citilink","name":"Citilink","iataCode":"QG","checkInUrlTemplate":"https://book.citilink.co.id/CheckIn.aspx?culture=en-US","manageBookingUrlTemplate":"https://www.citilink.co.id/","statusUrlTemplate":"https://www.citilink.co.id/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#8DC63F"},{"stableKey":"lion-air","name":"Lion Air","iataCode":"JT","checkInUrlTemplate":null,"manageBookingUrlTemplate":"https://www.lionair.co.id/en/manage-booking/retrieve-booking","statusUrlTemplate":"https://www.lionair.co.id/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#ED1C24"},{"stableKey":"batik-air","name":"Batik Air","iataCode":"ID","checkInUrlTemplate":"https://www.batikair.com/","manageBookingUrlTemplate":"https://www.batikair.com/","statusUrlTemplate":"https://www.batikair.com/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#8A1538"},{"stableKey":"indonesia-airasia","name":"Indonesia AirAsia","iataCode":"QZ","checkInUrlTemplate":"https://www.airasia.com/check-in/","manageBookingUrlTemplate":"https://www.airasia.com/","statusUrlTemplate":"https://www.airasia.com/flightstatus/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#D71920"},{"stableKey":"super-air-jet","name":"Super Air Jet","iataCode":"IU","checkInUrlTemplate":"https://www.superairjet.com/","manageBookingUrlTemplate":"https://www.superairjet.com/","statusUrlTemplate":"https://www.superairjet.com/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#E5B80B"},{"stableKey":"wings-air","name":"Wings Air","iataCode":"IW","checkInUrlTemplate":null,"manageBookingUrlTemplate":"https://www.lionair.co.id/en/manage-booking/retrieve-booking","statusUrlTemplate":"https://www.lionair.co.id/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#E31E24"},{"stableKey":"pelita-air","name":"Pelita Air","iataCode":"IP","checkInUrlTemplate":"https://www.pelita-air.com/","manageBookingUrlTemplate":"https://www.pelita-air.com/","statusUrlTemplate":"https://www.pelita-air.com/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#005BAC"},{"stableKey":"transnusa","name":"TransNusa","iataCode":"8B","checkInUrlTemplate":"https://www.transnusa.co.id/","manageBookingUrlTemplate":"https://www.transnusa.co.id/","statusUrlTemplate":"https://www.transnusa.co.id/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#1E4F91"},{"stableKey":"emirates","name":"Emirates","iataCode":"EK","checkInUrlTemplate":"https://www.emirates.com/manage-booking/online-check-in/","manageBookingUrlTemplate":"https://www.emirates.com/manage-booking/","statusUrlTemplate":"https://www.emirates.com/flight-status/","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#D71920"},{"stableKey":"qatar-airways","name":"Qatar Airways","iataCode":"QR","checkInUrlTemplate":"https://cki.qatarairways.com/cki/dashboard","manageBookingUrlTemplate":"https://booking.qatarairways.com/nsp/views/retrievePnr.xhtml","statusUrlTemplate":"https://www.qatarairways.com/en/flight-status.html","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#5C0632"},{"stableKey":"lufthansa","name":"Lufthansa","iataCode":"LH","checkInUrlTemplate":"https://www.lufthansa.com/online-check-in","manageBookingUrlTemplate":"https://www.lufthansa.com/my-bookings","statusUrlTemplate":"https://www.lufthansa.com/flight-status","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#05164D"},{"stableKey":"british-airways","name":"British Airways","iataCode":"BA","checkInUrlTemplate":"https://www.britishairways.com/travel/olcilandingpageauthreq/public/en_gb","manageBookingUrlTemplate":"https://www.britishairways.com/travel/managebooking/public/en_gb","statusUrlTemplate":"https://www.britishairways.com/travel/flightstatus/public/en_gb","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#2E5C99"},{"stableKey":"united-airlines","name":"United Airlines","iataCode":"UA","checkInUrlTemplate":"https://www.united.com/en/us/checkin","manageBookingUrlTemplate":"https://www.united.com/en/us/manageres/mytrips","statusUrlTemplate":"https://www.united.com/en/us/flightstatus","trackerUrlTemplate":"https://www.flightaware.com/live/flight/{flightNumber}","brandColor":"#005DAA"}]$airlines$::jsonb) with ordinality as seed(item, ordinal)
+  on conflict (config_release_id, stable_key) do update set
+    name = excluded.name, iata_code = excluded.iata_code, check_in_url_template = excluded.check_in_url_template, manage_booking_url_template = excluded.manage_booking_url_template,
+    status_url_template = excluded.status_url_template, tracker_url_template = excluded.tracker_url_template, brand_color = excluded.brand_color, is_enabled = true, sort_order = excluded.sort_order, updated_by = actor_id;
+
+  insert into public.airport_catalog_entries (config_release_id, stable_key, iata_code, name, city, country_code, timezone, aliases, is_enabled, sort_order, updated_by)
+  select target_release, item->>'stableKey', item->>'iataCode', item->>'name', item->>'city', item->>'countryCode', item->>'timezone', '{}'::text[], true, ordinal::integer * 10, actor_id
+  from jsonb_array_elements($airports$[{"stableKey":"del","iataCode":"DEL","name":"Indira Gandhi International Airport","city":"Delhi","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"bom","iataCode":"BOM","name":"Chhatrapati Shivaji Maharaj International Airport","city":"Mumbai","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"blr","iataCode":"BLR","name":"Kempegowda International Airport","city":"Bengaluru","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"maa","iataCode":"MAA","name":"Chennai International Airport","city":"Chennai","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"ccu","iataCode":"CCU","name":"Netaji Subhas Chandra Bose International Airport","city":"Kolkata","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"hyd","iataCode":"HYD","name":"Rajiv Gandhi International Airport","city":"Hyderabad","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"cok","iataCode":"COK","name":"Cochin International Airport","city":"Kochi","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"amd","iataCode":"AMD","name":"Sardar Vallabhbhai Patel International Airport","city":"Ahmedabad","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"goi","iataCode":"GOI","name":"Goa International Airport (Dabolim)","city":"Goa","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"gox","iataCode":"GOX","name":"Manohar International Airport","city":"Goa","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"pnq","iataCode":"PNQ","name":"Pune Airport","city":"Pune","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"gau","iataCode":"GAU","name":"Lokpriya Gopinath Bordoloi International Airport","city":"Guwahati","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"lko","iataCode":"LKO","name":"Chaudhary Charan Singh International Airport","city":"Lucknow","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"jai","iataCode":"JAI","name":"Jaipur International Airport","city":"Jaipur","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"trv","iataCode":"TRV","name":"Thiruvananthapuram International Airport","city":"Thiruvananthapuram","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"ccj","iataCode":"CCJ","name":"Calicut International Airport","city":"Kozhikode","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"cjb","iataCode":"CJB","name":"Coimbatore International Airport","city":"Coimbatore","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"trz","iataCode":"TRZ","name":"Tiruchirappalli International Airport","city":"Tiruchirappalli","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"ixe","iataCode":"IXE","name":"Mangaluru International Airport","city":"Mangaluru","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"bbi","iataCode":"BBI","name":"Biju Patnaik International Airport","city":"Bhubaneswar","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"pat","iataCode":"PAT","name":"Jay Prakash Narayan Airport","city":"Patna","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"ixc","iataCode":"IXC","name":"Shaheed Bhagat Singh International Airport","city":"Chandigarh","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"idr","iataCode":"IDR","name":"Devi Ahilyabai Holkar Airport","city":"Indore","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"ixb","iataCode":"IXB","name":"Bagdogra Airport","city":"Siliguri","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"vtz","iataCode":"VTZ","name":"Visakhapatnam International Airport","city":"Visakhapatnam","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"stv","iataCode":"STV","name":"Surat International Airport","city":"Surat","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"sxr","iataCode":"SXR","name":"Srinagar International Airport","city":"Srinagar","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"atq","iataCode":"ATQ","name":"Sri Guru Ram Dass Jee International Airport","city":"Amritsar","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"vns","iataCode":"VNS","name":"Lal Bahadur Shastri International Airport","city":"Varanasi","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"nag","iataCode":"NAG","name":"Dr. Babasaheb Ambedkar International Airport","city":"Nagpur","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"ixz","iataCode":"IXZ","name":"Veer Savarkar International Airport","city":"Sri Vijaya Puram (Port Blair)","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"imp","iataCode":"IMP","name":"Bir Tikendrajit International Airport","city":"Imphal","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"vga","iataCode":"VGA","name":"Vijayawada International Airport","city":"Vijayawada","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"tir","iataCode":"TIR","name":"Tirupati Airport","city":"Tirupati","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"rpr","iataCode":"RPR","name":"Swami Vivekananda Airport","city":"Raipur","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"ixr","iataCode":"IXR","name":"Birsa Munda Airport","city":"Ranchi","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"ded","iataCode":"DED","name":"Dehradun Airport","city":"Dehradun","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"udr","iataCode":"UDR","name":"Maharana Pratap Airport","city":"Udaipur","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"ixj","iataCode":"IXJ","name":"Jammu Airport","city":"Jammu","countryCode":"IN","timezone":"Asia/Kolkata"},{"stableKey":"sin","iataCode":"SIN","name":"Singapore Changi Airport","city":"Singapore","countryCode":"SG","timezone":"Asia/Singapore"},{"stableKey":"kul","iataCode":"KUL","name":"Kuala Lumpur International Airport","city":"Kuala Lumpur","countryCode":"MY","timezone":"Asia/Kuala_Lumpur"},{"stableKey":"pen","iataCode":"PEN","name":"Penang International Airport","city":"Penang","countryCode":"MY","timezone":"Asia/Kuala_Lumpur"},{"stableKey":"lgk","iataCode":"LGK","name":"Langkawi International Airport","city":"Langkawi","countryCode":"MY","timezone":"Asia/Kuala_Lumpur"},{"stableKey":"bki","iataCode":"BKI","name":"Kota Kinabalu International Airport","city":"Kota Kinabalu","countryCode":"MY","timezone":"Asia/Kuala_Lumpur"},{"stableKey":"kch","iataCode":"KCH","name":"Kuching International Airport","city":"Kuching","countryCode":"MY","timezone":"Asia/Kuala_Lumpur"},{"stableKey":"jhb","iataCode":"JHB","name":"Senai International Airport","city":"Johor Bahru","countryCode":"MY","timezone":"Asia/Kuala_Lumpur"},{"stableKey":"szb","iataCode":"SZB","name":"Sultan Abdul Aziz Shah Airport","city":"Subang","countryCode":"MY","timezone":"Asia/Kuala_Lumpur"},{"stableKey":"bkk","iataCode":"BKK","name":"Suvarnabhumi Airport","city":"Bangkok","countryCode":"TH","timezone":"Asia/Bangkok"},{"stableKey":"hkg","iataCode":"HKG","name":"Hong Kong International Airport","city":"Hong Kong","countryCode":"HK","timezone":"Asia/Hong_Kong"},{"stableKey":"dps","iataCode":"DPS","name":"I Gusti Ngurah Rai International Airport","city":"Bali","countryCode":"ID","timezone":"Asia/Makassar"},{"stableKey":"cgk","iataCode":"CGK","name":"Soekarno-Hatta International Airport","city":"Jakarta","countryCode":"ID","timezone":"Asia/Jakarta"},{"stableKey":"sub","iataCode":"SUB","name":"Juanda International Airport","city":"Surabaya","countryCode":"ID","timezone":"Asia/Jakarta"},{"stableKey":"yia","iataCode":"YIA","name":"Yogyakarta International Airport","city":"Yogyakarta","countryCode":"ID","timezone":"Asia/Jakarta"},{"stableKey":"kno","iataCode":"KNO","name":"Kualanamu International Airport","city":"Medan","countryCode":"ID","timezone":"Asia/Jakarta"},{"stableKey":"lop","iataCode":"LOP","name":"Zainuddin Abdul Madjid International Airport","city":"Lombok","countryCode":"ID","timezone":"Asia/Makassar"},{"stableKey":"upg","iataCode":"UPG","name":"Sultan Hasanuddin International Airport","city":"Makassar","countryCode":"ID","timezone":"Asia/Makassar"},{"stableKey":"lbj","iataCode":"LBJ","name":"Komodo International Airport","city":"Labuan Bajo","countryCode":"ID","timezone":"Asia/Makassar"},{"stableKey":"bpn","iataCode":"BPN","name":"Sultan Aji Muhammad Sulaiman Sepinggan International Airport","city":"Balikpapan","countryCode":"ID","timezone":"Asia/Makassar"},{"stableKey":"mdc","iataCode":"MDC","name":"Sam Ratulangi International Airport","city":"Manado","countryCode":"ID","timezone":"Asia/Makassar"},{"stableKey":"srg","iataCode":"SRG","name":"Jenderal Ahmad Yani International Airport","city":"Semarang","countryCode":"ID","timezone":"Asia/Jakarta"},{"stableKey":"mnl","iataCode":"MNL","name":"Ninoy Aquino International Airport","city":"Manila","countryCode":"PH","timezone":"Asia/Manila"},{"stableKey":"hnd","iataCode":"HND","name":"Tokyo Haneda Airport","city":"Tokyo","countryCode":"JP","timezone":"Asia/Tokyo"},{"stableKey":"nrt","iataCode":"NRT","name":"Narita International Airport","city":"Tokyo","countryCode":"JP","timezone":"Asia/Tokyo"},{"stableKey":"icn","iataCode":"ICN","name":"Incheon International Airport","city":"Seoul","countryCode":"KR","timezone":"Asia/Seoul"},{"stableKey":"pek","iataCode":"PEK","name":"Beijing Capital International Airport","city":"Beijing","countryCode":"CN","timezone":"Asia/Shanghai"},{"stableKey":"pvg","iataCode":"PVG","name":"Shanghai Pudong International Airport","city":"Shanghai","countryCode":"CN","timezone":"Asia/Shanghai"},{"stableKey":"tpe","iataCode":"TPE","name":"Taiwan Taoyuan International Airport","city":"Taipei","countryCode":"TW","timezone":"Asia/Taipei"},{"stableKey":"dxb","iataCode":"DXB","name":"Dubai International Airport","city":"Dubai","countryCode":"AE","timezone":"Asia/Dubai"},{"stableKey":"auh","iataCode":"AUH","name":"Zayed International Airport","city":"Abu Dhabi","countryCode":"AE","timezone":"Asia/Dubai"},{"stableKey":"doh","iataCode":"DOH","name":"Hamad International Airport","city":"Doha","countryCode":"QA","timezone":"Asia/Qatar"},{"stableKey":"ist","iataCode":"IST","name":"Istanbul Airport","city":"Istanbul","countryCode":"TR","timezone":"Europe/Istanbul"},{"stableKey":"lhr","iataCode":"LHR","name":"London Heathrow Airport","city":"London","countryCode":"GB","timezone":"Europe/London"},{"stableKey":"lgw","iataCode":"LGW","name":"London Gatwick Airport","city":"London","countryCode":"GB","timezone":"Europe/London"},{"stableKey":"cdg","iataCode":"CDG","name":"Paris Charles de Gaulle Airport","city":"Paris","countryCode":"FR","timezone":"Europe/Paris"},{"stableKey":"ams","iataCode":"AMS","name":"Amsterdam Airport Schiphol","city":"Amsterdam","countryCode":"NL","timezone":"Europe/Amsterdam"},{"stableKey":"fra","iataCode":"FRA","name":"Frankfurt Airport","city":"Frankfurt","countryCode":"DE","timezone":"Europe/Berlin"},{"stableKey":"muc","iataCode":"MUC","name":"Munich Airport","city":"Munich","countryCode":"DE","timezone":"Europe/Berlin"},{"stableKey":"zrh","iataCode":"ZRH","name":"Zurich Airport","city":"Zurich","countryCode":"CH","timezone":"Europe/Zurich"},{"stableKey":"fco","iataCode":"FCO","name":"Rome Fiumicino Airport","city":"Rome","countryCode":"IT","timezone":"Europe/Rome"},{"stableKey":"mad","iataCode":"MAD","name":"Adolfo Suarez Madrid-Barajas Airport","city":"Madrid","countryCode":"ES","timezone":"Europe/Madrid"},{"stableKey":"bcn","iataCode":"BCN","name":"Barcelona-El Prat Airport","city":"Barcelona","countryCode":"ES","timezone":"Europe/Madrid"},{"stableKey":"dub","iataCode":"DUB","name":"Dublin Airport","city":"Dublin","countryCode":"IE","timezone":"Europe/Dublin"},{"stableKey":"jfk","iataCode":"JFK","name":"John F. Kennedy International Airport","city":"New York","countryCode":"US","timezone":"America/New_York"},{"stableKey":"ewr","iataCode":"EWR","name":"Newark Liberty International Airport","city":"Newark","countryCode":"US","timezone":"America/New_York"},{"stableKey":"lax","iataCode":"LAX","name":"Los Angeles International Airport","city":"Los Angeles","countryCode":"US","timezone":"America/Los_Angeles"},{"stableKey":"sfo","iataCode":"SFO","name":"San Francisco International Airport","city":"San Francisco","countryCode":"US","timezone":"America/Los_Angeles"},{"stableKey":"ord","iataCode":"ORD","name":"Chicago O'Hare International Airport","city":"Chicago","countryCode":"US","timezone":"America/Chicago"},{"stableKey":"atl","iataCode":"ATL","name":"Hartsfield-Jackson Atlanta International Airport","city":"Atlanta","countryCode":"US","timezone":"America/New_York"},{"stableKey":"dfw","iataCode":"DFW","name":"Dallas Fort Worth International Airport","city":"Dallas","countryCode":"US","timezone":"America/Chicago"},{"stableKey":"mia","iataCode":"MIA","name":"Miami International Airport","city":"Miami","countryCode":"US","timezone":"America/New_York"},{"stableKey":"sea","iataCode":"SEA","name":"Seattle-Tacoma International Airport","city":"Seattle","countryCode":"US","timezone":"America/Los_Angeles"},{"stableKey":"bos","iataCode":"BOS","name":"Boston Logan International Airport","city":"Boston","countryCode":"US","timezone":"America/New_York"},{"stableKey":"yyz","iataCode":"YYZ","name":"Toronto Pearson International Airport","city":"Toronto","countryCode":"CA","timezone":"America/Toronto"},{"stableKey":"yvr","iataCode":"YVR","name":"Vancouver International Airport","city":"Vancouver","countryCode":"CA","timezone":"America/Vancouver"},{"stableKey":"mex","iataCode":"MEX","name":"Mexico City International Airport","city":"Mexico City","countryCode":"MX","timezone":"America/Mexico_City"},{"stableKey":"gru","iataCode":"GRU","name":"Sao Paulo-Guarulhos International Airport","city":"Sao Paulo","countryCode":"BR","timezone":"America/Sao_Paulo"},{"stableKey":"syd","iataCode":"SYD","name":"Sydney Kingsford Smith Airport","city":"Sydney","countryCode":"AU","timezone":"Australia/Sydney"},{"stableKey":"mel","iataCode":"MEL","name":"Melbourne Airport","city":"Melbourne","countryCode":"AU","timezone":"Australia/Melbourne"},{"stableKey":"akl","iataCode":"AKL","name":"Auckland Airport","city":"Auckland","countryCode":"NZ","timezone":"Pacific/Auckland"},{"stableKey":"jnb","iataCode":"JNB","name":"O. R. Tambo International Airport","city":"Johannesburg","countryCode":"ZA","timezone":"Africa/Johannesburg"},{"stableKey":"cpt","iataCode":"CPT","name":"Cape Town International Airport","city":"Cape Town","countryCode":"ZA","timezone":"Africa/Johannesburg"},{"stableKey":"nbo","iataCode":"NBO","name":"Jomo Kenyatta International Airport","city":"Nairobi","countryCode":"KE","timezone":"Africa/Nairobi"},{"stableKey":"cai","iataCode":"CAI","name":"Cairo International Airport","city":"Cairo","countryCode":"EG","timezone":"Africa/Cairo"}]$airports$::jsonb) with ordinality as seed(item, ordinal)
+  on conflict (config_release_id, stable_key) do update set
+    iata_code = excluded.iata_code, name = excluded.name, city = excluded.city, country_code = excluded.country_code, timezone = excluded.timezone,
+    is_enabled = true, sort_order = excluded.sort_order, updated_by = actor_id;
+
+  insert into public.booking_vendor_catalog_entries (config_release_id, stable_key, name, aliases, website_url, brand_color, is_enabled, sort_order, updated_by)
+  select target_release, item->>'stableKey', item->>'name', '{}'::text[], item->>'websiteUrl', item->>'brandColor', true, ordinal::integer * 10, actor_id
+  from jsonb_array_elements($vendors$[{"stableKey":"booking-com","name":"Booking.com","websiteUrl":"https://www.booking.com","brandColor":"#003b95"},{"stableKey":"agoda","name":"Agoda","websiteUrl":"https://www.agoda.com","brandColor":"#5392f9"},{"stableKey":"expedia","name":"Expedia","websiteUrl":"https://www.expedia.com","brandColor":"#1f1f1f"},{"stableKey":"makemytrip","name":"MakeMyTrip","websiteUrl":"https://www.makemytrip.com","brandColor":"#e64129"},{"stableKey":"cleartrip","name":"Cleartrip","websiteUrl":"https://www.cleartrip.com","brandColor":"#f77728"},{"stableKey":"airline-direct","name":"Airline website","websiteUrl":null,"brandColor":"#142f31"},{"stableKey":"hotel-direct","name":"Hotel directly","websiteUrl":null,"brandColor":"#142f31"}]$vendors$::jsonb) with ordinality as seed(item, ordinal)
+  on conflict (config_release_id, stable_key) do update set
+    name = excluded.name, website_url = excluded.website_url, brand_color = excluded.brand_color, is_enabled = true, sort_order = excluded.sort_order, updated_by = actor_id;
+
+  select coalesce(max(version_number), 0) + 1 into next_version from public.config_releases;
+  update public.config_releases set status = 'retired' where status = 'published';
+  update public.config_releases set status = 'published', version_number = next_version, published_by = actor_id, published_at = now() where id = target_release;
+
+  insert into public.config_audit_events (config_release_id, actor_id, action, safe_summary)
+  values
+    (target_release, actor_id, 'created', jsonb_build_object('based_on', source_release, 'source', 'bundled regional catalogue')),
+    (target_release, actor_id, 'published', jsonb_build_object('version', next_version));
+end;
+$catalog$;
+
+commit;
+
+notify pgrst, 'reload schema';
+
+select release.version_number, release.status, release.change_note,
+  (select count(*) from public.airport_catalog_entries airport where airport.config_release_id = release.id) as airports,
+  (select count(*) from public.airline_catalog_entries airline where airline.config_release_id = release.id) as airlines,
+  (select count(*) from public.booking_vendor_catalog_entries vendor where vendor.config_release_id = release.id) as booking_vendors
+from public.config_releases release
+where release.status = 'published';
+
+-- ============================================================================
+-- 202609130005_booking_vendor_catalog_additions.sql
+-- ============================================================================
+-- Add Airbnb and Trip.com to the published booking-vendor catalogue without
+-- mutating the immutable release that users may already have cached.
+-- Run after 202609130002_regional_travel_catalog.sql.
+
+begin;
+
+do $vendor_catalog$
+declare
+  actor_id uuid;
+  source_release uuid;
+  target_release uuid;
+  next_version integer;
+  release_note constant text := 'Booking vendor additions 2026-09-13';
+begin
+  if exists (select 1 from public.config_releases where change_note = release_note) then
+    raise notice 'Booking vendor additions are already installed.';
+    return;
+  end if;
+
+  select admin.user_id into actor_id
+  from public.app_admins admin
+  join auth.users account on account.id = admin.user_id
+  where admin.status = 'active'
+  order by (lower(account.email) = 'bingalan1@gmail.com') desc, admin.created_at
+  limit 1;
+  if actor_id is null then
+    raise notice 'Trip Vault Phase 2 vendor additions deferred: create an Auth administrator and an active public.app_admins row, then run only the PHASE 2 section.';
+    return;
+  end if;
+
+  select id into source_release
+  from public.config_releases
+  where status = 'published'
+  limit 1;
+  if source_release is null then
+    raise notice 'Trip Vault Phase 2 vendor additions deferred: publish the regional travel catalogue first, then rerun only the PHASE 2 section.';
+    return;
+  end if;
+
+  insert into public.config_releases (status, based_on_release_id, change_note, created_by)
+  values ('draft', source_release, release_note, actor_id)
+  returning id into target_release;
+
+  insert into public.airline_catalog_entries (config_release_id, stable_key, name, iata_code, icao_code, aliases, check_in_url_template, manage_booking_url_template, status_url_template, tracker_url_template, brand_color, logo_asset_path, banner_asset_path, is_enabled, sort_order, updated_by)
+  select target_release, stable_key, name, iata_code, icao_code, aliases, check_in_url_template, manage_booking_url_template, status_url_template, tracker_url_template, brand_color, logo_asset_path, banner_asset_path, is_enabled, sort_order, actor_id
+  from public.airline_catalog_entries where config_release_id = source_release;
+
+  insert into public.airport_catalog_entries (config_release_id, stable_key, iata_code, icao_code, name, city, country_code, timezone, aliases, latitude, longitude, is_enabled, sort_order, updated_by)
+  select target_release, stable_key, iata_code, icao_code, name, city, country_code, timezone, aliases, latitude, longitude, is_enabled, sort_order, actor_id
+  from public.airport_catalog_entries where config_release_id = source_release;
+
+  insert into public.booking_vendor_catalog_entries (config_release_id, stable_key, name, aliases, website_url, logo_asset_path, brand_color, is_enabled, sort_order, updated_by)
+  select target_release, stable_key, name, aliases, website_url, logo_asset_path, brand_color, is_enabled, sort_order, actor_id
+  from public.booking_vendor_catalog_entries where config_release_id = source_release;
+
+  insert into public.metadata_defaults (config_release_id, namespace, key, value, updated_by, updated_at)
+  select target_release, namespace, key, value, actor_id, now()
+  from public.metadata_defaults where config_release_id = source_release;
+
+  insert into public.theme_palettes (config_release_id, light_tokens, dark_tokens, updated_by, updated_at)
+  select target_release, light_tokens, dark_tokens, actor_id, now()
+  from public.theme_palettes where config_release_id = source_release;
+
+  update public.booking_vendor_catalog_entries
+  set sort_order = case stable_key when 'airline-direct' then 80 when 'hotel-direct' then 90 else sort_order end,
+      updated_by = actor_id
+  where config_release_id = target_release and stable_key in ('airline-direct', 'hotel-direct');
+
+  insert into public.booking_vendor_catalog_entries (
+    config_release_id, stable_key, name, aliases, website_url, brand_color,
+    is_enabled, sort_order, updated_by
+  ) values
+    (target_release, 'airbnb', 'Airbnb', array['Air BnB'], 'https://www.airbnb.com', '#ff385c', true, 60, actor_id),
+    (target_release, 'trip-com', 'Trip.com', array['Trip'], 'https://www.trip.com', '#287dfa', true, 70, actor_id)
+  on conflict (config_release_id, stable_key) do update set
+    name = excluded.name,
+    aliases = excluded.aliases,
+    website_url = excluded.website_url,
+    brand_color = excluded.brand_color,
+    is_enabled = true,
+    sort_order = excluded.sort_order,
+    updated_by = actor_id;
+
+  select coalesce(max(version_number), 0) + 1 into next_version from public.config_releases;
+  update public.config_releases set status = 'retired' where status = 'published';
+  update public.config_releases
+  set status = 'published', version_number = next_version, published_by = actor_id, published_at = now()
+  where id = target_release;
+
+  insert into public.config_audit_events (config_release_id, actor_id, action, safe_summary)
+  values
+    (target_release, actor_id, 'created', jsonb_build_object('based_on', source_release, 'source', 'booking vendor additions')),
+    (target_release, actor_id, 'published', jsonb_build_object('version', next_version));
+end;
+$vendor_catalog$;
+
+commit;
+
+notify pgrst, 'reload schema';
+
+select release.version_number, release.status, release.change_note,
+  (select count(*) from public.booking_vendor_catalog_entries vendor where vendor.config_release_id = release.id) as booking_vendors
+from public.config_releases release
+where release.status = 'published';
+
+do $setup_status$
+declare
+  published_release_id uuid;
+  airport_count bigint := 0;
+  airline_count bigint := 0;
+  vendor_count bigint := 0;
+  required_vendors_present boolean := false;
+begin
+  select release.id
+  into published_release_id
+  from public.config_releases release
+  where release.status = 'published'
+  limit 1;
+
+  if published_release_id is not null then
+    select count(*) into airport_count
+    from public.airport_catalog_entries
+    where config_release_id = published_release_id;
+
+    select count(*) into airline_count
+    from public.airline_catalog_entries
+    where config_release_id = published_release_id;
+
+    select count(*) into vendor_count
+    from public.booking_vendor_catalog_entries
+    where config_release_id = published_release_id;
+
+    select
+      exists (
+        select 1
+        from public.booking_vendor_catalog_entries
+        where config_release_id = published_release_id
+          and stable_key = 'airbnb'
+          and is_enabled
+      )
+      and exists (
+        select 1
+        from public.booking_vendor_catalog_entries
+        where config_release_id = published_release_id
+          and stable_key = 'trip-com'
+          and is_enabled
+      )
+    into required_vendors_present;
+  end if;
+
+  if airport_count >= 103
+    and airline_count >= 27
+    and vendor_count >= 9
+    and required_vendors_present then
+    raise notice 'Trip Vault setup complete: Phase 1 schema and Phase 2 catalogues are ready (% airports, % airlines, % vendors).',
+      airport_count, airline_count, vendor_count;
+  else
+    raise notice 'Trip Vault Phase 1 complete; Phase 2 deferred or incomplete (% airports, % airlines, % vendors). Bootstrap an active app_admin, then run only the PHASE 2 section.',
+      airport_count, airline_count, vendor_count;
+  end if;
+end
+$setup_status$;
+
+-- PHASE 2 END: ADMIN-GATED CATALOG PUBLICATION
