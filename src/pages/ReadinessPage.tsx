@@ -11,6 +11,7 @@ import {
 import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
+import { ModalSheet } from "../components/ModalSheet";
 import { ErrorCard, LoadingCard, PageHeader } from "../components/TripUi";
 import { requirementTimelineSchedule } from "../features/timeline/model";
 import {
@@ -37,6 +38,7 @@ export function ReadinessPage() {
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Requirement | null>(null);
+  const [viewing, setViewing] = useState<Requirement | null>(null);
   const [userId, setUserId] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   useEffect(() => {
@@ -96,6 +98,13 @@ export function ReadinessPage() {
   const role = membersQuery.data?.find((member) => member.user_id === userId)?.role;
   const editable = role === "owner" || role === "editor";
   const returnNavigation = tripReturnNavigation(locationState, tripId);
+  const viewingSchedule =
+    viewing && trip
+      ? requirementTimelineSchedule(viewing, itineraryQuery.data ?? [], trip.primary_timezone)
+      : null;
+  const viewingAudience = viewing
+    ? requirementAudienceLabel(viewing.id, assigneesQuery.data ?? [], travelersQuery.data ?? [])
+    : "";
   const archive = useMutation({
     mutationFn: archiveRequirement,
     onSuccess: async (_data, item) => {
@@ -176,9 +185,7 @@ export function ReadinessPage() {
                   );
                   return (
                     <li key={item.id} className="flex items-center gap-1 px-2 py-1 sm:px-3">
-                      <label
-                        className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1 hover:bg-elevated ${editable ? "cursor-pointer" : "cursor-default"}`}
-                      >
+                      <div className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1 hover:bg-elevated">
                         <input
                           type="checkbox"
                           className="size-5 shrink-0 accent-brand"
@@ -192,7 +199,12 @@ export function ReadinessPage() {
                             })
                           }
                         />
-                        <span className="min-w-0 flex-1">
+                        <button
+                          type="button"
+                          className="min-w-0 flex-1 rounded-lg text-left focus-visible:ring-2 focus-visible:ring-brand"
+                          onClick={() => setViewing(item)}
+                          aria-label={`View details for ${item.title}`}
+                        >
                           <strong
                             className={`block truncate text-sm leading-5 ${done ? "text-muted line-through" : "text-ink"}`}
                           >
@@ -232,8 +244,8 @@ export function ReadinessPage() {
                               </span>
                             )}
                           </span>
-                        </span>
-                      </label>
+                        </button>
+                      </div>
                       {editable && (
                         <div
                           className="flex shrink-0"
@@ -291,6 +303,48 @@ export function ReadinessPage() {
             preferredTravelerId={focusedTravelerId ?? undefined}
             onClose={() => setAdding(false)}
           />
+        )}
+        {viewing && trip && (
+          <ModalSheet
+            eyebrow="Readiness task"
+            title={viewing.title}
+            onClose={() => setViewing(null)}
+          >
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl bg-elevated p-4">
+                <p className="eyebrow">Status</p>
+                <p className="mt-2 font-bold capitalize">{viewing.status.replaceAll("_", " ")}</p>
+              </div>
+              <div className="rounded-2xl bg-elevated p-4">
+                <p className="eyebrow">When</p>
+                <p className="mt-2 font-bold">{viewingSchedule?.label ?? "No date or event set"}</p>
+              </div>
+              {viewingAudience && (
+                <div className="rounded-2xl bg-elevated p-4 sm:col-span-2">
+                  <p className="eyebrow">For</p>
+                  <p className="mt-2 font-bold">{viewingAudience}</p>
+                </div>
+              )}
+            </div>
+            <div className="mt-4 rounded-2xl border border-line p-4">
+              <p className="eyebrow">Notes</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
+                {viewing.notes || "No notes added."}
+              </p>
+            </div>
+            {editable && (
+              <button
+                type="button"
+                className="secondary-button mt-4 w-full"
+                onClick={() => {
+                  setViewing(null);
+                  setEditing(viewing);
+                }}
+              >
+                <Pencil className="size-4" /> Edit task
+              </button>
+            )}
+          </ModalSheet>
         )}
         {editing && trip && (
           <AddRequirementForm

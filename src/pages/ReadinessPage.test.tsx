@@ -157,13 +157,19 @@ describe("readiness checklist interactions", () => {
     mocks.archiveRequirement.mockResolvedValue(undefined);
   });
 
-  it("checks a task off without opening edit and keeps edit and archive separate", async () => {
+  it("opens task details from the row and only checks it off from the checkbox", async () => {
     const user = userEvent.setup();
     renderPage();
 
     const editTask = await screen.findByRole("button", { name: "Edit Passport ready" });
     expect(screen.getByText(/Due Sep 20, 2026/)).toBeInTheDocument();
     expect(screen.getByText("Check validity before departure.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "View details for Passport ready" }));
+    const details = screen.getByRole("dialog", { name: "Passport ready" });
+    expect(within(details).getByText("Check validity before departure.")).toBeInTheDocument();
+    expect(mocks.updateRequirementStatus).not.toHaveBeenCalled();
+    await user.click(within(details).getByRole("button", { name: "Back" }));
 
     await user.click(screen.getByRole("checkbox", { name: "Mark as done: Passport ready" }));
     await waitFor(() =>
