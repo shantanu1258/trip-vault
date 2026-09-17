@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CabStop, JourneyLeg } from "./types";
@@ -132,6 +132,9 @@ describe("CabStopsManager", () => {
     ]);
     const user = renderManager();
     await screen.findByText("Lunch");
+    expect(within(screen.getByLabelText("Actions for Lunch")).getAllByRole("button")).toHaveLength(
+      4
+    );
     await user.click(screen.getByRole("button", { name: "Move Lunch earlier" }));
     await waitFor(() =>
       expect(mocks.reorderCabStops).toHaveBeenCalledWith(
@@ -141,5 +144,13 @@ describe("CabStopsManager", () => {
         "up"
       )
     );
+
+    await user.click(screen.getByRole("button", { name: "Edit Lunch" }));
+    expect(screen.getByRole("listitem", { name: "Cab stop 2: Lunch" })).toHaveAttribute(
+      "aria-current",
+      "true"
+    );
+    expect(screen.getByRole("form", { name: "Edit cab stop" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Edit stop" })).toHaveClass("text-xl");
   });
 });

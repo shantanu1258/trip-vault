@@ -228,8 +228,14 @@ export function CabStopsManager({
           {stops.map((stop, index) => {
             const linked = itinerary.find((item) => item.id === stop.linked_itinerary_item_id);
             const stopCosts = costs.filter((cost) => cost.cab_stop_id === stop.id);
+            const editing = draft?.id === stop.id;
             return (
-              <li key={stop.id} className="rounded-xl bg-elevated p-2.5">
+              <li
+                key={stop.id}
+                aria-label={`Cab stop ${index + 1}: ${stop.title}`}
+                aria-current={editing ? "true" : undefined}
+                className={`rounded-xl border p-2.5 transition ${editing ? "border-brand bg-brand-soft/40 shadow-soft" : "border-transparent bg-elevated"}`}
+              >
                 <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2">
                   <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-soft text-[.65rem] font-black text-brand">
                     {index + 1}
@@ -268,7 +274,7 @@ export function CabStopsManager({
                   </div>
                   {(stop.location?.map_url || editable) && (
                     <div
-                      className="grid shrink-0 grid-cols-2 gap-0.5"
+                      className="flex shrink-0 flex-col items-end gap-0.5"
                       aria-label={`Actions for ${stop.title}`}
                     >
                       {stop.location?.map_url && (
@@ -283,7 +289,7 @@ export function CabStopsManager({
                         </a>
                       )}
                       {editable && (
-                        <>
+                        <div className="flex items-center gap-0.5">
                           <button
                             type="button"
                             className="grid size-8 place-items-center rounded-lg text-muted disabled:opacity-25"
@@ -329,7 +335,7 @@ export function CabStopsManager({
                           >
                             <Trash2 className="size-3.5" />
                           </button>
-                        </>
+                        </div>
                       )}
                     </div>
                   )}
@@ -345,9 +351,18 @@ export function CabStopsManager({
       )}
 
       {draft && (
-        <form className="mt-4 space-y-3 border-t border-line pt-4" onSubmit={submit}>
+        <form
+          className="mt-4 space-y-4 rounded-2xl border border-brand/40 bg-brand-soft/20 p-4 shadow-soft"
+          aria-label={draft.id ? "Edit cab stop" : "Add cab stop"}
+          onSubmit={submit}
+        >
           <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-extrabold">{draft.id ? "Edit stop" : "Add stop"}</p>
+            <div>
+              <p className="eyebrow text-brand">Journey stop</p>
+              <h3 className="mt-1 font-display text-xl font-black">
+                {draft.id ? "Edit stop" : "Add stop"}
+              </h3>
+            </div>
             <button
               type="button"
               className="rounded-lg p-2 text-muted"
