@@ -157,11 +157,11 @@ describe("readiness checklist interactions", () => {
     mocks.archiveRequirement.mockResolvedValue(undefined);
   });
 
-  it("opens task details from the row and only checks it off from the checkbox", async () => {
+  it("opens task details from the row with done, edit, and archive actions", async () => {
     const user = userEvent.setup();
     renderPage();
 
-    const editTask = await screen.findByRole("button", { name: "Edit Passport ready" });
+    await screen.findByRole("button", { name: "Edit Passport ready" });
     expect(screen.getByText(/Due Sep 20, 2026/)).toBeInTheDocument();
     expect(screen.getByText("Check validity before departure.")).toBeInTheDocument();
 
@@ -169,9 +169,34 @@ describe("readiness checklist interactions", () => {
     const details = screen.getByRole("dialog", { name: "Passport ready" });
     expect(within(details).getByText("Check validity before departure.")).toBeInTheDocument();
     expect(mocks.updateRequirementStatus).not.toHaveBeenCalled();
-    await user.click(within(details).getByRole("button", { name: "Back" }));
+    expect(within(details).getByRole("button", { name: "Edit task" })).toBeInTheDocument();
+    expect(within(details).getByRole("button", { name: "Archive" })).toBeInTheDocument();
+    await user.click(within(details).getByRole("button", { name: "Mark as done" }));
+    await waitFor(() =>
+      expect(mocks.updateRequirementStatus).toHaveBeenCalledWith(
+        "requirement-1",
+        "complete",
+        "trip-1"
+      )
+    );
+    expect(screen.queryByRole("dialog", { name: "Passport ready" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("checkbox", { name: "Mark as done: Passport ready" }));
+    await user.click(screen.getByRole("button", { name: "View details for Passport ready" }));
+    await user.click(
+      within(screen.getByRole("dialog", { name: "Passport ready" })).getByRole("button", {
+        name: "Archive"
+      })
+    );
+    const confirmation = screen.getByRole("dialog", { name: "Archive task?" });
+    await user.click(within(confirmation).getByRole("button", { name: "Archive" }));
+    await waitFor(() => expect(mocks.archiveRequirement).toHaveBeenCalledWith(requirement));
+  });
+
+  it("keeps the compact checkbox as the direct completion control", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("checkbox", { name: "Mark as done: Passport ready" }));
     await waitFor(() =>
       expect(mocks.updateRequirementStatus).toHaveBeenCalledWith(
         "requirement-1",
@@ -180,18 +205,6 @@ describe("readiness checklist interactions", () => {
       )
     );
     expect(screen.getByRole("status")).toHaveTextContent("marked done");
-    expect(screen.queryByRole("region", { name: "Edit task" })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Archive Passport ready" }));
-    expect(screen.getByRole("dialog", { name: "Archive task?" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Archive" }));
-    await waitFor(() => expect(mocks.archiveRequirement).toHaveBeenCalledWith(requirement));
-    expect(screen.queryByRole("region", { name: "Edit task" })).not.toBeInTheDocument();
-
-    await user.click(editTask);
-    expect(await screen.findByRole("region", { name: "Edit task" })).toHaveTextContent(
-      "Passport ready"
-    );
   });
 
   it("opens a simple add-task flow from the checklist header", async () => {
