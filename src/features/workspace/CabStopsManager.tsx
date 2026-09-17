@@ -229,15 +229,15 @@ export function CabStopsManager({
             const linked = itinerary.find((item) => item.id === stop.linked_itinerary_item_id);
             const stopCosts = costs.filter((cost) => cost.cab_stop_id === stop.id);
             return (
-              <li key={stop.id} className="rounded-xl bg-elevated p-3">
-                <div className="flex min-w-0 items-start gap-3">
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-soft text-xs font-black text-brand">
+              <li key={stop.id} className="rounded-xl bg-elevated p-2.5">
+                <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2">
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-soft text-[.65rem] font-black text-brand">
                     {index + 1}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="break-words text-sm font-extrabold">{stop.title}</p>
                     {stop.location?.label && (
-                      <p className="mt-1 flex items-start gap-1 text-xs text-muted">
+                      <p className="mt-1 flex min-w-0 items-start gap-1 break-words text-xs text-muted">
                         <MapPin className="mt-0.5 size-3 shrink-0" /> {stop.location.label}
                       </p>
                     )}
@@ -262,69 +262,78 @@ export function CabStopsManager({
                           .join(" + ")}
                       </p>
                     )}
-                    {stop.notes && <p className="mt-1 text-xs text-muted">{stop.notes}</p>}
+                    {stop.notes && (
+                      <p className="mt-1 break-words text-xs text-muted">{stop.notes}</p>
+                    )}
                   </div>
-                  {stop.location?.map_url && (
-                    <a
-                      href={stop.location.map_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-lg p-2 text-brand"
-                      aria-label={`Open map for ${stop.title}`}
+                  {(stop.location?.map_url || editable) && (
+                    <div
+                      className="grid shrink-0 grid-cols-2 gap-0.5"
+                      aria-label={`Actions for ${stop.title}`}
                     >
-                      <ExternalLink className="size-4" />
-                    </a>
+                      {stop.location?.map_url && (
+                        <a
+                          href={stop.location.map_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="grid size-8 place-items-center rounded-lg text-brand"
+                          aria-label={`Open map for ${stop.title}`}
+                        >
+                          <ExternalLink className="size-3.5" />
+                        </a>
+                      )}
+                      {editable && (
+                        <>
+                          <button
+                            type="button"
+                            className="grid size-8 place-items-center rounded-lg text-muted disabled:opacity-25"
+                            disabled={index === 0 || move.isPending}
+                            onClick={() => move.mutate({ stopId: stop.id, direction: "up" })}
+                            aria-label={`Move ${stop.title} earlier`}
+                          >
+                            <ArrowUp className="size-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            className="grid size-8 place-items-center rounded-lg text-muted disabled:opacity-25"
+                            disabled={index === stops.length - 1 || move.isPending}
+                            onClick={() => move.mutate({ stopId: stop.id, direction: "down" })}
+                            aria-label={`Move ${stop.title} later`}
+                          >
+                            <ArrowDown className="size-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            className="grid size-8 place-items-center rounded-lg text-muted"
+                            onClick={() => setDraft(draftFor(stop, eventTimezone))}
+                            aria-label={`Edit ${stop.title}`}
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            className="grid size-8 place-items-center rounded-lg text-danger"
+                            disabled={archive.isPending}
+                            onClick={async () => {
+                              if (
+                                await confirm({
+                                  title: "Remove cab stop?",
+                                  message: `Remove ${stop.title} from this cab journey? Linked timeline events and recorded costs remain.`,
+                                  confirmLabel: "Remove",
+                                  tone: "danger"
+                                })
+                              )
+                                archive.mutate(stop);
+                            }}
+                            aria-label={`Remove ${stop.title}`}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
-                {editable && (
-                  <div className="mt-2 flex justify-end gap-1 border-t border-line pt-2">
-                    <button
-                      type="button"
-                      className="rounded-lg p-2 text-muted disabled:opacity-25"
-                      disabled={index === 0 || move.isPending}
-                      onClick={() => move.mutate({ stopId: stop.id, direction: "up" })}
-                      aria-label={`Move ${stop.title} earlier`}
-                    >
-                      <ArrowUp className="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-lg p-2 text-muted disabled:opacity-25"
-                      disabled={index === stops.length - 1 || move.isPending}
-                      onClick={() => move.mutate({ stopId: stop.id, direction: "down" })}
-                      aria-label={`Move ${stop.title} later`}
-                    >
-                      <ArrowDown className="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-lg p-2 text-muted"
-                      onClick={() => setDraft(draftFor(stop, eventTimezone))}
-                      aria-label={`Edit ${stop.title}`}
-                    >
-                      <Pencil className="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-lg p-2 text-danger"
-                      disabled={archive.isPending}
-                      onClick={async () => {
-                        if (
-                          await confirm({
-                            title: "Remove cab stop?",
-                            message: `Remove ${stop.title} from this cab journey? Linked timeline events and recorded costs remain.`,
-                            confirmLabel: "Remove",
-                            tone: "danger"
-                          })
-                        )
-                          archive.mutate(stop);
-                      }}
-                      aria-label={`Remove ${stop.title}`}
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                )}
               </li>
             );
           })}
