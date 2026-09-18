@@ -151,6 +151,7 @@ export function TripAgendaSheet({
 }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<AgendaFilter>("all");
+  const [dateFilter, setDateFilter] = useState("all");
   const activeEntry = entries.find((entry) => entry.id === activeEntryId);
   const activeGroupKey = activeEntry ? groupKey(activeEntry) : null;
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
@@ -163,18 +164,27 @@ export function TripAgendaSheet({
     [entries]
   );
   const normalizedSearch = search.trim().toLowerCase();
+  const dateChoices = useMemo(() => {
+    const choices = new Map<string, string>();
+    for (const entry of entries) {
+      const key = groupKey(entry);
+      if (!choices.has(key)) choices.set(key, groupLabel(entry));
+    }
+    return [...choices.entries()].map(([value, label]) => ({ value, label }));
+  }, [entries]);
   const groups = useMemo(() => {
     const grouped = new Map<string, AgendaGroup>();
     for (const entry of entries) {
       if (filter !== "all" && filterForEntry(entry) !== filter) continue;
       if (!matchesSearch(entry, normalizedSearch)) continue;
       const key = groupKey(entry);
+      if (dateFilter !== "all" && key !== dateFilter) continue;
       const existing = grouped.get(key);
       if (existing) existing.entries.push(entry);
       else grouped.set(key, { key, label: groupLabel(entry), entries: [entry] });
     }
     return [...grouped.values()];
-  }, [entries, filter, normalizedSearch]);
+  }, [dateFilter, entries, filter, normalizedSearch]);
 
   useEffect(() => {
     if (!activeGroupKey) return;
@@ -229,15 +239,30 @@ export function TripAgendaSheet({
         </button>
       )}
 
-      <div className="relative mt-4">
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
-        <input
-          className="form-input mt-0 pl-10"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search events"
-          aria-label="Search trip agenda"
-        />
+      <div className="mt-4 grid grid-cols-[minmax(0,1fr)_8.5rem] gap-2 sm:grid-cols-[minmax(0,1fr)_11rem]">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
+          <input
+            className="form-input mt-0 pl-10"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search events"
+            aria-label="Search trip agenda"
+          />
+        </div>
+        <select
+          className="form-input mt-0 min-w-0 px-3 text-xs font-bold"
+          value={dateFilter}
+          onChange={(event) => setDateFilter(event.target.value)}
+          aria-label="Filter agenda by date"
+        >
+          <option value="all">All dates</option>
+          {dateChoices.map((choice) => (
+            <option key={choice.value} value={choice.value}>
+              {choice.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="Agenda filters">
@@ -260,7 +285,8 @@ export function TripAgendaSheet({
 
       <div className="mt-3 space-y-2 sm:mt-4 sm:space-y-3">
         {groups.map((group) => {
-          const expanded = Boolean(normalizedSearch) || expandedGroups.has(group.key);
+          const expanded =
+            Boolean(normalizedSearch) || dateFilter !== "all" || expandedGroups.has(group.key);
           return (
             <section key={group.key}>
               <button
@@ -269,9 +295,7 @@ export function TripAgendaSheet({
                 className="group/date flex w-full items-center gap-2 py-1 text-left sm:gap-3 sm:py-1.5"
                 aria-expanded={expanded}
               >
-                <strong className="shrink-0 text-xs uppercase tracking-[.08em] text-muted">
-                  {group.label}
-                </strong>
+                <strong className="shrink-0 text-sm font-extrabold text-ink">{group.label}</strong>
                 <span className="h-px min-w-4 flex-1 bg-line" aria-hidden="true" />
                 <span className="shrink-0 text-[.65rem] font-bold text-muted">
                   {group.entries.length}

@@ -14,6 +14,27 @@ import {
   unlinkDocumentFromEvent
 } from "./api";
 import { documentMatchesTraveler, documentPurposeLabel } from "./documentModel";
+import type { Traveler, VaultDocument } from "./types";
+
+function assignedTravelerIds(document: VaultDocument) {
+  return document.traveler_ids?.length
+    ? document.traveler_ids
+    : document.traveler_id
+      ? [document.traveler_id]
+      : [];
+}
+
+function travelerGroup(document: VaultDocument, travelers: Traveler[]) {
+  const ids = [...assignedTravelerIds(document)].sort();
+  if (!ids.length)
+    return document.assignment_mode === "unassigned"
+      ? { key: "unassigned", label: "Unassigned" }
+      : { key: "shared", label: "Everyone" };
+  const names = ids.map(
+    (id) => travelers.find((traveler) => traveler.id === id)?.display_name ?? "Traveler"
+  );
+  return { key: `travelers:${ids.join(",")}`, label: names.join(" + ") };
+}
 
 export function EventDocumentShortcut({
   item,
@@ -65,12 +86,14 @@ export function EventDocuments({
   canEdit,
   onUpload,
   travelerId,
+  travelers = [],
   navigationState
 }: {
   item: ItineraryItem;
   canEdit: boolean;
   onUpload?: () => void;
   travelerId?: string | null;
+  travelers?: Traveler[];
   navigationState?: unknown;
 }) {
   const confirm = useConfirmDialog();
@@ -127,6 +150,20 @@ export function EventDocuments({
       inherited: true
     }))
   ];
+  const groupByTraveler = visibleLinks.some(
+    (link) => assignedTravelerIds(link.document).length > 0
+  );
+  const documentGroups = (() => {
+    if (!groupByTraveler) return [{ key: "all", label: null, links: visibleLinks }];
+    const groups = new Map<string, { key: string; label: string; links: typeof visibleLinks }>();
+    for (const link of visibleLinks) {
+      const group = travelerGroup(link.document, travelers);
+      const existing = groups.get(group.key);
+      if (existing) existing.links.push(link);
+      else groups.set(group.key, { ...group, links: [link] });
+    }
+    return [...groups.values()];
+  })();
 
   const attach = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -163,104 +200,120 @@ export function EventDocuments({
         )}
       </div>
       {visibleLinks.length > 0 && (
-        <div className="mt-3 grid gap-2">
-          {visibleLinks.map((link) => {
-            const explicitIndex = explicitLinks.findIndex(
-              (row) => row.document_id === link.document_id
-            );
-            const documentTitle = link.label || link.document.title;
-            return (
-              <div
-                key={link.document_id}
-                className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface/70 sm:flex-row sm:items-stretch"
-              >
-                <Link
-                  className="tap-target flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-xs font-bold sm:items-center"
-                  to={`/trips/${item.trip_id}/documents/${link.document_id}`}
-                  state={navigationState}
-                >
-                  <FileText className="mt-0.5 size-3.5 shrink-0 text-brand sm:mt-0" />
-                  <span className="min-w-0 flex-1 break-words leading-5 [overflow-wrap:anywhere]">
-                    {documentTitle}
-                  </span>
-                </Link>
-                <div className="flex min-w-0 items-stretch border-t border-line sm:border-l sm:border-t-0">
-                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 px-3 py-1 sm:flex-none sm:flex-nowrap sm:px-2">
-                    <span className="text-[.65rem] font-medium text-muted">
-                      {documentPurposeLabel(link.document.purpose)}
-                      {link.inherited ? " · booking document" : ""}
-                      {link.document.sync_state === "queued"
-                        ? " · saved on device, cloud pending"
-                        : ""}
-                    </span>
-                    <DocumentVisibilityBadge visibility={link.document.visibility} />
-                  </div>
-                  {canEdit && !link.inherited && (
-                    <div
-                      className="ml-auto flex shrink-0 border-l border-line"
-                      aria-label={`Actions for ${documentTitle}`}
-                      role="group"
-                    >
-                      <div className="flex divide-x divide-line sm:flex-col sm:divide-x-0 sm:divide-y">
-                        <button
-                          disabled={explicitIndex === 0 || reorderMutation.isPending}
-                          type="button"
-                          onClick={() => {
-                            const ids = explicitLinks.map((row) => row.document_id);
-                            [ids[explicitIndex - 1], ids[explicitIndex]] = [
-                              ids[explicitIndex],
-                              ids[explicitIndex - 1]
-                            ];
-                            reorderMutation.mutate(ids);
-                          }}
-                          className="tap-target grid size-11 place-items-center text-muted disabled:opacity-30 sm:h-auto sm:min-h-6 sm:w-8 sm:min-w-8 sm:flex-1"
-                          aria-label={`Move ${documentTitle} earlier`}
-                        >
-                          <ArrowUp className="size-3" />
-                        </button>
-                        <button
-                          disabled={
-                            explicitIndex === explicitLinks.length - 1 || reorderMutation.isPending
-                          }
-                          type="button"
-                          onClick={() => {
-                            const ids = explicitLinks.map((row) => row.document_id);
-                            [ids[explicitIndex], ids[explicitIndex + 1]] = [
-                              ids[explicitIndex + 1],
-                              ids[explicitIndex]
-                            ];
-                            reorderMutation.mutate(ids);
-                          }}
-                          className="tap-target grid size-11 place-items-center text-muted disabled:opacity-30 sm:h-auto sm:min-h-6 sm:w-8 sm:min-w-8 sm:flex-1"
-                          aria-label={`Move ${documentTitle} later`}
-                        >
-                          <ArrowDown className="size-3" />
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (
-                            await confirm({
-                              title: "Unlink document?",
-                              message: `Unlink ${link.document.title} from this event? The Vault document will remain.`,
-                              confirmLabel: "Unlink",
-                              tone: "danger"
-                            })
-                          )
-                            unlinkMutation.mutate(link.document_id);
-                        }}
-                        className="tap-target grid size-11 place-items-center border-l border-line text-muted hover:text-danger sm:h-auto sm:self-stretch"
-                        aria-label={`Unlink ${documentTitle}`}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </div>
-                  )}
+        <div className="mt-3 space-y-3">
+          {documentGroups.map((group) => (
+            <section key={group.key} aria-label={group.label ?? undefined}>
+              {group.label && (
+                <div className="mb-1.5 flex items-center gap-2">
+                  <strong className="shrink-0 text-xs font-extrabold text-ink">
+                    {group.label}
+                  </strong>
+                  <span className="h-px flex-1 bg-line" aria-hidden="true" />
+                  <span className="text-[.65rem] font-bold text-muted">{group.links.length}</span>
                 </div>
+              )}
+              <div className="grid gap-2">
+                {group.links.map((link) => {
+                  const explicitIndex = explicitLinks.findIndex(
+                    (row) => row.document_id === link.document_id
+                  );
+                  const documentTitle = link.label || link.document.title;
+                  return (
+                    <div
+                      key={link.document_id}
+                      className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface/70 sm:flex-row sm:items-stretch"
+                    >
+                      <Link
+                        className="tap-target flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-xs font-bold sm:items-center"
+                        to={`/trips/${item.trip_id}/documents/${link.document_id}`}
+                        state={navigationState}
+                      >
+                        <FileText className="mt-0.5 size-3.5 shrink-0 text-brand sm:mt-0" />
+                        <span className="min-w-0 flex-1 break-words leading-5 [overflow-wrap:anywhere]">
+                          {documentTitle}
+                        </span>
+                      </Link>
+                      <div className="flex min-w-0 items-stretch border-t border-line sm:border-l sm:border-t-0">
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 px-3 py-1 sm:flex-none sm:flex-nowrap sm:px-2">
+                          <span className="text-[.65rem] font-medium text-muted">
+                            {documentPurposeLabel(link.document.purpose)}
+                            {link.inherited ? " · booking document" : ""}
+                            {link.document.sync_state === "queued"
+                              ? " · saved on device, cloud pending"
+                              : ""}
+                          </span>
+                          <DocumentVisibilityBadge visibility={link.document.visibility} />
+                        </div>
+                        {canEdit && !link.inherited && (
+                          <div
+                            className="ml-auto flex shrink-0 border-l border-line"
+                            aria-label={`Actions for ${documentTitle}`}
+                            role="group"
+                          >
+                            <div className="flex divide-x divide-line sm:flex-col sm:divide-x-0 sm:divide-y">
+                              <button
+                                disabled={explicitIndex === 0 || reorderMutation.isPending}
+                                type="button"
+                                onClick={() => {
+                                  const ids = explicitLinks.map((row) => row.document_id);
+                                  [ids[explicitIndex - 1], ids[explicitIndex]] = [
+                                    ids[explicitIndex],
+                                    ids[explicitIndex - 1]
+                                  ];
+                                  reorderMutation.mutate(ids);
+                                }}
+                                className="tap-target grid size-11 place-items-center text-muted disabled:opacity-30 sm:h-auto sm:min-h-6 sm:w-8 sm:min-w-8 sm:flex-1"
+                                aria-label={`Move ${documentTitle} earlier`}
+                              >
+                                <ArrowUp className="size-3" />
+                              </button>
+                              <button
+                                disabled={
+                                  explicitIndex === explicitLinks.length - 1 ||
+                                  reorderMutation.isPending
+                                }
+                                type="button"
+                                onClick={() => {
+                                  const ids = explicitLinks.map((row) => row.document_id);
+                                  [ids[explicitIndex], ids[explicitIndex + 1]] = [
+                                    ids[explicitIndex + 1],
+                                    ids[explicitIndex]
+                                  ];
+                                  reorderMutation.mutate(ids);
+                                }}
+                                className="tap-target grid size-11 place-items-center text-muted disabled:opacity-30 sm:h-auto sm:min-h-6 sm:w-8 sm:min-w-8 sm:flex-1"
+                                aria-label={`Move ${documentTitle} later`}
+                              >
+                                <ArrowDown className="size-3" />
+                              </button>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (
+                                  await confirm({
+                                    title: "Unlink document?",
+                                    message: `Unlink ${link.document.title} from this event? The Vault document will remain.`,
+                                    confirmLabel: "Unlink",
+                                    tone: "danger"
+                                  })
+                                )
+                                  unlinkMutation.mutate(link.document_id);
+                              }}
+                              className="tap-target grid size-11 place-items-center border-l border-line text-muted hover:text-danger sm:h-auto sm:self-stretch"
+                              aria-label={`Unlink ${documentTitle}`}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </section>
+          ))}
         </div>
       )}
       {picking && (

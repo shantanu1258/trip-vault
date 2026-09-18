@@ -1017,6 +1017,7 @@ export function EventDetailsSheet({
         canEdit={editable}
         onUpload={onUploadDocument}
         travelerId={focusedTravelerId}
+        travelers={travelers}
         navigationState={navigationState}
       />
       {editable && item.timing_mode !== "relative" && (canMoveUp || canMoveDown) && (

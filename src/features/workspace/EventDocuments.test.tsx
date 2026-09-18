@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ItineraryItem } from "../trips/types";
-import type { EventDocumentLink, VaultDocument } from "./types";
+import type { EventDocumentLink, Traveler, VaultDocument } from "./types";
 
 const mocks = vi.hoisted(() => ({
   attachDocumentsToEvent: vi.fn(),
@@ -87,12 +87,22 @@ function renderShortcut(travelerId?: string) {
   );
 }
 
-function renderDocuments() {
+function traveler(id: string, displayName: string): Traveler {
+  return {
+    id,
+    trip_id: item.trip_id,
+    display_name: displayName,
+    is_minor: false,
+    created_at: "2026-09-01T00:00:00.000Z"
+  };
+}
+
+function renderDocuments(travelers: Traveler[] = []) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <EventDocuments item={item} canEdit />
+        <EventDocuments item={item} canEdit travelers={travelers} />
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -224,5 +234,38 @@ describe("event document cards", () => {
         "bus-ticket"
       ])
     );
+  });
+
+  it("groups associated documents by traveler while keeping shared documents together", async () => {
+    const shared = document({ id: "shared", title: "Shared ferry confirmation" });
+    const asha = document({
+      id: "asha-ticket",
+      title: "Asha ferry ticket",
+      assignment_mode: "selected",
+      traveler_id: "asha",
+      traveler_ids: ["asha"]
+    });
+    const ravi = document({
+      id: "ravi-ticket",
+      title: "Ravi ferry ticket",
+      assignment_mode: "selected",
+      traveler_id: "ravi",
+      traveler_ids: ["ravi"]
+    });
+    mocks.listEventDocumentLinks.mockResolvedValue([link(shared, 0), link(asha, 1), link(ravi, 2)]);
+
+    renderDocuments([traveler("asha", "Asha Singh"), traveler("ravi", "Ravi Singh")]);
+
+    expect(
+      within(await screen.findByRole("region", { name: "Everyone" })).getByText(
+        "Shared ferry confirmation"
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Asha Singh" })).getByText("Asha ferry ticket")
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Ravi Singh" })).getByText("Ravi ferry ticket")
+    ).toBeInTheDocument();
   });
 });

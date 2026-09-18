@@ -112,6 +112,23 @@ describe("TripAgendaSheet", () => {
       "false"
     );
 
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Filter agenda by date" }),
+      "2000-01-01"
+    );
+    expect(screen.getByRole("button", { name: /January 1.*2000/ })).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+    expect(
+      screen.getByRole("button", { name: "View Welcome dinner in timeline" })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /September 28.*2099/ })).not.toBeInTheDocument();
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Filter agenda by date" }),
+      "all"
+    );
+
     await userEvent.click(screen.getByRole("button", { name: "Stay" }));
     expect(
       screen.getByRole("button", { name: "View Check in · Marina Hotel in timeline" })
