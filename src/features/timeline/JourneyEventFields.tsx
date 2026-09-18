@@ -618,8 +618,6 @@ export function GroundJourneyLegFields({
   const [destinationName, setDestinationName] = useState("");
   const [destinationCode, setDestinationCode] = useState("");
   const [arrival, setArrival] = useState("");
-  const [ferrySeating, setFerrySeating] = useState("unknown");
-  const [vehicle, setVehicle] = useState(false);
   const international = scope === "international";
   const calculatedBoarding = boardingLead
     ? localDateTimeMinusMinutes(departure, Number(boardingLead))
@@ -949,192 +947,56 @@ export function GroundJourneyLegFields({
           </div>
         </details>
       )}
-      {mode === "ferry" && (
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="form-label">
-            Sailing direction
-            <select className="form-input" name={`${prefix}.direction`}>
-              <option value="one_way">One-way</option>
-              <option value="outbound">Outbound</option>
-              <option value="return">Return sailing</option>
-            </select>
-          </label>
-          {booked && (
-            <>
-              <label className="form-label">
-                Ticket timing
-                <select className="form-input" name={`${prefix}.ticketTiming`}>
-                  <option value="fixed">Fixed date and time</option>
-                  <option value="open_date">Open date</option>
-                  <option value="open_return">Open return</option>
-                </select>
-              </label>
-              <label className="form-label">
-                Seating
-                <select
-                  className="form-input"
-                  name={`${prefix}.seating`}
-                  value={ferrySeating}
-                  onChange={(event) => setFerrySeating(event.target.value)}
-                >
-                  <option value="unknown">Unknown</option>
-                  <option value="free">Free seating</option>
-                  <option value="assigned">Assigned</option>
-                </select>
-              </label>
-            </>
-          )}
-        </div>
-      )}
-      {booked && mode === "ferry" && (
+      {mode !== "ferry" && (
         <details className="mt-4 rounded-xl border border-line/80 p-3">
           <summary className="cursor-pointer text-xs font-black uppercase tracking-[.1em] text-muted">
-            Ferry ticket and vehicle details
+            Boarding and platform details
           </summary>
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
             <label className="form-label">
-              Operator reference (optional)
+              Boarding reminder (minutes)
               <input
                 className="form-input"
-                name={`${prefix}.operatorReference`}
-                placeholder="Enter the ferry company's confirmation number"
+                type="number"
+                min="0"
+                max="360"
+                name={`${prefix}.boardingLead`}
+                value={boardingLead}
+                onChange={(event) => setBoardingLead(event.target.value)}
+                placeholder="Enter how early to arrive or board"
               />
             </label>
             <label className="form-label">
-              Class / accommodation (optional)
+              Exact boarding time (optional)
+              <input className="form-input" type="datetime-local" name={`${prefix}.boardingAt`} />
+            </label>
+            <label className="form-label">
+              Departure platform / bay (optional)
               <input
                 className="form-input"
-                name={`${prefix}.accommodation`}
-                placeholder="Enter the passenger class, cabin, or accommodation"
+                name={`${prefix}.departurePlatform`}
+                placeholder="Enter the platform, bay, or gate"
               />
             </label>
             <label className="form-label">
-              Vessel name (optional)
+              Arrival platform / bay (optional)
               <input
                 className="form-input"
-                name={`${prefix}.vesselName`}
-                placeholder="Enter the vessel name when provided"
+                name={`${prefix}.arrivalPlatform`}
+                placeholder="Enter the arrival platform or bay"
               />
             </label>
-            <label className="form-label">
-              Departure gate (optional)
-              <input
-                className="form-input"
-                name={`${prefix}.departureGate`}
-                placeholder="Enter the gate shown on the ticket"
-              />
-            </label>
-            <label className="form-label">
-              Baggage allowance (optional)
-              <input
-                className="form-input"
-                name={`${prefix}.baggageAllowance`}
-                placeholder="Enter the allowance shown on the ticket"
-              />
-            </label>
-            <label className="flex items-center gap-2 text-sm font-extrabold sm:col-span-2">
-              <input
-                type="checkbox"
-                checked={vehicle}
-                onChange={(event) => setVehicle(event.target.checked)}
-              />{" "}
-              Taking a vehicle
-            </label>
-            {vehicle && (
-              <>
-                <label className="form-label">
-                  Vehicle type
-                  <input
-                    className="form-input"
-                    name={`${prefix}.vehicleType`}
-                    placeholder="Enter car, motorcycle, van, or another type"
-                  />
-                </label>
-                <label className="form-label">
-                  Registration
-                  <input
-                    className="form-input uppercase"
-                    name={`${prefix}.vehicleRegistration`}
-                    placeholder="Enter the vehicle registration"
-                  />
-                </label>
-                <label className="form-label">
-                  Length (cm)
-                  <input
-                    className="form-input"
-                    type="number"
-                    min="1"
-                    name={`${prefix}.vehicleLength`}
-                    placeholder="Enter only when the ferry requests it"
-                  />
-                </label>
-                <label className="form-label">
-                  Height (cm)
-                  <input
-                    className="form-input"
-                    type="number"
-                    min="1"
-                    name={`${prefix}.vehicleHeight`}
-                    placeholder="Enter only when the ferry requests it"
-                  />
-                </label>
-              </>
-            )}
           </div>
+          {calculatedBoarding && (
+            <p className="mt-3 rounded-xl bg-brand-soft px-3 py-2 text-xs font-bold text-brand">
+              Calculated boarding time: {calculatedBoarding.replace("T", " ")} at the departure
+              point.
+            </p>
+          )}
         </details>
       )}
-      <details className="mt-4 rounded-xl border border-line/80 p-3">
-        <summary className="cursor-pointer text-xs font-black uppercase tracking-[.1em] text-muted">
-          Boarding and platform details
-        </summary>
-        <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <label className="form-label">
-            Boarding reminder (minutes)
-            <input
-              className="form-input"
-              type="number"
-              min="0"
-              max="360"
-              name={`${prefix}.boardingLead`}
-              value={boardingLead}
-              onChange={(event) => setBoardingLead(event.target.value)}
-              placeholder="Enter how early to arrive or board"
-            />
-          </label>
-          <label className="form-label">
-            Exact boarding time (optional)
-            <input className="form-input" type="datetime-local" name={`${prefix}.boardingAt`} />
-          </label>
-          <label className="form-label">
-            Departure platform / bay (optional)
-            <input
-              className="form-input"
-              name={`${prefix}.departurePlatform`}
-              placeholder="Enter the platform, bay, or gate"
-            />
-          </label>
-          <label className="form-label">
-            Arrival platform / bay (optional)
-            <input
-              className="form-input"
-              name={`${prefix}.arrivalPlatform`}
-              placeholder="Enter the arrival platform or bay"
-            />
-          </label>
-        </div>
-        {calculatedBoarding && (
-          <p className="mt-3 rounded-xl bg-brand-soft px-3 py-2 text-xs font-bold text-brand">
-            Calculated boarding time: {calculatedBoarding.replace("T", " ")} at the departure point.
-          </p>
-        )}
-      </details>
-      {booked && (
-        <TravelerAllocationFields
-          prefix={prefix}
-          travelers={travelers}
-          mode={mode}
-          showSeatAndCabin={mode !== "ferry" || ferrySeating === "assigned"}
-        />
+      {booked && mode !== "ferry" && (
+        <TravelerAllocationFields prefix={prefix} travelers={travelers} mode={mode} />
       )}
       {international && <RepeatedClockHelp />}
     </JourneyLegCard>

@@ -343,34 +343,7 @@ function detailsForJourney(
       boarding_point_details: text(form, `${prefix}.boardingPointDetails`) || undefined,
       dropoff_point_details: text(form, `${prefix}.dropoffPointDetails`) || undefined
     };
-  const vehicle =
-    text(form, `${prefix}.vehicleType`) || text(form, `${prefix}.vehicleRegistration`)
-      ? {
-          type: text(form, `${prefix}.vehicleType`) || undefined,
-          registration: text(form, `${prefix}.vehicleRegistration`) || undefined,
-          length_cm: optionalInteger(form, `${prefix}.vehicleLength`, 1),
-          height_cm: optionalInteger(form, `${prefix}.vehicleHeight`, 1)
-        }
-      : undefined;
-  return {
-    kind: "ferry",
-    direction: (text(form, `${prefix}.direction`) || "one_way") as
-      | "one_way"
-      | "outbound"
-      | "return",
-    ticket_timing: (text(form, `${prefix}.ticketTiming`) || "fixed") as
-      | "fixed"
-      | "open_date"
-      | "open_return",
-    seating: (text(form, `${prefix}.seating`) || "unknown") as "free" | "assigned" | "unknown",
-    seller_reference: text(form, `${prefix}.sellerReference`) || undefined,
-    operator_reference: text(form, `${prefix}.operatorReference`) || undefined,
-    accommodation: text(form, `${prefix}.accommodation`) || undefined,
-    vessel_name: text(form, `${prefix}.vesselName`) || undefined,
-    departure_gate: text(form, `${prefix}.departureGate`) || undefined,
-    baggage_allowance: text(form, `${prefix}.baggageAllowance`) || undefined,
-    vehicle
-  };
+  return { kind: "ferry" };
 }
 function bookingTypeFor(type: TimelineEventType) {
   if (type === "meal") return "restaurant" as const;
@@ -804,6 +777,7 @@ export function AddEventForm({
           journeyScope: scope,
           bookedViaName: text(form, "bookedViaName") || undefined,
           bookedViaUrl,
+          contactName: text(form, "contactName") || undefined,
           contactPhone: text(form, "contactPhone") || undefined,
           travelerIds: participants.travelerIds,
           itineraryTiming,

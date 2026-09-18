@@ -219,6 +219,59 @@ describe("journey leg enrichment", () => {
     );
   });
 
+  it("keeps ferry editing compact while preserving older hidden ticket details", async () => {
+    const ferryBooking: Booking = {
+      ...booking,
+      type: "ferry",
+      title: "Ferry to Batam",
+      provider: "Batam Fast",
+      reference_code: "ORDER-42",
+      reservation_state: "booked"
+    };
+    const ferryLeg: JourneyLeg = {
+      ...leg,
+      mode: "ferry",
+      operator_name: "Batam Fast",
+      service_number: "BF-12",
+      origin_code: null,
+      origin_name: "HarbourFront",
+      destination_code: null,
+      destination_name: "Batam Centre",
+      boarding_at: "2026-09-28T03:00:00.000Z",
+      departure_platform: "Gate 3",
+      arrival_platform: "Pier 2",
+      details: {
+        kind: "ferry",
+        seating: "assigned",
+        vessel_name: "Nautica",
+        vehicle: { type: "car", registration: "SG1234" }
+      }
+    };
+    const { user } = renderForm(ferryBooking, ferryLeg);
+
+    expect(screen.getByLabelText("operatorName")).toHaveValue("Batam Fast");
+    expect(screen.getByLabelText("Vessel or service number")).toHaveValue("BF-12");
+    expect(screen.queryByText("Ferry ticket details")).not.toBeInTheDocument();
+    expect(screen.queryByText("Boarding and platform")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Sailing direction")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Seating")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Vehicle registration")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Save journey changes" }));
+
+    await waitFor(() =>
+      expect(mocks.updateJourneyLeg).toHaveBeenCalledWith(
+        expect.objectContaining({
+          boardingAt: "2026-09-28T03:00:00.000Z",
+          boardingLeadMinutes: 30,
+          departurePlatform: "Gate 3",
+          arrivalPlatform: "Pier 2",
+          details: ferryLeg.details
+        })
+      )
+    );
+  });
+
   it("edits an international bus without country codes but still validates supplied codes", async () => {
     const internationalBooking: Booking = {
       ...booking,

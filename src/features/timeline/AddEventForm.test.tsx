@@ -631,23 +631,46 @@ describe("event form architecture", () => {
     );
   });
 
-  it("always accepts ferry passenger references but only asks for seats and cabins when assigned", async () => {
+  it("keeps a booked ferry focused on the route, travelers, contact, and main reference", async () => {
     const { user } = renderForm(travelers);
     await user.click(
       screen.getByRole("button", { name: /Ferry \/ boat Passenger or vehicle sailing/i })
     );
     await user.click(screen.getByRole("radio", { name: /^Ticket booked/ }));
-    expect(screen.getByText("Traveler ticket details")).toBeInTheDocument();
-    await user.click(screen.getByText("Traveler ticket details"));
-    expect(screen.getByLabelText("Passenger reference")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Seat")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Cabin")).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Seating"), "free");
-    expect(screen.getByLabelText("Passenger reference")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Seat")).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Seating"), "assigned");
-    expect(screen.getByLabelText("Seat")).toHaveAttribute("placeholder", "Enter the assigned seat");
-    expect(screen.getByLabelText("Cabin")).toBeInTheDocument();
+    expect(screen.getByLabelText("Contact name (optional)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Seller order / reference (optional)")).toBeInTheDocument();
+    expect(screen.queryByText("Traveler ticket details")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ferry ticket and vehicle details")).not.toBeInTheDocument();
+    expect(screen.queryByText("Boarding and platform details")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Sailing direction")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Ticket timing")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Seating")).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Timeline title"), "Ferry to Batam");
+    await user.type(screen.getByLabelText("Seller order / reference (optional)"), "ORDER-42");
+    await user.type(screen.getByLabelText("Contact name (optional)"), "Shantanu Singh");
+    await user.type(screen.getByLabelText("Operator or support phone (optional)"), "+6591234567");
+    await user.type(screen.getByLabelText("Ferry operator"), "Batam Fast");
+    await user.type(screen.getByLabelText("Departure terminal or pier"), "HarbourFront");
+    await user.type(screen.getByLabelText("Arrival terminal or pier"), "Batam Centre");
+    await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
+
+    await waitFor(() =>
+      expect(mocks.addJourneyBooking).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "ferry",
+          referenceCode: "ORDER-42",
+          contactName: "Shantanu Singh",
+          contactPhone: "+6591234567",
+          legs: [
+            expect.objectContaining({
+              details: { kind: "ferry" },
+              travelerAllocations: []
+            })
+          ]
+        })
+      )
+    );
   });
 
   it("finishes a booked ferry save with a clear confirmation warning when no reference was recorded", async () => {

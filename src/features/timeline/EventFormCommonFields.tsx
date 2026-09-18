@@ -204,7 +204,7 @@ export function BookingFields({
 }) {
   const labels = bookingLabels[type] ?? bookingLabels.custom!;
   const [website, setWebsite] = useState("");
-  const showContactName = !["flight", "train", "bus", "ferry"].includes(type);
+  const showContactName = !["flight", "train", "bus"].includes(type);
   return (
     <details open className="rounded-2xl border border-line p-4">
       <summary className="cursor-pointer text-sm font-extrabold">Booking details</summary>
