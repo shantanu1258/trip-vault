@@ -1,0 +1,296 @@
+import { ChevronDown, ChevronRight, LocateFixed, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { EventTypeIcon } from "../../components/EventTypeIcon";
+import { ModalSheet } from "../../components/ModalSheet";
+import { eventTimeLabel, timelineEntryPhase, type TripTimelineEntry } from "../timeline/model";
+import { formatItineraryDate, itineraryDateKey } from "./presentation";
+import type { ItineraryItem, TimelineEventType } from "./types";
+
+type AgendaFilter = "all" | "travel" | "stay" | "activity";
+
+type AgendaGroup = {
+  key: string;
+  label: string;
+  entries: TripTimelineEntry[];
+};
+
+const filterChoices: Array<{ value: AgendaFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "travel", label: "Travel" },
+  { value: "stay", label: "Stay" },
+  { value: "activity", label: "Activities" }
+];
+
+const travelTypes = new Set<TimelineEventType>([
+  "flight",
+  "train",
+  "bus",
+  "ferry",
+  "cab",
+  "transport"
+]);
+
+function entryType(entry: TripTimelineEntry): TimelineEventType {
+  return entry.kind === "event" ? (entry.item.event_type ?? "custom") : "preparation";
+}
+
+function filterForEntry(entry: TripTimelineEntry): Exclude<AgendaFilter, "all"> {
+  const type = entryType(entry);
+  if (travelTypes.has(type)) return "travel";
+  if (type === "hotel_check_in" || type === "hotel_check_out") return "stay";
+  return "activity";
+}
+
+function entryTitle(entry: TripTimelineEntry) {
+  return entry.kind === "event" ? entry.item.title : entry.requirement.title;
+}
+
+function entryContext(entry: TripTimelineEntry) {
+  if (entry.kind === "requirement") return "Readiness task";
+  return entry.item.location?.label || (entry.item.event_type ?? "custom").replaceAll("_", " ");
+}
+
+function groupKey(entry: TripTimelineEntry) {
+  if (entry.kind === "event" && entry.item.timing_mode === "unscheduled") return "unscheduled";
+  return itineraryDateKey(entry.startsAt, entry.timezone);
+}
+
+function groupLabel(entry: TripTimelineEntry) {
+  if (groupKey(entry) === "unscheduled") return "No date yet";
+  return formatItineraryDate(entry.startsAt, entry.timezone);
+}
+
+function clockLabel(entry: TripTimelineEntry, itinerary: ItineraryItem[]) {
+  if (entry.kind === "requirement") return entry.scheduleLabel;
+  const descriptive = eventTimeLabel(entry.item, itinerary);
+  if (descriptive) return descriptive;
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: entry.timezone
+  }).format(new Date(entry.startsAt));
+}
+
+function matchesSearch(entry: TripTimelineEntry, search: string) {
+  if (!search) return true;
+  const detail =
+    entry.kind === "event"
+      ? `${entry.item.location?.label ?? ""} ${entry.item.location?.address ?? ""}`
+      : entry.scheduleLabel;
+  return `${entryTitle(entry)} ${entryContext(entry)} ${detail}`.toLowerCase().includes(search);
+}
+
+function AgendaEntryRow({
+  entry,
+  itinerary,
+  active,
+  onSelect
+}: {
+  entry: TripTimelineEntry;
+  itinerary: ItineraryItem[];
+  active: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const title = entryTitle(entry);
+  const phase = timelineEntryPhase(entry);
+  const activeLabel =
+    phase === "current" ? "Now" : phase === "future" ? "Next" : phase === "past" ? "Last" : "Open";
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(entry.id)}
+      className={`group grid w-full min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition hover:border-brand/50 hover:bg-elevated focus-visible:ring-2 focus-visible:ring-brand ${
+        active ? "border-coral bg-coral/10" : "border-line bg-surface"
+      }`}
+      aria-label={`View ${title} in timeline`}
+    >
+      <EventTypeIcon type={entryType(entry)} className="size-9 rounded-lg" iconClassName="size-4" />
+      <span className="min-w-0">
+        <span className="flex min-w-0 items-center gap-2">
+          <strong className="truncate text-sm">{title}</strong>
+          {active && (
+            <span className="shrink-0 rounded-full bg-coral px-2 py-0.5 text-[.55rem] font-black uppercase tracking-wide text-white">
+              {activeLabel}
+            </span>
+          )}
+        </span>
+        <span className="mt-0.5 flex min-w-0 gap-2 text-xs text-muted">
+          <span className="shrink-0 font-bold">{clockLabel(entry, itinerary)}</span>
+          <span aria-hidden="true">·</span>
+          <span className="truncate capitalize">{entryContext(entry)}</span>
+        </span>
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-muted transition-transform group-hover:translate-x-0.5" />
+    </button>
+  );
+}
+
+export function TripAgendaSheet({
+  entries,
+  activeEntryId,
+  onClose,
+  onSelect
+}: {
+  entries: TripTimelineEntry[];
+  activeEntryId?: string | null;
+  onClose: () => void;
+  onSelect: (id: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<AgendaFilter>("all");
+  const activeEntry = entries.find((entry) => entry.id === activeEntryId);
+  const activeGroupKey = activeEntry
+    ? groupKey(activeEntry)
+    : entries[0]
+      ? groupKey(entries[0])
+      : null;
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    () => new Set(activeGroupKey ? [activeGroupKey] : [])
+  );
+  const itinerary = useMemo(
+    () => entries.flatMap((entry) => (entry.kind === "event" ? [entry.item] : [])),
+    [entries]
+  );
+  const normalizedSearch = search.trim().toLowerCase();
+  const groups = useMemo(() => {
+    const grouped = new Map<string, AgendaGroup>();
+    for (const entry of entries) {
+      if (filter !== "all" && filterForEntry(entry) !== filter) continue;
+      if (!matchesSearch(entry, normalizedSearch)) continue;
+      const key = groupKey(entry);
+      const existing = grouped.get(key);
+      if (existing) existing.entries.push(entry);
+      else grouped.set(key, { key, label: groupLabel(entry), entries: [entry] });
+    }
+    return [...grouped.values()];
+  }, [entries, filter, normalizedSearch]);
+
+  useEffect(() => {
+    if (!activeGroupKey) return;
+    setExpandedGroups((current) =>
+      current.has(activeGroupKey) ? current : new Set([...current, activeGroupKey])
+    );
+  }, [activeGroupKey]);
+
+  const toggleGroup = (key: string) =>
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const activePhase = activeEntry ? timelineEntryPhase(activeEntry) : null;
+  const activeCaption =
+    activePhase === "current"
+      ? "Happening now"
+      : activePhase === "future"
+        ? "Next on your trip"
+        : activePhase === "past"
+          ? "Latest on this trip"
+          : "Needs scheduling";
+
+  return (
+    <ModalSheet
+      eyebrow="Timeline navigator"
+      title="Trip agenda"
+      onClose={onClose}
+      manageHistory={false}
+      placement="end"
+    >
+      {activeEntry && (
+        <button
+          type="button"
+          onClick={() => onSelect(activeEntry.id)}
+          className="mt-5 flex w-full items-center gap-3 rounded-2xl bg-brand px-4 py-3 text-left text-surface shadow-soft focus-visible:ring-2 focus-visible:ring-brand"
+          aria-label={`Jump to now: ${entryTitle(activeEntry)}`}
+        >
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface/15">
+            <LocateFixed className="size-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[.65rem] font-black uppercase tracking-[.14em] text-surface/65">
+              {activeCaption}
+            </span>
+            <strong className="mt-0.5 block truncate text-sm">{entryTitle(activeEntry)}</strong>
+          </span>
+          <ChevronRight className="size-4 shrink-0" />
+        </button>
+      )}
+
+      <div className="relative mt-4">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
+        <input
+          className="form-input mt-0 pl-10"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search events"
+          aria-label="Search trip agenda"
+        />
+      </div>
+
+      <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="Agenda filters">
+        {filterChoices.map((choice) => (
+          <button
+            key={choice.value}
+            type="button"
+            onClick={() => setFilter(choice.value)}
+            className={`shrink-0 rounded-full border px-3 py-2 text-xs font-black ${
+              filter === choice.value
+                ? "border-brand bg-brand text-surface"
+                : "border-line bg-elevated text-muted"
+            }`}
+            aria-pressed={filter === choice.value}
+          >
+            {choice.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {groups.map((group) => {
+          const expanded = Boolean(normalizedSearch) || expandedGroups.has(group.key);
+          return (
+            <section key={group.key} className="overflow-hidden rounded-2xl border border-line">
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.key)}
+                className="flex w-full items-center gap-3 bg-elevated px-4 py-3 text-left"
+                aria-expanded={expanded}
+              >
+                <span className="min-w-0 flex-1">
+                  <strong className="block truncate text-sm">{group.label}</strong>
+                  <span className="mt-0.5 block text-xs text-muted">
+                    {group.entries.length} item{group.entries.length === 1 ? "" : "s"}
+                  </span>
+                </span>
+                <ChevronDown
+                  className={`size-4 shrink-0 text-muted transition-transform ${expanded ? "rotate-180" : ""}`}
+                />
+              </button>
+              {expanded && (
+                <div className="space-y-2 border-t border-line p-2">
+                  {group.entries.map((entry) => (
+                    <AgendaEntryRow
+                      key={entry.id}
+                      entry={entry}
+                      itinerary={itinerary}
+                      active={entry.id === activeEntryId}
+                      onSelect={onSelect}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      {!groups.length && (
+        <p className="mt-5 rounded-2xl border border-dashed border-line p-6 text-center text-sm text-muted">
+          No agenda items match this search or filter.
+        </p>
+      )}
+    </ModalSheet>
+  );
+}

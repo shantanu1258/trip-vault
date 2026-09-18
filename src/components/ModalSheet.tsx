@@ -7,12 +7,14 @@ export function ModalSheet({
   eyebrow,
   onClose,
   manageHistory = true,
+  placement = "center",
   children
 }: {
   title: string;
   eyebrow: string;
   onClose: () => void;
   manageHistory?: boolean;
+  placement?: "center" | "end";
   children: ReactNode;
 }) {
   const titleId = useId();
@@ -27,12 +29,16 @@ export function ModalSheet({
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-end justify-center bg-brand/55 sm:items-center sm:p-6"
+      className={`fixed inset-0 z-[70] flex items-end justify-center bg-brand/55 ${
+        placement === "end" ? "sm:items-stretch sm:justify-end sm:p-4" : "sm:items-center sm:p-6"
+      }`}
       role="presentation"
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <section
-        className="sheet-enter max-h-[94dvh] w-full max-w-xl overflow-y-auto rounded-t-[2rem] bg-surface p-5 shadow-focus sm:rounded-[2rem] sm:p-7"
+        className={`sheet-enter max-h-[94dvh] w-full overflow-y-auto rounded-t-[2rem] bg-surface p-5 shadow-focus sm:rounded-[2rem] sm:p-7 ${
+          placement === "end" ? "sm:h-full sm:max-h-full sm:max-w-md" : "max-w-xl"
+        }`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

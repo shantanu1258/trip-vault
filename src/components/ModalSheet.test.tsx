@@ -24,4 +24,21 @@ describe("ModalSheet", () => {
     expect(dialog.querySelector(".modal-sheet-body")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toHaveClass("primary-button");
   });
+
+  it("can become a full-height end drawer on larger screens", () => {
+    render(
+      <ModalSheet
+        eyebrow="Timeline navigator"
+        title="Trip agenda"
+        onClose={vi.fn()}
+        placement="end"
+      >
+        Agenda
+      </ModalSheet>
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Trip agenda" });
+    expect(dialog).toHaveClass("sm:h-full", "sm:max-h-full", "sm:max-w-md");
+    expect(dialog.parentElement).toHaveClass("sm:items-stretch", "sm:justify-end");
+  });
 });

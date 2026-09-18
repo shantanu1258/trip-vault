@@ -10,6 +10,7 @@ import {
   Download,
   LocateFixed,
   Info,
+  ListTree,
   MapPin,
   NotebookPen,
   Pencil,
@@ -102,6 +103,7 @@ import {
 } from "../features/trips/navigation";
 import { CostDetailsSheet, TripExpensesSheet } from "../features/trips/TripExpenses";
 import { TripDetailsView } from "../features/trips/TripDetailsView";
+import { TripAgendaSheet } from "../features/trips/TripAgendaSheet";
 import { RequirementDetailsSheet } from "../features/readiness/RequirementDetailsSheet";
 import { localProfileId } from "../features/sync/localSync";
 import { suppressRealtimeRefresh } from "../features/sync/RealtimeRefresh";
@@ -1224,6 +1226,7 @@ export function TripPage() {
   const view: TripView = searchParams.get("view") === "details" ? "details" : "timeline";
   const requestedForm = openFormFromQuery(searchParams.get("add"));
   const routedEventId = searchParams.get("event");
+  const agendaOpen = searchParams.get("agenda") === "open";
   const requestedEventType = searchParams.get("eventType");
   const routedEventType = timelineEventTypes.includes(requestedEventType as TimelineEventType)
     ? (requestedEventType as TimelineEventType)
@@ -1675,6 +1678,29 @@ export function TripPage() {
     nextParams.delete("section");
     setSearchParams(nextParams, {
       state: tripIntentNavigationState(location.state, tripId, "current", { view: "timeline" })
+    });
+  };
+  const openAgenda = () => {
+    saveScroll(tripId, view);
+    const next = new URLSearchParams(searchParams);
+    next.set("agenda", "open");
+    setSearchParams(next, {
+      state: tripRouteModalNavigationState(location.state, tripId, view)
+    });
+  };
+  const selectAgendaEntry = (id: string) => {
+    requestedTimelineItem.current = id;
+    positioned.current = false;
+    const next = new URLSearchParams(searchParams);
+    next.delete("agenda");
+    next.delete("view");
+    next.delete("section");
+    setSearchParams(next, {
+      replace: true,
+      state: tripIntentNavigationState(null, tripId, "target", {
+        view: "timeline",
+        targetId: id
+      })
     });
   };
   const closeForm = () => {
@@ -2456,6 +2482,23 @@ export function TripPage() {
               )}
               <button
                 type="button"
+                onClick={openAgenda}
+                className="secondary-button relative size-11 justify-center px-0 sm:size-auto sm:px-4"
+                aria-label="Open trip agenda"
+              >
+                <ListTree className="size-4" />
+                <span className="hidden sm:inline">Agenda</span>
+                {timelineEntries.length > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full bg-coral px-1 text-[.6rem] font-black leading-5 text-white"
+                  >
+                    {timelineEntries.length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
                 onClick={(event) => openPeople(event.currentTarget)}
                 className="secondary-button size-11 justify-center px-0 sm:size-auto sm:px-4"
                 aria-label={`People and sharing · ${focusedTraveler?.display_name ?? "Everyone"}`}
@@ -2487,7 +2530,7 @@ export function TripPage() {
                 <button
                   type="button"
                   onClick={() => scrollToItem(activeTimelineEntry.id)}
-                  className="tap-target grid size-11 place-items-center rounded-xl border border-line text-brand"
+                  className="tap-target hidden size-11 place-items-center rounded-xl border border-line text-brand sm:grid"
                   aria-label="Jump to now or next"
                 >
                   <LocateFixed className="size-5" />
@@ -2547,6 +2590,14 @@ export function TripPage() {
               </>
             ) : undefined
           }
+        />
+      )}
+      {trip && agendaOpen && (
+        <TripAgendaSheet
+          entries={timelineEntries}
+          activeEntryId={activeTimelineEntry?.id}
+          onClose={() => closeRouteModal(["agenda"])}
+          onSelect={selectAgendaEntry}
         />
       )}
       {trip &&

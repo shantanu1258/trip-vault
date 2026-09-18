@@ -788,6 +788,48 @@ describe("trip summary interactions", () => {
     HTMLElement.prototype.scrollIntoView = previousScrollIntoView;
   });
 
+  it("opens the route-backed agenda from anywhere and jumps to a selected event", async () => {
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listItinerary.mockResolvedValue([activity]);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1?view=details"]}>
+          <LocationProbe />
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open trip agenda" }));
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/trips/trip-1?view=details&agenda=open"
+    );
+    const agenda = screen.getByRole("region", { name: "Trip agenda" });
+    expect(
+      within(agenda).getByRole("button", { name: "Jump to now: Museum visit" })
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      within(agenda).getByRole("button", { name: "View Museum visit in timeline" })
+    );
+
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1"));
+    expect(screen.queryByRole("region", { name: "Trip agenda" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Complete timeline" })).toBeInTheDocument();
+  });
+
   it("shows complete wrapped document names in Trip details", async () => {
     const longTitle =
       "Other booking confirmation · Ankita · Some Place to Some Place with a deliberately long generated title";
