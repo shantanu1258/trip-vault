@@ -1955,7 +1955,7 @@ export function TripPage() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="form-input mt-0 pl-12 pr-11"
-                placeholder="Search timeline, PNR, airport, document, traveler…"
+                placeholder="Search hotel, date, flight, activity, document, traveler…"
                 aria-label="Search this trip"
               />
               {query && (
