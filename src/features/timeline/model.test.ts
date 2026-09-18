@@ -420,4 +420,60 @@ describe("timeline model", () => {
         requirements: []
       })[0]?.title
     ).toBe("To Singapore"));
+  it("finds a local timeline date and points to that date's first event", () => {
+    const first = {
+      ...event("first", "2026-10-01T02:00:00Z"),
+      title: "Breakfast",
+      timezone: "Asia/Kolkata"
+    };
+    const second = {
+      ...event("second", "2026-10-01T08:00:00Z"),
+      title: "Museum",
+      timezone: "Asia/Kolkata"
+    };
+    const nextDay = {
+      ...event("next-day", "2026-10-02T08:00:00Z"),
+      title: "Train",
+      timezone: "Asia/Kolkata"
+    };
+    const february = {
+      ...event("february", "2027-02-28T08:00:00Z"),
+      title: "Ferry",
+      timezone: "Asia/Kolkata"
+    };
+    const input = {
+      tripId: "trip",
+      itinerary: [second, february, nextDay, first],
+      bookings: [],
+      flights: [],
+      journeys: [],
+      documents: [],
+      travelers: [],
+      requirements: []
+    };
+
+    expect(searchTrip({ ...input, query: "October 1, 2026" })[0]).toMatchObject({
+      id: "date:2026-10-01",
+      group: "Dates",
+      title: "Thursday, October 1, 2026",
+      detail: "Jump to this date",
+      timelineItemId: "first"
+    });
+    expect(searchTrip({ ...input, query: "2026-10-02" })[0]).toMatchObject({
+      id: "date:2026-10-02",
+      timelineItemId: "next-day"
+    });
+    expect(searchTrip({ ...input, query: "Thursday" })[0]).toMatchObject({
+      id: "date:2026-10-01",
+      timelineItemId: "first"
+    });
+    expect(searchTrip({ ...input, query: "28 feb" })[0]).toMatchObject({
+      id: "date:2027-02-28",
+      timelineItemId: "february"
+    });
+    expect(searchTrip({ ...input, query: "FEB 28" })[0]).toMatchObject({
+      id: "date:2027-02-28",
+      timelineItemId: "february"
+    });
+  });
 });

@@ -10,7 +10,13 @@ import type {
 import { localDateTimeToIso } from "../trips/validation";
 import { formatDurationBetween, formatDurationMinutes } from "../../lib/formatDuration";
 
-export type TimelineSearchGroup = "Timeline" | "Bookings" | "Documents" | "Travelers" | "Readiness";
+export type TimelineSearchGroup =
+  | "Dates"
+  | "Timeline"
+  | "Bookings"
+  | "Documents"
+  | "Travelers"
+  | "Readiness";
 export type TimelineSearchResult = {
   id: string;
   group: TimelineSearchGroup;
@@ -410,6 +416,38 @@ function normalized(value: unknown) {
     .toLocaleLowerCase();
 }
 
+function searchableTimelineDate(item: ItineraryItem) {
+  const date = new Date(item.starts_at);
+  const format = (locale: string, options: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat(locale, { timeZone: item.timezone, ...options }).format(date);
+  const key = dateKey(item.starts_at, item.timezone);
+  const title = format("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "long"
+  });
+  return {
+    key,
+    title,
+    aliases: [
+      key,
+      key.replaceAll("-", "/"),
+      title,
+      format("en-US", { weekday: "long" }),
+      format("en-US", { weekday: "short" }),
+      format("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      format("en-US", { year: "numeric", month: "short", day: "numeric" }),
+      format("en-GB", { year: "numeric", month: "long", day: "numeric" }),
+      format("en-GB", { year: "numeric", month: "short", day: "numeric" }),
+      format("en-US", { month: "long", day: "numeric" }),
+      format("en-US", { month: "short", day: "numeric" }),
+      format("en-GB", { month: "long", day: "numeric" }),
+      format("en-GB", { month: "short", day: "numeric" })
+    ]
+  };
+}
+
 export function searchTrip(input: {
   query: string;
   tripId: string;
@@ -425,6 +463,20 @@ export function searchTrip(input: {
   if (query.length < 2) return [];
   const results: TimelineSearchResult[] = [];
   const matches = (...values: unknown[]) => normalized(values.join(" ")).includes(query);
+  const matchedDates = new Set<string>();
+  for (const item of sortTimelineItems(input.itinerary)) {
+    if (item.timing_mode === "unscheduled") continue;
+    const date = searchableTimelineDate(item);
+    if (matchedDates.has(date.key) || !matches(...date.aliases)) continue;
+    matchedDates.add(date.key);
+    results.push({
+      id: `date:${date.key}`,
+      group: "Dates",
+      title: date.title,
+      detail: "Jump to this date",
+      timelineItemId: item.id
+    });
+  }
   for (const item of input.itinerary)
     if (
       matches(item.title, item.event_type, item.notes, item.location?.label, item.location?.address)

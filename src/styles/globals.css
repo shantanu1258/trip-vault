@@ -277,12 +277,70 @@ textarea:focus-visible {
   }
 }
 
+@keyframes timeline-focus-pulse {
+  0%,
+  38%,
+  76%,
+  100% {
+    border-color: rgb(var(--color-line));
+    box-shadow: 0 0 0 0 rgb(var(--timeline-focus-color) / 0);
+  }
+  18%,
+  56% {
+    border-color: rgb(var(--timeline-focus-color));
+    box-shadow:
+      0 0 0 3px rgb(var(--timeline-focus-color) / 0.42),
+      0 0 24px 5px rgb(var(--timeline-focus-color) / 0.22);
+  }
+}
+
 .page-enter {
   animation: page-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .sheet-enter {
   animation: sheet-enter 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+#trip-search > .lucide-search {
+  color: rgb(var(--color-surface));
+}
+
+#trip-search > .form-input {
+  border-color: rgb(var(--color-brand));
+  background: rgb(var(--color-brand));
+  color: rgb(var(--color-surface));
+  caret-color: rgb(var(--color-coral));
+  box-shadow: 0 8px 24px rgb(var(--shadow-color) / 0.14);
+}
+
+#trip-search > .form-input::placeholder {
+  color: rgb(var(--color-surface) / 0.68);
+}
+
+#trip-search > .form-input:focus {
+  border-color: rgb(var(--color-brand));
+  background: rgb(var(--color-brand));
+  box-shadow: 0 10px 28px rgb(var(--shadow-color) / 0.18);
+}
+
+#trip-search > .form-input:focus-visible {
+  outline-color: rgb(var(--color-brand-soft));
+}
+
+#trip-search > button[aria-label="Clear search"] {
+  color: rgb(var(--color-surface));
+}
+
+[data-trip-scroll-anchor="timeline"].timeline-focus-pulse > :last-child {
+  --timeline-focus-color: 96 165 250;
+
+  animation: timeline-focus-pulse 900ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+[data-trip-scroll-anchor="timeline"].timeline-focus-pulse:has(> [aria-current="step"])
+  > :last-child {
+  --timeline-focus-color: var(--color-coral);
 }
 
 @media (prefers-reduced-motion: reduce) {

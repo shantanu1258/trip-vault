@@ -83,7 +83,7 @@ export function AppShell({ children, demo = false }: { children: ReactNode; demo
               <button
                 type="button"
                 aria-label="Search this trip"
-                className="tap-target grid size-11 place-items-center rounded-2xl border border-line bg-surface text-muted transition-colors hover:border-brand/40 hover:text-brand"
+                className="tap-target grid size-11 place-items-center rounded-2xl border border-brand bg-brand text-surface shadow-soft transition-opacity hover:opacity-90"
                 onClick={openTripSearch}
               >
                 <Search className="size-5" aria-hidden="true" />
