@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, FilePlus2, FileText, Loader2, Paperclip, Trash2 } from "lucide-react";
+import { ChevronDown, FilePlus2, FileText, Loader2, Paperclip, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { DocumentVisibilityBadge } from "../../components/DocumentVisibilityBadge";
@@ -10,7 +10,6 @@ import {
   attachDocumentsToEvent,
   listEventDocumentLinks,
   listVaultDocuments,
-  reorderEventDocuments,
   unlinkDocumentFromEvent
 } from "./api";
 import { documentMatchesTraveler, documentPurposeLabel } from "./documentModel";
@@ -28,12 +27,22 @@ function travelerGroup(document: VaultDocument, travelers: Traveler[]) {
   const ids = [...assignedTravelerIds(document)].sort();
   if (!ids.length)
     return document.assignment_mode === "unassigned"
-      ? { key: "unassigned", label: "Unassigned" }
-      : { key: "shared", label: "Everyone" };
+      ? { key: "unassigned", label: "Unassigned", order: Number.MAX_SAFE_INTEGER }
+      : { key: "shared", label: "Everyone", order: -1 };
   const names = ids.map(
     (id) => travelers.find((traveler) => traveler.id === id)?.display_name ?? "Traveler"
   );
-  return { key: `travelers:${ids.join(",")}`, label: names.join(" + ") };
+  const travelerOrder = Math.min(
+    ...ids.map((id) => {
+      const index = travelers.findIndex((traveler) => traveler.id === id);
+      return index === -1 ? Number.MAX_SAFE_INTEGER - 1 : index;
+    })
+  );
+  return {
+    key: `travelers:${ids.join(",")}`,
+    label: names.join(" + "),
+    order: travelerOrder
+  };
 }
 
 export function EventDocumentShortcut({
@@ -99,6 +108,7 @@ export function EventDocuments({
   const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const [picking, setPicking] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
   const linksQuery = useQuery({
     queryKey: ["event-documents", item.id],
     queryFn: () => listEventDocumentLinks(item.id)
@@ -124,10 +134,6 @@ export function EventDocuments({
     mutationFn: (documentId: string) => unlinkDocumentFromEvent(item.id, documentId),
     onSuccess: refreshDocumentLinks
   });
-  const reorderMutation = useMutation({
-    mutationFn: (ids: string[]) => reorderEventDocuments(item.id, ids),
-    onSuccess: refreshDocumentLinks
-  });
   const matchesFocus = (document: NonNullable<typeof documentsQuery.data>[number]) =>
     !travelerId || documentMatchesTraveler(document, travelerId);
   const explicitLinks = (linksQuery.data ?? []).filter((link) => matchesFocus(link.document));
@@ -150,20 +156,27 @@ export function EventDocuments({
       inherited: true
     }))
   ];
-  const groupByTraveler = visibleLinks.some(
-    (link) => assignedTravelerIds(link.document).length > 0
-  );
   const documentGroups = (() => {
-    if (!groupByTraveler) return [{ key: "all", label: null, links: visibleLinks }];
-    const groups = new Map<string, { key: string; label: string; links: typeof visibleLinks }>();
+    const groups = new Map<
+      string,
+      { key: string; label: string; order: number; links: typeof visibleLinks }
+    >();
     for (const link of visibleLinks) {
       const group = travelerGroup(link.document, travelers);
       const existing = groups.get(group.key);
       if (existing) existing.links.push(link);
       else groups.set(group.key, { ...group, links: [link] });
     }
-    return [...groups.values()];
+    return [...groups.values()].sort((left, right) => left.order - right.order);
   })();
+
+  const toggleGroup = (key: string) =>
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const attach = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -204,89 +217,54 @@ export function EventDocuments({
           {documentGroups.map((group) => (
             <section key={group.key} aria-label={group.label ?? undefined}>
               {group.label && (
-                <div className="mb-1.5 flex items-center gap-2">
-                  <strong className="shrink-0 text-xs font-extrabold text-ink">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.key)}
+                  className="mb-1.5 flex w-full items-center gap-2 text-left"
+                  aria-expanded={!collapsedGroups.has(group.key)}
+                  aria-label={`${collapsedGroups.has(group.key) ? "Expand" : "Collapse"} documents for ${group.label}`}
+                >
+                  <strong className="shrink-0 text-base font-extrabold text-ink">
                     {group.label}
                   </strong>
                   <span className="h-px flex-1 bg-line" aria-hidden="true" />
                   <span className="text-[.65rem] font-bold text-muted">{group.links.length}</span>
-                </div>
+                  <ChevronDown
+                    className={`size-4 shrink-0 text-muted transition-transform ${collapsedGroups.has(group.key) ? "-rotate-90" : ""}`}
+                  />
+                </button>
               )}
-              <div className="grid gap-2">
-                {group.links.map((link) => {
-                  const explicitIndex = explicitLinks.findIndex(
-                    (row) => row.document_id === link.document_id
-                  );
-                  const documentTitle = link.label || link.document.title;
-                  return (
-                    <div
-                      key={link.document_id}
-                      className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface/70 sm:flex-row sm:items-stretch"
-                    >
-                      <Link
-                        className="tap-target flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-xs font-bold sm:items-center"
-                        to={`/trips/${item.trip_id}/documents/${link.document_id}`}
-                        state={navigationState}
+              {(!group.label || !collapsedGroups.has(group.key)) && (
+                <div className="grid gap-2">
+                  {group.links.map((link) => {
+                    const documentTitle = link.label || link.document.title;
+                    return (
+                      <div
+                        key={link.document_id}
+                        className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface/70 sm:flex-row sm:items-stretch"
                       >
-                        <FileText className="mt-0.5 size-3.5 shrink-0 text-brand sm:mt-0" />
-                        <span className="min-w-0 flex-1 break-words leading-5 [overflow-wrap:anywhere]">
-                          {documentTitle}
-                        </span>
-                      </Link>
-                      <div className="flex min-w-0 items-stretch border-t border-line sm:border-l sm:border-t-0">
-                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 px-3 py-1 sm:flex-none sm:flex-nowrap sm:px-2">
-                          <span className="text-[.65rem] font-medium text-muted">
-                            {documentPurposeLabel(link.document.purpose)}
-                            {link.inherited ? " · booking document" : ""}
-                            {link.document.sync_state === "queued"
-                              ? " · saved on device, cloud pending"
-                              : ""}
+                        <Link
+                          className="tap-target flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-xs font-bold sm:items-center"
+                          to={`/trips/${item.trip_id}/documents/${link.document_id}`}
+                          state={navigationState}
+                        >
+                          <FileText className="mt-0.5 size-3.5 shrink-0 text-brand sm:mt-0" />
+                          <span className="min-w-0 flex-1 break-words leading-5 [overflow-wrap:anywhere]">
+                            {documentTitle}
                           </span>
-                          <DocumentVisibilityBadge visibility={link.document.visibility} />
-                        </div>
-                        {canEdit && !link.inherited && (
-                          <div
-                            className="ml-auto flex shrink-0 border-l border-line"
-                            aria-label={`Actions for ${documentTitle}`}
-                            role="group"
-                          >
-                            <div className="flex divide-x divide-line sm:flex-col sm:divide-x-0 sm:divide-y">
-                              <button
-                                disabled={explicitIndex === 0 || reorderMutation.isPending}
-                                type="button"
-                                onClick={() => {
-                                  const ids = explicitLinks.map((row) => row.document_id);
-                                  [ids[explicitIndex - 1], ids[explicitIndex]] = [
-                                    ids[explicitIndex],
-                                    ids[explicitIndex - 1]
-                                  ];
-                                  reorderMutation.mutate(ids);
-                                }}
-                                className="tap-target grid size-11 place-items-center text-muted disabled:opacity-30 sm:h-auto sm:min-h-6 sm:w-8 sm:min-w-8 sm:flex-1"
-                                aria-label={`Move ${documentTitle} earlier`}
-                              >
-                                <ArrowUp className="size-3" />
-                              </button>
-                              <button
-                                disabled={
-                                  explicitIndex === explicitLinks.length - 1 ||
-                                  reorderMutation.isPending
-                                }
-                                type="button"
-                                onClick={() => {
-                                  const ids = explicitLinks.map((row) => row.document_id);
-                                  [ids[explicitIndex], ids[explicitIndex + 1]] = [
-                                    ids[explicitIndex + 1],
-                                    ids[explicitIndex]
-                                  ];
-                                  reorderMutation.mutate(ids);
-                                }}
-                                className="tap-target grid size-11 place-items-center text-muted disabled:opacity-30 sm:h-auto sm:min-h-6 sm:w-8 sm:min-w-8 sm:flex-1"
-                                aria-label={`Move ${documentTitle} later`}
-                              >
-                                <ArrowDown className="size-3" />
-                              </button>
-                            </div>
+                        </Link>
+                        <div className="flex min-w-0 items-stretch border-t border-line sm:border-l sm:border-t-0">
+                          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 px-3 py-1 sm:flex-none sm:flex-nowrap sm:px-2">
+                            <span className="text-[.65rem] font-medium text-muted">
+                              {documentPurposeLabel(link.document.purpose)}
+                              {link.inherited ? " · booking document" : ""}
+                              {link.document.sync_state === "queued"
+                                ? " · saved on device, cloud pending"
+                                : ""}
+                            </span>
+                            <DocumentVisibilityBadge visibility={link.document.visibility} />
+                          </div>
+                          {canEdit && !link.inherited && (
                             <button
                               type="button"
                               onClick={async () => {
@@ -300,18 +278,18 @@ export function EventDocuments({
                                 )
                                   unlinkMutation.mutate(link.document_id);
                               }}
-                              className="tap-target grid size-11 place-items-center border-l border-line text-muted hover:text-danger sm:h-auto sm:self-stretch"
+                              className="tap-target grid size-11 shrink-0 place-items-center border-l border-line text-muted hover:text-danger sm:h-auto sm:self-stretch"
                               aria-label={`Unlink ${documentTitle}`}
                             >
                               <Trash2 className="size-3.5" />
                             </button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           ))}
         </div>

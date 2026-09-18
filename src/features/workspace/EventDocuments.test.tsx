@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,7 +10,6 @@ const mocks = vi.hoisted(() => ({
   attachDocumentsToEvent: vi.fn(),
   listEventDocumentLinks: vi.fn(),
   listVaultDocuments: vi.fn(),
-  reorderEventDocuments: vi.fn(),
   unlinkDocumentFromEvent: vi.fn()
 }));
 
@@ -18,7 +17,6 @@ vi.mock("./api", () => ({
   attachDocumentsToEvent: mocks.attachDocumentsToEvent,
   listEventDocumentLinks: mocks.listEventDocumentLinks,
   listVaultDocuments: mocks.listVaultDocuments,
-  reorderEventDocuments: mocks.reorderEventDocuments,
   unlinkDocumentFromEvent: mocks.unlinkDocumentFromEvent
 }));
 
@@ -171,7 +169,6 @@ describe("event document cards", () => {
   beforeEach(() => {
     mocks.listEventDocumentLinks.mockReset().mockResolvedValue([]);
     mocks.listVaultDocuments.mockReset().mockResolvedValue([]);
-    mocks.reorderEventDocuments.mockReset().mockResolvedValue(undefined);
   });
 
   it("uses a compact horizontal tablet row without hiding a long document name", async () => {
@@ -196,44 +193,10 @@ describe("event document cards", () => {
     expect(detailsAndActions).toHaveTextContent("Ticket");
     expect(detailsAndActions).toHaveTextContent("Trip members");
 
-    const actions = screen.getByRole("group", { name: `Actions for ${longTitle}` });
-    expect(actions.parentElement).toBe(detailsAndActions);
-    const earlier = screen.getByRole("button", { name: `Move ${longTitle} earlier` });
-    const later = screen.getByRole("button", { name: `Move ${longTitle} later` });
-    expect(earlier).toBeDisabled();
-    expect(later).toBeDisabled();
-    expect(earlier.parentElement).toHaveClass("sm:flex-col", "sm:divide-y");
-    expect(earlier).toHaveClass("sm:flex-1", "sm:min-h-6");
-    expect(screen.getByRole("button", { name: `Unlink ${longTitle}` })).toBeInTheDocument();
-  });
-
-  it("keeps sequencing controls working when multiple documents are attached", async () => {
-    const firstTitle = "Bus ticket";
-    const secondTitle = "Hotel voucher";
-    mocks.listEventDocumentLinks.mockResolvedValue([
-      link(document({ id: "bus-ticket", title: firstTitle }), 0),
-      link(document({ id: "hotel-voucher", title: secondTitle }), 1)
-    ]);
-
-    const user = userEvent.setup();
-    renderDocuments();
-
-    expect(
-      await screen.findByRole("button", { name: `Move ${firstTitle} earlier` })
-    ).toBeDisabled();
-    const moveFirstLater = screen.getByRole("button", { name: `Move ${firstTitle} later` });
-    expect(moveFirstLater).toBeEnabled();
-    expect(screen.getByRole("button", { name: `Move ${secondTitle} earlier` })).toBeEnabled();
-    expect(screen.getByRole("button", { name: `Move ${secondTitle} later` })).toBeDisabled();
-
-    await user.click(moveFirstLater);
-
-    await waitFor(() =>
-      expect(mocks.reorderEventDocuments).toHaveBeenCalledWith(item.id, [
-        "hotel-voucher",
-        "bus-ticket"
-      ])
-    );
+    const unlink = screen.getByRole("button", { name: `Unlink ${longTitle}` });
+    expect(unlink.parentElement).toBe(detailsAndActions);
+    expect(screen.queryByRole("button", { name: /Move .* earlier/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Move .* later/ })).not.toBeInTheDocument();
   });
 
   it("groups associated documents by traveler while keeping shared documents together", async () => {
@@ -252,20 +215,36 @@ describe("event document cards", () => {
       traveler_id: "ravi",
       traveler_ids: ["ravi"]
     });
-    mocks.listEventDocumentLinks.mockResolvedValue([link(shared, 0), link(asha, 1), link(ravi, 2)]);
+    mocks.listEventDocumentLinks.mockResolvedValue([link(asha, 0), link(shared, 1), link(ravi, 2)]);
 
-    renderDocuments([traveler("asha", "Asha Singh"), traveler("ravi", "Ravi Singh")]);
+    renderDocuments([traveler("ravi", "Ravi Singh"), traveler("asha", "Asha Singh")]);
 
-    expect(
-      within(await screen.findByRole("region", { name: "Everyone" })).getByText(
-        "Shared ferry confirmation"
-      )
-    ).toBeInTheDocument();
+    const regions = await screen.findAllByRole("region");
+    expect(regions.map((region) => region.getAttribute("aria-label"))).toEqual([
+      "Everyone",
+      "Ravi Singh",
+      "Asha Singh"
+    ]);
+    const everyone = screen.getByRole("region", { name: "Everyone" });
+    expect(within(everyone).getByText("Shared ferry confirmation")).toBeInTheDocument();
     expect(
       within(screen.getByRole("region", { name: "Asha Singh" })).getByText("Asha ferry ticket")
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole("region", { name: "Ravi Singh" })).getByText("Ravi ferry ticket")
     ).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Unlink .* ferry/ })).toHaveLength(3);
+    expect(screen.queryByRole("button", { name: /Move .* earlier/ })).not.toBeInTheDocument();
+
+    const ashaToggle = screen.getByRole("button", { name: "Collapse documents for Asha Singh" });
+    expect(ashaToggle).toHaveAttribute("aria-expanded", "true");
+    expect(within(ashaToggle).getByText("Asha Singh")).toHaveClass("text-base");
+    await userEvent.click(ashaToggle);
+    expect(screen.queryByText("Asha ferry ticket")).not.toBeInTheDocument();
+    expect(screen.getByText("Shared ferry confirmation")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand documents for Asha Singh" })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
   });
 });
