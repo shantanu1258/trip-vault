@@ -33,47 +33,60 @@ function itineraryItem(
 const entries: TripTimelineEntry[] = [
   {
     kind: "event",
+    id: "past-meal-1",
+    startsAt: "2000-01-01T06:00:00.000Z",
+    timezone: "Asia/Singapore",
+    item: itineraryItem(
+      "past-meal-1",
+      "Welcome dinner",
+      "meal",
+      "2000-01-01T06:00:00.000Z",
+      "Clarke Quay"
+    )
+  },
+  {
+    kind: "event",
     id: "flight-1",
-    startsAt: "2026-09-28T01:00:00.000Z",
+    startsAt: "2099-09-28T01:00:00.000Z",
     timezone: "Asia/Singapore",
     item: itineraryItem(
       "flight-1",
       "Flight to Singapore",
       "flight",
-      "2026-09-28T01:00:00.000Z",
+      "2099-09-28T01:00:00.000Z",
       "Changi Airport"
     )
   },
   {
     kind: "event",
     id: "museum-1",
-    startsAt: "2026-09-28T06:00:00.000Z",
+    startsAt: "2099-09-28T06:00:00.000Z",
     timezone: "Asia/Singapore",
     item: itineraryItem(
       "museum-1",
       "National Museum",
       "activity",
-      "2026-09-28T06:00:00.000Z",
+      "2099-09-28T06:00:00.000Z",
       "Stamford Road"
     )
   },
   {
     kind: "event",
     id: "hotel-1",
-    startsAt: "2026-09-29T07:00:00.000Z",
+    startsAt: "2099-09-29T07:00:00.000Z",
     timezone: "Asia/Singapore",
     item: itineraryItem(
       "hotel-1",
       "Check in · Marina Hotel",
       "hotel_check_in",
-      "2026-09-29T07:00:00.000Z",
+      "2099-09-29T07:00:00.000Z",
       "Marina Bay"
     )
   }
 ];
 
 describe("TripAgendaSheet", () => {
-  it("groups compact events by date and filters them without losing the active shortcut", async () => {
+  it("expands future dates, collapses past dates, and filters without losing the active shortcut", async () => {
     const onSelect = vi.fn();
     render(
       <TripAgendaSheet
@@ -86,17 +99,20 @@ describe("TripAgendaSheet", () => {
 
     expect(screen.getByRole("dialog", { name: "Trip agenda" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Jump to now: Flight to Singapore" })).toBeVisible();
-    expect(screen.getByRole("button", { name: /Monday.*September 28.*2026/ })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: /September 28.*2099/ })).toHaveAttribute(
       "aria-expanded",
       "true"
     );
-    expect(screen.getByRole("button", { name: /Tuesday.*September 29.*2026/ })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: /September 29.*2099/ })).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: /January 1.*2000/ })).toHaveAttribute(
       "aria-expanded",
       "false"
     );
 
     await userEvent.click(screen.getByRole("button", { name: "Stay" }));
-    await userEvent.click(screen.getByRole("button", { name: /Tuesday.*September 29.*2026/ }));
     expect(
       screen.getByRole("button", { name: "View Check in · Marina Hotel in timeline" })
     ).toBeInTheDocument();
@@ -107,7 +123,7 @@ describe("TripAgendaSheet", () => {
     await userEvent.click(screen.getByRole("button", { name: "All" }));
     await userEvent.type(screen.getByRole("textbox", { name: "Search trip agenda" }), "museum");
     const matchingGroup = screen
-      .getByRole("button", { name: /Monday.*September 28.*2026/ })
+      .getByRole("button", { name: /September 28.*2099/ })
       .closest("section");
     expect(
       within(matchingGroup as HTMLElement).getByRole("button", {

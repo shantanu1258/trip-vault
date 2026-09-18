@@ -60,6 +60,15 @@ function groupLabel(entry: TripTimelineEntry) {
   return formatItineraryDate(entry.startsAt, entry.timezone);
 }
 
+function defaultExpandedGroupKeys(entries: TripTimelineEntry[]) {
+  const keys = new Set<string>();
+  for (const entry of entries) {
+    const phase = timelineEntryPhase(entry);
+    if (phase === "current" || phase === "future") keys.add(groupKey(entry));
+  }
+  return keys;
+}
+
 function clockLabel(entry: TripTimelineEntry, itinerary: ItineraryItem[]) {
   if (entry.kind === "requirement") return entry.scheduleLabel;
   const descriptive = eventTimeLabel(entry.item, itinerary);
@@ -99,12 +108,16 @@ function AgendaEntryRow({
     <button
       type="button"
       onClick={() => onSelect(entry.id)}
-      className={`group grid w-full min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition hover:border-brand/50 hover:bg-elevated focus-visible:ring-2 focus-visible:ring-brand ${
+      className={`group grid w-full min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition hover:border-brand/50 hover:bg-elevated focus-visible:ring-2 focus-visible:ring-brand sm:grid-cols-[2.25rem_minmax(0,1fr)_auto] sm:gap-3 sm:px-3 sm:py-2.5 ${
         active ? "border-coral bg-coral/10" : "border-line bg-surface"
       }`}
       aria-label={`View ${title} in timeline`}
     >
-      <EventTypeIcon type={entryType(entry)} className="size-9 rounded-lg" iconClassName="size-4" />
+      <EventTypeIcon
+        type={entryType(entry)}
+        className="size-8 rounded-lg sm:size-9"
+        iconClassName="size-4"
+      />
       <span className="min-w-0">
         <span className="flex min-w-0 items-center gap-2">
           <strong className="truncate text-sm">{title}</strong>
@@ -139,14 +152,12 @@ export function TripAgendaSheet({
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<AgendaFilter>("all");
   const activeEntry = entries.find((entry) => entry.id === activeEntryId);
-  const activeGroupKey = activeEntry
-    ? groupKey(activeEntry)
-    : entries[0]
-      ? groupKey(entries[0])
-      : null;
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    () => new Set(activeGroupKey ? [activeGroupKey] : [])
-  );
+  const activeGroupKey = activeEntry ? groupKey(activeEntry) : null;
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
+    const initial = defaultExpandedGroupKeys(entries);
+    if (activeGroupKey) initial.add(activeGroupKey);
+    return initial;
+  });
   const itinerary = useMemo(
     () => entries.flatMap((entry) => (entry.kind === "event" ? [entry.item] : [])),
     [entries]
@@ -202,11 +213,11 @@ export function TripAgendaSheet({
         <button
           type="button"
           onClick={() => onSelect(activeEntry.id)}
-          className="mt-5 flex w-full items-center gap-3 rounded-2xl bg-brand px-4 py-3 text-left text-surface shadow-soft focus-visible:ring-2 focus-visible:ring-brand"
+          className="mt-4 flex w-full items-center gap-2.5 rounded-2xl bg-brand px-3 py-2.5 text-left text-surface shadow-soft focus-visible:ring-2 focus-visible:ring-brand sm:mt-5 sm:gap-3 sm:px-4 sm:py-3"
           aria-label={`Jump to now: ${entryTitle(activeEntry)}`}
         >
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface/15">
-            <LocateFixed className="size-5" />
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface/15 sm:size-10 sm:rounded-xl">
+            <LocateFixed className="size-4 sm:size-5" />
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-[.65rem] font-black uppercase tracking-[.14em] text-surface/65">
@@ -235,7 +246,7 @@ export function TripAgendaSheet({
             key={choice.value}
             type="button"
             onClick={() => setFilter(choice.value)}
-            className={`shrink-0 rounded-full border px-3 py-2 text-xs font-black ${
+            className={`shrink-0 rounded-full border px-2.5 py-1.5 text-xs font-black sm:px-3 sm:py-2 ${
               filter === choice.value
                 ? "border-brand bg-brand text-surface"
                 : "border-line bg-elevated text-muted"
@@ -247,29 +258,30 @@ export function TripAgendaSheet({
         ))}
       </div>
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-3 space-y-2 sm:mt-4 sm:space-y-3">
         {groups.map((group) => {
           const expanded = Boolean(normalizedSearch) || expandedGroups.has(group.key);
           return (
-            <section key={group.key} className="overflow-hidden rounded-2xl border border-line">
+            <section key={group.key}>
               <button
                 type="button"
                 onClick={() => toggleGroup(group.key)}
-                className="flex w-full items-center gap-3 bg-elevated px-4 py-3 text-left"
+                className="group/date flex w-full items-center gap-2 py-1 text-left sm:gap-3 sm:py-1.5"
                 aria-expanded={expanded}
               >
-                <span className="min-w-0 flex-1">
-                  <strong className="block truncate text-sm">{group.label}</strong>
-                  <span className="mt-0.5 block text-xs text-muted">
-                    {group.entries.length} item{group.entries.length === 1 ? "" : "s"}
-                  </span>
+                <strong className="shrink-0 text-xs uppercase tracking-[.08em] text-muted">
+                  {group.label}
+                </strong>
+                <span className="h-px min-w-4 flex-1 bg-line" aria-hidden="true" />
+                <span className="shrink-0 text-[.65rem] font-bold text-muted">
+                  {group.entries.length}
                 </span>
                 <ChevronDown
-                  className={`size-4 shrink-0 text-muted transition-transform ${expanded ? "rotate-180" : ""}`}
+                  className={`size-3.5 shrink-0 text-muted transition-transform group-hover/date:text-ink ${expanded ? "rotate-180" : ""}`}
                 />
               </button>
               {expanded && (
-                <div className="space-y-2 border-t border-line p-2">
+                <div className="space-y-1.5 pt-1 sm:space-y-2 sm:pt-1.5">
                   {group.entries.map((entry) => (
                     <AgendaEntryRow
                       key={entry.id}
