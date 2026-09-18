@@ -3,11 +3,13 @@ import { Loader2, Plane, Save, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { validateActionUrl } from "../admin/validation";
 import { listTripAirlines, updateTripAirline } from "./api";
+import { airlineAccentStyle } from "./airlineAccent";
 import type { TripAirline } from "./types";
 
 export function TripAirlinesPanel({ tripId, canEdit }: { tripId: string; canEdit: boolean }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<TripAirline | null>(null);
+  const [accentPreview, setAccentPreview] = useState("#142f31");
   const [message, setMessage] = useState("");
   const editorRef = useRef<HTMLFormElement>(null);
   const query = useQuery({
@@ -32,6 +34,7 @@ export function TripAirlinesPanel({ tripId, canEdit }: { tripId: string; canEdit
     setMessage("");
     mutation.reset();
     setEditing(airline);
+    setAccentPreview(airline.brand_color ?? "#142f31");
   };
 
   const closeEditor = () => {
@@ -101,7 +104,8 @@ export function TripAirlinesPanel({ tripId, canEdit }: { tripId: string; canEdit
               type="button"
               key={airline.id}
               onClick={() => beginEditing(airline)}
-              className="flex w-full items-center gap-3 rounded-xl bg-elevated p-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft focus-visible:ring-2 focus-visible:ring-brand"
+              style={airlineAccentStyle(airline.brand_color)}
+              className="airline-accent-rail flex w-full items-center gap-3 rounded-xl bg-elevated p-3 pl-4 text-left transition hover:-translate-y-0.5 hover:shadow-soft focus-visible:ring-2 focus-visible:ring-brand"
               aria-label={`Edit ${airline.name}`}
               aria-expanded={editing?.id === airline.id}
               aria-controls={
@@ -112,7 +116,11 @@ export function TripAirlinesPanel({ tripId, canEdit }: { tripId: string; canEdit
               <span className="text-xs font-extrabold text-brand">Edit</span>
             </button>
           ) : (
-            <div key={airline.id} className="flex items-center gap-3 rounded-xl bg-elevated p-3">
+            <div
+              key={airline.id}
+              style={airlineAccentStyle(airline.brand_color)}
+              className="airline-accent-rail flex items-center gap-3 rounded-xl bg-elevated p-3 pl-4"
+            >
               {content}
             </div>
           );
@@ -178,9 +186,21 @@ export function TripAirlinesPanel({ tripId, canEdit }: { tripId: string; canEdit
               className="h-12 w-full rounded-xl border border-line bg-surface p-1"
               type="color"
               name="brandColor"
-              defaultValue={editing.brand_color ?? "#142f31"}
+              value={accentPreview}
+              onChange={(event) => setAccentPreview(event.target.value)}
             />
           </label>
+          <div
+            data-testid="airline-accent-preview"
+            style={airlineAccentStyle(accentPreview)}
+            className="airline-accent-rail flex items-center gap-3 rounded-xl border border-line bg-elevated p-3 pl-4"
+          >
+            <span className="airline-accent-dot" aria-hidden="true" />
+            <span>
+              <strong className="block text-sm">Accent preview</strong>
+              <span className="text-xs text-muted">Used as a rail and airline marker</span>
+            </span>
+          </div>
           {(message || mutation.error) && (
             <p role="alert" className="text-sm font-bold text-danger">
               {message || "Could not save airline metadata."}

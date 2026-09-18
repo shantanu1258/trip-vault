@@ -50,10 +50,15 @@ describe("trip airline cards", () => {
   it("opens the inline editor from the whole card when editing is allowed", async () => {
     renderPanel(true);
 
-    await userEvent.click(await screen.findByRole("button", { name: "Edit Air India" }));
+    const card = await screen.findByRole("button", { name: "Edit Air India" });
+    expect(card.style.getPropertyValue("--airline-accent")).toBe("#142f31");
+    await userEvent.click(card);
 
     expect(screen.getByText("Edit airline snapshot")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Air India")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("airline-accent-preview").style.getPropertyValue("--airline-accent")
+    ).toBe("#142f31");
   });
 
   it("stays informational for a viewer", async () => {

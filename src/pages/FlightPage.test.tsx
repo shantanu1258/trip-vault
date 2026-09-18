@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   getTrip: vi.fn(),
   listMembers: vi.fn(),
   listFlightLegsForBooking: vi.fn(),
+  listTripAirlines: vi.fn(),
   listVaultDocuments: vi.fn()
 }));
 
@@ -48,7 +49,7 @@ vi.mock("../features/workspace/api", () => ({
   listFlightTravelers: vi.fn().mockResolvedValue([]),
   listMembers: mocks.listMembers,
   listTravelers: vi.fn().mockResolvedValue([]),
-  listTripAirlines: vi.fn().mockResolvedValue([]),
+  listTripAirlines: mocks.listTripAirlines,
   listVaultDocuments: mocks.listVaultDocuments,
   updateFlightLeg: vi.fn()
 }));
@@ -92,6 +93,7 @@ function flight(scope: JourneyScope): FlightLeg {
     booking_id: "booking-1",
     segment_order: 0,
     airline_name: "Air India",
+    marketing_airline_id: "airline-1",
     flight_number: "AI 101",
     departure_airport_code: "BLR",
     departure_airport_name: "Bengaluru",
@@ -125,7 +127,8 @@ function flight(scope: JourneyScope): FlightLeg {
 
 async function renderFlight(
   scope: JourneyScope,
-  initialEntry: string | { pathname: string; state: unknown } = "/trips/trip-1/flights/flight-1"
+  initialEntry: string | { pathname: string; state: unknown } = "/trips/trip-1/flights/flight-1",
+  connectedFlights?: FlightLeg[]
 ) {
   const currentFlight = flight(scope);
   mocks.getBooking.mockResolvedValue(booking(scope));
@@ -140,7 +143,7 @@ async function renderFlight(
       display_name: "Owner"
     }
   ]);
-  mocks.listFlightLegsForBooking.mockResolvedValue([currentFlight]);
+  mocks.listFlightLegsForBooking.mockResolvedValue(connectedFlights ?? [currentFlight]);
 
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const view = render(
@@ -172,6 +175,72 @@ describe("flight edit time-zone controls", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.listVaultDocuments.mockResolvedValue([]);
+    mocks.listTripAirlines.mockResolvedValue([
+      {
+        id: "airline-1",
+        trip_id: trip.id,
+        name: "Air India",
+        iata_code: "AI",
+        icao_code: "AIC",
+        check_in_url_template: null,
+        manage_booking_url_template: null,
+        status_url_template: null,
+        tracker_url_template: null,
+        brand_color: "#d71920",
+        metadata_source: "catalog",
+        source_catalog_key: "air-india",
+        source_config_version: 1,
+        version: 1
+      },
+      {
+        id: "airline-2",
+        trip_id: trip.id,
+        name: "Akasa Air",
+        iata_code: "QP",
+        icao_code: "AKJ",
+        check_in_url_template: null,
+        manage_booking_url_template: null,
+        status_url_template: null,
+        tracker_url_template: null,
+        brand_color: "#7c3aed",
+        metadata_source: "catalog",
+        source_catalog_key: "akasa-air",
+        source_config_version: 1,
+        version: 1
+      }
+    ]);
+  });
+
+  it("uses the configured airline accent without replacing the flight treatment", async () => {
+    await renderFlight("domestic");
+
+    const hero = screen.getByRole("heading", { name: "BLR → DEL" }).closest("section");
+    expect(hero?.style.getPropertyValue("--airline-accent")).toBe("#d71920");
+    expect(hero).toHaveClass("airline-accent-hero", "bg-brand");
+  });
+
+  it("uses neutral connection cards with an airline-color dot", async () => {
+    const first = flight("domestic");
+    const second: FlightLeg = {
+      ...flight("domestic"),
+      id: "flight-2",
+      segment_order: 1,
+      airline_name: "Akasa Air",
+      marketing_airline_id: "airline-2",
+      flight_number: "QP 202",
+      departure_airport_code: "DEL",
+      departure_airport_name: "Delhi",
+      arrival_airport_code: "MEL",
+      arrival_airport_name: "Melbourne"
+    };
+
+    await renderFlight("domestic", "/trips/trip-1/flights/flight-1", [first, second]);
+
+    const connection = screen.getByRole("link", { name: /Akasa Air.*Next leg/i });
+    expect(connection).toHaveClass("bg-surface", "text-ink");
+    expect(connection).not.toHaveClass("airline-accent-rail");
+    expect(connection.style.getPropertyValue("--airline-accent")).toBe("#7c3aed");
+    expect(connection.querySelector(".airline-accent-dot")).not.toBeNull();
   });
 
   it("keeps domestic conversion metadata hidden and deterministic", async () => {

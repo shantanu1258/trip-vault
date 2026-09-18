@@ -125,11 +125,13 @@ import {
   writeTravelerFocus
 } from "../features/workspace/travelerFocus";
 import { resolveBoardingInstant } from "../features/workspace/flight";
+import { airlineAccentStyle, airlineForFlight } from "../features/workspace/airlineAccent";
 import {
   archiveNote,
   attachDocumentsToEvent,
   listCabStopsForTrip,
   listTripFlightTravelers,
+  listTripAirlines,
   removeMember,
   removeTraveler,
   updateMemberRole,
@@ -162,6 +164,7 @@ import type {
   Traveler,
   TripMember,
   TripNote,
+  TripAirline,
   VaultDocument
 } from "../features/workspace/types";
 
@@ -384,6 +387,7 @@ function BookingEventDetails({
   tripId,
   booking,
   flights,
+  airlines = [],
   flightTravelers,
   journeys,
   travelers,
@@ -393,6 +397,7 @@ function BookingEventDetails({
   tripId: string;
   booking: Booking;
   flights: FlightLeg[];
+  airlines?: TripAirline[];
   flightTravelers: FlightTraveler[];
   journeys: JourneyLeg[];
   travelers: Traveler[];
@@ -420,6 +425,7 @@ function BookingEventDetails({
       );
   const phone = booking.contact_phone ? phoneActionUrls(booking.contact_phone) : null;
   const firstFlight = flightLegs[0];
+  const firstAirline = firstFlight ? airlineForFlight(firstFlight, airlines) : undefined;
   const detailsHref = firstFlight
     ? `/trips/${tripId}/flights/${firstFlight.id}`
     : `/trips/${tripId}/bookings/${booking.id}`;
@@ -455,7 +461,10 @@ function BookingEventDetails({
 
   if (flightLegs.length) {
     return (
-      <div className="group relative mt-4 rounded-2xl border border-line bg-surface/70 p-3 transition hover:border-brand/40 hover:shadow-soft sm:p-4">
+      <div
+        style={airlineAccentStyle(firstAirline?.brand_color)}
+        className="airline-accent-rail group relative mt-4 rounded-2xl border border-line bg-surface/70 p-3 pl-4 transition hover:border-brand/40 hover:shadow-soft sm:p-4 sm:pl-5"
+      >
         {detailsLink}
         {heading}
         <div className="relative z-20 mt-3 space-y-2">
@@ -464,10 +473,12 @@ function BookingEventDetails({
               to={`/trips/${tripId}/flights/${leg.id}`}
               state={navigationState}
               key={leg.id}
+              style={airlineAccentStyle(airlineForFlight(leg, airlines)?.brand_color)}
               className="block rounded-xl bg-elevated p-3 text-xs"
             >
               <div className="flex items-start justify-between gap-2">
-                <strong>
+                <strong className="flex items-center gap-2">
+                  <span className="airline-accent-dot" aria-hidden="true" />
                   {leg.departure_airport_code || leg.departure_airport_name} →{" "}
                   {leg.arrival_airport_code || leg.arrival_airport_name}
                 </strong>
@@ -694,6 +705,7 @@ function BookingEventSummary({
   tripId,
   booking,
   flights,
+  airlines,
   flightTravelers,
   journeys,
   travelers,
@@ -704,6 +716,7 @@ function BookingEventSummary({
   tripId: string;
   booking: Booking;
   flights: FlightLeg[];
+  airlines: TripAirline[];
   flightTravelers: FlightTraveler[];
   journeys: JourneyLeg[];
   travelers: Traveler[];
@@ -723,6 +736,7 @@ function BookingEventSummary({
   const reservationState = booking.type === "flight" ? "booked" : booking.reservation_state;
   const phone =
     booking.type === "cab" && booking.contact_phone ? phoneActionUrls(booking.contact_phone) : null;
+  const firstAirline = flightLegs[0] ? airlineForFlight(flightLegs[0], airlines) : undefined;
   const route = journeyRoute(
     legs.map((leg) =>
       "departure_airport_code" in leg
@@ -737,7 +751,12 @@ function BookingEventSummary({
     )
   );
   return (
-    <div className="mt-3 rounded-xl border border-line/80 bg-surface/60 px-3 py-2.5 text-xs">
+    <div
+      style={flightLegs.length ? airlineAccentStyle(firstAirline?.brand_color) : undefined}
+      className={`mt-3 rounded-xl border border-line/80 bg-surface/60 px-3 py-2.5 text-xs ${
+        flightLegs.length ? "airline-accent-rail pl-4" : ""
+      }`}
+    >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <strong>{booking.provider || booking.title}</strong>
         {booking.reference_code && (
@@ -771,9 +790,14 @@ function BookingEventSummary({
           .filter(Boolean)
           .join(" · ");
         return (
-          <div key={leg.id} className={index ? "mt-2 border-t border-line/70 pt-2" : "mt-2"}>
+          <div
+            key={leg.id}
+            style={airlineAccentStyle(airlineForFlight(leg, airlines)?.brand_color)}
+            className={index ? "mt-2 border-t border-line/70 pt-2" : "mt-2"}
+          >
             {flightLegs.length > 1 && (
-              <p className="font-black text-ink">
+              <p className="flex items-center gap-2 font-black text-ink">
+                <span className="airline-accent-dot" aria-hidden="true" />
                 Connection {index + 1} · {leg.departure_airport_code || leg.departure_airport_name}{" "}
                 → {leg.arrival_airport_code || leg.arrival_airport_name}
               </p>
@@ -820,6 +844,7 @@ export function EventDetailsSheet({
   tripId,
   booking,
   flights,
+  airlines = [],
   flightTravelers,
   journeys,
   travelerIds,
@@ -848,6 +873,7 @@ export function EventDetailsSheet({
   tripId: string;
   booking?: Booking;
   flights: FlightLeg[];
+  airlines?: TripAirline[];
   flightTravelers: FlightTraveler[];
   journeys: JourneyLeg[];
   travelerIds: string[];
@@ -948,6 +974,7 @@ export function EventDetailsSheet({
             tripId={tripId}
             booking={booking}
             flights={flights}
+            airlines={airlines}
             flightTravelers={flightTravelers}
             journeys={journeys}
             travelers={travelers}
@@ -1327,6 +1354,11 @@ export function TripPage() {
   const flightsQuery = useQuery({
     ...tripQueries.flights(tripId, bookingsQuery.data),
     enabled: Boolean(tripId) && bookingsQuery.isSuccess
+  });
+  const airlinesQuery = useQuery({
+    queryKey: ["trip-airlines", tripId],
+    queryFn: () => listTripAirlines(tripId),
+    enabled: Boolean(tripId)
   });
   const journeysQuery = useQuery({
     ...tripQueries.journeys(tripId, bookingsQuery.data),
@@ -2379,6 +2411,7 @@ export function TripPage() {
                                   tripId={trip.id}
                                   booking={booking}
                                   flights={flights}
+                                  airlines={airlinesQuery.data ?? []}
                                   flightTravelers={flightTravelers}
                                   journeys={journeys}
                                   travelers={travelers}
@@ -2618,6 +2651,7 @@ export function TripPage() {
                 : undefined
             }
             flights={flights}
+            airlines={airlinesQuery.data ?? []}
             flightTravelers={flightTravelers}
             journeys={journeys}
             travelerIds={participantRows

@@ -54,6 +54,7 @@ import {
 import { documentMatchesTraveler } from "../features/workspace/documentModel";
 import { readTravelerFocus } from "../features/workspace/travelerFocus";
 import { AddFlightConnectionForm } from "../features/workspace/AddFlightConnectionForm";
+import { airlineAccentStyle, airlineForFlight } from "../features/workspace/airlineAccent";
 import { tripChildNavigationState, tripReturnNavigation } from "../features/trips/navigation";
 import { tripQueries } from "../features/queries/tripQueries";
 import { WhatsAppIcon } from "../components/WhatsAppIcon";
@@ -120,9 +121,8 @@ export function FlightPage() {
   const showTimeZoneControls = (booking?.journey_scope ?? flight?.journey_scope) !== "domestic";
   const role = membersQuery.data?.find((member) => member.user_id === userId)?.role;
   const editable = role === "owner" || role === "editor";
-  const airline =
-    airlinesQuery.data?.find((item) => item.id === flight?.marketing_airline_id) ??
-    airlinesQuery.data?.find((item) => item.name === flight?.airline_name);
+  const airline = flight ? airlineForFlight(flight, airlinesQuery.data ?? []) : undefined;
+  const airlineStyle = airlineAccentStyle(airline?.brand_color);
   const actionValues: Record<string, string> = flight
     ? {
         flightNumber: flight.flight_number.replace(/\s+/g, ""),
@@ -310,7 +310,8 @@ export function FlightPage() {
         {flight && (
           <>
             <section
-              className={`page-enter mt-5 overflow-hidden rounded-[2rem] border shadow-focus ${flight.status === "cancelled" ? "border-danger bg-danger text-white" : flight.status === "delayed" ? "border-warning bg-brand text-surface" : "border-line bg-brand text-surface"}`}
+              style={airlineStyle}
+              className={`airline-accent-hero page-enter mt-5 overflow-hidden rounded-[2rem] border shadow-focus ${flight.status === "cancelled" ? "border-danger bg-danger text-white" : flight.status === "delayed" ? "border-warning bg-brand text-surface" : "border-line bg-brand text-surface"}`}
             >
               <div className="p-6 sm:p-8">
                 <div className="flex items-center justify-between">
@@ -321,7 +322,8 @@ export function FlightPage() {
                 </div>
                 <div className="mt-7 flex items-end justify-between gap-6">
                   <div>
-                    <p className="text-sm font-bold text-surface/65">
+                    <p className="flex items-center gap-2 text-sm font-bold text-surface/65">
+                      <span className="airline-accent-dot" aria-hidden="true" />
                       {flight.airline_name} · {flight.flight_number}
                     </p>
                     <h1 className="mt-2 font-display text-4xl font-black tracking-[-.045em]">
@@ -335,26 +337,32 @@ export function FlightPage() {
                       Connected journey
                     </p>
                     <div className="mt-2 flex gap-2 overflow-auto pb-1">
-                      {connectionLegs.map((leg) => (
-                        <Link
-                          key={leg.id}
-                          to={`/trips/${tripId}/flights/${leg.id}`}
-                          state={nestedNavigationState}
-                          className={`shrink-0 rounded-xl border px-3 py-2 text-xs ${leg.id === flight.id ? "border-coral bg-coral/25" : "border-surface/20 bg-surface/10"}`}
-                        >
-                          <strong>
-                            {leg.departure_airport_code || leg.departure_airport_name} →{" "}
-                            {leg.arrival_airport_code || leg.arrival_airport_name}
-                          </strong>
-                          <span className="mt-1 block text-surface/60">
-                            {leg.id === flight.id
-                              ? "Viewing now"
-                              : leg.segment_order < flight.segment_order
-                                ? "Earlier leg"
-                                : "Next leg"}
-                          </span>
-                        </Link>
-                      ))}
+                      {connectionLegs.map((leg) => {
+                        const legAirline = airlineForFlight(leg, airlinesQuery.data ?? []);
+                        return (
+                          <Link
+                            key={leg.id}
+                            to={`/trips/${tripId}/flights/${leg.id}`}
+                            state={nestedNavigationState}
+                            style={airlineAccentStyle(legAirline?.brand_color)}
+                            className={`shrink-0 rounded-xl border border-surface/30 bg-surface px-3 py-2 text-xs text-ink shadow-soft ${leg.id === flight.id ? "ring-2 ring-coral/80" : ""}`}
+                          >
+                            <strong className="flex items-center gap-2">
+                              <span className="airline-accent-dot" aria-hidden="true" />
+                              {leg.departure_airport_code || leg.departure_airport_name} →{" "}
+                              {leg.arrival_airport_code || leg.arrival_airport_name}
+                            </strong>
+                            <span className="mt-1 block text-muted">
+                              {leg.airline_name} ·{" "}
+                              {leg.id === flight.id
+                                ? "Viewing now"
+                                : leg.segment_order < flight.segment_order
+                                  ? "Earlier leg"
+                                  : "Next leg"}
+                            </span>
+                          </Link>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -431,7 +439,10 @@ export function FlightPage() {
               </div>
             </section>
             {booking && (
-              <section className="surface-card mt-5 p-5">
+              <section
+                style={airlineStyle}
+                className="airline-accent-rail surface-card mt-5 p-5 pl-6"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <p className="eyebrow">Booking</p>

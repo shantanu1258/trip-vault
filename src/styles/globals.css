@@ -302,6 +302,55 @@ textarea:focus-visible {
   animation: sheet-enter 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
+.airline-accent-rail,
+.airline-accent-hero {
+  --airline-accent: rgb(var(--event-flight));
+}
+
+.airline-accent-rail {
+  position: relative;
+  overflow: hidden;
+}
+
+.airline-accent-rail::before {
+  position: absolute;
+  z-index: 2;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 0.3rem;
+  background: var(--airline-accent);
+  content: "";
+  pointer-events: none;
+}
+
+.airline-accent-dot {
+  display: inline-block;
+  width: 0.65rem;
+  height: 0.65rem;
+  flex: none;
+  border: 2px solid rgb(var(--color-surface) / 0.7);
+  border-radius: 999px;
+  background: var(--airline-accent, rgb(var(--event-flight)));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--airline-accent) 32%, transparent);
+}
+
+.airline-accent-hero {
+  position: relative;
+  isolation: isolate;
+}
+
+.airline-accent-hero::before {
+  position: absolute;
+  z-index: 2;
+  inset-inline: 0;
+  inset-block-start: 0;
+  height: 0.42rem;
+  background: var(--airline-accent);
+  box-shadow: 0 2px 14px color-mix(in srgb, var(--airline-accent) 45%, transparent);
+  content: "";
+  pointer-events: none;
+}
+
 #trip-search > .lucide-search {
   color: rgb(var(--color-surface));
 }
