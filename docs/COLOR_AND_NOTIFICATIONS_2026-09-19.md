@@ -1,17 +1,19 @@
 # Color and notification refinement
 
+> Historical iteration record. Accepted final behavior is now incorporated into [HLD](HIGH_LEVEL_DESIGN.md), [LLD](LOW_LEVEL_DESIGN.md), and [Features](FEATURES.md); see [CHANGELOG](../CHANGELOG.md). Earlier two-pulse/below-header focus, dark hero, and collapsed-card silhouette experiments below are superseded and must not be used as the current specification.
+
 ## Default palette
 
 Use quiet neutral surfaces, teal for primary actions, and indigo for the current/next event. Reserve red for urgent/error states, amber for warnings, and green for success. This is a design judgment to reduce competing emphasis, not a claim that one hue is universally preferred.
 
-| Role | Light | Dark |
-| --- | --- | --- |
-| Canvas | #f5f7fa | #10191f |
-| Card surface | #ffffff | #18252d |
-| Raised surface | #eef3f6 | #20313a |
-| Primary action | #146b67 | #79d5ca |
+| Role                   | Light   | Dark    |
+| ---------------------- | ------- | ------- |
+| Canvas                 | #f5f7fa | #10191f |
+| Card surface           | #ffffff | #18252d |
+| Raised surface         | #eef3f6 | #20313a |
+| Primary action         | #146b67 | #79d5ca |
 | Current event / accent | #4259b8 | #a9b7ff |
-| Urgent / error | #b33f47 | #ffaca7 |
+| Urgent / error         | #b33f47 | #ffaca7 |
 
 - Current events keep a neutral card, indigo border and explicit Current/Next label. Event-type icons remain differentiated. The two jump-to-event pulses still affect only the border, now using the theme's teal.
 - Search uses a neutral raised surface rather than looking like a large primary button. Dark-mode trip heroes use the softer brand surface with light text, and modal/picker scrims use neutral black shading instead of washing the page in the bright action color.

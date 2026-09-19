@@ -1,5 +1,7 @@
 # Trip Vault — simpler trip experience
 
+> Historical iteration record. Accepted final behavior is now incorporated into [HLD](HIGH_LEVEL_DESIGN.md), [LLD](LOW_LEVEL_DESIGN.md), and [Features](FEATURES.md); see [CHANGELOG](../CHANGELOG.md). Earlier two-pulse/below-header focus, dark hero, and collapsed-card silhouette experiments below are superseded and must not be used as the current specification.
+
 Accepted and implemented locally on 19 September 2026. This amendment supersedes the Home-dashboard, separate Agenda, and floating view-switch descriptions in FEATURES, HLD, and LLD. The earlier application review remains a historical backlog, not a claim that all its findings are fixed.
 
 ## Decisions

@@ -7,9 +7,12 @@ The application uses a timeline-first trip experience. Product scope, architectu
 ## Implemented
 
 - Email sign-up/sign-in with display name, two password fields, and visibility controls
-- Upcoming and D-1/current Home modes, overlap selection, next action, alerts, and per-currency trip totals
+- Trips / Vault / Profile navigation, compact attention alerts, and fresh-launch opening of a single trip within its ten-day pre-departure window; overlapping trips remain a user choice
 - Trips, date-grouped/reorderable itinerary, calendar export, bookings, manual flight operations, airline actions, travelers, editable readiness, notes, and costs
-- Timeline-first trip opening with one current/next highlight, a compact date-grouped agenda, weekday/flexible-date search, consistent below-header focus feedback, per-view scroll restoration, whole-card primary actions, and a sectioned Trip details workspace
+- Unified date-grouped expandable timeline, date/type/display filters, event-type and flexible-date search, centered focus with three pulses over 3.5 seconds, explicit nested Back/scroll restoration, and sectioned Trip details
+- Compact timeline type icons, animated bottom-right silhouettes in expanded/detail surfaces, event-colored heroes, neutral ordinary borders, and a persistent current-event/task distinction with reduced-motion support
+- Document-first event details, hotel/driver contacts, responsive navigation/Call/WhatsApp shortcuts, hotel days/nights, and typed top-level Edit actions
+- Light-teal/dark-text trip hero in dark mode and Indian lakh/crore grouping for INR amounts
 - Progressive event forms with Direct/Connecting Flight, Single/Connecting Train/Bus/Ferry, simplified Ferry capture, ordered Cab stops, planned/walk-up/booked intent, optional ground-journey arrival, typed ticket details, and strict International endpoint zones without Domestic country/time-zone prompts
 - Bundled offline operator/company suggestions with reversible Other/manual entry for Train, Bus, Ferry, and Cab; booking sellers remain separate under Booked via
 - Per-traveler, per-leg ticket details where they apply: Flight seat, boarding group and ticket number; Train seat/berth, coach and reference; Bus seat and reference; Ferry reference plus seat/cabin only for assigned seating; and no Cab seat grid
@@ -21,7 +24,7 @@ The application uses a timeline-first trip experience. Product scope, architectu
 - Everyone/one-traveler presentation filtering across timeline, reservations, readiness, costs, seats, and documents
 - Private, traveler-and-manager, trip-wide, and selected-member document access
 - Strict files smaller than 5,000,000 bytes, immutable versions, archive-with-local-copy, checksum verification, a large touch/keyboard/drop picker, generic phone-MIME recovery, and local-first PDF/image preview
-- In-app multi-page PDF page/zoom/fit controls and image zoom, with document facts behind Info and device Open retained as a fallback
+- In-app vertical multi-page PDF stack with lazy rendering, per-page retry, zoom/fit and supported fullscreen; image zoom, document facts behind Info, and device Open fallback
 - Several documents per itinerary event, grouped by Everyone and traveler usage, with travel-specific types, traveler assignment, and exact-duplicate reuse
 - Prepared offline trip packs, cold-start device enrollment, offline structured edits/uploads, foreground synchronization, and explicit conflict resolution
 - In-app reminders/alerts, unread count, dismiss, restore, and snooze
@@ -31,6 +34,8 @@ The application uses a timeline-first trip experience. Product scope, architectu
 - Profile install action with iPhone/iPad and Android guidance, PWA update prompt, and a fully synthetic `/preview` trip with watermarked sample documents
 
 The reconciled implementation contract is in [LOW_LEVEL_DESIGN.md](docs/LOW_LEVEL_DESIGN.md), with the product inventory in [FEATURES.md](docs/FEATURES.md).
+
+See [CHANGELOG.md](CHANGELOG.md) for enhancement history. Web Push and scheduled Supabase delivery are proposed, not implemented; the existing alert engine is in-app.
 
 ## Run locally
 

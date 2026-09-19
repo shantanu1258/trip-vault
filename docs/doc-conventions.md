@@ -21,6 +21,8 @@ These conventions keep the current design contract and future work readable. The
 
 Temporary redesign notes, implementation checklists, and standalone source indexes must be folded into these three canonical documents once their decisions are accepted. Do not create a second source of truth for an implemented feature.
 
+`CHANGELOG.md` at the repository root records dated shipped changes and verification checkpoints, with proposals explicitly separated. It is a historical record, not a fourth design contract. Preserved iteration notes must point to the canonical documents and identify superseded experiments.
+
 ## Decision Status
 
 Every material choice should use one of these states:
