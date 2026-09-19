@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import styles from "../../styles/globals.css?raw";
 import {
   preferredScrollBehavior,
@@ -11,6 +11,7 @@ function expandedViewport(top: number, height: number, hiddenHeaders = false) {
     ({ top, bottom: top + height, height, width: 375 }) as DOMRect;
   const header = document.createElement("header");
   header.dataset.scrollHeader = "true";
+  header.className = "sticky";
   vi.spyOn(header, "getBoundingClientRect").mockReturnValue(bounds(hiddenHeaders ? -60 : 0, 60));
   const tabs = document.createElement("div");
   tabs.dataset.tripSticky = "true";
@@ -33,13 +34,19 @@ function expandedViewport(top: number, height: number, hiddenHeaders = false) {
 }
 
 describe("timeline positioning", () => {
+  beforeEach(() => {
+    vi.spyOn(window, "innerHeight", "get").mockReturnValue(800);
+  });
   it("keeps the landing highlight for 3.5 seconds without delaying reduced-motion users", () => {
     expect(styles).toContain("animation: timeline-focus-pulse 3500ms");
+    expect(styles).toMatch(/12%,\s*22%,\s*45%,\s*55%,\s*78%,\s*88%/);
+    expect(styles).toContain("inset 0 0 0 2px rgb(var(--timeline-focus-color))");
+    expect(styles).toContain("0 0 0 4px rgb(var(--timeline-focus-color) / 0.3)");
     expect(styles).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*animation-duration: 0\.01ms !important/
     );
   });
-  it("keeps a grouped date visible below both sticky headers", () => {
+  it("centers the destination card below both sticky headers instead of anchoring its date", () => {
     const header = document.createElement("header");
     header.className = "sticky";
     vi.spyOn(header, "getBoundingClientRect").mockReturnValue({ bottom: 76 } as DOMRect);
@@ -52,14 +59,17 @@ describe("timeline positioning", () => {
     const card = document.createElement("article");
     card.id = "timeline-grouped";
     card.className = "timeline-outline-card";
+    vi.spyOn(card, "getBoundingClientRect").mockReturnValue({ top: 550, height: 64 } as DOMRect);
     group.append(card);
     document.body.append(header, tripHeader, date, group);
     vi.spyOn(window, "scrollY", "get").mockReturnValue(0);
     const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
     scrollTimelineEventIntoView("grouped", "auto");
-    expect(scrollTo).toHaveBeenCalledWith({ top: 235, behavior: "auto" });
+    expect(scrollTo).toHaveBeenCalledWith({ top: 57.5, behavior: "auto" });
   });
   afterEach(() => {
+    window.dispatchEvent(new Event("scrollend"));
+    vi.useRealTimers();
     document.body.replaceChildren();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -114,7 +124,7 @@ describe("timeline positioning", () => {
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
-  it("places the event's phase and date context just below the sticky header", () => {
+  it("smoothly centers the event and pulses only after arriving", () => {
     const header = document.createElement("header");
     header.className = "sticky";
     vi.spyOn(header, "getBoundingClientRect").mockReturnValue({ bottom: 76 } as DOMRect);
@@ -129,7 +139,7 @@ describe("timeline positioning", () => {
     const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
     document.body.append(header, phase, date, card);
     expect(scrollTimelineEventIntoView("current")).toBe(true);
-    expect(scrollTo).toHaveBeenCalledWith({ behavior: "smooth", top: 396 });
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "smooth", top: 288 });
     expect(card).not.toHaveClass("timeline-focus-pulse");
     window.dispatchEvent(new Event("scrollend"));
     expect(card).toHaveClass("timeline-focus-pulse");
@@ -143,7 +153,7 @@ describe("timeline positioning", () => {
     const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
     document.body.append(card);
     expect(scrollTimelineEventIntoView("current", "auto")).toBe(true);
-    expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 396 });
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 88 });
     expect(card).toHaveClass("timeline-focus-pulse");
   });
 
@@ -158,6 +168,28 @@ describe("timeline positioning", () => {
     Object.defineProperty(animationEnd, "animationName", { value: "timeline-focus-pulse" });
     card.dispatchEvent(animationEnd);
     expect(card).not.toHaveClass("timeline-focus-pulse");
+  });
+
+  it("centers a tall card's heading between sticky bars and floating actions", () => {
+    const { trigger, scrollTo } = expandedViewport(350, 700);
+    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({ height: 64 } as DOMRect);
+    scrollTimelineEventIntoView("expanded", "auto");
+    expect(scrollTo).toHaveBeenCalledWith({ top: 125, behavior: "auto" });
+  });
+
+  it("centers tasks too and waits for a long scroll to settle before highlighting", () => {
+    vi.useFakeTimers();
+    const { card, scrollTo } = expandedViewport(350, 64);
+    card.dataset.readiness = "true";
+    scrollTimelineEventIntoView("expanded");
+    expect(scrollTo).toHaveBeenCalledWith({ top: 125, behavior: "smooth" });
+    vi.advanceTimersByTime(500);
+    window.dispatchEvent(new Event("scroll"));
+    vi.advanceTimersByTime(150);
+    window.dispatchEvent(new Event("scroll"));
+    expect(card).not.toHaveClass("timeline-focus-pulse");
+    vi.advanceTimersByTime(160);
+    expect(card).toHaveClass("timeline-focus-pulse");
   });
 
   it("returns false until the timeline card has been rendered", () => {

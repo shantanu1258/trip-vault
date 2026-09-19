@@ -146,10 +146,9 @@ textarea:focus-visible {
   transition: top 180ms ease-out;
 }
 
-/* Large dark-mode surfaces use the quiet brand tone, not the bright action tone. */
+/* Invert the trip hero like the primary search action in dark mode. */
 [data-theme="dark"] .trip-hero {
-  --color-brand: var(--color-brand-soft);
-  --color-surface: var(--color-ink);
+  --color-surface: var(--color-canvas);
 }
 
 [data-headers-hidden="true"] [data-scroll-header] {
@@ -487,14 +486,22 @@ textarea:focus-visible {
 
 @keyframes timeline-focus-pulse {
   0%,
-  38%,
-  76%,
+  33.333%,
+  66.666%,
   100% {
     border-color: rgb(var(--timeline-resting-border, var(--color-line)));
+    box-shadow: var(--timeline-resting-shadow, 0 0 0 0 transparent);
   }
-  18%,
-  56% {
+  12%,
+  22%,
+  45%,
+  55%,
+  78%,
+  88% {
     border-color: rgb(var(--timeline-focus-color));
+    box-shadow:
+      inset 0 0 0 2px rgb(var(--timeline-focus-color)),
+      0 0 0 4px rgb(var(--timeline-focus-color) / 0.3);
   }
 }
 
@@ -661,11 +668,16 @@ form .grid > *,
 }
 
 [data-trip-scroll-anchor="timeline"].timeline-focus-pulse[aria-current="step"] {
+  --timeline-focus-color: var(--color-coral);
   --timeline-resting-border: var(--color-coral);
+  --timeline-resting-shadow:
+    inset 0 0 0 1px rgb(var(--color-coral)), 0 0 0 3px rgb(var(--color-coral) / 0.12);
 }
 
 [data-readiness="true"].timeline-focus-pulse[aria-current="step"] {
+  --timeline-focus-color: var(--color-warning);
   --timeline-resting-border: var(--color-warning);
+  --timeline-resting-shadow: 0 0 0 0 transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {

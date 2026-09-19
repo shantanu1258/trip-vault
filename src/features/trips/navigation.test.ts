@@ -66,6 +66,25 @@ describe("trip navigation context", () => {
     expect(tripReturnHref("trip-1", "details")).toBe("/trips/trip-1?view=details");
   });
 
+  it("lets a fresh Next up or current destination supersede an old return scroll", () => {
+    const path = "/trips/trip-1";
+    const child = tripChildScrollState(
+      tripChildNavigationState(null, "trip-1", "timeline", path),
+      "trip-1",
+      { y: 420 }
+    );
+    const returned = tripReturnNavigation(child, "trip-1");
+    expect(readTripScrollRestore(returned.state, "trip-1", path)).toEqual({ y: 420 });
+    for (const kind of ["target", "current", "search"] as const) {
+      const state = tripIntentNavigationState(returned.state, "trip-1", kind, {
+        view: "timeline",
+        targetId: "event-1"
+      });
+      expect(readTripScrollRestore(state, "trip-1", path)).toBeNull();
+      expect(readTripNavigationIntent(state, "trip-1")?.kind).toBe(kind);
+    }
+  });
+
   it("returns child pages to the exact route that opened them", () => {
     const eventPath = "/trips/trip-1?event=event-1";
     const childState = tripChildNavigationState(null, "trip-1", "timeline", eventPath);

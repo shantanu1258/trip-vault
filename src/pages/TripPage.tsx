@@ -1846,7 +1846,11 @@ export function TripPage() {
     const firstFrame = window.requestAnimationFrame(() => {
       const targetId =
         requestedTimelineItem.current ??
-        (activeNavigationIntent?.kind === "target" ? activeNavigationIntent.targetId : undefined);
+        (activeNavigationIntent?.kind === "target"
+          ? activeNavigationIntent.targetId
+          : activeNavigationIntent?.kind === "current"
+            ? activeTimelineEntry?.id
+            : undefined);
       if (targetId) timelineRef.current?.reveal(targetId);
       secondFrame = window.requestAnimationFrame(() => {
         if (view === "details") {
@@ -1879,6 +1883,8 @@ export function TripPage() {
               ? (activeNavigationIntent.targetId ?? null)
               : null);
           if (
+            !requestedId &&
+            activeNavigationIntent?.kind !== "current" &&
             restoreTripReturnScroll(
               location.state,
               tripId,
@@ -1892,7 +1898,8 @@ export function TripPage() {
           )
             requestedTimelineItem.current = null;
           else if (
-            (activeNavigationIntent?.kind === "restore" || returningToEntry) &&
+            (activeNavigationIntent?.kind === "restore" ||
+              (!activeNavigationIntent && returningToEntry)) &&
             restoreScroll(tripId, "timeline")
           ) {
             // The saved anchor has priority when returning from a child or switching tabs.

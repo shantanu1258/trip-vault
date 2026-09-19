@@ -118,6 +118,8 @@ export function tripIntentNavigationState(
   return withEnvelope(state, {
     ...current,
     intent: { tripId, kind, token: intentToken(), ...options },
+    // A fresh destination must not be overridden by a previous detail-page return.
+    scrollRestore: kind === "restore" ? current.scrollRestore : undefined,
     entry: options.view ? { tripId, view: options.view } : current.entry
   });
 }

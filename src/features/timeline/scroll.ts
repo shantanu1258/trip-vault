@@ -1,19 +1,3 @@
-function timelineFocusAnchor(element: HTMLElement) {
-  const previous = element.previousElementSibling;
-  if (!previous && element.classList.contains("timeline-outline-card")) {
-    const date = element.parentElement?.previousElementSibling;
-    if (date instanceof HTMLElement && date.tagName === "H3") return date;
-  }
-  if (!(previous instanceof HTMLElement)) return element;
-  if (previous.tagName === "H3") {
-    const phase = previous.previousElementSibling;
-    return phase instanceof HTMLElement && phase.id.startsWith("timeline-phase-")
-      ? phase
-      : previous;
-  }
-  return previous.id.startsWith("timeline-phase-") ? previous : element;
-}
-
 let cancelPendingFocusPulse: (() => void) | undefined;
 let lastFocusedElement: HTMLElement | undefined;
 
@@ -45,15 +29,23 @@ function queueFocusPulse(element: HTMLElement, behavior: ScrollBehavior) {
     complete = true;
     window.clearTimeout(fallback);
     window.removeEventListener("scrollend", finish);
+    window.removeEventListener("scroll", onScroll);
     cancelPendingFocusPulse = undefined;
     playFocusPulse(element);
   };
-  const fallback = window.setTimeout(finish, 650);
+  // Start the pulse after arrival, not halfway through a long smooth scroll.
+  let fallback = window.setTimeout(finish, 650);
+  const onScroll = () => {
+    window.clearTimeout(fallback);
+    fallback = window.setTimeout(finish, 160);
+  };
+  window.addEventListener("scroll", onScroll, { passive: true });
   window.addEventListener("scrollend", finish, { once: true });
   cancelPendingFocusPulse = () => {
     complete = true;
     window.clearTimeout(fallback);
     window.removeEventListener("scrollend", finish);
+    window.removeEventListener("scroll", onScroll);
     cancelPendingFocusPulse = undefined;
   };
 }
@@ -61,7 +53,6 @@ function queueFocusPulse(element: HTMLElement, behavior: ScrollBehavior) {
 export function scrollTimelineEventIntoView(eventId: string, behavior: ScrollBehavior = "smooth") {
   const element = document.getElementById(`timeline-${eventId}`);
   if (!element) return false;
-  const anchor = timelineFocusAnchor(element);
   const stickyHeader = document.querySelector<HTMLElement>("header.sticky");
   const tripHeader = document.querySelector<HTMLElement>("[data-trip-sticky]");
   const topInset = Math.max(
@@ -74,7 +65,31 @@ export function scrollTimelineEventIntoView(eventId: string, behavior: ScrollBeh
       (tripHeader?.getBoundingClientRect().height ?? 0) +
       20
   );
-  const top = window.scrollY + anchor.getBoundingClientRect().top - topInset;
+  const viewportTop = window.visualViewport?.offsetTop ?? 0;
+  const viewportBottom = viewportTop + (window.visualViewport?.height ?? window.innerHeight);
+  let visibleBottom = viewportBottom - 16;
+  document
+    .querySelectorAll<HTMLElement>("[data-trip-actions], [data-bottom-navigation]")
+    .forEach((bar) => {
+      const bounds = bar.getBoundingClientRect();
+      if (
+        bounds.width &&
+        bounds.height &&
+        bounds.top < viewportBottom &&
+        bounds.bottom > viewportTop
+      )
+        visibleBottom = Math.min(visibleBottom, bounds.top - 16);
+    });
+  const visibleTop = viewportTop + topInset;
+  const availableHeight = Math.max(0, visibleBottom - visibleTop);
+  const cardBounds = element.getBoundingClientRect();
+  const triggerBounds = element
+    .querySelector<HTMLElement>("[data-timeline-trigger]")
+    ?.getBoundingClientRect();
+  // Center the heading of tall expanded cards; do not scroll past their title.
+  const focusHeight = triggerBounds?.height || Math.min(cardBounds.height || 64, 160);
+  const landingTop = visibleTop + Math.max(0, (availableHeight - focusHeight) / 2);
+  const top = window.scrollY + cardBounds.top - landingTop;
   window.scrollTo({ top: Math.max(0, top), behavior });
   queueFocusPulse(element, behavior);
   return true;

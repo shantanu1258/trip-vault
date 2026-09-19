@@ -174,9 +174,10 @@ export function groupCostTotals(costs: TripCost[]) {
 
 export function formatMoney(amountMinor: number, currencyCode: string) {
   const divisor = 10 ** (currencyFractionDigits(currencyCode) ?? 2);
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: currencyCode }).format(
-    amountMinor / divisor
-  );
+  return new Intl.NumberFormat(currencyCode.toUpperCase() === "INR" ? "en-IN" : undefined, {
+    style: "currency",
+    currency: currencyCode
+  }).format(amountMinor / divisor);
 }
 
 export function getErrorMessage(error: unknown) {

@@ -3,6 +3,7 @@ import type { Trip } from "./types";
 import {
   currentItineraryItem,
   formatDateRange,
+  formatMoney,
   groupCostTotals,
   itineraryDateKey,
   moveEqualTimeItem,
@@ -25,6 +26,20 @@ const trip = (id: string, start: string, end: string, timezone = "Europe/Rome"):
 });
 
 describe("trip focus", () => {
+  it("uses lakh and crore grouping for INR, including fractional and negative amounts", () => {
+    expect(formatMoney(37552500, "INR")).toBe("₹3,75,525.00");
+    expect(formatMoney(1000000000, "INR")).toBe("₹1,00,00,000.00");
+    expect(formatMoney(-12345678, "inr")).toBe("-₹1,23,456.78");
+  });
+
+  it("preserves locale formatting and fraction digits for other currencies", () => {
+    expect(formatMoney(37552500, "USD")).toBe(
+      new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(375525)
+    );
+    expect(formatMoney(375525, "JPY")).toBe(
+      new Intl.NumberFormat(undefined, { style: "currency", currency: "JPY" }).format(375525)
+    );
+  });
   it("formats compact weekday ranges without repeating the year", () => {
     expect(formatDateRange("2026-09-26", "2026-10-12", { includeWeekday: true })).toBe(
       "Sat, 26 Sep – Mon, 12 Oct 2026"

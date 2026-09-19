@@ -33,7 +33,9 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 - Require flight PNR, support domestic/international classification, boarding lead or exact time, and manual operational updates.
 - Store booked-via vendor/website and optional phone; reconcile the website when the vendor changes in create or edit, and expose phone handlers through Call and WhatsApp actions.
 - Search authorized cached trip metadata locally and jump to the matching event or detail.
-- Navigate a long timeline through a compact date-grouped agenda, filters, and a current-item shortcut; every agenda, search, and landing focus settles the selected card below the sticky header and briefly highlights it.
+- Navigate a long timeline through a compact date-grouped agenda, filters, and a current-item shortcut. Next up, search, and current-item jumps smoothly center the destination heading between the sticky headers and bottom controls, then highlight its border three times over 3.5 seconds, including tasks; reduced-motion settings disable the movement and flashing. Fresh destinations take precedence over saved return positions, while Back still restores its original position.
+- Show INR amounts with Indian lakh/crore digit grouping; preserve the usual locale formatting for other currencies.
+- In dark mode, invert the trip header to the primary action's light-teal background with dark text, including its metadata and expense action.
 - Search weekdays and flexible local dates such as `Thursday`, `28 Feb`, `Feb 28`, or an ISO date and jump to the first event for that date.
 - Manage ordered Cab stops with optional linked events and stop-specific costs, while keeping one clear Cab journey and a compact timeline preview.
 - Keep Ferry create/edit focused on the normal ticket facts instead of age, insurance, vehicle, accommodation, and other uncommon prompts.

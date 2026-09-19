@@ -34,6 +34,12 @@ it("switches the trip hero's inherited palette with the visible theme toggle", a
   );
   expect(document.documentElement.dataset.theme).toBe("dark");
   expect(document.documentElement.style.colorScheme).toBe("dark");
+  expect(document.documentElement.style.getPropertyValue("--color-brand")).toBe(
+    channels(defaultDarkTokens.brand)
+  );
+  expect(document.documentElement.style.getPropertyValue("--color-canvas")).toBe(
+    channels(defaultDarkTokens.canvas)
+  );
   expect(document.documentElement.style.getPropertyValue("--color-brand-soft")).toBe(
     channels(defaultDarkTokens.brandSoft)
   );
@@ -41,6 +47,6 @@ it("switches the trip hero's inherited palette with the visible theme toggle", a
     channels(defaultDarkTokens.ink)
   );
   expect(styles).toMatch(
-    /\[data-theme="dark"\] \.trip-hero\s*\{\s*--color-brand: var\(--color-brand-soft\);\s*--color-surface: var\(--color-ink\);/
+    /\[data-theme="dark"\] \.trip-hero\s*\{\s*--color-surface: var\(--color-canvas\);/
   );
 });
