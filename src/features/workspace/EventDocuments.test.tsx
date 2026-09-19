@@ -95,12 +95,18 @@ function traveler(id: string, displayName: string): Traveler {
   };
 }
 
-function renderDocuments(travelers: Traveler[] = []) {
+function renderDocuments(travelers: Traveler[] = [], compact = false, travelerId?: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <EventDocuments item={item} canEdit travelers={travelers} />
+        <EventDocuments
+          item={item}
+          canEdit
+          travelers={travelers}
+          compact={compact}
+          travelerId={travelerId}
+        />
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -169,6 +175,47 @@ describe("event document cards", () => {
   beforeEach(() => {
     mocks.listEventDocumentLinks.mockReset().mockResolvedValue([]);
     mocks.listVaultDocuments.mockReset().mockResolvedValue([]);
+  });
+
+  it("keeps shared documents visible and collapses personal groups in compact mode", async () => {
+    const shared = document({ id: "shared", title: "Shared ticket" });
+    const personal = document({
+      id: "personal",
+      title: "Asha ticket",
+      assignment_mode: "selected",
+      traveler_id: "asha",
+      traveler_ids: ["asha"]
+    });
+    mocks.listEventDocumentLinks.mockResolvedValue([link(shared, 0), link(personal, 1)]);
+    renderDocuments([traveler("asha", "Asha")], true);
+    expect(await screen.findByRole("link", { name: "Shared ticket" })).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Asha ticket" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Expand documents for Asha" }));
+    expect(screen.getByRole("link", { name: "Asha ticket" })).toHaveAttribute(
+      "href",
+      "/trips/trip-1/documents/personal"
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Collapse documents for Asha" }));
+    expect(screen.queryByRole("link", { name: "Asha ticket" })).not.toBeInTheDocument();
+  });
+
+  it("leaves the focused traveler's documents expanded in compact mode", async () => {
+    mocks.listEventDocumentLinks.mockResolvedValue([
+      link(document({ id: "shared", title: "Shared ticket" }), 0),
+      link(
+        document({
+          id: "personal",
+          title: "Asha ticket",
+          assignment_mode: "selected",
+          traveler_id: "asha",
+          traveler_ids: ["asha"]
+        }),
+        1
+      )
+    ]);
+    renderDocuments([traveler("asha", "Asha")], true, "asha");
+    expect(await screen.findByRole("link", { name: "Asha ticket" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Shared ticket" })).toBeVisible();
   });
 
   it("uses a compact horizontal tablet row without hiding a long document name", async () => {

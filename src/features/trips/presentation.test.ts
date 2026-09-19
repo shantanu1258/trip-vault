@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { Trip } from "./types";
 import {
   currentItineraryItem,
+  formatDateRange,
   groupCostTotals,
   itineraryDateKey,
   moveEqualTimeItem,
   selectFocusedTrip,
-  tripPhase
+  tripPhase,
+  isTripInLaunchWindow
 } from "./presentation";
 
 const trip = (id: string, start: string, end: string, timezone = "Europe/Rome"): Trip => ({
@@ -23,6 +25,25 @@ const trip = (id: string, start: string, end: string, timezone = "Europe/Rome"):
 });
 
 describe("trip focus", () => {
+  it("formats compact weekday ranges without repeating the year", () => {
+    expect(formatDateRange("2026-09-26", "2026-10-12", { includeWeekday: true })).toBe(
+      "Sat, 26 Sep – Mon, 12 Oct 2026"
+    );
+    expect(formatDateRange("2026-09-26", "2026-09-26", { includeWeekday: true })).toBe(
+      "Sat, 26 Sep 2026"
+    );
+    expect(formatDateRange("2026-12-31", "2027-01-02", { includeWeekday: true })).toBe(
+      "Thu, 31 Dec 2026 – Sat, 2 Jan 2027"
+    );
+    expect(formatDateRange("2026-09-26", "2026-10-12")).toBe("Sep 26, 2026 - Oct 12, 2026");
+  });
+  it("uses ten calendar days in the trip timezone, including the last travel day", () => {
+    const holiday = trip("launch", "2026-03-30", "2026-04-02");
+    expect(isTripInLaunchWindow(holiday, new Date("2026-03-19T22:59:00Z"))).toBe(false);
+    expect(isTripInLaunchWindow(holiday, new Date("2026-03-19T23:00:00Z"))).toBe(true);
+    expect(isTripInLaunchWindow(holiday, new Date("2026-04-02T21:59:00Z"))).toBe(true);
+    expect(isTripInLaunchWindow(holiday, new Date("2026-04-02T22:00:00Z"))).toBe(false);
+  });
   it("starts current mode on the prior calendar day in the trip timezone", () =>
     expect(tripPhase(trip("a", "2026-03-30", "2026-04-02"), new Date("2026-03-29T22:30:00Z"))).toBe(
       "current"

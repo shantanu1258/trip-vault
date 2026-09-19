@@ -3,21 +3,19 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
-  CalendarClock,
   CalendarPlus,
   Check,
+  ChevronDown,
   ChevronRight,
   Download,
   LocateFixed,
-  Info,
-  ListTree,
+  Loader2,
   MapPin,
   NotebookPen,
   Pencil,
   Plus,
   ReceiptIndianRupee,
   Search,
-  ShieldCheck,
   TicketCheck,
   Trash2,
   UserPlus,
@@ -26,7 +24,15 @@ import {
   ExternalLink,
   Phone
 } from "lucide-react";
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode
+} from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { EventTypeIcon } from "../components/EventTypeIcon";
@@ -51,11 +57,7 @@ import {
   readinessSummary,
   resolveCurrentTripTimelineEntry,
   searchTrip,
-  sortTimelineItems,
-  timelineEntryPhase,
-  timelinePhase,
-  type TimelinePhase,
-  type TripTimelineEntry
+  sortTimelineItems
 } from "../features/timeline/model";
 import { preferredScrollBehavior, scrollTimelineEventIntoView } from "../features/timeline/scroll";
 import {
@@ -75,8 +77,8 @@ import {
   formatEventTime,
   formatItineraryDate,
   formatMoney,
-  getErrorMessage,
-  itineraryDateKey
+  groupCostTotals,
+  getErrorMessage
 } from "../features/trips/presentation";
 import { AddCostForm, AddItineraryForm, TripSettingsForm } from "../features/trips/TripForms";
 import {
@@ -103,7 +105,8 @@ import {
 } from "../features/trips/navigation";
 import { CostDetailsSheet, TripExpensesSheet } from "../features/trips/TripExpenses";
 import { TripDetailsView } from "../features/trips/TripDetailsView";
-import { TripAgendaSheet } from "../features/trips/TripAgendaSheet";
+import { ReadinessProgress } from "../features/trips/TripReadinessSummary";
+import { TripTimeline, type TimelineHandle } from "../features/timeline/TripTimeline";
 import { RequirementDetailsSheet } from "../features/readiness/RequirementDetailsSheet";
 import { localProfileId } from "../features/sync/localSync";
 import { suppressRealtimeRefresh } from "../features/sync/RealtimeRefresh";
@@ -437,15 +440,20 @@ function BookingEventDetails({
           {booking.type} booking{booking.journey_scope ? ` · ${booking.journey_scope}` : ""}
         </p>
         <p className="mt-1 font-bold">{booking.provider || booking.title}</p>
-        {route && <p className="mt-1 font-black text-brand">{route}</p>}
+        {route && flightLegs.length !== 1 && <p className="mt-1 font-black text-brand">{route}</p>}
         {booking.reference_code && (
           <p className="mt-1 text-xs text-muted">
-            <strong className="text-ink">{booking.type === "flight" ? "PNR" : "Reference"}:</strong>{" "}
-            {booking.reference_code}
+            {booking.type === "flight" ? "PNR" : "Reference"}{" "}
+            <strong className="font-mono text-sm tracking-wide text-ink">
+              {booking.reference_code}
+            </strong>
           </p>
         )}
       </div>
-      <span aria-hidden="true" className="secondary-button min-h-9 px-3 py-2 text-xs">
+      <span
+        aria-hidden="true"
+        className="inline-flex items-center gap-1 text-xs font-bold text-brand"
+      >
         Full details <ExternalLink className="size-3.5" />
       </span>
     </div>
@@ -477,7 +485,7 @@ function BookingEventDetails({
               className="block rounded-xl bg-elevated p-3 text-xs"
             >
               <div className="flex items-start justify-between gap-2">
-                <strong className="flex items-center gap-2">
+                <strong className="flex items-center gap-2 text-base">
                   <span className="airline-accent-dot" aria-hidden="true" />
                   {leg.departure_airport_code || leg.departure_airport_name} →{" "}
                   {leg.arrival_airport_code || leg.arrival_airport_name}
@@ -490,7 +498,8 @@ function BookingEventDetails({
                 </span>
               </div>
               <p className="mt-1 text-muted">
-                {leg.airline_name} {leg.flight_number} ·{" "}
+                {leg.airline_name !== booking.provider && `${leg.airline_name} `}
+                <strong className="text-ink">{leg.flight_number}</strong> ·{" "}
                 {journeyDuration(leg.scheduled_departure_at, leg.scheduled_arrival_at)}
               </p>
               <p className="mt-1 text-muted">
@@ -838,6 +847,115 @@ function BookingEventSummary({
   );
 }
 
+function EventDetailSection({
+  title,
+  summary,
+  children
+}: {
+  title: string;
+  summary?: ReactNode;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <section className="mt-3 overflow-hidden rounded-xl border border-line">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen(!open)}
+        className="flex min-h-12 w-full items-center gap-3 px-3 py-2 text-left"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold">{title}</span>
+          {summary && <span className="mt-0.5 block text-xs text-muted">{summary}</span>}
+        </span>
+        <ChevronDown
+          aria-hidden="true"
+          className={`size-4 shrink-0 text-muted ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      <div id={id} hidden={!open} className="border-t border-line px-3 pb-3">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function EventBookingEssentials({
+  booking,
+  flights,
+  journeys
+}: {
+  booking: Booking;
+  flights: FlightLeg[];
+  journeys: JourneyLeg[];
+}) {
+  const flightLegs = flights
+    .filter((leg) => leg.booking_id === booking.id)
+    .sort((a, b) => a.segment_order - b.segment_order);
+  const travelLegs = journeys
+    .filter((leg) => leg.booking_id === booking.id)
+    .sort((a, b) => a.segment_order - b.segment_order);
+  const legs = flightLegs.length ? flightLegs : travelLegs;
+  return (
+    <div className="mt-3 rounded-xl border border-brand/25 bg-brand-soft/40 px-3 py-2.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs">
+        <span className="text-muted">{booking.provider || booking.title}</span>
+        {booking.reference_code && (
+          <span className="text-muted">
+            {booking.type === "flight" ? "PNR" : "Reference"}{" "}
+            <strong className="select-all break-all text-sm text-ink">
+              {booking.reference_code}
+            </strong>
+          </span>
+        )}
+      </div>
+      {legs.map((leg) => {
+        const flight = "departure_airport_code" in leg;
+        const boarding = resolveBoardingInstant(
+          leg.scheduled_departure_at,
+          leg.boarding_at,
+          leg.boarding_lead_minutes
+        );
+        const zone = flight ? leg.departure_timezone : leg.origin_timezone;
+        const route = flight
+          ? `${leg.departure_airport_code || leg.departure_airport_name} → ${leg.arrival_airport_code || leg.arrival_airport_name}`
+          : `${leg.origin_code || leg.origin_name} → ${leg.destination_code || leg.destination_name}`;
+        const operations = flight
+          ? [
+              leg.departure_terminal && `Terminal ${leg.departure_terminal}`,
+              leg.departure_gate && `Gate ${leg.departure_gate}`
+            ]
+          : [leg.departure_platform && `Platform ${leg.departure_platform}`];
+        return (
+          <div key={leg.id} className="mt-2 text-xs">
+            <p className="font-bold text-brand">
+              {route}
+              {flight
+                ? ` · ${leg.flight_number}`
+                : leg.service_number
+                  ? ` · ${leg.service_number}`
+                  : ""}
+            </p>
+            {(boarding || operations.some(Boolean)) && (
+              <p className="mt-1 font-bold">
+                {[boarding && `Board ${formatEventTime(boarding, zone)}`, ...operations]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            )}
+            {flight && ["cancelled", "delayed"].includes(leg.status) && (
+              <p className="mt-1 font-bold capitalize text-danger">{leg.status}</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function EventDetailsSheet({
   item,
   itinerary = [],
@@ -864,6 +982,7 @@ export function EventDetailsSheet({
   onViewCost,
   onUploadDocument,
   onStatus,
+  pendingStatus = null,
   onMoveUp,
   onMoveDown,
   routeBacked = false
@@ -892,19 +1011,55 @@ export function EventDetailsSheet({
   onAddCost: () => void;
   onViewCost: (cost: TripCost) => void;
   onUploadDocument: () => void;
-  onStatus: (status: EventStatus) => void;
+  onStatus: (status: EventStatus) => void | Promise<unknown>;
+  pendingStatus?: EventStatus | null;
   onMoveUp: () => void;
   onMoveDown: () => void;
   routeBacked?: boolean;
 }) {
+  const [localSavingStatus, setSavingStatus] = useState<EventStatus | null>(null);
+  const savingStatus = localSavingStatus ?? pendingStatus;
+  const [statusError, setStatusError] = useState("");
+  const statusLock = useRef(false);
+  const changeStatus = async (status: EventStatus) => {
+    if (statusLock.current || savingStatus || status === (item.event_status ?? "planned")) return;
+    statusLock.current = true;
+    setSavingStatus(status);
+    setStatusError("");
+    try {
+      await onStatus(status);
+    } catch (error) {
+      setStatusError(getErrorMessage(error));
+    } finally {
+      statusLock.current = false;
+      setSavingStatus(null);
+    }
+  };
   const map = mapsUrl(item.location);
   const end = eventEndDetails(item);
   const endTimeZone = eventEndTimeZone(item, flights, journeys);
   const timingLabel = eventTimeLabel(item, itinerary);
   const plannedDuration = plannedDurationLabel(item);
   const explicitStart = hasExplicitEventStart(item);
+  const linkedCosts = costsForEvent(item, costs);
+  const costSummary = Object.entries(groupCostTotals(linkedCosts))
+    .map(([currency, amount]) => (amount === 0 ? "Free" : formatMoney(amount, currency)))
+    .join(" + ");
   const showTimeZone =
     isJourneyEventType(item.event_type) && booking?.journey_scope === "international";
+  const firstBookingFlight = booking
+    ? flights
+        .filter((leg) => leg.booking_id === booking.id)
+        .sort((a, b) => a.segment_order - b.segment_order)[0]
+    : undefined;
+  const bookingHref = booking
+    ? firstBookingFlight
+      ? `/trips/${tripId}/flights/${firstBookingFlight.id}`
+      : `/trips/${tripId}/bookings/${booking.id}`
+    : null;
+  const bookingAirline = firstBookingFlight
+    ? airlineForFlight(firstBookingFlight, airlines)
+    : undefined;
   return (
     <ModalSheet
       eyebrow={(item.event_type ?? "event").replaceAll("_", " ")}
@@ -912,8 +1067,22 @@ export function EventDetailsSheet({
       onClose={onClose}
       manageHistory={!routeBacked}
     >
-      <div className="mt-5 flex items-start gap-4 rounded-2xl bg-elevated p-4">
-        <EventTypeIcon type={item.event_type ?? "custom"} className="size-11 rounded-xl" />
+      <div
+        style={firstBookingFlight ? airlineAccentStyle(bookingAirline?.brand_color) : undefined}
+        className={`relative mt-3 flex items-start gap-3 rounded-xl bg-elevated p-3 ${firstBookingFlight ? "airline-accent-rail pl-4" : ""} ${bookingHref ? "pr-9" : ""}`}
+      >
+        {bookingHref && (
+          <>
+            <Link
+              to={bookingHref}
+              state={navigationState}
+              aria-label={`View booking details for ${booking!.title}`}
+              className="absolute inset-0 z-10 rounded-[inherit] focus-visible:ring-2 focus-visible:ring-brand"
+            />
+            <ChevronRight aria-hidden="true" className="absolute right-3 top-3 size-4 text-muted" />
+          </>
+        )}
+        <EventTypeIcon type={item.event_type ?? "custom"} className="size-9 shrink-0 rounded-lg" />
         <div className="min-w-0">
           <p className="text-sm font-black">
             {timingLabel ?? formatEventTime(item.starts_at, item.timezone)}
@@ -923,15 +1092,19 @@ export function EventDetailsSheet({
               Starts {formatEventTime(item.starts_at, item.timezone)}
             </p>
           )}
-          <p className="mt-1 text-xs text-muted">
-            {item.timing_mode === "unscheduled"
-              ? "Schedule this when your plan is clearer"
-              : item.timing_mode === "relative" && !explicitStart
-                ? "Ordered on the timeline; start time is still optional"
-                : showTimeZone
-                  ? item.timezone
-                  : "Local schedule"}
-          </p>
+          {(item.timing_mode === "unscheduled" ||
+            (item.timing_mode === "relative" && !explicitStart) ||
+            showTimeZone) && (
+            <p className="mt-1 text-xs text-muted">
+              {item.timing_mode === "unscheduled"
+                ? "Schedule this when your plan is clearer"
+                : item.timing_mode === "relative" && !explicitStart
+                  ? "Ordered on the timeline; start time is still optional"
+                  : showTimeZone
+                    ? item.timezone
+                    : "Local schedule"}
+            </p>
+          )}
           {end && (
             <p className="mt-2 text-xs text-muted">
               {end.journey ? "Arrives" : "Ends"} {formatEventTime(end.endsAt, endTimeZone)} ·{" "}
@@ -963,13 +1136,32 @@ export function EventDetailsSheet({
           <LocateFixed className="size-4" /> Navigate
         </a>
       )}
-      {item.notes && (
-        <p className="mt-4 whitespace-pre-wrap rounded-xl bg-elevated p-3 text-sm leading-6 text-muted">
-          {item.notes}
-        </p>
-      )}
+      {item.notes &&
+        (item.notes.length > 160 || item.notes.split("\n").length > 3 ? (
+          <EventDetailSection title="Notes" summary="Instructions & additional information">
+            <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-muted [overflow-wrap:anywhere]">
+              {item.notes}
+            </p>
+          </EventDetailSection>
+        ) : (
+          <p className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-elevated px-3 py-2 text-sm leading-5 [overflow-wrap:anywhere]">
+            {item.notes}
+          </p>
+        ))}
       {booking && (
-        <>
+        <EventBookingEssentials booking={booking} flights={flights} journeys={journeys} />
+      )}
+      <EventDocuments
+        compact
+        item={item}
+        canEdit={editable}
+        onUpload={onUploadDocument}
+        travelerId={focusedTravelerId}
+        travelers={travelers}
+        navigationState={navigationState}
+      />
+      {booking && (
+        <EventDetailSection title="Booking details" summary="Schedule, travelers & contact">
           <BookingEventDetails
             tripId={tripId}
             booking={booking}
@@ -999,54 +1191,75 @@ export function EventDetailsSheet({
                   editable={editable}
                 />
               ))}
-        </>
+        </EventDetailSection>
       )}
       {editable && canAddEventBooking(item) && (
-        <div className="mt-4 rounded-2xl border border-line bg-surface/70 p-4">
-          <p className="text-sm font-extrabold">Booked this event now?</p>
-          <p className="mt-1 text-xs leading-5 text-muted">
-            Add the confirmation and provider without recreating the timeline event or changing its
-            order.
-          </p>
-          <button type="button" className="secondary-button mt-3" onClick={onAddBooking}>
-            <TicketCheck className="size-4" /> Add booking details
-          </button>
-        </div>
+        <button type="button" className="secondary-button mt-3 w-full" onClick={onAddBooking}>
+          <TicketCheck className="size-4" /> Add booking details
+        </button>
       )}
       {editable && (
-        <fieldset className="mt-5 rounded-2xl border border-line p-3">
-          <legend className="px-1 text-xs font-black uppercase tracking-[.12em] text-muted">
-            Event status
-          </legend>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {(["planned", "done", "skipped", "cancelled"] as EventStatus[]).map((status) => (
-              <button
-                key={status}
-                type="button"
-                onClick={() => onStatus(status)}
-                className={`rounded-xl px-3 py-2 text-xs font-extrabold capitalize ${(item.event_status ?? "planned") === status ? "bg-brand text-surface" : "bg-elevated text-muted"}`}
-              >
-                {status}
-              </button>
-            ))}
-          </div>
-        </fieldset>
+        <EventDetailSection
+          title="Event status"
+          summary={
+            savingStatus
+              ? `Saving ${savingStatus}…`
+              : (item.event_status ?? "planned").replace(/^./, (letter) => letter.toUpperCase())
+          }
+        >
+          <fieldset
+            disabled={savingStatus !== null}
+            aria-busy={savingStatus !== null}
+            className="mt-3"
+          >
+            <legend className="px-1 text-xs font-black uppercase tracking-[.12em] text-muted">
+              <span className="sr-only">Change event status</span>
+            </legend>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {(["planned", "done", "skipped", "cancelled"] as EventStatus[]).map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => void changeStatus(status)}
+                  disabled={savingStatus !== null}
+                  aria-pressed={(item.event_status ?? "planned") === status}
+                  className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-extrabold capitalize disabled:cursor-wait disabled:opacity-60 ${(item.event_status ?? "planned") === status ? "bg-brand text-surface" : "bg-elevated text-muted"}`}
+                >
+                  {savingStatus === status && (
+                    <Loader2
+                      aria-hidden="true"
+                      className="size-3.5 animate-spin motion-reduce:animate-none"
+                    />
+                  )}
+                  {status}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          {savingStatus && (
+            <p role="status" className="mt-2 text-xs text-muted">
+              Saving status…
+            </p>
+          )}
+          {statusError && (
+            <p role="alert" className="mt-2 text-xs text-danger">
+              Could not update status. {statusError}
+            </p>
+          )}
+        </EventDetailSection>
       )}
-      <EventCost
-        item={item}
-        costs={costs}
-        editable={editable}
-        onAdd={onAddCost}
-        onView={onViewCost}
-      />
-      <EventDocuments
-        item={item}
-        canEdit={editable}
-        onUpload={onUploadDocument}
-        travelerId={focusedTravelerId}
-        travelers={travelers}
-        navigationState={navigationState}
-      />
+      <EventDetailSection
+        title="Costs"
+        summary={linkedCosts.length ? costSummary || "No active cost" : "No costs added"}
+      >
+        <EventCost
+          item={item}
+          costs={costs}
+          editable={editable}
+          onAdd={onAddCost}
+          onView={onViewCost}
+        />
+      </EventDetailSection>
       {editable && item.timing_mode !== "relative" && (canMoveUp || canMoveDown) && (
         <div className="mt-5 flex gap-2">
           <span className="self-center text-xs font-bold text-muted">Same-time order:</span>
@@ -1082,22 +1295,6 @@ export function EventDetailsSheet({
   );
 }
 
-const phaseLabels: Record<TimelinePhase, string> = {
-  past: "Past",
-  current: "Happening now",
-  future: "Upcoming",
-  unscheduled: "Unscheduled"
-};
-
-function phaseForActive(item: ItineraryItem, active: boolean) {
-  const phase = timelinePhase(item);
-  if (!active) return phaseLabels[phase];
-  if (phase === "current") return "Happening now";
-  if (phase === "future") return "Next event";
-  if (phase === "unscheduled") return "Needs scheduling";
-  return "Most recent event";
-}
-
 function PeopleSheet({
   trip,
   travelers,
@@ -1128,43 +1325,47 @@ function PeopleSheet({
   const confirm = useConfirmDialog();
   return (
     <ModalSheet eyebrow={trip.title} title="People & sharing" onClose={onClose}>
-      <p className="mt-3 text-sm leading-6 text-muted">
-        Choose whose plan and documents you are working with. Switching never asks for extra
-        permission; access still requires signing in.
-      </p>
-      <div className="mt-5 grid grid-cols-2 gap-3">
+      <p className="mt-2 text-xs text-muted">Choose whose plans and documents to show.</p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           type="button"
           onClick={() => onSelect(null)}
-          className={`rounded-2xl border p-4 text-left ${selectedId === null ? "border-brand bg-brand-soft" : "border-line"}`}
+          aria-pressed={selectedId === null}
+          className={`flex min-h-14 min-w-0 items-center gap-2 rounded-xl border px-2 py-2 text-left sm:gap-3 sm:px-3 ${selectedId === null ? "border-brand bg-brand-soft" : "border-line"}`}
         >
-          <UsersRound className="size-5 text-brand" />
-          <strong className="mt-3 block">Everyone</strong>
+          <UsersRound className="size-5 shrink-0 text-brand" />
+          <strong className="text-sm">Everyone</strong>
         </button>
         {travelers.map((traveler) => (
           <article
             key={traveler.id}
-            className={`grid min-w-0 grid-cols-[minmax(0,1fr)_2.75rem] overflow-hidden rounded-2xl border ${selectedId === traveler.id ? "border-brand bg-brand-soft" : "border-line"}`}
+            className={`grid min-w-0 ${editable ? "grid-cols-[minmax(0,1fr)_2.75rem]" : "grid-cols-1"} overflow-hidden rounded-xl border ${selectedId === traveler.id ? "border-brand bg-brand-soft" : "border-line"}`}
           >
             <button
               type="button"
               onClick={() => onSelect(traveler.id)}
               aria-label={`Show ${traveler.display_name}'s trip information`}
-              className="min-w-0 p-4 pr-1 text-left"
+              aria-pressed={selectedId === traveler.id}
+              title={traveler.display_name}
+              className="flex min-h-14 min-w-0 items-center gap-1.5 py-2 pl-2 pr-0 text-left sm:gap-2 sm:pl-3"
             >
-              <span className="grid size-7 place-items-center rounded-full bg-brand text-[.65rem] font-black text-surface">
+              <span className="grid size-6 shrink-0 place-items-center rounded-full bg-brand text-[.6rem] font-black text-surface sm:size-7">
                 {traveler.display_name.slice(0, 2).toUpperCase()}
               </span>
-              <strong className="mt-3 block truncate">{traveler.display_name}</strong>
-              <span className="text-xs text-muted">
-                {traveler.is_minor ? "Managed child" : "Traveler"}
+              <span className="min-w-0">
+                <strong className="block truncate text-[13px] sm:text-sm">
+                  {traveler.display_name}
+                </strong>
+                {traveler.is_minor && (
+                  <span className="block truncate text-[10px] text-muted">Managed child</span>
+                )}
               </span>
             </button>
             {editable && (
               <button
                 type="button"
                 onClick={() => onEdit(traveler)}
-                className="tap-target grid size-11 place-items-center self-start rounded-xl text-muted hover:bg-elevated hover:text-ink"
+                className="tap-target grid size-11 place-items-center self-center rounded-xl text-muted hover:bg-elevated hover:text-ink"
                 aria-label={`Edit ${traveler.display_name}`}
               >
                 <Pencil className="size-4" />
@@ -1178,12 +1379,12 @@ function PeopleSheet({
           <UserPlus className="size-4" /> Add traveler
         </button>
       )}
-      <div className="mt-6 border-t border-line pt-5">
+      <div className="mt-4 border-t border-line pt-3">
         <p className="eyebrow">Signed-in members</p>
-        <div className="mt-3 space-y-3">
+        <div className="mt-2 divide-y divide-line">
           {members.map((member) => (
             <div
-              className="flex items-center gap-2 rounded-xl bg-elevated p-3 text-sm"
+              className="flex min-h-11 min-w-0 items-center gap-2 text-[13px]"
               key={member.user_id}
             >
               <span className="min-w-0 flex-1 truncate font-bold">
@@ -1192,25 +1393,31 @@ function PeopleSheet({
               </span>
               {isOwner && member.role !== "owner" ? (
                 <>
-                  <select
-                    aria-label={`Role for ${member.display_name}`}
-                    className="rounded-lg border border-line bg-surface p-2 capitalize"
-                    defaultValue={member.role}
-                    onChange={async (event) => {
-                      await updateMemberRole(
-                        trip.id,
-                        member.user_id,
-                        event.target.value as "editor" | "viewer"
-                      );
-                      onRefresh();
-                    }}
-                  >
-                    <option value="editor">editor</option>
-                    <option value="viewer">viewer</option>
-                  </select>
+                  <span className="relative shrink-0">
+                    <select
+                      aria-label={`Role for ${member.display_name}`}
+                      className="min-h-11 cursor-pointer appearance-none rounded-lg border-0 bg-transparent py-2 pl-2 pr-6 text-xs font-semibold text-brand hover:bg-brand-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-brand"
+                      defaultValue={member.role}
+                      onChange={async (event) => {
+                        await updateMemberRole(
+                          trip.id,
+                          member.user_id,
+                          event.target.value as "editor" | "viewer"
+                        );
+                        onRefresh();
+                      }}
+                    >
+                      <option value="editor">Editor</option>
+                      <option value="viewer">Viewer</option>
+                    </select>
+                    <ChevronDown
+                      aria-hidden="true"
+                      className="pointer-events-none absolute right-1.5 top-1/2 size-3 -translate-y-1/2 text-brand"
+                    />
+                  </span>
                   <button
                     type="button"
-                    className="text-xs font-bold text-danger"
+                    className="min-h-11 shrink-0 rounded-lg px-1 text-xs font-bold text-danger hover:bg-danger/10 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-danger"
                     onClick={async () => {
                       if (
                         !(await confirm({
@@ -1254,7 +1461,7 @@ export function TripPage() {
   const view: TripView = searchParams.get("view") === "details" ? "details" : "timeline";
   const requestedForm = openFormFromQuery(searchParams.get("add"));
   const routedEventId = searchParams.get("event");
-  const agendaOpen = searchParams.get("agenda") === "open";
+  const timelineRef = useRef<TimelineHandle>(null);
   const requestedEventType = searchParams.get("eventType");
   const routedEventType = timelineEventTypes.includes(requestedEventType as TimelineEventType)
     ? (requestedEventType as TimelineEventType)
@@ -1520,16 +1727,6 @@ export function TripPage() {
       visibleRequirements
     ]
   );
-  const phaseJumps = useMemo(() => {
-    const firstByPhase = new Map<TimelinePhase, TripTimelineEntry>();
-    for (const entry of timelineEntries) {
-      const phase = timelineEntryPhase(entry);
-      if (!firstByPhase.has(phase)) firstByPhase.set(phase, entry);
-    }
-    return (["past", "current", "future", "unscheduled"] as const).flatMap((phase) =>
-      firstByPhase.has(phase) ? [{ phase, entry: firstByPhase.get(phase)! }] : []
-    );
-  }, [timelineEntries]);
 
   useEffect(() => {
     if (positioned.current || !tripQuery.isSuccess) return;
@@ -1542,6 +1739,7 @@ export function TripPage() {
     if (
       view === "timeline" &&
       (!itineraryQuery.isSuccess ||
+        requirementsQuery.isLoading ||
         participantsQuery.isLoading ||
         bookingTravelersQuery.isLoading ||
         requirementAssigneesQuery.isLoading)
@@ -1549,6 +1747,10 @@ export function TripPage() {
       return;
     let secondFrame = 0;
     const firstFrame = window.requestAnimationFrame(() => {
+      const targetId =
+        requestedTimelineItem.current ??
+        (activeNavigationIntent?.kind === "target" ? activeNavigationIntent.targetId : undefined);
+      if (targetId) timelineRef.current?.reveal(targetId);
       secondFrame = window.requestAnimationFrame(() => {
         if (view === "details") {
           const requested = requestedSection ? document.getElementById(requestedSection) : null;
@@ -1599,6 +1801,7 @@ export function TripPage() {
     participantsQuery.isLoading,
     requestedSection,
     requirementAssigneesQuery.isLoading,
+    requirementsQuery.isLoading,
     returningToEntry,
     tripId,
     tripQuery.isSuccess,
@@ -1702,40 +1905,6 @@ export function TripPage() {
     }
     setSearchParams(nextParams, { state: tripEntryNavigationState(location.state, tripId, next) });
   };
-  const openCurrentTimeline = () => {
-    if (activeTimelineEntry) requestedTimelineItem.current = activeTimelineEntry.id;
-    saveScroll(tripId, view);
-    positioned.current = false;
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete("view");
-    nextParams.delete("section");
-    setSearchParams(nextParams, {
-      state: tripIntentNavigationState(location.state, tripId, "current", { view: "timeline" })
-    });
-  };
-  const openAgenda = () => {
-    saveScroll(tripId, view);
-    const next = new URLSearchParams(searchParams);
-    next.set("agenda", "open");
-    setSearchParams(next, {
-      state: tripRouteModalNavigationState(location.state, tripId, view)
-    });
-  };
-  const selectAgendaEntry = (id: string) => {
-    requestedTimelineItem.current = id;
-    positioned.current = false;
-    const next = new URLSearchParams(searchParams);
-    next.delete("agenda");
-    next.delete("view");
-    next.delete("section");
-    setSearchParams(next, {
-      replace: true,
-      state: tripIntentNavigationState(null, tripId, "target", {
-        view: "timeline",
-        targetId: id
-      })
-    });
-  };
   const closeForm = () => {
     const closingRouteEvent = openForm === "event" && requestedForm === "event";
     setOpenForm(null);
@@ -1769,11 +1938,16 @@ export function TripPage() {
   };
   const scrollToItem = (id: string) => {
     setQuery("");
+    timelineRef.current?.reveal(id);
     requestedTimelineItem.current = id;
     positioned.current = false;
     if (view === "timeline") {
       window.requestAnimationFrame(() => {
         if (scrollTimelineEventIntoView(id, preferredScrollBehavior())) {
+          document
+            .getElementById(`timeline-${id}`)
+            ?.querySelector<HTMLButtonElement>("[data-timeline-trigger]")
+            ?.focus({ preventScroll: true });
           requestedTimelineItem.current = null;
           positioned.current = true;
           markBrowserTripEntry(location.state, tripId, view);
@@ -1904,38 +2078,50 @@ export function TripPage() {
       activeTimelineEntry.id === `requirement:${advanceAfterRequirementId}`
     )
       return;
-    const frame = window.requestAnimationFrame(() =>
-      scrollTimelineEventIntoView(activeTimelineEntry.id, preferredScrollBehavior())
-    );
-    setAdvanceAfterRequirementId(null);
+    timelineRef.current?.reveal(activeTimelineEntry.id);
+    const frame = window.requestAnimationFrame(() => {
+      scrollTimelineEventIntoView(activeTimelineEntry.id, preferredScrollBehavior());
+      setAdvanceAfterRequirementId(null);
+    });
     return () => window.cancelAnimationFrame(frame);
   }, [activeTimelineEntry, advanceAfterRequirementId]);
 
   return (
     <AppShell>
       <div className="mx-auto max-w-6xl pb-24">
-        <Link
-          to="/trips"
-          className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted hover:text-ink"
-        >
-          <ArrowLeft className="size-4" /> All trips
-        </Link>
+        <div className="flex items-center justify-between gap-3">
+          <Link
+            to="/trips"
+            className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted hover:text-ink"
+          >
+            <ArrowLeft className="size-4" /> All trips
+          </Link>
+          {trip && isOwner && (
+            <button
+              type="button"
+              onClick={() => setOpenForm("settings")}
+              className="tap-target inline-flex items-center gap-2 rounded-lg px-2 text-sm font-bold text-brand hover:bg-brand-soft"
+            >
+              <Pencil aria-hidden="true" className="size-4" /> Edit trip
+            </button>
+          )}
+        </div>
         {tripQuery.isLoading && <LoadingCard />}
         {tripQuery.error && (
           <ErrorCard error={tripQuery.error} title="This trip could not be opened" />
         )}
         {trip && (
           <>
-            <header className="page-enter mt-4 rounded-[2rem] bg-brand p-5 text-surface shadow-focus sm:p-7">
+            <header className="trip-hero page-enter mt-4 rounded-3xl bg-brand p-5 text-surface shadow-focus sm:p-7">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[.16em] text-surface/60">
-                    {formatDateRange(trip.start_date, trip.end_date)}
+                  <p className="text-xs font-semibold leading-relaxed text-surface/80 sm:text-sm">
+                    {formatDateRange(trip.start_date, trip.end_date, { includeWeekday: true })}
                   </p>
                   <h1 className="mt-2 font-display text-3xl font-black tracking-[-.05em] sm:text-4xl">
                     {trip.title}
                   </h1>
-                  <p className="mt-2 flex items-center gap-2 text-sm text-surface/70">
+                  <p className="mt-2 flex items-center gap-2 text-sm text-surface/80">
                     <MapPin className="size-4" />
                     {trip.destination_summary}
                   </p>
@@ -1943,22 +2129,6 @@ export function TripPage() {
                 <span className="rounded-full bg-surface/10 px-3 py-2 text-xs font-bold capitalize">
                   {role ?? "member"}
                 </span>
-              </div>
-              <div className="mt-5 grid grid-cols-2 rounded-2xl bg-surface/10 p-1">
-                <button
-                  type="button"
-                  onClick={() => changeView("timeline")}
-                  className={`tap-target rounded-xl text-sm font-black ${view === "timeline" ? "bg-surface text-brand shadow-soft" : "text-surface/70"}`}
-                >
-                  Timeline
-                </button>
-                <button
-                  type="button"
-                  onClick={() => changeView("details")}
-                  className={`tap-target rounded-xl text-sm font-black ${view === "details" ? "bg-surface text-brand shadow-soft" : "text-surface/70"}`}
-                >
-                  Trip details
-                </button>
               </div>
               <button
                 type="button"
@@ -1974,160 +2144,123 @@ export function TripPage() {
                 <ChevronRight className="size-4 shrink-0 text-surface/60" />
               </button>
             </header>
+            <div data-trip-sticky-start aria-hidden="true" />
             <div
-              ref={searchRegionRef}
-              id="trip-search"
-              role="search"
-              aria-label="Search within this trip"
-              className="relative mt-4 scroll-mt-[calc(6rem+env(safe-area-inset-top))]"
+              data-trip-sticky
+              className="sticky top-[var(--app-header-height)] z-30 mt-4 border-b border-line bg-canvas/95 py-1 backdrop-blur-md"
             >
-              <Search className="pointer-events-none absolute left-4 top-3.5 size-5 text-muted" />
-              <input
-                ref={searchInputRef}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="form-input mt-0 pl-12 pr-11"
-                placeholder="Search hotel, date, flight, activity, document, traveler…"
-                aria-label="Search this trip"
-              />
-              {query && (
+              <div className="grid grid-cols-2 rounded-2xl bg-elevated p-1">
                 <button
                   type="button"
-                  onClick={() => setQuery("")}
-                  className="absolute right-2 top-1.5 grid size-9 place-items-center text-muted"
-                  aria-label="Clear search"
+                  aria-pressed={view === "timeline"}
+                  onClick={() => changeView("timeline")}
+                  className={`tap-target rounded-xl text-sm font-black ${view === "timeline" ? "bg-surface text-brand shadow-soft" : "text-muted"}`}
                 >
-                  <X className="size-4" />
+                  Timeline
                 </button>
-              )}
-              {query.length >= 2 && (
-                <div className="relative z-40 mt-2 max-h-[42dvh] w-full scroll-mb-[45dvh] overflow-auto rounded-2xl border border-line bg-surface p-2 shadow-focus sm:absolute sm:max-h-96 sm:scroll-mb-0">
-                  {results.map((result) =>
-                    result.href ? (
-                      <Link
-                        key={result.id}
-                        to={result.href}
-                        state={childNavigationState}
-                        onClick={() => setQuery("")}
-                        className="block rounded-xl px-3 py-3 hover:bg-elevated"
-                      >
-                        <strong className="block text-sm">{result.title}</strong>
-                        <span className="text-xs text-muted">
-                          {result.group} · {result.detail}
-                        </span>
-                      </Link>
-                    ) : (
-                      <button
-                        key={result.id}
-                        type="button"
-                        onClick={() => {
-                          if (result.timelineItemId) scrollToItem(result.timelineItemId);
-                          else if (result.group === "Travelers") {
-                            chooseTraveler(result.id.replace("traveler:", ""));
-                            setQuery("");
-                          }
-                        }}
-                        className="block w-full rounded-xl px-3 py-3 text-left hover:bg-elevated"
-                      >
-                        <strong className="block text-sm">{result.title}</strong>
-                        <span className="text-xs text-muted">
-                          {result.group} · {result.detail}
-                        </span>
-                      </button>
-                    )
-                  )}
-                  {results.length === 0 && (
-                    <p className="p-4 text-sm text-muted">Nothing in this trip matches.</p>
-                  )}
-                </div>
-              )}
+                <button
+                  type="button"
+                  aria-pressed={view === "details"}
+                  onClick={() => changeView("details")}
+                  className={`tap-target rounded-xl text-sm font-black ${view === "details" ? "bg-surface text-brand shadow-soft" : "text-muted"}`}
+                >
+                  Trip details
+                </button>
+              </div>
             </div>
-
+            {view === "timeline" && (
+              <div
+                ref={searchRegionRef}
+                id="trip-search"
+                role="search"
+                aria-label="Search within this trip"
+                className="relative mt-3 scroll-mt-[10rem]"
+              >
+                <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 size-5 text-muted" />
+                <input
+                  ref={searchInputRef}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  className="form-input mt-0 min-h-12 pl-12 pr-11 text-base"
+                  placeholder="Find an event, date, place…"
+                  aria-label="Search this trip"
+                />
+                {query && (
+                  <button
+                    type="button"
+                    onClick={() => setQuery("")}
+                    className="absolute right-2 top-1.5 grid size-9 place-items-center text-muted"
+                    aria-label="Clear search"
+                  >
+                    <X className="size-4" />
+                  </button>
+                )}
+                {query.length >= 2 && (
+                  <div className="relative z-40 mt-2 max-h-[42dvh] w-full scroll-mb-[45dvh] overflow-auto rounded-2xl border border-line bg-surface p-2 shadow-focus sm:absolute sm:max-h-96 sm:scroll-mb-0">
+                    {results.map((result) =>
+                      result.href ? (
+                        <Link
+                          key={result.id}
+                          to={result.href}
+                          state={childNavigationState}
+                          onClick={() => setQuery("")}
+                          className="block rounded-xl px-3 py-3 hover:bg-elevated"
+                        >
+                          <strong className="block text-sm">{result.title}</strong>
+                          <span className="text-xs text-muted">
+                            {result.group} · {result.detail}
+                          </span>
+                        </Link>
+                      ) : (
+                        <button
+                          key={result.id}
+                          type="button"
+                          onClick={() => {
+                            if (result.timelineItemId) scrollToItem(result.timelineItemId);
+                            else if (result.group === "Travelers") {
+                              chooseTraveler(result.id.replace("traveler:", ""));
+                              setQuery("");
+                            }
+                          }}
+                          className="block w-full rounded-xl px-3 py-3 text-left hover:bg-elevated"
+                        >
+                          <strong className="block text-sm">{result.title}</strong>
+                          <span className="text-xs text-muted">
+                            {result.group} · {result.detail}
+                          </span>
+                        </button>
+                      )
+                    )}
+                    {results.length === 0 && (
+                      <p className="p-4 text-sm text-muted">Nothing in this trip matches.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             {view === "timeline" ? (
               <main className="mt-5">
                 <section
                   id="timeline-readiness"
                   data-trip-scroll-anchor="timeline"
-                  className="surface-card group relative overflow-hidden p-5 transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft sm:p-6 motion-reduce:hover:translate-y-0"
+                  className="min-w-0"
                 >
                   <Link
-                    className="absolute inset-0 z-10 rounded-[inherit] focus-visible:ring-2 focus-visible:ring-brand"
+                    className="flex min-h-14 items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2 transition hover:border-brand/40"
                     to={`/trips/${trip.id}/readiness`}
                     state={childNavigationState}
                     aria-label="Open trip readiness"
-                  />
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="eyebrow">Before you go</p>
-                      <h2 className="mt-1 font-display text-xl font-black">Readiness checklist</h2>
-                    </div>
-                    <ShieldCheck
-                      className={`size-6 ${readiness.remaining ? "text-warning" : "text-success"}`}
-                    />
-                  </div>
-                  {readiness.total ? (
-                    <>
-                      <p className="mt-3 text-sm text-muted">
-                        {readiness.resolved} of {readiness.total} tasks done
-                      </p>
-                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-elevated">
-                        <span
-                          className="block h-full rounded-full bg-success transition-all"
-                          style={{
-                            width: `${Math.round((readiness.resolved / readiness.total) * 100)}%`
-                          }}
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <p className="mt-3 text-sm text-muted">
-                      Add the first thing you need to do before this trip.
-                    </p>
-                  )}
-                  <div className="relative z-20 mt-4 flex gap-4">
-                    <Link
-                      className="text-sm font-extrabold text-brand"
-                      to={`/trips/${trip.id}/readiness`}
-                      state={childNavigationState}
-                    >
-                      Open checklist
-                    </Link>
-                    {editable && (
-                      <button
-                        type="button"
-                        className="text-sm font-extrabold text-brand"
-                        onClick={() => setOpenForm("requirement")}
-                      >
-                        + Add task
-                      </button>
-                    )}
-                  </div>
+                    aria-description={
+                      readiness.total
+                        ? `${readiness.resolved} of ${readiness.total} tasks done`
+                        : "No tasks yet"
+                    }
+                  >
+                    <ReadinessProgress resolved={readiness.resolved} total={readiness.total} />
+                    <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted" />
+                  </Link>
                 </section>
-                <section className="surface-card mt-5 p-5 sm:p-6">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="eyebrow">Everything in order</p>
-                      <h2 className="mt-1 font-display text-2xl font-black">
-                        {focusedTraveler
-                          ? `${focusedTraveler.display_name}'s timeline`
-                          : "Complete timeline"}
-                      </h2>
-                      <p className="mt-2 text-sm text-muted">
-                        {focusedTraveler
-                          ? "Shared events and this traveler's events are shown in time order."
-                          : "Past events are above you. Upcoming events continue below."}
-                      </p>
-                    </div>
-                    {visibleItinerary.length > 0 && (
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => downloadTripCalendar(trip, visibleItinerary)}
-                      >
-                        <Download className="size-4" /> Calendar
-                      </button>
-                    )}
-                  </div>
+                <section className="-mx-2 mt-4 min-w-0 sm:surface-card sm:mx-0 sm:p-6">
                   {timelineStatus && (
                     <p
                       role="status"
@@ -2136,299 +2269,156 @@ export function TripPage() {
                       {timelineStatus}
                     </p>
                   )}
-                  {phaseJumps.length > 0 && (
-                    <nav
-                      aria-label="Timeline sections"
-                      className="sticky top-2 z-30 mt-4 flex gap-2 overflow-auto rounded-2xl border border-line bg-surface/95 p-2 shadow-soft backdrop-blur"
-                    >
-                      {phaseJumps.map(({ phase, entry }) => (
-                        <button
-                          key={phase}
-                          type="button"
-                          onClick={() => scrollToItem(entry.id)}
-                          className={`shrink-0 rounded-xl px-3 py-2 text-xs font-black ${phase === "current" ? "bg-coral text-white" : "bg-elevated text-brand"}`}
-                        >
-                          {phaseLabels[phase]}
-                        </button>
-                      ))}
-                    </nav>
-                  )}
-                  <div className="relative mt-6 before:absolute before:bottom-5 before:left-1 before:top-5 before:w-px before:bg-line xl:before:left-[8.25rem]">
-                    {timelineEntries.map((entry, index, entries) => {
-                      const current = activeTimelineEntry?.id === entry.id;
-                      const phase = timelineEntryPhase(entry);
-                      const previousPhase = index ? timelineEntryPhase(entries[index - 1]) : null;
-                      const showDate =
-                        index === 0 ||
-                        itineraryDateKey(
-                          entries[index - 1].startsAt,
-                          entries[index - 1].timezone
-                        ) !== itineraryDateKey(entry.startsAt, entry.timezone);
-                      if (entry.kind === "requirement") {
+
+                  <div>
+                    <TripTimeline
+                      title={
+                        focusedTraveler ? `${focusedTraveler.display_name}'s timeline` : "Timeline"
+                      }
+                      calendarAction={
+                        visibleItinerary.length > 0 && (
+                          <button
+                            type="button"
+                            className="view-option gap-2"
+                            onClick={() => downloadTripCalendar(trip, visibleItinerary)}
+                          >
+                            <Download className="size-4" /> Calendar
+                          </button>
+                        )
+                      }
+                      key={`${userId}:${tripId}:${focusedTravelerId ?? "everyone"}`}
+                      ref={timelineRef}
+                      storageKey={`trip-vault:timeline-view:${userId}:${tripId}:${focusedTravelerId ?? "everyone"}`}
+                      entries={timelineEntries}
+                      activeId={activeTimelineEntry?.id}
+                      ready={
+                        itineraryQuery.isSuccess &&
+                        requirementsQuery.isSuccess &&
+                        !participantsQuery.isLoading &&
+                        !requirementAssigneesQuery.isLoading
+                      }
+                      onJump={scrollToItem}
+                      entrySubtitle={(entry) => {
+                        if (entry.kind !== "event") return;
+                        const item = entry.item;
+                        const flightLegs = flights
+                          .filter((leg) => leg.booking_id === item.booking_id)
+                          .sort((a, b) => a.segment_order - b.segment_order);
+                        const journeyLegs = journeys
+                          .filter((leg) => leg.booking_id === item.booking_id)
+                          .sort((a, b) => a.segment_order - b.segment_order);
+                        const route = flightLegs.length
+                          ? journeyRoute(
+                              flightLegs.map((leg) => ({
+                                origin: leg.departure_airport_code,
+                                destination: leg.arrival_airport_code
+                              }))
+                            )
+                          : journeyRoute(
+                              journeyLegs.map((leg) => ({
+                                origin: leg.origin_code || leg.origin_name,
+                                destination: leg.destination_code || leg.destination_name
+                              }))
+                            );
+                        return route || item.location?.label;
+                      }}
+                      taskControl={(entry) => {
+                        if (entry.kind !== "requirement") return;
                         const item = entry.requirement;
-                        const done = ["complete", "not_required"].includes(item.status);
-                        const audience = requirementAudienceLabel(
-                          item.id,
-                          requirementAssigneesQuery.data ?? [],
-                          travelers
-                        );
+                        return {
+                          checked: ["complete", "not_required"].includes(item.status),
+                          disabled: !editable || updateTimelineRequirement.isPending,
+                          onToggle: (checked) =>
+                            updateTimelineRequirement.mutate({
+                              requirement: item,
+                              status: checked ? "complete" : "to_check"
+                            }),
+                          onOpen: () => setViewingRequirement(item)
+                        };
+                      }}
+                      renderDetail={(entry) => {
+                        if (entry.kind === "requirement") {
+                          return null;
+                        }
+                        const item = entry.item;
+                        const booking = item.booking_id
+                          ? visibleBookings.find((row) => row.id === item.booking_id)
+                          : undefined;
+                        const end = eventEndDetails(item);
+                        const endTimeZone = eventEndTimeZone(item, flights, journeys);
+                        const map = mapsUrl(item.location);
+                        const travelerIds = participantRows
+                          .filter((row) => row.itinerary_item_id === item.id)
+                          .map((row) => row.traveler_id);
                         return (
-                          <Fragment key={entry.id}>
-                            {phase !== previousPhase && (
-                              <div
-                                id={`timeline-phase-${phase}`}
-                                className={`${index ? "pt-7" : ""} relative z-10 pb-3 pl-6 xl:pl-[10.5rem]`}
-                              >
-                                <span
-                                  className={`inline-flex rounded-full px-3 py-1.5 text-[.65rem] font-black uppercase tracking-[.14em] ${current ? "bg-coral text-white" : "border border-line bg-surface text-muted"}`}
+                          <div>
+                            {end && (
+                              <p className="mb-3 text-sm text-muted">
+                                {end.journey ? "Arrives" : "Ends"}{" "}
+                                {formatEventTime(end.endsAt, endTimeZone)} · {end.duration}
+                              </p>
+                            )}
+                            <EventTravelers
+                              item={item}
+                              travelerIds={travelerIds}
+                              travelers={travelers}
+                            />
+                            <div className="mt-3 flex flex-wrap items-center gap-3 [&>a]:relative [&>a]:z-20 [&>button]:relative [&>button]:z-20">
+                              {map ? (
+                                <a
+                                  href={map}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 text-xs font-extrabold text-brand"
                                 >
-                                  {current ? "Needs attention" : phaseLabels[phase]}
-                                </span>
-                              </div>
-                            )}
-                            {showDate && (
-                              <h3
-                                className={`${index ? "pt-3" : ""} pb-3 pl-6 text-sm font-black xl:pl-[10.5rem]`}
-                              >
-                                {formatItineraryDate(entry.startsAt, entry.timezone)}
-                              </h3>
-                            )}
-                            <div
-                              id={`timeline-${entry.id}`}
-                              data-trip-scroll-anchor="timeline"
-                              className="relative mb-3 grid scroll-mt-28 grid-cols-1 pl-5 xl:grid-cols-[6rem_2.5rem_minmax(0,1fr)] xl:gap-4 xl:pl-0"
-                            >
-                              <span
-                                aria-hidden="true"
-                                className={`absolute left-[-0.05rem] top-5 z-10 size-2.5 rounded-full ring-4 ring-surface xl:hidden ${current ? "bg-coral" : done || phase === "past" ? "bg-line" : "bg-brand"}`}
-                              />
-                              <time
-                                className={`hidden pt-3 text-right text-xs font-black xl:block ${current ? "text-coral" : "text-muted"}`}
-                              >
-                                {formatEventTime(entry.startsAt, entry.timezone).split(",").at(-1)}
-                              </time>
-                              <span
-                                className={`z-10 mt-2 hidden size-10 place-items-center rounded-full border-4 border-surface xl:grid ${current ? "bg-coral text-white shadow-focus" : done || phase === "past" ? "bg-line text-muted" : "bg-brand-soft text-brand"}`}
-                              >
-                                <Check className="size-4" />
-                              </span>
-                              <div
-                                className={`flex min-h-16 items-center gap-3 rounded-2xl border px-3 py-2 transition xl:px-4 ${current ? "border-coral bg-coral/10 shadow-focus" : "border-line bg-elevated"}`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  className="relative z-10 size-5 shrink-0 accent-brand"
-                                  checked={done}
-                                  disabled={!editable || updateTimelineRequirement.isPending}
-                                  aria-label={`${done ? "Mark as not done" : "Mark as done"}: ${item.title}`}
-                                  onChange={(event) =>
-                                    updateTimelineRequirement.mutate({
-                                      requirement: item,
-                                      status: event.target.checked ? "complete" : "to_check"
-                                    })
-                                  }
-                                />
+                                  <LocateFixed className="size-4" /> Navigation
+                                </a>
+                              ) : editable && !isJourneyEventType(item.event_type) ? (
                                 <button
                                   type="button"
-                                  onClick={() => setViewingRequirement(item)}
-                                  className="min-w-0 flex-1 rounded-lg text-left focus-visible:ring-2 focus-visible:ring-brand"
-                                  aria-label={`View details for ${item.title}`}
+                                  onClick={() => editTimelineItem(item)}
+                                  className="inline-flex items-center gap-1.5 text-xs font-extrabold text-warning"
                                 >
-                                  <strong
-                                    className={`block truncate text-sm ${done ? "text-muted line-through" : "text-ink"}`}
-                                  >
-                                    {item.title}
-                                  </strong>
-                                  <span className="mt-0.5 block text-xs text-muted">
-                                    {entry.scheduleLabel}
-                                    {audience ? ` · ${audience}` : ""}
-                                    {done ? " · Done" : " · Readiness task"}
-                                  </span>
+                                  <MapPin className="size-4" /> Add location
                                 </button>
-                                {current && !done && (
-                                  <span className="shrink-0 rounded-full bg-coral px-2 py-1 text-[.6rem] font-black uppercase text-white">
-                                    Next
-                                  </span>
-                                )}
-                              </div>
+                              ) : null}
+                              <EventDocumentShortcut
+                                item={item}
+                                travelerId={focusedTravelerId}
+                                navigationState={childNavigationState}
+                              />
                             </div>
-                          </Fragment>
-                        );
-                      }
-                      const item = entry.item;
-                      const booking = item.booking_id
-                        ? visibleBookings.find((row) => row.id === item.booking_id)
-                        : undefined;
-                      const end = eventEndDetails(item);
-                      const endTimeZone = eventEndTimeZone(item, flights, journeys);
-                      const timingLabel = eventTimeLabel(item, visibleItinerary);
-                      const plannedDuration = plannedDurationLabel(item);
-                      const explicitStart = hasExplicitEventStart(item);
-                      const compactTimingLabel =
-                        item.timing_mode === "relative"
-                          ? explicitStart
-                            ? formatEventTime(item.starts_at, item.timezone).split(",").at(-1)
-                            : item.relative_position === "before"
-                              ? "Before"
-                              : "After"
-                          : (timingLabel ??
-                            formatEventTime(item.starts_at, item.timezone).split(",").at(-1));
-                      const map = mapsUrl(item.location);
-                      const travelerIds = participantRows
-                        .filter((row) => row.itinerary_item_id === item.id)
-                        .map((row) => row.traveler_id);
-                      return (
-                        <Fragment key={item.id}>
-                          {phase !== previousPhase && (
-                            <div
-                              id={`timeline-phase-${phase}`}
-                              className={`${index ? "pt-7" : ""} relative z-10 pb-3 pl-6 xl:pl-[10.5rem]`}
-                            >
-                              <span
-                                className={`inline-flex rounded-full px-3 py-1.5 text-[.65rem] font-black uppercase tracking-[.14em] ${phase === "current" ? "bg-coral text-white" : "border border-line bg-surface text-muted"}`}
-                              >
-                                {phaseLabels[phase]}
-                              </span>
-                            </div>
-                          )}
-                          {item.timing_mode !== "unscheduled" && showDate && (
-                            <h3
-                              className={`${index ? "pt-3" : ""} pb-3 pl-6 text-sm font-black xl:pl-[10.5rem]`}
-                            >
-                              {formatItineraryDate(item.starts_at, item.timezone)}
-                            </h3>
-                          )}
-                          <div
-                            id={`timeline-${item.id}`}
-                            data-trip-scroll-anchor="timeline"
-                            className="relative mb-4 grid scroll-mt-28 grid-cols-1 pl-5 xl:grid-cols-[6rem_2.5rem_minmax(0,1fr)] xl:gap-4 xl:pl-0"
-                          >
+                            {booking && (
+                              <BookingEventSummary
+                                tripId={trip.id}
+                                booking={booking}
+                                flights={flights}
+                                airlines={airlinesQuery.data ?? []}
+                                flightTravelers={flightTravelers}
+                                journeys={journeys}
+                                travelers={travelers}
+                                focusedTravelerId={focusedTravelerId}
+                                cabStops={cabStops}
+                                eventTimezone={item.timezone}
+                              />
+                            )}
+
+                            <button
+                              type="button"
+                              className="absolute inset-0 z-10 w-full rounded-b-2xl focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
+                              onClick={() => openEvent(item.id)}
+                              aria-label={`Open details for ${item.title}`}
+                            />
                             <span
                               aria-hidden="true"
-                              className={`absolute left-[-0.05rem] top-6 z-10 size-2.5 rounded-full ring-4 ring-surface xl:hidden ${current ? "bg-coral" : phase === "past" ? "bg-line" : "bg-brand"}`}
-                            />
-                            <time
-                              className={`hidden pt-4 text-right text-xs font-black xl:block ${current ? "text-coral" : "text-muted"}`}
+                              className="mt-3 inline-flex items-center gap-1 text-xs font-extrabold text-brand"
                             >
-                              {compactTimingLabel}
-                            </time>
-                            <EventTypeIcon
-                              type={item.event_type ?? "custom"}
-                              iconClassName="size-4"
-                              className={`z-10 mt-3 hidden size-10 rounded-full border-4 border-surface xl:grid ${current ? "shadow-focus ring-2 ring-coral/40" : phase === "past" ? "opacity-60" : ""}`}
-                            />
-                            <FocusSurface
-                              active={current}
-                              className={`group p-4 pr-16 hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft xl:p-5 ${current ? "bg-coral/10" : "bg-elevated"}`}
-                            >
-                              <button
-                                type="button"
-                                className="absolute inset-0 z-10 cursor-pointer rounded-[1.6rem] focus-visible:ring-2 focus-visible:ring-brand"
-                                onClick={() => openEvent(item.id)}
-                                aria-label={`Open details for ${item.title}`}
-                              />
-                              <EventTypeIcon
-                                type={item.event_type ?? "custom"}
-                                iconClassName="size-4"
-                                className={`absolute right-4 top-4 size-10 rounded-xl xl:hidden ${current ? "ring-2 ring-coral/40" : phase === "past" ? "opacity-60" : ""}`}
-                              />
-                              <time
-                                className={`text-xs font-black xl:hidden ${current ? "text-coral" : "text-muted"}`}
-                              >
-                                {compactTimingLabel}
-                              </time>
-                              <div className="min-w-0">
-                                <span
-                                  className={`mb-2 inline-flex rounded-full px-2 py-1 text-[.6rem] font-black uppercase tracking-[.12em] ${current ? "bg-coral text-white" : "bg-surface text-muted"}`}
-                                >
-                                  {phaseForActive(item, current)}
-                                </span>
-                                <h3 className="font-display text-lg font-black">{item.title}</h3>
-                                {item.timing_mode === "relative" && (
-                                  <p className="mt-1 text-xs font-extrabold text-brand">
-                                    {timingLabel}
-                                  </p>
-                                )}
-                                {item.timing_mode === "relative" && explicitStart && (
-                                  <p className="mt-1 text-xs text-muted">
-                                    Starts {formatEventTime(item.starts_at, item.timezone)}
-                                  </p>
-                                )}
-                                <p className="mt-1 text-xs capitalize text-muted">
-                                  {(item.event_type ?? "custom").replaceAll("_", " ")} ·{" "}
-                                  {(item.event_status ?? "planned").replaceAll("_", " ")}
-                                </p>
-                                {end && (
-                                  <p className="mt-1 text-xs text-muted">
-                                    {end.journey ? "Arrives" : "Ends"}{" "}
-                                    {formatEventTime(end.endsAt, endTimeZone)} · {end.duration}
-                                  </p>
-                                )}
-                                {plannedDuration && (
-                                  <p className="mt-1 text-xs text-muted">
-                                    Planned duration · {plannedDuration}
-                                  </p>
-                                )}
-                              </div>
-                              <EventTravelers
-                                item={item}
-                                travelerIds={travelerIds}
-                                travelers={travelers}
-                              />
-                              {item.location?.label && (
-                                <p className="mt-3 flex items-start gap-2 text-sm text-muted">
-                                  <MapPin className="mt-0.5 size-4 shrink-0" />
-                                  {item.location.label}
-                                </p>
-                              )}
-                              <div className="relative z-20 mt-3 flex flex-wrap items-center gap-3">
-                                {map ? (
-                                  <a
-                                    href={map}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center gap-1.5 text-xs font-extrabold text-brand"
-                                  >
-                                    <LocateFixed className="size-4" /> Navigation
-                                  </a>
-                                ) : editable && !isJourneyEventType(item.event_type) ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => editTimelineItem(item)}
-                                    className="inline-flex items-center gap-1.5 text-xs font-extrabold text-warning"
-                                  >
-                                    <MapPin className="size-4" /> Add location
-                                  </button>
-                                ) : null}
-                                <EventDocumentShortcut
-                                  item={item}
-                                  travelerId={focusedTravelerId}
-                                  navigationState={childNavigationState}
-                                />
-                              </div>
-                              {booking && (
-                                <BookingEventSummary
-                                  tripId={trip.id}
-                                  booking={booking}
-                                  flights={flights}
-                                  airlines={airlinesQuery.data ?? []}
-                                  flightTravelers={flightTravelers}
-                                  journeys={journeys}
-                                  travelers={travelers}
-                                  focusedTravelerId={focusedTravelerId}
-                                  cabStops={cabStops}
-                                  eventTimezone={item.timezone}
-                                />
-                              )}
-                              <span className="mt-4 flex items-center justify-end gap-1 text-xs font-extrabold text-brand">
-                                View details{" "}
-                                <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-                              </span>
-                            </FocusSurface>
+                              View details <ChevronRight className="size-3.5" />
+                            </span>
                           </div>
-                        </Fragment>
-                      );
-                    })}
+                        );
+                      }}
+                    />
                     {timelineEntries.length === 0 && (
                       <button
                         type="button"
@@ -2458,16 +2448,15 @@ export function TripPage() {
                 costs={visibleCosts}
                 documents={focusedDocuments}
                 itinerary={visibleItinerary}
+                requirements={visibleRequirements}
+                onAddTask={() => setOpenForm("requirement")}
                 eventDocumentReferences={eventDocumentReferencesQuery.data}
-                readiness={readiness}
                 archivedItems={archivedItemsQuery.data}
                 notes={notesQuery.data}
                 editable={editable}
-                isOwner={isOwner}
                 restorePending={restoreArchivedItem.isPending}
                 navigationState={childNavigationState}
                 online={navigator.onLine}
-                onOpenSettings={() => setOpenForm("settings")}
                 onAddEvent={openAddEvent}
                 onOpenExpenses={openExpenses}
                 onAddCost={() => {
@@ -2475,9 +2464,6 @@ export function TripPage() {
                   setOpenForm("cost");
                 }}
                 onOpenPeople={openPeople}
-                onOpenReadiness={() =>
-                  navigate(`/trips/${trip.id}/readiness`, { state: childNavigationState })
-                }
                 onUploadDocument={() => setOpenForm("document")}
                 onRestoreArchived={(item) =>
                   restoreArchivedItem.mutate({ id: item.id, kind: item.kind })
@@ -2502,12 +2488,15 @@ export function TripPage() {
             <p className="sr-only" role="status" aria-live="polite">
               {travelerAnnouncement}
             </p>
-            <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-line bg-surface/95 p-2 shadow-focus backdrop-blur lg:bottom-6">
+            <div
+              data-trip-actions
+              className="fixed bottom-[calc(var(--app-footer-height)+0.5rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex w-max max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-1.5 rounded-2xl border border-line bg-surface/95 p-1.5 shadow-soft backdrop-blur lg:bottom-6"
+            >
               {editable && (
                 <button
                   type="button"
                   onClick={openAddEvent}
-                  className="primary-button min-h-11 whitespace-nowrap px-3 sm:px-4"
+                  className="primary-button h-11 min-h-11 shrink-0 gap-2 whitespace-nowrap rounded-xl px-3 py-0 text-sm sm:px-4"
                   aria-label="Add event"
                 >
                   <CalendarPlus className="size-4" />
@@ -2516,60 +2505,36 @@ export function TripPage() {
               )}
               <button
                 type="button"
-                onClick={openAgenda}
-                className="secondary-button relative size-11 justify-center px-0 sm:size-auto sm:px-4"
-                aria-label="Open trip agenda"
-              >
-                <ListTree className="size-4" />
-                <span className="hidden sm:inline">Agenda</span>
-                {timelineEntries.length > 0 && (
-                  <span
-                    aria-hidden="true"
-                    className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full bg-coral px-1 text-[.6rem] font-black leading-5 text-white"
-                  >
-                    {timelineEntries.length}
-                  </span>
-                )}
-              </button>
-              <button
-                type="button"
                 onClick={(event) => openPeople(event.currentTarget)}
-                className="secondary-button size-11 justify-center px-0 sm:size-auto sm:px-4"
+                className="secondary-button h-11 min-h-11 min-w-0 justify-center gap-1.5 rounded-xl px-2 py-0 text-xs sm:px-2.5"
                 aria-label={`People and sharing · ${focusedTraveler?.display_name ?? "Everyone"}`}
+                title={`People and sharing · ${focusedTraveler?.display_name ?? "Everyone"}`}
               >
                 {focusedTraveler ? (
                   <span className="grid size-6 place-items-center rounded-full bg-brand text-[.55rem] font-black text-surface">
                     {focusedTraveler.display_name.slice(0, 2).toUpperCase()}
                   </span>
                 ) : (
-                  <UsersRound className="size-4" />
+                  <UsersRound className="size-5" aria-hidden="true" />
                 )}
-                <span className="hidden max-w-32 truncate sm:inline">
+                <span className="max-w-20 truncate">
                   {focusedTraveler?.display_name ?? "Everyone"}
                 </span>
               </button>
               <button
                 type="button"
-                onClick={() => (view === "details" ? openCurrentTimeline() : changeView("details"))}
-                className="tap-target grid size-11 place-items-center rounded-xl border border-line text-brand"
-                aria-label={view === "details" ? "Jump to current timeline" : "Open trip details"}
+                onClick={() => activeTimelineEntry && scrollToItem(activeTimelineEntry.id)}
+                disabled={!activeTimelineEntry}
+                aria-label="Jump to current or next"
+                title={
+                  activeTimelineEntry
+                    ? `Jump to ${activeTimelineEntry.kind === "event" ? activeTimelineEntry.item.title : activeTimelineEntry.requirement.title}`
+                    : "No timeline items to jump to"
+                }
+                className="tap-target grid size-11 shrink-0 place-items-center rounded-xl border border-line text-brand hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {view === "details" ? (
-                  <CalendarClock className="size-5" />
-                ) : (
-                  <Info className="size-5" />
-                )}
+                <LocateFixed aria-hidden="true" className="size-5" />
               </button>
-              {view === "timeline" && activeTimelineEntry && (
-                <button
-                  type="button"
-                  onClick={() => scrollToItem(activeTimelineEntry.id)}
-                  className="tap-target hidden size-11 place-items-center rounded-xl border border-line text-brand sm:grid"
-                  aria-label="Jump to now or next"
-                >
-                  <LocateFixed className="size-5" />
-                </button>
-              )}
             </div>
           </>
         )}
@@ -2595,12 +2560,11 @@ export function TripPage() {
           expenseSplittingControl={
             editable ? (
               <>
-                <label className="flex min-h-16 cursor-pointer items-center justify-between gap-4 p-4 text-sm">
+                <label className="flex min-h-12 cursor-pointer items-center justify-between gap-3 p-3 text-sm">
                   <span>
                     <strong className="block">Enable expense splitting</strong>
                     <span className="mt-1 block text-xs leading-5 text-muted">
-                      Choose specific travelers for each cost. When off, every cost applies equally
-                      to everyone.
+                      Off: split equally with everyone.
                     </span>
                   </span>
                   <input
@@ -2626,14 +2590,6 @@ export function TripPage() {
           }
         />
       )}
-      {trip && agendaOpen && (
-        <TripAgendaSheet
-          entries={timelineEntries}
-          activeEntryId={activeTimelineEntry?.id}
-          onClose={() => closeRouteModal(["agenda"])}
-          onSelect={selectAgendaEntry}
-        />
-      )}
       {trip &&
         viewingItinerary &&
         !editingBooking &&
@@ -2642,6 +2598,7 @@ export function TripPage() {
         !viewingCost &&
         openForm === null && (
           <EventDetailsSheet
+            key={viewingItinerary.id}
             item={viewingItinerary}
             itinerary={visibleItinerary}
             tripId={trip.id}
@@ -2711,7 +2668,13 @@ export function TripPage() {
               });
               setOpenForm("document");
             }}
-            onStatus={(status) => updateEventStatus.mutate({ item: viewingItinerary, status })}
+            onStatus={(status) => updateEventStatus.mutateAsync({ item: viewingItinerary, status })}
+            pendingStatus={
+              updateEventStatus.isPending &&
+              updateEventStatus.variables?.item.id === viewingItinerary.id
+                ? updateEventStatus.variables.status
+                : null
+            }
             onMoveUp={() =>
               reorderItinerary.mutate({ itemId: viewingItinerary.id, direction: "up" })
             }

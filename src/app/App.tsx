@@ -7,10 +7,8 @@ import { CreateTripPage } from "../pages/CreateTripPage";
 import { DemoTripPage } from "../pages/DemoTripPage";
 import { DocumentPage } from "../pages/DocumentPage";
 import { FlightPage } from "../pages/FlightPage";
-import { HomePage } from "../pages/HomePage";
 import { JoinPage } from "../pages/JoinPage";
 import { ProfilePage } from "../pages/ProfilePage";
-import { QuickAddPage } from "../pages/QuickAddPage";
 import { ReadinessPage } from "../pages/ReadinessPage";
 import { SignInPage } from "../pages/SignInPage";
 import { TripPage } from "../pages/TripPage";
@@ -42,7 +40,7 @@ export function App() {
       <Route path="/admin/appearance" element={<AdminPage section="appearance" />} />
       <Route path="/admin/releases" element={<AdminPage section="releases" />} />
       <Route element={<AuthenticatedRoute />}>
-        <Route path="/home" element={<HomePage />} />
+        <Route path="/home" element={<Navigate to="/trips" replace />} />
         <Route path="/trips" element={<TripsPage />} />
         <Route path="/trips/new" element={<CreateTripPage />} />
         <Route path="/trips/:tripId" element={<TripPage />} />
@@ -53,7 +51,7 @@ export function App() {
         <Route path="/trips/:tripId/readiness" element={<ReadinessPage />} />
         <Route path="/trips/:tripId/documents/:documentId" element={<DocumentPage />} />
         <Route path="/join" element={<JoinPage />} />
-        <Route path="/add" element={<QuickAddPage />} />
+        <Route path="/add" element={<Navigate to="/trips" replace />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/vault" element={<VaultPage />} />

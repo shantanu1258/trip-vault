@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FormSection } from "../../components/FormSection";
 import { CalendarPlus, Check, ChevronLeft, Loader2 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { EventTypeIcon } from "../../components/EventTypeIcon";
@@ -1206,7 +1207,7 @@ export function AddEventForm({
         onClose={onClose}
         manageHistory={!routeBacked}
       >
-        <div className="mt-6 rounded-[2rem] border border-success/30 bg-success/10 p-6 text-center">
+        <div className="mt-6 rounded-3xl border border-success/30 bg-success/10 p-6 text-center">
           <span className="mx-auto grid size-14 place-items-center rounded-full bg-success text-white">
             <Check className="size-6" />
           </span>
@@ -1313,21 +1314,21 @@ export function AddEventForm({
               saved.
             </p>
           )}
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {choices.map(({ type: choiceType, label, hint }) => (
               <button
                 key={choiceType}
                 type="button"
                 onClick={() => selectType(choiceType)}
-                className="group flex min-h-24 items-center gap-4 rounded-2xl border border-line bg-elevated p-4 text-left transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft"
+                className="group flex min-h-16 items-center gap-3 rounded-xl border border-line bg-elevated px-3 py-2 text-left transition hover:border-brand/40 hover:shadow-soft"
               >
                 <EventTypeIcon
                   type={choiceType}
-                  className="size-11 rounded-xl transition group-hover:scale-105"
+                  className="size-8 shrink-0 rounded-lg transition group-hover:scale-105"
                 />
                 <span>
-                  <strong className="block font-display text-base font-black">{label}</strong>
-                  <span className="mt-1 block text-xs leading-5 text-muted">{hint}</span>
+                  <strong className="block font-display text-sm font-black">{label}</strong>
+                  <span className="block text-xs leading-5 text-muted">{hint}</span>
                 </span>
               </button>
             ))}
@@ -1377,17 +1378,14 @@ export function AddEventForm({
             />
           )}
           {isJourney && type !== "cab" && journeyScope === "domestic" && (
-            <fieldset className="rounded-2xl border border-line p-4">
-              <legend className="px-1 text-sm font-extrabold">Journey time zone</legend>
-              <div className="mt-2">
-                <EventTimeZoneField
-                  name="journeyEventTimezone"
-                  value={defaultTimezone}
-                  localDefaultValue={defaultTimezone}
-                  label="Local time zone for this journey"
-                />
-              </div>
-            </fieldset>
+            <div>
+              <EventTimeZoneField
+                name="journeyEventTimezone"
+                value={defaultTimezone}
+                localDefaultValue={defaultTimezone}
+                label="Journey time zone"
+              />
+            </div>
           )}
           {type === "flight" && (
             <>
@@ -1531,12 +1529,10 @@ export function AddEventForm({
             </>
           )}
           {onAddDocument && !documentToAttach && (
-            <section className="rounded-2xl border border-line bg-surface/70 p-4">
-              <p className="text-sm font-extrabold">Attach an official document (optional)</p>
+            <FormSection>
+              <summary>Attach an official document (optional)</summary>
               <p className="mt-1 text-xs leading-5 text-muted">
-                Add a ticket, confirmation, voucher, or other supporting file now. It will inherit
-                this event's travelers, remain visible to trip members by default, and can be
-                changed later from Document Info.
+                Shared with trip members by default. Change visibility later in Document Info.
               </p>
               <label className="form-label mt-4">
                 Document type
@@ -1562,11 +1558,8 @@ export function AddEventForm({
                   onFileChange={setOfficialDocumentFile}
                 />
               </div>
-              <p className="mt-2 text-xs text-muted">
-                If it is not available yet, save the event and attach one or more documents from its
-                details later.
-              </p>
-            </section>
+              <p className="mt-2 text-xs text-muted">You can also attach documents after saving.</p>
+            </FormSection>
           )}
           <CostFields trip={trip} travelers={travelers} />
           {mutation.error && (

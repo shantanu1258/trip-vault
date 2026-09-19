@@ -1,3 +1,4 @@
+import { FormSection } from "../../components/FormSection";
 import { useEffect, useState } from "react";
 import { CurrencySelect } from "../../components/CurrencySelect";
 import { RequiredMark } from "../../components/RequiredMark";
@@ -206,7 +207,7 @@ export function BookingFields({
   const [website, setWebsite] = useState("");
   const showContactName = !["flight", "train", "bus"].includes(type);
   return (
-    <details open className="rounded-2xl border border-line p-4">
+    <FormSection open className="rounded-2xl border border-line p-4">
       <summary className="cursor-pointer text-sm font-extrabold">Booking details</summary>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         {!hideProvider && (
@@ -268,7 +269,7 @@ export function BookingFields({
           />
         </label>
       </div>
-    </details>
+    </FormSection>
   );
 }
 
@@ -409,7 +410,7 @@ export function PlaceAndNotesFields({
 }) {
   if (type === "preparation")
     return (
-      <details className="rounded-2xl border border-line p-4">
+      <FormSection className="rounded-2xl border border-line p-4">
         <summary className="cursor-pointer text-sm font-extrabold">More details</summary>
         <div className="mt-4 grid gap-4">
           <label className="form-label">
@@ -455,7 +456,7 @@ export function PlaceAndNotesFields({
             />
           </label>
         </div>
-      </details>
+      </FormSection>
     );
   const placeLabel =
     type === "hotel_check_in"
@@ -466,7 +467,7 @@ export function PlaceAndNotesFields({
           ? "Venue or place"
           : "Place or address";
   return (
-    <details className="rounded-2xl border border-line p-4">
+    <FormSection className="rounded-2xl border border-line p-4">
       <summary className="cursor-pointer text-sm font-extrabold">More details</summary>
       <div className="mt-4 grid gap-4">
         <label className="form-label">
@@ -537,7 +538,7 @@ export function PlaceAndNotesFields({
         )}
         {type === "meal" && <MealDetailsFields defaultPartySize={mealPartySize} />}
       </div>
-    </details>
+    </FormSection>
   );
 }
 
@@ -623,7 +624,7 @@ export function OtherTransportFields({
         </div>
       </fieldset>
       <input type="hidden" name="location" value={[from, to].filter(Boolean).join(" → ")} />
-      <details className="rounded-2xl border border-line p-4">
+      <FormSection className="rounded-2xl border border-line p-4">
         <summary className="cursor-pointer text-sm font-extrabold">More details</summary>
         <div className="mt-4 grid gap-4">
           <label className="form-label">
@@ -644,7 +645,7 @@ export function OtherTransportFields({
             />
           </label>
         </div>
-      </details>
+      </FormSection>
     </>
   );
 }
@@ -652,7 +653,7 @@ export function OtherTransportFields({
 export function CostFields({ trip, travelers }: { trip: Trip; travelers: Traveler[] }) {
   const [everyone, setEveryone] = useState(true);
   return (
-    <details className="rounded-2xl border border-line p-4">
+    <FormSection className="rounded-2xl border border-line p-4">
       <summary className="cursor-pointer text-sm font-extrabold">Cost</summary>
       <div className="mt-4 space-y-4">
         <p className="text-xs leading-5 text-muted">
@@ -677,7 +678,7 @@ export function CostFields({ trip, travelers }: { trip: Trip; travelers: Travele
             <CurrencySelect name="costCurrency" defaultValue={trip.base_currency} />
           </label>
         </div>
-        <details className="rounded-xl border border-line p-3">
+        <FormSection className="rounded-xl border border-line p-3">
           <summary className="cursor-pointer text-sm font-extrabold">
             Payment and sharing (optional)
           </summary>
@@ -747,8 +748,8 @@ export function CostFields({ trip, travelers }: { trip: Trip; travelers: Travele
               </div>
             )}
           </div>
-        </details>
+        </FormSection>
       </div>
-    </details>
+    </FormSection>
   );
 }

@@ -23,16 +23,16 @@ export function PageHeader({
   text,
   action
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
   text?: string;
   action?: ReactNode;
 }) {
   return (
-    <header className="page-enter flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-      <div>
-        <p className="eyebrow">{eyebrow}</p>
-        <h1 className="mt-2 font-display text-3xl font-black tracking-[-0.045em] sm:text-4xl">
+    <header className="page-enter flex flex-wrap items-center justify-between gap-3">
+      <div className="min-w-0">
+        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
+        <h1 className="mt-1 font-display text-2xl font-black tracking-[-0.045em] sm:text-4xl">
           {title}
         </h1>
         {text && <p className="mt-2 max-w-2xl text-sm leading-6 text-muted sm:text-base">{text}</p>}
@@ -89,7 +89,7 @@ export function EmptyState({
   secondary?: ReactNode;
 }) {
   return (
-    <section className="surface-card page-enter mt-6 grid min-h-[24rem] place-items-center p-7 text-center">
+    <section className="surface-card page-enter mt-4 grid min-h-48 place-items-center p-5 text-center sm:min-h-64 sm:p-7">
       <div className="max-w-md">
         <span className="mx-auto grid size-16 place-items-center rounded-[1.4rem] bg-brand-soft text-brand">
           {icon}
@@ -124,7 +124,7 @@ export function TripCard({ trip, emphasized = false }: { trip: Trip; emphasized?
   return (
     <Link
       to={`/trips/${trip.id}`}
-      className={`group block min-w-0 max-w-full overflow-hidden rounded-[1.6rem] border bg-surface p-5 shadow-soft transition-transform duration-200 ease-settle hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 ${emphasized ? "border-coral shadow-focus motion-safe:scale-[1.01]" : "border-line"}`}
+      className={`group block min-w-0 max-w-full overflow-hidden rounded-3xl border bg-surface p-5 shadow-soft transition-transform duration-200 ease-settle hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 ${emphasized ? "border-coral shadow-focus motion-safe:scale-[1.01]" : "border-line"}`}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
@@ -165,7 +165,7 @@ export function CostTotals({
 }) {
   const totals = Object.entries(groupCostTotals(costs));
   return (
-    <div className="rounded-2xl bg-elevated p-4">
+    <div className="rounded-xl bg-elevated p-3">
       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted">
         <WalletCards className="size-4" /> Total trip cost
       </div>
@@ -202,7 +202,7 @@ export function CompactCostTotal({
     : emptyText;
   return (
     <span
-      className={`inline-flex min-w-0 items-center gap-2 text-sm ${inverse ? "text-surface/70" : "text-muted"}`}
+      className={`inline-flex min-w-0 items-center gap-2 text-sm ${inverse ? "text-surface/80" : "text-muted"}`}
     >
       <WalletCards className="size-4 shrink-0" />
       <span className="font-bold">Total trip cost</span>

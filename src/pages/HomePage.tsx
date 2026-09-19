@@ -72,7 +72,7 @@ const firstTripSteps = [
 export function EmptyHomeDashboard() {
   return (
     <>
-      <section className="page-enter mt-7 overflow-hidden rounded-[2rem] border border-brand/20 bg-brand p-6 text-surface shadow-focus sm:p-8">
+      <section className="page-enter mt-7 overflow-hidden rounded-3xl border border-brand/20 bg-brand p-6 text-surface shadow-focus sm:p-8">
         <div className="max-w-2xl">
           <span className="grid size-12 place-items-center rounded-2xl bg-surface/10">
             <MapPinned className="size-5" />
@@ -249,7 +249,7 @@ export function HomePage() {
           }
         />
         {(offersQuery.data?.length ?? 0) > 0 && (
-          <section className="mt-5 rounded-[2rem] border border-brand/25 bg-brand-soft p-5 sm:p-6">
+          <section className="mt-5 rounded-3xl border border-brand/25 bg-brand-soft p-5 sm:p-6">
             <p className="eyebrow">Trip invitations</p>
             <h2 className="mt-2 font-display text-2xl font-black">
               Someone you know shared a trip
@@ -328,7 +328,7 @@ export function HomePage() {
         {focusedTrip && (
           <>
             <section
-              className={`page-enter group relative mt-7 overflow-hidden rounded-[2rem] border p-6 shadow-focus transition-transform duration-200 hover:-translate-y-0.5 sm:p-8 motion-reduce:hover:translate-y-0 ${tripPhase(focusedTrip) === "current" ? "border-coral bg-brand text-surface motion-safe:scale-[1.01]" : "border-line bg-surface"}`}
+              className={`page-enter group relative mt-7 overflow-hidden rounded-3xl border p-6 shadow-focus transition-transform duration-200 hover:-translate-y-0.5 sm:p-8 motion-reduce:hover:translate-y-0 ${tripPhase(focusedTrip) === "current" ? "border-coral bg-brand text-surface motion-safe:scale-[1.01]" : "border-line bg-surface"}`}
             >
               <Link
                 to={`/trips/${focusedTrip.id}`}
@@ -337,7 +337,7 @@ export function HomePage() {
               />
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span
-                  className={`rounded-full px-3 py-1.5 text-[0.65rem] font-black uppercase tracking-[0.15em] ${tripPhase(focusedTrip) === "current" ? "bg-coral text-white" : "bg-brand-soft text-brand"}`}
+                  className={`rounded-full px-3 py-1.5 text-[0.65rem] font-black uppercase tracking-[0.15em] ${tripPhase(focusedTrip) === "current" ? "bg-coral text-surface" : "bg-brand-soft text-brand"}`}
                 >
                   {tripPhase(focusedTrip) === "current" ? "Current trip" : "Coming up"}
                 </span>

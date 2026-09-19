@@ -49,7 +49,7 @@ function TripProbe() {
   return (
     <>
       <p>Opened trip {tripId}</p>
-      <Link to="/home">Go home</Link>
+      <Link to="/trips">All trips</Link>
     </>
   );
 }
@@ -65,7 +65,7 @@ function renderLaunch() {
         <Routes>
           <Route path="/" element={<RootRoute />} />
           <Route path="/trips/:tripId" element={<TripProbe />} />
-          <Route path="/home" element={<p>Home dashboard</p>} />
+          <Route path="/trips" element={<p>Trips landing</p>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -78,63 +78,36 @@ describe("fresh launch trip routing", () => {
     listTrips.mockReset();
   });
 
-  it("waits for saved focus before choosing between overlapping current trips", async () => {
-    let resolveFocus!: (tripId: string | null) => void;
-    getSavedTripFocus.mockReturnValue(
-      new Promise<string | null>((resolve) => {
-        resolveFocus = resolve;
-      })
-    );
-    listTrips.mockResolvedValue([trip("soon", 0, 1), trip("saved", 0, 3)]);
-
+  it("asks the traveler to choose when travel windows overlap", async () => {
+    listTrips.mockResolvedValue([trip("first", 0, 1), trip("second", 5, 9)]);
     renderLaunch();
-
-    expect(await screen.findByLabelText("Opening Trip Vault")).toBeInTheDocument();
+    expect(await screen.findByText("Trips landing")).toBeInTheDocument();
     expect(screen.queryByText(/Opened trip/)).not.toBeInTheDocument();
-
-    await act(async () => {
-      resolveFocus("saved");
-    });
-    expect(await screen.findByText("Opened trip saved")).toBeInTheDocument();
   });
-
-  it("deterministically opens the earliest-ending trip when current trips overlap without saved focus", async () => {
-    getSavedTripFocus.mockResolvedValue(null);
-    listTrips.mockResolvedValue([trip("later", 0, 3), trip("sooner", 0, 1)]);
-
+  it.each([0, 1, 9, 10])("opens the only relevant trip %i days before departure", async (days) => {
+    listTrips.mockResolvedValue([trip("soon", days, days + 5)]);
     renderLaunch();
-
-    expect(await screen.findByText("Opened trip sooner")).toBeInTheDocument();
+    expect(await screen.findByText("Opened trip soon")).toBeInTheDocument();
   });
-
-  it("treats the day before departure as the current-trip launch window", async () => {
-    getSavedTripFocus.mockResolvedValue(null);
-    listTrips.mockResolvedValue([trip("tomorrow", 1, 4)]);
-
+  it("does not reopen an archived, ended, or distant trip", async () => {
+    listTrips.mockResolvedValue([
+      trip("archive", 0, 2, "archived"),
+      trip("past", -8, -1),
+      trip("future", 11, 15)
+    ]);
     renderLaunch();
-
-    expect(await screen.findByText("Opened trip tomorrow")).toBeInTheDocument();
+    expect(await screen.findByText("Trips landing")).toBeInTheDocument();
   });
-
-  it("stays on Home when the traveler explicitly returns there in the same app session", async () => {
-    const user = userEvent.setup();
-    getSavedTripFocus.mockResolvedValue(null);
+  it("does not redirect when the traveler returns to all trips", async () => {
     listTrips.mockResolvedValue([trip("active", 0, 2)]);
-
     renderLaunch();
-    await user.click(await screen.findByRole("link", { name: "Go home" }));
-
-    expect(await screen.findByText("Home dashboard")).toBeInTheDocument();
-    expect(getSavedTripFocus).toHaveBeenCalledTimes(1);
+    await userEvent.click(await screen.findByRole("link", { name: "All trips" }));
+    expect(await screen.findByText("Trips landing")).toBeInTheDocument();
     expect(listTrips).toHaveBeenCalledTimes(1);
   });
-
-  it("does not reopen an archived or non-current trip", async () => {
-    getSavedTripFocus.mockResolvedValue("archived");
-    listTrips.mockResolvedValue([trip("archived", 0, 2, "archived"), trip("future", 3, 5)]);
-
+  it("falls back to Trips when the trip list fails", async () => {
+    listTrips.mockRejectedValue(new Error("offline"));
     renderLaunch();
-
-    expect(await screen.findByText("Home dashboard")).toBeInTheDocument();
+    expect(await screen.findByText("Trips landing")).toBeInTheDocument();
   });
 });

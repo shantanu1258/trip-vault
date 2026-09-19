@@ -201,7 +201,7 @@ function JourneyTravelerLegDetails({
           if (!canEdit)
             return (
               <article key={traveler.id} className="rounded-xl bg-surface p-3">
-                <p className="font-bold">{traveler.display_name}</p>
+                <p className="text-lg font-extrabold">{traveler.display_name}</p>
                 <p className="mt-1 text-sm text-muted">
                   {details.length ? details.join(" · ") : "Passenger details not added"}
                 </p>
@@ -213,7 +213,7 @@ function JourneyTravelerLegDetails({
               onSubmit={(event) => save(event, traveler.id)}
               className="rounded-xl bg-surface p-3"
             >
-              <p className="font-bold">{traveler.display_name}</p>
+              <p className="text-lg font-extrabold">{traveler.display_name}</p>
               <div
                 className={`mt-3 grid gap-3 ${fields.coach ? "sm:grid-cols-[minmax(7rem,0.8fr)_minmax(8rem,1fr)_minmax(10rem,1.4fr)_auto]" : fields.seat ? "sm:grid-cols-[minmax(7rem,0.8fr)_minmax(10rem,1.4fr)_auto]" : "sm:grid-cols-[minmax(10rem,1fr)_auto]"}`}
               >

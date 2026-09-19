@@ -92,7 +92,7 @@ export type ThemeTokens = {
   danger: string;
 };
 
-export const defaultLightTokens: ThemeTokens = {
+export const legacyLightTokens: ThemeTokens = {
   canvas: "#f5f1e8",
   surface: "#fffdf8",
   elevated: "#ffffff",
@@ -106,7 +106,7 @@ export const defaultLightTokens: ThemeTokens = {
   warning: "#b06f28",
   danger: "#b04441"
 };
-export const defaultDarkTokens: ThemeTokens = {
+export const legacyDarkTokens: ThemeTokens = {
   canvas: "#101819",
   surface: "#182223",
   elevated: "#1f2b2c",
@@ -119,6 +119,35 @@ export const defaultDarkTokens: ThemeTokens = {
   success: "#6fc7a3",
   warning: "#e8ae5c",
   danger: "#f1837e"
+};
+
+export const defaultLightTokens: ThemeTokens = {
+  canvas: "#f5f7fa",
+  surface: "#ffffff",
+  elevated: "#eef3f6",
+  ink: "#20323d",
+  muted: "#526674",
+  line: "#cbd6de",
+  brand: "#146b67",
+  brandSoft: "#ddefea",
+  coral: "#4259b8",
+  success: "#24724b",
+  warning: "#8a5a13",
+  danger: "#b33f47"
+};
+export const defaultDarkTokens: ThemeTokens = {
+  canvas: "#10191f",
+  surface: "#18252d",
+  elevated: "#20313a",
+  ink: "#edf4f5",
+  muted: "#a8bac3",
+  line: "#3d515e",
+  brand: "#79d5ca",
+  brandSoft: "#203f40",
+  coral: "#a9b7ff",
+  success: "#7ed4a8",
+  warning: "#f2c475",
+  danger: "#ffaca7"
 };
 
 export async function isCurrentUserAdmin() {

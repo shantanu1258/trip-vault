@@ -33,7 +33,7 @@ export function SignInPage({ admin = false }: { admin?: boolean }) {
   const requestedPath =
     typeof location.state === "object" && location.state && "from" in location.state
       ? String(location.state.from)
-      : "/home";
+      : "/";
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();

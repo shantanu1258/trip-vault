@@ -59,13 +59,12 @@ export function VaultPage() {
         <PageHeader
           eyebrow="Secure files"
           title="Document Vault"
-          text="Search authorized document metadata across every trip. Files open from the verified device copy first when available."
           action={
             <button
               type="button"
               disabled={!navigator.onLine && !showArchived}
               onClick={() => setShowArchived((value) => !value)}
-              className="secondary-button"
+              className="secondary-button px-3 py-2 text-xs"
             >
               <ArchiveRestore className="size-4" />{" "}
               {showArchived ? "Current documents" : "Recently deleted"}
@@ -88,7 +87,7 @@ export function VaultPage() {
         )}
         {(showArchived || (query.data && query.data.length > 0)) && (
           <>
-            <div className="surface-card mt-6 flex flex-col gap-3 p-3 sm:flex-row">
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <label className="relative flex-1">
                 <span className="sr-only">Search documents</span>
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />

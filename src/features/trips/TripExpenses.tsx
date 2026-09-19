@@ -144,12 +144,9 @@ export function TripExpensesContent({
     <>
       <CostTotals costs={costs} />
       <div className="mt-3 overflow-hidden rounded-2xl border border-line bg-surface">
-        <label className="flex min-h-16 cursor-pointer items-center justify-between gap-4 p-4 text-sm">
+        <label className="flex min-h-12 cursor-pointer items-center justify-between gap-3 p-3 text-sm">
           <span>
             <strong className="block">Show balances</strong>
-            <span className="mt-1 block text-xs leading-5 text-muted">
-              See what each traveler owes or should receive.
-            </span>
           </span>
           <input
             aria-label="Show balances"
@@ -266,10 +263,7 @@ export function TripExpensesSheet({
 }) {
   return (
     <ModalSheet eyebrow="Money" title={title} onClose={onClose}>
-      <p className="mt-3 text-sm leading-6 text-muted">
-        Review every expense and choose whether traveler balances should be calculated.
-      </p>
-      <div className="mt-6">
+      <div className="mt-3">
         <TripExpensesContent
           costs={costs}
           balances={balances}

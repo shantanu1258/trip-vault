@@ -51,7 +51,9 @@ export async function loadPdfJs(): Promise<PdfJsModule> {
   // PDF.js 6 uses this small ES2024 helper. Keep the viewer working on older
   // installed-PWA browser engines while the native Open action remains fallback.
   ensurePromiseWithResolvers();
-  return import(/* @vite-ignore */ PDF_JS_MODULE_PATH) as Promise<PdfJsModule>;
+  // Resolve at runtime so Vite does not treat a public asset as a source import.
+  const moduleUrl = new URL(PDF_JS_MODULE_PATH, window.location.origin).href;
+  return import(/* @vite-ignore */ moduleUrl) as Promise<PdfJsModule>;
 }
 
 export function documentPreviewKind(mimeType: string, filename: string) {

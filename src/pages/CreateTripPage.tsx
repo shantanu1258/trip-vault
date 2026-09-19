@@ -84,7 +84,7 @@ export function CreateTripPage() {
               New trip
             </p>
             <h1 className="mt-2 font-display text-3xl font-black tracking-[-0.04em]">
-              Where are you going?
+              Create a new trip
             </h1>
             <p className="mt-2 text-sm text-surface/70">
               Start with the basics. You can add people, bookings, documents, and readiness tasks
@@ -172,7 +172,7 @@ export function CreateTripPage() {
               ) : (
                 <MapPinned className="size-4" />
               )}{" "}
-              Create trip
+              Create a new trip
             </button>
           </form>
         </section>

@@ -121,11 +121,11 @@ export function ProfilePage() {
         {query.isLoading && <LoadingCard label="Loading profile" />}
         {query.error && <ErrorCard error={query.error} />}
         {query.data && (
-          <div className="mt-6 grid gap-5 md:grid-cols-2">
-            <form onSubmit={submit} className="surface-card p-5 sm:p-6">
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <form onSubmit={submit} className="surface-card p-3 sm:p-5">
               <p className="eyebrow">Account</p>
               <h2 className="mt-1 font-display text-xl font-black">Personal details</h2>
-              <div className="mt-5 space-y-4">
+              <div className="mt-3 space-y-3">
                 <label className="form-label">
                   Display name
                   <RequiredMark />
@@ -167,7 +167,7 @@ export function ProfilePage() {
                 </button>
               </div>
             </form>
-            <section className="surface-card p-5 sm:p-6">
+            <section className="surface-card p-3 sm:p-5">
               <p className="eyebrow">Appearance</p>
               <h2 className="mt-1 font-display text-xl font-black">Theme on this device</h2>
               <div className="mt-5 grid grid-cols-3 gap-2">
@@ -185,7 +185,7 @@ export function ProfilePage() {
                 ))}
               </div>
             </section>
-            <section className="surface-card p-5 sm:p-6">
+            <section className="surface-card p-3 sm:p-5">
               <span className="grid size-12 place-items-center rounded-2xl bg-brand-soft text-brand">
                 <Smartphone className="size-5" />
               </span>
@@ -197,7 +197,7 @@ export function ProfilePage() {
               </p>
               <InstallAppButton className="primary-button mt-5" />
             </section>
-            <section className="surface-card p-5 sm:p-6">
+            <section className="surface-card p-3 sm:p-5">
               <p className="eyebrow">Offline storage</p>
               <h2 className="mt-1 font-display text-xl font-black">This browser</h2>
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -279,7 +279,7 @@ export function ProfilePage() {
             </section>
             <DocumentInboxPanel />
             <SyncIssuesPanel />
-            <section className="surface-card p-5 sm:p-6">
+            <section className="surface-card p-3 sm:p-5">
               <p className="eyebrow">Session</p>
               <h2 className="mt-1 font-display text-xl font-black">Sign out</h2>
               <p className="mt-3 text-sm leading-6 text-muted">

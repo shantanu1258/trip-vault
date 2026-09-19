@@ -96,7 +96,8 @@ export function EventDocuments({
   onUpload,
   travelerId,
   travelers = [],
-  navigationState
+  navigationState,
+  compact = false
 }: {
   item: ItineraryItem;
   canEdit: boolean;
@@ -104,11 +105,12 @@ export function EventDocuments({
   travelerId?: string | null;
   travelers?: Traveler[];
   navigationState?: unknown;
+  compact?: boolean;
 }) {
   const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const [picking, setPicking] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const linksQuery = useQuery({
     queryKey: ["event-documents", item.id],
     queryFn: () => listEventDocumentLinks(item.id)
@@ -170,13 +172,11 @@ export function EventDocuments({
     return [...groups.values()].sort((left, right) => left.order - right.order);
   })();
 
+  const isCollapsed = (key: string) =>
+    collapsedGroups[key] ??
+    (compact && !travelerId && documentGroups.length > 1 && key !== "shared");
   const toggleGroup = (key: string) =>
-    setCollapsedGroups((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+    setCollapsedGroups((current) => ({ ...current, [key]: !isCollapsed(key) }));
 
   const attach = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -220,9 +220,9 @@ export function EventDocuments({
                 <button
                   type="button"
                   onClick={() => toggleGroup(group.key)}
-                  className="mb-1.5 flex w-full items-center gap-2 text-left"
-                  aria-expanded={!collapsedGroups.has(group.key)}
-                  aria-label={`${collapsedGroups.has(group.key) ? "Expand" : "Collapse"} documents for ${group.label}`}
+                  className="mb-1.5 flex min-h-11 w-full items-center gap-2 text-left"
+                  aria-expanded={!isCollapsed(group.key)}
+                  aria-label={`${isCollapsed(group.key) ? "Expand" : "Collapse"} documents for ${group.label}`}
                 >
                   <strong className="shrink-0 text-base font-extrabold text-ink">
                     {group.label}
@@ -230,11 +230,11 @@ export function EventDocuments({
                   <span className="h-px flex-1 bg-line" aria-hidden="true" />
                   <span className="text-[.65rem] font-bold text-muted">{group.links.length}</span>
                   <ChevronDown
-                    className={`size-4 shrink-0 text-muted transition-transform ${collapsedGroups.has(group.key) ? "-rotate-90" : ""}`}
+                    className={`size-4 shrink-0 text-muted transition-transform ${isCollapsed(group.key) ? "-rotate-90" : ""}`}
                   />
                 </button>
               )}
-              {(!group.label || !collapsedGroups.has(group.key)) && (
+              {(!group.label || !isCollapsed(group.key)) && (
                 <div className="grid gap-2">
                   {group.links.map((link) => {
                     const documentTitle = link.label || link.document.title;

@@ -9,6 +9,8 @@ last_verified: 2026-09-19
 
 # Trip Vault High-Level Design
 
+> **19 September UX amendment:** [Simpler trip experience](UX_SIMPLIFICATION_2026-09-19.md) supersedes the Home-dashboard, separate Agenda, floating navigation, and launch-window descriptions below. The change is client-side and requires no new database migration.
+
 Trip Vault is a personal-use installable web application that keeps travel bookings, itineraries, notes, and documents together for the owner and invited travel companions. It is not intended to become a commercial product. This document records the implemented system boundaries and the few deliberately deferred capabilities.
 
 **Document status:** Implemented personal MVP 1.0

@@ -9,6 +9,8 @@ last_verified: 2026-09-19
 
 # Trip Vault Low-Level Design
 
+> **19 September UX amendment:** [Simpler trip experience](UX_SIMPLIFICATION_2026-09-19.md) supersedes the Home-dashboard, separate Agenda, floating navigation, and launch-window descriptions below. The change is client-side and requires no new database migration.
+
 This document is the implementation contract for the personal Trip Vault MVP. The timeline-first application, device storage, Supabase schema, PWA behavior, and administrator console exist in the repository. Online reads use Supabase first with an IndexedDB fallback; offline reads use the device copy directly.
 
 **Document status:** Implemented personal MVP 1.0

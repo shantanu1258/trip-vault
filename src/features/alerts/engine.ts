@@ -117,7 +117,7 @@ export function deriveAlerts(
           title: requirement.title,
           detail: due < now ? `${schedule.label} · This task is overdue.` : schedule.label,
           group: groupForDate(due, now),
-          target: `/trips/${requirement.trip_id}/readiness`
+          target: `/trips/${requirement.trip_id}/readiness?task=${encodeURIComponent(requirement.id)}`
         });
     }
     if (requirement.expires_on) {
@@ -133,7 +133,7 @@ export function deriveAlerts(
             detail:
               "This is an advisory check against the validity buffer you entered. Verify official requirements.",
             group: "urgent",
-            target: `/trips/${requirement.trip_id}/readiness`
+            target: `/trips/${requirement.trip_id}/readiness?task=${encodeURIComponent(requirement.id)}`
           });
       }
     }

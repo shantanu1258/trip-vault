@@ -63,7 +63,7 @@ export function FlightTravelerDetails({
               onSubmit={(event) => save(event, traveler.id)}
               className="rounded-2xl border border-line bg-elevated p-4"
             >
-              <p className="font-bold">{traveler.display_name}</p>
+              <p className="text-lg font-extrabold">{traveler.display_name}</p>
               <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-[7rem_8rem_minmax(0,1fr)_auto]">
                 <label className="form-label text-xs">
                   Seat
@@ -107,7 +107,7 @@ export function FlightTravelerDetails({
             </form>
           ) : (
             <article key={traveler.id} className="rounded-2xl border border-line bg-elevated p-4">
-              <p className="font-bold">{traveler.display_name}</p>
+              <p className="text-lg font-extrabold">{traveler.display_name}</p>
               <p className="mt-2 text-sm text-muted">
                 Seat {row?.seat || "—"} · {row?.boarding_group || "Boarding group —"}
                 {row?.ticket_number ? ` · Ticket ${row.ticket_number}` : ""}

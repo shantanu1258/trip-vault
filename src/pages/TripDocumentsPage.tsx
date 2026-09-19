@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, FileSearch, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { TripDocumentRow } from "../components/TripDocumentRow";
-import { EmptyState, ErrorCard, LoadingCard, PageHeader } from "../components/TripUi";
+import { EmptyState, ErrorCard, LoadingCard } from "../components/TripUi";
 import { rankDocumentsForUpcomingEvents } from "../features/home/needNow";
 import { tripQueries } from "../features/queries/tripQueries";
 import { tripChildNavigationState, tripReturnNavigation } from "../features/trips/navigation";
@@ -15,7 +15,14 @@ export function TripDocumentsPage() {
   const { tripId = "" } = useParams();
   const location = useLocation();
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const category = searchParams.get("category") ?? "all";
+  const setCategory = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === "all") next.delete("category");
+    else next.set("category", value);
+    setSearchParams(next, { replace: true, state: location.state });
+  };
   const [travelerId, setTravelerId] = useState(() => readTravelerFocus(tripId) ?? "all");
   const tripQuery = useQuery({ ...tripQueries.trip(tripId), enabled: Boolean(tripId) });
   const itineraryQuery = useQuery({ ...tripQueries.itinerary(tripId), enabled: Boolean(tripId) });
@@ -63,39 +70,39 @@ export function TripDocumentsPage() {
   const childState = tripChildNavigationState(location.state, tripId, "details");
 
   return (
-    <AppShell>
+    <AppShell compactTop>
       <div className="mx-auto min-w-0 max-w-5xl pb-24">
-        <Link
-          to={returnNavigation.href}
-          state={returnNavigation.state}
-          className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted hover:text-ink"
-        >
-          <ArrowLeft className="size-4" /> Back to trip details
-        </Link>
-        <div className="mt-4">
-          <PageHeader
-            eyebrow={tripQuery.data?.title ?? "Trip"}
-            title="Trip documents"
-            text="Find the next useful file or search every document in this trip."
-            action={
-              <Link
-                className="primary-button"
-                to={`/trips/${tripId}?view=details&add=document`}
-                state={returnNavigation.state}
-              >
-                <Plus className="size-4" /> Upload
-              </Link>
-            }
-          />
-        </div>
+        <header className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 py-1">
+          <Link
+            to={returnNavigation.href}
+            state={returnNavigation.state}
+            className="tap-target grid place-items-center text-muted hover:text-ink"
+            aria-label="Back to trip details"
+          >
+            <ArrowLeft className="size-5" />
+          </Link>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold sm:text-2xl">Trip documents</h1>
+            <p className="mt-0.5 truncate text-xs text-muted" title={tripQuery.data?.title}>
+              {tripQuery.data?.title ?? "Trip"}
+            </p>
+          </div>
+          <Link
+            className="primary-button px-3 py-2 text-xs"
+            to={`/trips/${tripId}?view=details&add=document`}
+            state={returnNavigation.state}
+          >
+            <Plus className="size-4" /> Upload
+          </Link>
+        </header>
         {(tripQuery.isLoading || documentsQuery.isLoading) && <LoadingCard />}
         {(tripQuery.error || documentsQuery.error) && (
           <ErrorCard error={tripQuery.error ?? documentsQuery.error} />
         )}
         {documentsQuery.data && (
           <>
-            <div className="surface-card mt-5 grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_11rem_12rem]">
-              <label className="relative">
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_11rem_12rem]">
+              <label className="relative col-span-2 sm:col-span-1">
                 <span className="sr-only">Search trip documents</span>
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
                 <input

@@ -135,12 +135,16 @@ describe("large trip collection pages", () => {
       Array.from({ length: 15 }, (_, index) => booking(index + 1))
     );
 
-    renderRoute(<TripReservationsPage />, "/trips/trip-1/reservations");
+    renderRoute(<TripReservationsPage />, "/trips/trip-1/reservations?category=flight");
 
-    expect(await screen.findByText("Reservation 15")).toBeInTheDocument();
+    expect(await screen.findByText("Reservation 1")).toBeInTheDocument();
+    expect(screen.queryByText("Reservation 15")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Stays 5" }));
     expect(screen.getByText("Reservation 15")).toBeInTheDocument();
     expect(screen.queryByText("Reservation 1")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "All 15" }));
+    expect(screen.getByText("Reservation 1")).toBeInTheDocument();
+    expect(screen.getByText("Reservation 15")).toBeInTheDocument();
   });
 
   it("shows complete document names and filters shared files with a selected traveler", async () => {
@@ -163,5 +167,25 @@ describe("large trip collection pages", () => {
     expect(screen.getByText("Everyone complete flight ticket name")).toBeInTheDocument();
     expect(screen.getByText("Shantanu complete boarding document name")).toBeInTheDocument();
     expect(screen.queryByText("Shubham complete private ticket name")).not.toBeInTheDocument();
+  });
+  it("opens the category linked from trip details and lets the user clear it", async () => {
+    mocks.getTrip.mockResolvedValue(trip);
+    mocks.listItinerary.mockResolvedValue([]);
+    mocks.listTravelers.mockResolvedValue(travelers);
+    mocks.listVaultDocuments.mockResolvedValue([
+      { ...document("flight", "Flight ticket", []), category: "flight" },
+      { ...document("hotel", "Hotel confirmation", []), category: "hotel" }
+    ]);
+    renderRoute(<TripDocumentsPage />, "/trips/trip-1/documents?category=flight");
+    expect(await screen.findByText("Flight ticket")).toBeVisible();
+    expect(screen.queryByText("Hotel confirmation")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Filter documents by category" })).toHaveValue(
+      "flight"
+    );
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Filter documents by category" }),
+      "all"
+    );
+    expect(screen.getByText("Hotel confirmation")).toBeVisible();
   });
 });

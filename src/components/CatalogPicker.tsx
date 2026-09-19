@@ -119,16 +119,18 @@ export function CatalogPicker({
       >
         <span className="min-w-0 flex-1">
           <strong className="block truncate text-sm">{value?.title ?? emptyLabel}</strong>
-          <span className="block truncate text-[.68rem] font-medium text-muted">
-            {value?.detail ?? "Search the saved list or enter another value"}
-          </span>
+          {value?.detail && (
+            <span className="block truncate text-[.68rem] font-medium text-muted">
+              {value.detail}
+            </span>
+          )}
         </span>
         <ChevronDown className="size-4 shrink-0 text-muted" />
       </button>
       {open &&
         createPortal(
           <div
-            className={`fixed inset-0 z-[125] flex ${mobile ? "items-start bg-brand/55" : "items-start bg-transparent"}`}
+            className={`fixed inset-0 z-[125] flex ${mobile ? "items-start bg-black/50" : "items-start bg-transparent"}`}
             onMouseDown={(event) => {
               if (event.target === event.currentTarget) close();
             }}
@@ -137,7 +139,7 @@ export function CatalogPicker({
               role="dialog"
               aria-modal="true"
               aria-label={label}
-              className={`${mobile ? "sheet-enter fixed inset-x-2 rounded-[2rem]" : "fixed max-h-[28rem] rounded-2xl border border-line shadow-focus"} flex flex-col overflow-hidden bg-surface p-4`}
+              className={`${mobile ? "sheet-enter fixed inset-x-2 rounded-3xl" : "fixed max-h-[28rem] rounded-2xl border border-line shadow-focus"} flex flex-col overflow-hidden bg-surface p-4`}
               style={
                 mobile
                   ? {

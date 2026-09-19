@@ -12,7 +12,13 @@ import { getOfflineManifest, prepareTripOffline, removeTripOffline } from "./off
 import type { OfflineManifest } from "../../lib/local-db/database";
 import { useConfirmDialog } from "../../components/ConfirmDialogProvider";
 
-export function OfflinePackControl({ tripId }: { tripId: string }) {
+export function OfflinePackControl({
+  tripId,
+  embedded = false
+}: {
+  tripId: string;
+  embedded?: boolean;
+}) {
   const confirm = useConfirmDialog();
   const [manifest, setManifest] = useState<OfflineManifest>();
   const [progress, setProgress] = useState<[number, number]>([0, 0]);
@@ -59,11 +65,13 @@ export function OfflinePackControl({ tripId }: { tripId: string }) {
   };
   const ready = manifest?.state === "ready" || manifest?.state === "essentials_ready";
   return (
-    <section className={`surface-card p-5 ${ready ? "border-success/30" : ""}`}>
+    <section
+      className={embedded ? "" : `surface-card p-3 sm:p-5 ${ready ? "border-success/30" : ""}`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="eyebrow">Offline pack</p>
-          <h2 className="mt-1 font-display text-xl font-black">
+          {!embedded && <p className="eyebrow">Offline pack</p>}
+          <h2 className="font-display text-base font-bold">
             {manifest?.state === "essentials_ready"
               ? "Essentials ready"
               : ready
@@ -81,10 +89,10 @@ export function OfflinePackControl({ tripId }: { tripId: string }) {
           <HardDrive className="size-6 text-brand" />
         )}
       </div>
-      <p className="mt-3 text-sm leading-6 text-muted">
+      <p className="mt-1 text-xs leading-5 text-muted">
         {ready
           ? `${manifest.verifiedVersionIds.length} files verified on this device.`
-          : "Downloads every authorized current document and caches the complete structured trip."}
+          : "Save your plans and documents on this device before traveling."}
       </p>
       {working && (
         <div className="mt-4">
@@ -108,8 +116,12 @@ export function OfflinePackControl({ tripId }: { tripId: string }) {
           {error}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
-        <button disabled={working} onClick={() => prepare(false)} className="secondary-button mt-4">
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button
+          disabled={working}
+          onClick={() => prepare(false)}
+          className="secondary-button px-3 py-2 text-xs"
+        >
           {working ? (
             <Loader2 className="size-4 animate-spin" />
           ) : ready ? (
@@ -120,7 +132,11 @@ export function OfflinePackControl({ tripId }: { tripId: string }) {
           {ready ? "Verify full pack" : "Make available offline"}
         </button>
         {ready && (
-          <button disabled={working} onClick={remove} className="secondary-button mt-4 text-danger">
+          <button
+            disabled={working}
+            onClick={remove}
+            className="secondary-button px-3 py-2 text-xs text-danger"
+          >
             <Trash2 className="size-4" /> Remove local pack
           </button>
         )}
@@ -128,7 +144,7 @@ export function OfflinePackControl({ tripId }: { tripId: string }) {
           <button
             disabled={working}
             onClick={() => prepare(true)}
-            className="secondary-button mt-4"
+            className="secondary-button px-3 py-2 text-xs"
           >
             Prepare essentials only
           </button>

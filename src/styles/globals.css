@@ -2,36 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --font-app: "DM Sans Variable", Helvetica, Arial, sans-serif;
+}
+
 :root,
 [data-theme="light"] {
-  --color-canvas: 245 241 232;
-  --color-surface: 255 253 248;
-  --color-elevated: 255 255 255;
-  --color-ink: 24 39 40;
-  --color-muted: 93 107 106;
-  --color-line: 216 211 199;
-  --color-brand: 20 47 49;
-  --color-brand-soft: 221 233 229;
-  --color-coral: 232 120 91;
-  --color-success: 47 122 96;
-  --color-warning: 176 111 40;
-  --color-danger: 176 68 65;
+  --color-canvas: 245 247 250;
+  --color-surface: 255 255 255;
+  --color-elevated: 238 243 246;
+  --color-ink: 32 50 61;
+  --color-muted: 82 102 116;
+  --color-line: 203 214 222;
+  --color-brand: 20 107 103;
+  --color-brand-soft: 221 239 234;
+  --color-coral: 66 89 184;
+  --color-success: 36 114 75;
+  --color-warning: 138 90 19;
+  --color-danger: 179 63 71;
   --shadow-color: 31 51 51;
 }
 
 [data-theme="dark"] {
-  --color-canvas: 16 24 25;
-  --color-surface: 24 34 35;
-  --color-elevated: 31 43 44;
-  --color-ink: 238 240 233;
-  --color-muted: 171 184 179;
-  --color-line: 58 73 73;
-  --color-brand: 180 220 208;
-  --color-brand-soft: 38 65 62;
-  --color-coral: 244 145 116;
-  --color-success: 111 199 163;
-  --color-warning: 232 174 92;
-  --color-danger: 241 131 126;
+  --color-canvas: 16 25 31;
+  --color-surface: 24 37 45;
+  --color-elevated: 32 49 58;
+  --color-ink: 237 244 245;
+  --color-muted: 168 186 195;
+  --color-line: 61 81 94;
+  --color-brand: 121 213 202;
+  --color-brand-soft: 32 63 64;
+  --color-coral: 169 183 255;
+  --color-success: 126 212 168;
+  --color-warning: 242 196 117;
+  --color-danger: 255 172 167;
   --shadow-color: 0 0 0;
 }
 
@@ -102,14 +106,7 @@ body {
   min-height: 100vh;
   background: rgb(var(--color-canvas));
   color: rgb(var(--color-ink));
-  font-family:
-    Inter,
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: var(--font-app);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
@@ -137,6 +134,38 @@ textarea:focus-visible {
 
 ::selection {
   background: rgb(var(--color-coral) / 0.25);
+}
+
+[data-scroll-header],
+[data-trip-sticky] {
+  transition:
+    transform 180ms ease-out,
+    opacity 180ms ease-out;
+}
+
+/* Large dark-mode surfaces use the quiet brand tone, not the bright action tone. */
+[data-theme="dark"] .trip-hero {
+  --color-brand: var(--color-brand-soft);
+  --color-surface: var(--color-ink);
+}
+
+[data-headers-hidden="true"] [data-scroll-header] {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+[data-headers-hidden="true"] [data-trip-sticky] {
+  transform: translateY(calc(-100% - var(--app-header-height) - 1px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-scroll-header],
+  [data-trip-sticky] {
+    transition: none;
+  }
 }
 
 @layer components {
@@ -204,7 +233,7 @@ textarea:focus-visible {
   }
 
   .surface-card {
-    @apply min-w-0 rounded-[1.65rem] border border-line bg-surface shadow-soft;
+    @apply min-w-0 rounded-3xl border border-line bg-surface shadow-soft;
   }
 
   .eyebrow {
@@ -227,7 +256,28 @@ textarea:focus-visible {
   }
 
   .form-input {
-    @apply mt-2 block min-h-11 w-full min-w-0 max-w-full rounded-xl border border-line bg-elevated px-3.5 py-2.5 text-sm font-medium text-ink placeholder:text-muted/70 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply mt-2 block min-h-11 w-full min-w-0 max-w-full rounded-xl border bg-surface px-3.5 py-2.5 text-sm font-medium text-ink placeholder:text-muted disabled:cursor-not-allowed;
+    border-color: rgb(var(--color-muted) / 0.7);
+    caret-color: rgb(var(--color-brand));
+  }
+
+  .form-input:not(:disabled):not([aria-disabled="true"]):not([readonly]):hover {
+    border-color: rgb(var(--color-muted));
+  }
+
+  .form-input:not(:disabled):not([aria-disabled="true"]):not([readonly]):focus {
+    border-color: rgb(var(--color-brand));
+  }
+
+  .form-input:focus-visible {
+    outline: 2px solid rgb(var(--color-brand));
+    outline-offset: 1px;
+  }
+
+  .form-input:disabled,
+  .form-input[aria-disabled="true"],
+  .form-input[readonly] {
+    @apply border-line bg-elevated text-muted;
   }
 
   .primary-button {
@@ -282,15 +332,11 @@ textarea:focus-visible {
   38%,
   76%,
   100% {
-    border-color: rgb(var(--color-line));
-    box-shadow: 0 0 0 0 rgb(var(--timeline-focus-color) / 0);
+    border-color: rgb(var(--timeline-resting-border, var(--color-line)));
   }
   18%,
   56% {
     border-color: rgb(var(--timeline-focus-color));
-    box-shadow:
-      0 0 0 3px rgb(var(--timeline-focus-color) / 0.42),
-      0 0 24px 5px rgb(var(--timeline-focus-color) / 0.22);
   }
 }
 
@@ -352,44 +398,116 @@ textarea:focus-visible {
 }
 
 #trip-search > .lucide-search {
-  color: rgb(var(--color-surface));
+  color: rgb(var(--color-muted));
 }
 
 #trip-search > .form-input {
-  border-color: rgb(var(--color-brand));
-  background: rgb(var(--color-brand));
-  color: rgb(var(--color-surface));
-  caret-color: rgb(var(--color-coral));
-  box-shadow: 0 8px 24px rgb(var(--shadow-color) / 0.14);
+  border-color: rgb(var(--color-muted) / 0.7);
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-ink));
+  caret-color: rgb(var(--color-brand));
+  box-shadow: none;
 }
 
 #trip-search > .form-input::placeholder {
-  color: rgb(var(--color-surface) / 0.68);
+  color: rgb(var(--color-muted));
 }
 
 #trip-search > .form-input:focus {
   border-color: rgb(var(--color-brand));
-  background: rgb(var(--color-brand));
-  box-shadow: 0 10px 28px rgb(var(--shadow-color) / 0.18);
+  background: rgb(var(--color-surface));
+  box-shadow: none;
 }
 
 #trip-search > .form-input:focus-visible {
-  outline-color: rgb(var(--color-brand-soft));
+  outline-color: rgb(var(--color-brand));
 }
 
 #trip-search > button[aria-label="Clear search"] {
-  color: rgb(var(--color-surface));
+  color: rgb(var(--color-muted));
 }
 
-[data-trip-scroll-anchor="timeline"].timeline-focus-pulse > :last-child {
-  --timeline-focus-color: 96 165 250;
+.view-option {
+  @apply flex min-h-11 w-full items-center rounded-xl px-3 py-2 text-left text-sm font-bold hover:bg-elevated;
+}
+
+.form-disclosure {
+  @apply min-w-0 rounded-2xl border border-line p-2.5 sm:p-4;
+}
+.form-disclosure > .grid {
+  @apply mt-2 gap-3 sm:mt-4 sm:gap-4;
+}
+form fieldset,
+form .grid > *,
+.form-disclosure > * {
+  min-width: 0;
+}
+@media (max-width: 639px) {
+  form fieldset,
+  form details:not(.form-disclosure) {
+    padding: 0.625rem;
+  }
+}
+.form-disclosure-summary {
+  @apply flex min-h-11 cursor-pointer list-none items-center gap-3 text-sm font-bold text-ink;
+}
+.form-disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+.form-disclosure-summary::after {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 150ms ease;
+}
+.form-disclosure[open] > .form-disclosure-summary::after {
+  transform: rotate(225deg);
+}
+
+.timeline-card-detail {
+  animation: timeline-reveal 180ms ease-out;
+}
+
+@keyframes timeline-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+[data-trip-scroll-anchor="details"] {
+  scroll-margin-top: 9rem;
+}
+
+[data-trip-scroll-anchor="timeline"].timeline-focus-pulse {
+  --timeline-focus-color: var(--color-brand);
 
   animation: timeline-focus-pulse 900ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-[data-trip-scroll-anchor="timeline"].timeline-focus-pulse:has(> [aria-current="step"])
-  > :last-child {
-  --timeline-focus-color: var(--color-coral);
+/* Hover feedback must not give event cards the persistent tint used by tasks.
+   Restrict it to actual hover-capable pointers, avoiding sticky touch hover. */
+@media (hover: hover) and (pointer: fine) {
+  .timeline-event-card:not([aria-current="step"]):hover {
+    border-color: rgb(var(--color-brand) / 0.65);
+  }
+}
+
+[data-trip-scroll-anchor="timeline"].timeline-focus-pulse[aria-current="step"] {
+  --timeline-resting-border: var(--color-coral);
+}
+
+[data-readiness="true"].timeline-focus-pulse[aria-current="step"] {
+  --timeline-resting-border: var(--color-warning);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -262,7 +262,7 @@ export function TimeZoneAutocomplete({
       {open &&
         createPortal(
           <div
-            className={`fixed inset-0 z-[120] flex ${mobile ? "items-start bg-brand/55" : "items-start bg-transparent"}`}
+            className={`fixed inset-0 z-[120] flex ${mobile ? "items-start bg-black/50" : "items-start bg-transparent"}`}
             onMouseDown={(event) => {
               if (event.target === event.currentTarget) setOpen(false);
             }}
@@ -271,7 +271,7 @@ export function TimeZoneAutocomplete({
               role="dialog"
               aria-modal="true"
               aria-label="Choose time zone"
-              className={`${mobile ? "sheet-enter fixed inset-x-2 rounded-[2rem]" : "fixed max-h-[28rem] rounded-2xl border border-line shadow-focus"} flex flex-col overflow-hidden bg-surface p-4`}
+              className={`${mobile ? "sheet-enter fixed inset-x-2 rounded-3xl" : "fixed max-h-[28rem] rounded-2xl border border-line shadow-focus"} flex flex-col overflow-hidden bg-surface p-4`}
               style={
                 mobile
                   ? {

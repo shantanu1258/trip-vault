@@ -39,6 +39,26 @@ const event = (id: string, start: string, end: string | null = null): ItineraryI
 });
 
 describe("timeline model", () => {
+  it("uses the traveler's checkout time before a later flight without inferring a new checkout", () => {
+    const checkIn = {
+      ...event("check-in", "2026-09-09T15:00:00Z"),
+      event_type: "hotel_check_in" as const
+    };
+    const checkout = {
+      ...event("checkout", "2026-09-11T08:30:00Z"),
+      event_type: "hotel_check_out" as const
+    };
+    const flight = {
+      ...event("flight", "2026-09-11T12:00:00Z", "2026-09-11T14:00:00Z"),
+      event_type: "flight" as const
+    };
+    const entries = buildTripTimelineEntries([flight, checkIn, checkout], [], "UTC");
+    expect(entries.map((entry) => entry.id)).toEqual(["check-in", "checkout", "flight"]);
+    expect(resolveCurrentTripTimelineEntry(entries, new Date("2026-09-11T07:00:00Z"))?.id).toBe(
+      "checkout"
+    );
+    expect(checkout.starts_at).toBe("2026-09-11T08:30:00Z");
+  });
   it("selects a spanning journey before the next event", () =>
     expect(
       resolveCurrentTimelineItem(

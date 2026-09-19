@@ -1,4 +1,10 @@
-import { defaultDarkTokens, defaultLightTokens, type ThemeTokens } from "../../features/admin/api";
+import {
+  defaultDarkTokens,
+  defaultLightTokens,
+  legacyLightTokens,
+  legacyDarkTokens,
+  type ThemeTokens
+} from "../../features/admin/api";
 import { validateThemeTokens } from "../../features/admin/validation";
 
 export const PALETTE_KEY = "trip-vault:published-palette";
@@ -33,11 +39,23 @@ function validPalette(value: unknown): value is PublishedPalette {
 export function readCachedPalette(): PublishedPalette {
   try {
     const parsed = JSON.parse(localStorage.getItem(PALETTE_KEY) ?? "null");
-    if (validPalette(parsed)) return parsed;
+    if (validPalette(parsed))
+      return {
+        ...parsed,
+        // Upgrade only the exact original stock palette. Any admin customization wins.
+        light: isStockPalette(parsed.light, legacyLightTokens) ? defaultLightTokens : parsed.light,
+        dark: isStockPalette(parsed.dark, legacyDarkTokens) ? defaultDarkTokens : parsed.dark
+      };
   } catch {
     /* use bundled fallback */
   }
   return { version: 0, light: defaultLightTokens, dark: defaultDarkTokens };
+}
+
+function isStockPalette(tokens: ThemeTokens, stock: ThemeTokens) {
+  return Object.keys(stock).every(
+    (key) => tokens[key as keyof ThemeTokens].toLowerCase() === stock[key as keyof ThemeTokens]
+  );
 }
 
 function hexToChannels(hex: string) {

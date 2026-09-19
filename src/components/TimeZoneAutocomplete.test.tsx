@@ -101,7 +101,7 @@ describe("strict time-zone autocomplete", () => {
     );
     await user.click(screen.getByRole("button", { name: "Mobile time zone" }));
     const dialog = screen.getByRole("dialog", { name: "Choose time zone" });
-    expect(dialog).toHaveClass("fixed", "rounded-[2rem]");
+    expect(dialog).toHaveClass("fixed", "rounded-3xl");
     expect(dialog).toHaveStyle({ top: "32px", height: "404px" });
     expect(screen.getByRole("option", { name: /Kolkata Asia · Asia\/Kolkata/i })).toBeVisible();
     Object.defineProperty(visualViewport, "height", { configurable: true, value: 330 });

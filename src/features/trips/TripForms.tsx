@@ -691,6 +691,7 @@ export function TripSettingsForm({
           <CurrencySelect name="baseCurrency" defaultValue={trip.base_currency} />
         </label>
         <p className="text-xs leading-5 text-muted">
+          <span className="block font-semibold">Fallback time zone: {trip.primary_timezone}</span>
           Journey time zones live on each departure and arrival, so changing general trip details
           cannot shift ticket times.
         </p>

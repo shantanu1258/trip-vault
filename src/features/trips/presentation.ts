@@ -31,6 +31,15 @@ export function tripPhase(trip: Trip, now = new Date()): TripPhase {
   return "past";
 }
 
+/** Fresh-launch convenience only; never override an explicit route or resume. */
+export function isTripInLaunchWindow(trip: Trip, now = new Date()) {
+  if (trip.status === "archived" || trip.status === "completed") return false;
+  const today = dateKeyInTimezone(now, trip.primary_timezone);
+  const windowStart = new Date(`${trip.start_date}T12:00:00Z`);
+  windowStart.setUTCDate(windowStart.getUTCDate() - 10);
+  return today >= windowStart.toISOString().slice(0, 10) && today <= trip.end_date;
+}
+
 export function selectFocusedTrip(trips: Trip[], savedTripId?: string | null, now = new Date()) {
   const active = trips.filter(
     (trip) => trip.status !== "archived" && tripPhase(trip, now) === "current"
@@ -67,7 +76,18 @@ export function formatDate(date: string, options: Intl.DateTimeFormatOptions = {
   }).format(new Date(`${date}T12:00:00`));
 }
 
-export function formatDateRange(startDate: string, endDate: string) {
+export function formatDateRange(
+  startDate: string,
+  endDate: string,
+  { includeWeekday = false }: { includeWeekday?: boolean } = {}
+) {
+  if (includeWeekday) {
+    const start = formatItineraryDate(`${startDate}T12:00:00Z`, "UTC");
+    if (startDate === endDate) return start;
+    const end = formatItineraryDate(`${endDate}T12:00:00Z`, "UTC");
+    const sameYear = startDate.slice(0, 4) === endDate.slice(0, 4);
+    return `${sameYear ? start.replace(/ \d{4}$/, "") : start} – ${end}`;
+  }
   const formatTripDate = (date: string) =>
     new Intl.DateTimeFormat("en-US", {
       day: "2-digit",
@@ -95,13 +115,16 @@ export function itineraryDateKey(isoDate: string, timeZone: string) {
 }
 
 export function formatItineraryDate(isoDate: string, timeZone: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: "long",
+  const parts = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
     day: "numeric",
-    month: "long",
+    month: "short",
     year: "numeric",
     timeZone
-  }).format(new Date(isoDate));
+  }).formatToParts(new Date(isoDate));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value;
+  return `${part("weekday")}, ${part("day")} ${part("month")} ${part("year")}`;
 }
 
 export function currentItineraryItem(items: ItineraryItem[], now = new Date()) {

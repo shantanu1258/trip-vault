@@ -177,10 +177,17 @@ describe("alert engine", () => {
       offset_minutes: 4_320
     } as Requirement;
     expect(
-      deriveAlerts({ ...base, trips, itinerary, requirements: [linked] }).some(
+      deriveAlerts({ ...base, trips, itinerary, requirements: [linked] }).find(
         (alert) => alert.title === "Visa check"
       )
-    ).toBe(true);
+    ).toMatchObject({ target: "/trips/t/readiness?task=r" });
+    expect(
+      deriveAlerts({
+        ...base,
+        trips,
+        requirements: [{ ...requirement, expires_on: "2026-09-11" }]
+      }).find((alert) => alert.key.startsWith("requirement-expiry:"))
+    ).toMatchObject({ target: "/trips/t/readiness?task=r" });
     expect(
       deriveAlerts({
         ...base,

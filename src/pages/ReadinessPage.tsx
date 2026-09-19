@@ -9,9 +9,9 @@ import {
   UsersRound
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
-import { ErrorCard, LoadingCard, PageHeader } from "../components/TripUi";
+import { ErrorCard, LoadingCard } from "../components/TripUi";
 import { RequirementDetailsSheet } from "../features/readiness/RequirementDetailsSheet";
 import { requirementTimelineSchedule } from "../features/timeline/model";
 import {
@@ -35,10 +35,12 @@ export function ReadinessPage() {
   const confirm = useConfirmDialog();
   const { tripId = "" } = useParams();
   const locationState = useLocation().state;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTaskId = searchParams.get("task");
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Requirement | null>(null);
-  const [viewing, setViewing] = useState<Requirement | null>(null);
+  const [selectedTask, setViewing] = useState<Requirement | null>(null);
   const [userId, setUserId] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   useEffect(() => {
@@ -46,6 +48,18 @@ export function ReadinessPage() {
   }, []);
   const tripQuery = useQuery({ ...tripQueries.trip(tripId), enabled: Boolean(tripId) });
   const query = useQuery({ ...tripQueries.requirements(tripId), enabled: Boolean(tripId) });
+  // Resolve only from this trip's authorized data, including after async loading.
+  const viewing = requestedTaskId
+    ? (query.data?.find((item) => item.id === requestedTaskId) ?? null)
+    : selectedTask;
+  const closeTaskDetails = () => {
+    setViewing(null);
+    if (requestedTaskId) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("task");
+      setSearchParams(next, { replace: true, state: locationState });
+    }
+  };
   const itineraryQuery = useQuery({ ...tripQueries.itinerary(tripId), enabled: Boolean(tripId) });
   const travelersQuery = useQuery({ ...tripQueries.travelers(tripId), enabled: Boolean(tripId) });
   const membersQuery = useQuery({ ...tripQueries.members(tripId), enabled: Boolean(tripId) });
@@ -114,28 +128,38 @@ export function ReadinessPage() {
     }
   });
   return (
-    <AppShell>
+    <AppShell compactTop>
       <div className="mx-auto max-w-4xl">
-        <Link
-          className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted"
-          to={returnNavigation.href}
-          state={returnNavigation.state}
-        >
-          <ArrowLeft className="size-4" /> Back to trip
-        </Link>
-        <div className="mt-5">
-          <PageHeader
-            eyebrow={trip?.title ?? "Trip"}
-            title="Tasks & readiness"
-            text={
-              focusedTravelerId
-                ? "Tasks for the selected traveler. Scheduled tasks also appear in their timeline."
-                : "Keep every task here; dated and event-linked tasks also appear in the trip timeline."
-            }
-          />
-        </div>
+        <header className="grid grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-2 py-1">
+          <Link
+            className="tap-target grid place-items-center text-muted"
+            aria-label="Back to trip"
+            to={returnNavigation.href}
+            state={returnNavigation.state}
+          >
+            <ArrowLeft className="size-5" />
+          </Link>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold sm:text-2xl">Tasks & readiness</h1>
+            <p className="mt-0.5 truncate text-xs text-muted" title={trip?.title}>
+              {trip?.title ?? "Trip"}
+            </p>
+          </div>
+        </header>
         {query.isLoading && <LoadingCard label="Loading checklist" />}
         {query.error && <ErrorCard error={query.error} />}
+        {requestedTaskId && query.isSuccess && !viewing && (
+          <div role="status" className="mt-4 rounded-xl border border-line p-3 text-sm text-muted">
+            This task is no longer available in this trip.
+            <button
+              type="button"
+              className="tap-target ml-2 font-bold text-brand"
+              onClick={closeTaskDetails}
+            >
+              Show task list
+            </button>
+          </div>
+        )}
         {statusMessage && (
           <p
             role="status"
@@ -307,9 +331,10 @@ export function ReadinessPage() {
             timezone={trip.primary_timezone}
             audience={viewingAudience}
             editable={editable}
-            onClose={() => setViewing(null)}
+            manageHistory={!requestedTaskId}
+            onClose={closeTaskDetails}
             onEdit={() => {
-              setViewing(null);
+              closeTaskDetails();
               setEditing(viewing);
             }}
           />

@@ -330,9 +330,7 @@ describe("event form architecture", () => {
     expect(screen.getByText("Flight details")).toBeInTheDocument();
     expect(screen.queryByLabelText("Contact name")).not.toBeInTheDocument();
     await user.click(screen.getByRole("radio", { name: "International" }));
-    expect(
-      screen.queryByRole("button", { name: "Local time zone for this journey" })
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Journey time zone" })).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("Timeline title"), "Flight to Dubai");
     await user.type(screen.getByLabelText(/Booking reference \/ PNR/), "PNR123");
     await user.type(screen.getByLabelText("Airline"), "Air India");
@@ -538,9 +536,9 @@ describe("event form architecture", () => {
       ]);
       const { user } = renderForm();
       await user.click(screen.getByRole("button", { name: choice }));
-      expect(
-        screen.getByRole("button", { name: "Local time zone for this journey" })
-      ).toHaveTextContent("Singapore");
+      expect(screen.getByRole("button", { name: "Journey time zone" })).toHaveTextContent(
+        "Singapore"
+      );
       await user.selectOptions(screen.getByLabelText("Place in timeline"), "relative");
       await waitFor(() => expect(screen.getByLabelText("Event")).toHaveTextContent(anchor.title));
       await user.selectOptions(screen.getByLabelText("Event"), anchor.id);

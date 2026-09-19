@@ -45,7 +45,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     document.documentElement.style.colorScheme = resolvedTheme;
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", resolvedTheme === "dark" ? "#101819" : "#142f31");
+      ?.setAttribute("content", palette[resolvedTheme].canvas);
   }, [palette, resolvedTheme]);
 
   useEffect(() => {

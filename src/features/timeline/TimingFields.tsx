@@ -3,6 +3,7 @@ import { TimeZoneAutocomplete } from "../../components/TimeZoneAutocomplete";
 import type { EventTimingMode, ItineraryItem, Trip } from "../trips/types";
 import { isoToLocalDateTime, localDateTimeToIso } from "../trips/validation";
 import { RequiredMark } from "../../components/RequiredMark";
+import { FieldHelp } from "../../components/FieldHelp";
 
 function text(form: FormData, name: string) {
   return String(form.get(name) ?? "").trim();
@@ -169,9 +170,10 @@ export function EventTimeZoneField({
   hint?: string;
 }) {
   return (
-    <label className="form-label">
-      {label}
-      <RequiredMark />
+    <div className="form-label">
+      <FieldHelp label={label} required>
+        {hint}
+      </FieldHelp>
       <TimeZoneAutocomplete
         name={name}
         defaultValue={value}
@@ -179,8 +181,7 @@ export function EventTimeZoneField({
         required
         aria-label={label}
       />
-      <span className="mt-1 block text-xs font-medium leading-5 text-muted">{hint}</span>
-    </label>
+    </div>
   );
 }
 

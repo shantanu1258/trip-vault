@@ -1,3 +1,4 @@
+import { FormSection } from "../../components/FormSection";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarPlus,
@@ -586,58 +587,61 @@ export function EditBookingForm({
             <BookingMapUrlField booking={booking} />
           </>
         )}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="form-label">
-            Booked via
-            <VendorPicker
-              defaultValue={booking.booked_via_name ?? ""}
-              onWebsite={setBookedViaUrl}
-            />
-          </label>
-          <label className="form-label">
-            Booking website
-            <input
-              className="form-input"
-              type="url"
-              name="bookedViaUrl"
-              value={bookedViaUrl}
-              onChange={(event) => setBookedViaUrl(event.target.value)}
-              placeholder="Paste the reservation or confirmation link"
-            />
-          </label>
-          {showContactName && (
+        <FormSection>
+          <summary>Booking contact & notes</summary>
+          <div className="grid gap-4 sm:grid-cols-2">
             <label className="form-label">
-              Contact name
-              <input
-                className="form-input"
-                name="contactName"
-                defaultValue={booking.contact_name ?? ""}
-                placeholder="Name the property, activity, or transport contact"
+              Booked via
+              <VendorPicker
+                defaultValue={booking.booked_via_name ?? ""}
+                onWebsite={setBookedViaUrl}
               />
             </label>
-          )}
-          {!showContactName && (
-            <input type="hidden" name="contactName" value={booking.contact_name ?? ""} />
-          )}
+            <label className="form-label">
+              Booking website
+              <input
+                className="form-input"
+                type="url"
+                name="bookedViaUrl"
+                value={bookedViaUrl}
+                onChange={(event) => setBookedViaUrl(event.target.value)}
+                placeholder="Paste the reservation or confirmation link"
+              />
+            </label>
+            {showContactName && (
+              <label className="form-label">
+                Contact name
+                <input
+                  className="form-input"
+                  name="contactName"
+                  defaultValue={booking.contact_name ?? ""}
+                  placeholder="Name the property, activity, or transport contact"
+                />
+              </label>
+            )}
+            {!showContactName && (
+              <input type="hidden" name="contactName" value={booking.contact_name ?? ""} />
+            )}
+            <label className="form-label">
+              Phone
+              <input
+                className="form-input"
+                type="tel"
+                name="contactPhone"
+                defaultValue={booking.contact_phone ?? ""}
+                placeholder="Include country code for Call and WhatsApp"
+              />
+            </label>
+          </div>
           <label className="form-label">
-            Phone
-            <input
-              className="form-input"
-              type="tel"
-              name="contactPhone"
-              defaultValue={booking.contact_phone ?? ""}
-              placeholder="Include country code for Call and WhatsApp"
+            Notes
+            <textarea
+              className="form-input min-h-24"
+              name="notes"
+              defaultValue={typeof booking.details.notes === "string" ? booking.details.notes : ""}
             />
           </label>
-        </div>
-        <label className="form-label">
-          Notes
-          <textarea
-            className="form-input min-h-24"
-            name="notes"
-            defaultValue={typeof booking.details.notes === "string" ? booking.details.notes : ""}
-          />
-        </label>
+        </FormSection>
         <ParticipantSelector
           travelers={travelers}
           selectedTravelerIds={
@@ -835,7 +839,7 @@ export function ShareTripForm({
     onSuccess: (_, input) => {
       const account = associated.data?.find((item) => item.user_id === input.userId);
       setOfferSent(
-        `${account?.display_name ?? "This account"} can now accept ${trip.title} from Home.`
+        `${account?.display_name ?? "This account"} can now accept ${trip.title} from Trips.`
       );
     }
   });

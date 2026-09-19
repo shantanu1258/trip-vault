@@ -236,7 +236,7 @@ describe("flight edit time-zone controls", () => {
 
     await renderFlight("domestic", "/trips/trip-1/flights/flight-1", [first, second]);
 
-    const connection = screen.getByRole("link", { name: /Akasa Air.*Next leg/i });
+    const connection = await screen.findByRole("link", { name: /Akasa Air.*Next leg/i });
     expect(connection).toHaveClass("bg-surface", "text-ink");
     expect(connection).not.toHaveClass("airline-accent-rail");
     expect(connection.style.getPropertyValue("--airline-accent")).toBe("#7c3aed");
@@ -253,9 +253,7 @@ describe("flight edit time-zone controls", () => {
     );
     expect(occurrence).toHaveAttribute("type", "hidden");
     expect(occurrence).toHaveValue("earlier");
-    expect(
-      screen.getByRole("button", { name: "Local time zone for this flight journey" })
-    ).toHaveTextContent("Kolkata");
+    expect(screen.getByRole("button", { name: "Journey time zone" })).toHaveTextContent("Kolkata");
   });
 
   it("keeps repeated-clock choices visible for international flights", async () => {
@@ -266,9 +264,7 @@ describe("flight edit time-zone controls", () => {
       'select[name="scheduledDepartureOccurrence"]'
     );
     expect(occurrence).toHaveValue("automatic");
-    expect(
-      screen.queryByRole("button", { name: "Local time zone for this flight journey" })
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Journey time zone" })).not.toBeInTheDocument();
   });
 
   it("opens the editor from the whole departure information card", async () => {

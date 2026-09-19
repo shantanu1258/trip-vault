@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Search, TicketCheck } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
-import { EmptyState, ErrorCard, LoadingCard, PageHeader } from "../components/TripUi";
+import { EmptyState, ErrorCard, LoadingCard } from "../components/TripUi";
 import { tripQueries } from "../features/queries/tripQueries";
 import {
   bookingCategoryCounts,
@@ -29,7 +29,22 @@ export function TripReservationsPage() {
   const { tripId = "" } = useParams();
   const location = useLocation();
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<ReservationFilter>("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const category = searchParams.get("category");
+  const filter: ReservationFilter =
+    category === "flight" || category === "hotel" || category === "journey" || category === "plan"
+      ? category
+      : "all";
+  const setFilter = (value: ReservationFilter) =>
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (value === "all") next.delete("category");
+        else next.set("category", value);
+        return next;
+      },
+      { replace: true, state: location.state }
+    );
   const [travelerId, setTravelerId] = useState(() => readTravelerFocus(tripId) ?? "all");
   const tripQuery = useQuery({ ...tripQueries.trip(tripId), enabled: Boolean(tripId) });
   const bookingsQuery = useQuery({ ...tripQueries.bookings(tripId), enabled: Boolean(tripId) });
@@ -108,42 +123,74 @@ export function TripReservationsPage() {
   const childState = tripChildNavigationState(location.state, tripId, "details");
 
   return (
-    <AppShell>
+    <AppShell compactTop>
       <div className="mx-auto min-w-0 max-w-5xl pb-24">
-        <Link
-          to={returnNavigation.href}
-          state={returnNavigation.state}
-          className="tap-target inline-flex items-center gap-2 text-sm font-bold text-muted hover:text-ink"
-        >
-          <ArrowLeft className="size-4" /> Back to trip details
-        </Link>
-        <div className="mt-4">
-          <PageHeader
-            eyebrow={tripQuery.data?.title ?? "Trip"}
-            title="Reservations"
-            text="Search every booking without turning Trip details into one long page."
-            action={
-              <Link
-                className="primary-button"
-                to={`/trips/${tripId}?view=details&add=event`}
-                state={returnNavigation.state}
-              >
-                <Plus className="size-4" /> Add
-              </Link>
-            }
-          />
-        </div>
+        <header className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-2 py-1">
+          <Link
+            to={returnNavigation.href}
+            state={returnNavigation.state}
+            aria-label="Back to trip details"
+            className="tap-target grid place-items-center rounded-xl text-muted hover:bg-elevated hover:text-ink"
+          >
+            <ArrowLeft className="size-5" aria-hidden="true" />
+          </Link>
+          <div className="min-w-0">
+            <h1 className="font-display text-xl font-bold leading-tight sm:text-2xl">
+              Reservations
+            </h1>
+            <p className="mt-0.5 truncate text-xs text-muted" title={tripQuery.data?.title}>
+              {tripQuery.data?.title ?? "Trip"}
+            </p>
+          </div>
+          <Link
+            className="tap-target inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand px-3 text-sm font-extrabold text-surface"
+            to={`/trips/${tripId}?view=details&add=event`}
+            state={returnNavigation.state}
+          >
+            <Plus className="size-4" /> Add
+          </Link>
+        </header>
         {(tripQuery.isLoading || bookingsQuery.isLoading) && <LoadingCard />}
         {(tripQuery.error || bookingsQuery.error) && (
           <ErrorCard error={tripQuery.error ?? bookingsQuery.error} />
         )}
         {bookingsQuery.data && (
           <>
-            <div className="mt-5 flex flex-wrap gap-2">
+            <div className="mt-3 grid grid-cols-[minmax(0,1fr)_8.5rem] gap-2 sm:grid-cols-[minmax(0,1fr)_12rem]">
+              <label className="relative block min-w-0">
+                <span className="sr-only">Search reservations</span>
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                <input
+                  className="form-input mt-0 pl-10"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search bookings"
+                />
+              </label>
+              <select
+                className="form-input mt-0"
+                aria-label="Filter reservations by traveler"
+                value={travelerId}
+                onChange={(event) => setTravelerId(event.target.value)}
+              >
+                <option value="all">All travelers</option>
+                {(travelersQuery.data ?? []).map((traveler) => (
+                  <option key={traveler.id} value={traveler.id}>
+                    {traveler.display_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div
+              className="mt-3 flex flex-wrap gap-2"
+              role="group"
+              aria-label="Reservation categories"
+            >
               <button
                 type="button"
                 className={`rounded-full border px-3 py-2 text-xs font-black ${filter === "all" ? "border-brand bg-brand text-surface" : "border-line bg-surface text-muted"}`}
                 onClick={() => setFilter("all")}
+                aria-pressed={filter === "all"}
               >
                 All {bookings.length}
               </button>
@@ -162,38 +209,14 @@ export function TripReservationsPage() {
                     key={count.label}
                     className={`rounded-full border px-3 py-2 text-xs font-black ${filter === value ? "border-brand bg-brand text-surface" : "border-line bg-surface text-muted"}`}
                     onClick={() => setFilter(value)}
+                    aria-pressed={filter === value}
                   >
                     {count.label} {count.count}
                   </button>
                 );
               })}
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
-              <label className="relative block">
-                <span className="sr-only">Search reservations</span>
-                <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
-                <input
-                  className="form-input pl-10"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search route, title, provider, or reference"
-                />
-              </label>
-              <select
-                className="form-input"
-                aria-label="Filter reservations by traveler"
-                value={travelerId}
-                onChange={(event) => setTravelerId(event.target.value)}
-              >
-                <option value="all">All travelers</option>
-                {(travelersQuery.data ?? []).map((traveler) => (
-                  <option key={traveler.id} value={traveler.id}>
-                    {traveler.display_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="mt-4 space-y-2">
+            <div className="mt-3 space-y-2">
               {visibleBookings.map((booking) => (
                 <ReservationRow
                   key={booking.id}

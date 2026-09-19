@@ -39,8 +39,8 @@ export default defineConfig({
         name: "Trip Vault",
         short_name: "Trip Vault",
         description: "Your trips, documents, and next actions - ready when you are.",
-        theme_color: "#142f31",
-        background_color: "#f5f1e8",
+        theme_color: "#146b67",
+        background_color: "#f5f7fa",
         display: "standalone",
         start_url: "/",
         icons: [

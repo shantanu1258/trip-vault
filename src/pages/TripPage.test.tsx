@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,7 @@ import type {
   JourneyLeg,
   Requirement,
   Traveler,
+  TripAirline,
   TripNote
 } from "../features/workspace/types";
 
@@ -351,6 +352,7 @@ function renderDetails({
   itinerary = [],
   booking,
   flights = [],
+  airlines = [],
   flightTravelers = [],
   journeys = [],
   travelers = [],
@@ -359,12 +361,14 @@ function renderDetails({
   editable = true,
   onAddBooking = vi.fn(),
   onEdit = vi.fn(),
+  onStatus = vi.fn(),
   onViewCost = vi.fn()
 }: {
   item?: ItineraryItem;
   itinerary?: ItineraryItem[];
   booking?: Booking;
   flights?: FlightLeg[];
+  airlines?: TripAirline[];
   flightTravelers?: FlightTraveler[];
   journeys?: JourneyLeg[];
   travelers?: Traveler[];
@@ -373,6 +377,7 @@ function renderDetails({
   editable?: boolean;
   onAddBooking?: () => void;
   onEdit?: () => void;
+  onStatus?: (status: import("../features/trips/types").EventStatus) => void | Promise<unknown>;
   onViewCost?: (cost: TripCost) => void;
 } = {}) {
   const noop = vi.fn();
@@ -380,12 +385,16 @@ function renderDetails({
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
+        <div aria-hidden="true">
+          <LocationProbe />
+        </div>
         <EventDetailsSheet
           item={item}
           itinerary={itinerary}
           tripId="trip-1"
           booking={booking}
           flights={flights}
+          airlines={airlines}
           flightTravelers={flightTravelers}
           journeys={journeys}
           travelerIds={[]}
@@ -402,7 +411,7 @@ function renderDetails({
           onAddCost={noop}
           onViewCost={onViewCost}
           onUploadDocument={noop}
-          onStatus={noop}
+          onStatus={onStatus}
           onMoveUp={noop}
           onMoveDown={noop}
         />
@@ -412,8 +421,52 @@ function renderDetails({
   return { onAddBooking, onEdit, onViewCost };
 }
 
+describe("event status saving", () => {
+  it("disables all choices and shows progress until the request finishes", async () => {
+    let finish!: () => void;
+    const onStatus = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        })
+    );
+    renderDetails({ onStatus });
+    expect(screen.queryByRole("button", { name: "done" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^Event status/ }));
+    await userEvent.click(screen.getByRole("button", { name: "planned" }));
+    expect(onStatus).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "done" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Saving status");
+    for (const status of ["planned", "done", "skipped", "cancelled"]) {
+      expect(screen.getByRole("button", { name: status })).toBeDisabled();
+    }
+    await userEvent.click(screen.getByRole("button", { name: "skipped" }));
+    expect(onStatus).toHaveBeenCalledOnce();
+    expect(onStatus).toHaveBeenCalledWith("done");
+    await act(async () => finish());
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "done" })).toBeEnabled();
+  });
+
+  it("keeps the previous status on failure and allows retry", async () => {
+    const onStatus = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Network unavailable"))
+      .mockResolvedValue(undefined);
+    renderDetails({ onStatus });
+    await userEvent.click(screen.getByRole("button", { name: /^Event status/ }));
+    await userEvent.click(screen.getByRole("button", { name: "done" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Network unavailable");
+    expect(screen.getByRole("button", { name: "planned" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "done" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "done" }));
+    expect(onStatus).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
 describe("trip overview card", () => {
-  it("shows event-specific colored icons in the actual Trip Details next-up list", async () => {
+  it("shows next-up icons, count and a local date below each title, while retaining event navigation", async () => {
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listItinerary.mockResolvedValue([activity]);
     mocks.listMembers.mockResolvedValue([
@@ -442,9 +495,17 @@ describe("trip overview card", () => {
       "data-event-tone",
       "activity"
     );
+    expect(within(nextUp!).getByText("1")).toBeVisible();
+    const eventLink = within(nextUp!).getByRole("link", { name: /Museum visit/ });
+    const time = eventLink.querySelector("time");
+    expect(time).toHaveAttribute("datetime", activity.starts_at);
+    expect(time).toHaveTextContent(/8:00/);
+    expect(time?.previousElementSibling).toHaveTextContent("Museum visit");
+    await userEvent.click(eventLink);
+    expect(await screen.findByRole("button", { name: "Collapse Museum visit" })).toBeVisible();
   });
 
-  it("lets the owner open Trip settings from the card body without nesting interactive controls", async () => {
+  it("replaces Overview with an owner-only Edit trip action and weekday dates in the header", async () => {
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listMembers.mockResolvedValue([
       {
@@ -466,23 +527,45 @@ describe("trip overview card", () => {
       </QueryClientProvider>
     );
 
-    const overviewHeading = await screen.findByRole("heading", { name: "Trip information" });
-    const overview = overviewHeading.closest("section");
-    expect(overview).not.toBeNull();
-    if (!overview) throw new Error("Trip information card was not rendered");
-    const cardBody = within(overview).getByRole("button", { name: "Edit Trip information" });
-    const editAction = within(overview).getByRole("button", { name: "Edit" });
-    expect(cardBody.contains(editAction)).toBe(false);
-    expect(overview.querySelector("button button, button a, a button, a a")).toBeNull();
-
-    await userEvent.click(cardBody);
+    const editAction = await screen.findByRole("button", { name: "Edit trip" });
+    expect(screen.queryByRole("heading", { name: "Overview" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
+    expect(screen.getByText("Sat, 26 Sep – Mon, 12 Oct 2026")).toBeVisible();
+    await userEvent.click(editAction);
 
     expect(screen.getByRole("region", { name: "Trip settings" })).toBeInTheDocument();
+    expect(screen.getByText("Fallback time zone: Asia/Kolkata")).toBeVisible();
+    expect(screen.getByRole("combobox", { name: /Currency/ })).toHaveValue("INR");
+  });
+  it("does not expose Edit trip to a non-owner", async () => {
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "viewer",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1?view=details"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    await screen.findByRole("heading", { name: ownerTrip.title });
+    expect(screen.queryByRole("button", { name: "Edit trip" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Overview" })).not.toBeInTheDocument();
   });
 });
 
 describe("trip summary interactions", () => {
-  it("makes timeline and details readiness summaries whole-card targets without nesting their actions", async () => {
+  it("keeps a compact readiness link in the timeline and the full section in Trip details", async () => {
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listCosts.mockResolvedValue([]);
     mocks.listItinerary.mockResolvedValue([]);
@@ -510,10 +593,12 @@ describe("trip summary interactions", () => {
 
     const timelineTarget = await screen.findByRole("link", { name: "Open trip readiness" });
     const timelineCard = timelineTarget.closest("section");
-    expect(
-      within(timelineCard as HTMLElement).getByRole("link", { name: "Open checklist" })
-    ).toHaveAttribute("href", "/trips/trip-1/readiness");
+    expect(timelineTarget).toHaveAttribute("href", "/trips/trip-1/readiness");
+    expect(timelineTarget).toHaveTextContent("ReadinessNo tasks yet");
+    expect(within(timelineCard as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(timelineCard as HTMLElement).getAllByRole("link")).toHaveLength(1);
     expect(timelineCard?.querySelector("a a, a button, button a, button button")).toBeNull();
+    expect(screen.getByRole("button", { name: "Jump to current or next" })).toBeDisabled();
 
     view.unmount();
     const detailsClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -527,13 +612,18 @@ describe("trip summary interactions", () => {
       </QueryClientProvider>
     );
 
-    const detailsTarget = await screen.findByRole("button", { name: "Open trip readiness" });
-    const detailsCard = detailsTarget.closest("section");
-    expect(within(detailsCard as HTMLElement).getByRole("link", { name: "Open" })).toHaveAttribute(
+    await screen.findByRole("button", { name: "Edit trip" });
+    expect(screen.queryByRole("button", { name: "Open trip readiness" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open trip readiness" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Readiness checklist" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Open checklist" })).toHaveAttribute(
       "href",
       "/trips/trip-1/readiness"
     );
-    expect(detailsCard?.querySelector("a a, a button, button a, button button")).toBeNull();
+    expect(screen.getByRole("button", { name: "Add task" })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Add task" }));
+    expect(screen.getByRole("region", { name: "Add task" })).toBeInTheDocument();
+    expect(screen.queryByRole("search")).not.toBeInTheDocument();
   });
 
   it("opens an event-linked readiness task modal and completes it only from the checkbox", async () => {
@@ -583,34 +673,23 @@ describe("trip summary interactions", () => {
       </QueryClientProvider>
     );
 
+    expect(await screen.findByText(/3 days before Museum visit/)).toBeInTheDocument();
     expect(
-      await screen.findByText("3 days before Museum visit · Readiness task")
-    ).toBeInTheDocument();
-    const taskCheckbox = screen.getByRole("checkbox", {
-      name: "Mark as done: Prepare Bali visa"
-    });
-    const taskCard = taskCheckbox.parentElement;
-    const taskRow = taskCard?.parentElement;
-    expect(taskRow?.previousElementSibling?.previousElementSibling).toHaveClass("xl:pl-[10.5rem]");
-    expect(taskRow?.previousElementSibling?.previousElementSibling).not.toHaveClass(
-      "sm:pl-[10.5rem]"
+      screen.queryByRole("button", { name: "Expand Prepare Bali visa" })
+    ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Trip details" }));
+    const jump = screen.getByRole("button", { name: "Jump to current or next" });
+    expect(jump).toHaveAttribute("title", "Jump to Prepare Bali visa");
+    await userEvent.click(jump);
+    expect(screen.getByRole("button", { name: "Timeline" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
     );
-    expect(taskRow?.previousElementSibling).toHaveClass("xl:pl-[10.5rem]");
-    expect(taskRow?.previousElementSibling).not.toHaveClass("sm:pl-[10.5rem]");
-    expect(taskRow).toHaveClass("xl:grid-cols-[6rem_2.5rem_minmax(0,1fr)]", "xl:gap-4", "xl:pl-0");
-    expect(taskRow).not.toHaveClass(
-      "sm:grid-cols-[6rem_2.5rem_minmax(0,1fr)]",
-      "sm:gap-4",
-      "sm:pl-0"
-    );
-    expect(taskRow?.children[0]).toHaveClass("xl:hidden");
-    expect(taskRow?.children[0]).not.toHaveClass("sm:hidden");
-    expect(taskRow?.children[1]).toHaveClass("xl:block");
-    expect(taskRow?.children[1]).not.toHaveClass("sm:block");
-    expect(taskRow?.children[2]).toHaveClass("xl:grid");
-    expect(taskRow?.children[2]).not.toHaveClass("sm:grid");
-    expect(taskCard).toHaveClass("xl:px-4");
-    expect(taskCard).not.toHaveClass("sm:px-4");
+    expect(
+      await screen.findByRole("button", { name: "View details for Prepare Bali visa" })
+    ).toBeVisible();
+    expect(mocks.updateRequirementStatus).not.toHaveBeenCalled();
+    const taskCheckbox = screen.getByRole("checkbox", { name: "Mark as done: Prepare Bali visa" });
 
     await userEvent.click(
       screen.getByRole("button", { name: "View details for Prepare Bali visa" })
@@ -622,33 +701,13 @@ describe("trip summary interactions", () => {
     expect(mocks.updateRequirementStatus).not.toHaveBeenCalled();
     await userEvent.click(within(taskDetails).getByRole("button", { name: "Back" }));
 
-    const eventCard = screen
-      .getByRole("button", { name: "Open details for Museum visit" })
-      .closest("article");
-    const eventRow = eventCard?.parentElement;
-    const timeline = eventRow?.parentElement;
-    expect(timeline).toHaveClass("xl:before:left-[8.25rem]");
-    expect(timeline).not.toHaveClass("sm:before:left-[8.25rem]");
-    expect(eventRow?.previousElementSibling).toHaveClass("xl:pl-[10.5rem]");
-    expect(eventRow?.previousElementSibling).not.toHaveClass("sm:pl-[10.5rem]");
-    expect(eventRow).toHaveClass("xl:grid-cols-[6rem_2.5rem_minmax(0,1fr)]", "xl:gap-4", "xl:pl-0");
-    expect(eventRow).not.toHaveClass(
-      "sm:grid-cols-[6rem_2.5rem_minmax(0,1fr)]",
-      "sm:gap-4",
-      "sm:pl-0"
+    const expandEvent = screen.queryByRole("button", { name: "Expand Museum visit" });
+    if (expandEvent) await userEvent.click(expandEvent);
+    expect(screen.getByRole("button", { name: "Collapse Museum visit" })).toHaveAttribute(
+      "aria-expanded",
+      "true"
     );
-    expect(eventRow?.children[0]).toHaveClass("xl:hidden");
-    expect(eventRow?.children[0]).not.toHaveClass("sm:hidden");
-    expect(eventRow?.children[1]).toHaveClass("xl:block");
-    expect(eventRow?.children[1]).not.toHaveClass("sm:block");
-    expect(eventRow?.children[2]).toHaveClass("xl:grid");
-    expect(eventRow?.children[2]).not.toHaveClass("sm:grid");
-    expect(eventCard).toHaveClass("pr-16", "xl:p-5");
-    expect(eventCard).not.toHaveClass("sm:p-5");
-    expect(eventCard?.querySelector('[data-event-type="activity"]')).toHaveClass("xl:hidden");
-    expect(eventCard?.querySelector('[data-event-type="activity"]')).not.toHaveClass("sm:hidden");
-    expect(eventCard?.querySelector("time")).toHaveClass("xl:hidden");
-    expect(eventCard?.querySelector("time")).not.toHaveClass("sm:hidden");
+    expect(screen.getByRole("checkbox", { name: "Mark as done: Prepare Bali visa" })).toBeVisible();
 
     await userEvent.click(taskCheckbox);
     await waitFor(() =>
@@ -671,6 +730,13 @@ describe("trip summary interactions", () => {
         participation_type: "traveler",
         joined_at: "2026-09-01T00:00:00.000Z",
         display_name: "Shantanu"
+      },
+      {
+        user_id: "other-user",
+        role: "editor",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shubham"
       }
     ]);
     Object.defineProperty(window, "scrollY", { configurable: true, value: 420 });
@@ -695,6 +761,18 @@ describe("trip summary interactions", () => {
 
     await userEvent.click(peopleTarget);
     const peopleSheet = screen.getByRole("region", { name: "People & sharing" });
+    const roleChoice = within(peopleSheet).getByRole("combobox", { name: "Role for Shubham" });
+    expect(roleChoice).toHaveValue("editor");
+    expect(within(roleChoice).getByRole("option", { name: "Editor" })).toHaveValue("editor");
+    expect(within(roleChoice).getByRole("option", { name: "Viewer" })).toHaveValue("viewer");
+    expect(within(peopleSheet).getByRole("button", { name: "Everyone" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    expect(
+      within(peopleSheet).getByRole("button", { name: "Show Shubham's trip information" })
+    ).toHaveAttribute("aria-pressed", "false");
+    expect(peopleSheet.querySelector("button button")).toBeNull();
     await userEvent.click(
       within(peopleSheet).getByRole("button", { name: "Show Shubham's trip information" })
     );
@@ -703,8 +781,14 @@ describe("trip summary interactions", () => {
       expect(screen.queryByRole("region", { name: "People & sharing" })).not.toBeInTheDocument()
     );
     await waitFor(() => expect(peopleTarget).toHaveFocus());
-    expect(screen.getByText("Showing Shubham")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Showing Shubham");
     await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ top: 420, behavior: "auto" }));
+    await userEvent.click(peopleTarget);
+    expect(
+      within(screen.getByRole("region", { name: "People & sharing" })).getByRole("button", {
+        name: "Show Shubham's trip information"
+      })
+    ).toHaveAttribute("aria-pressed", "true");
 
     scrollTo.mockRestore();
     Object.defineProperty(window, "scrollY", { configurable: true, value: 0 });
@@ -779,16 +863,16 @@ describe("trip summary interactions", () => {
     const search = await screen.findByRole("textbox", { name: "Search this trip" });
     await waitFor(() => expect(search).toHaveFocus());
     const searchRegion = screen.getByRole("search", { name: "Search within this trip" });
-    expect(screen.getByRole("heading", { name: "Complete timeline" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Timeline" })).toBeInTheDocument();
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
     expect(scrollIntoView.mock.contexts).toContain(searchRegion);
     expect(scrollIntoView.mock.contexts).not.toContain(search);
-    expect(searchRegion.className).toContain("safe-area-inset-top");
+    expect(searchRegion.closest("[data-trip-sticky]")).toBeNull();
 
     HTMLElement.prototype.scrollIntoView = previousScrollIntoView;
   });
 
-  it("opens the route-backed agenda from anywhere and jumps to a selected event", async () => {
+  it("uses labeled sticky tabs instead of a separate agenda", async () => {
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listItinerary.mockResolvedValue([activity]);
     mocks.listMembers.mockResolvedValue([
@@ -812,22 +896,12 @@ describe("trip summary interactions", () => {
       </QueryClientProvider>
     );
 
-    await userEvent.click(await screen.findByRole("button", { name: "Open trip agenda" }));
-    expect(screen.getByTestId("location")).toHaveTextContent(
-      "/trips/trip-1?view=details&agenda=open"
-    );
-    const agenda = screen.getByRole("region", { name: "Trip agenda" });
-    expect(
-      within(agenda).getByRole("button", { name: "Jump to now: Museum visit" })
-    ).toBeInTheDocument();
-
-    await userEvent.click(
-      within(agenda).getByRole("button", { name: "View Museum visit in timeline" })
-    );
-
-    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1"));
-    expect(screen.queryByRole("region", { name: "Trip agenda" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Complete timeline" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Timeline" }));
+    expect(screen.queryByRole("button", { name: "Open trip agenda" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Timeline" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next event" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    expect(screen.getByRole("button", { name: "Next event" })).toBeInTheDocument();
   });
 
   it("shows complete wrapped document names in Trip details", async () => {
@@ -959,8 +1033,14 @@ describe("trip summary interactions", () => {
 
     expect(await screen.findByText("Reservation 3")).toBeInTheDocument();
     expect(screen.queryByText("Reservation 4")).not.toBeInTheDocument();
-    expect(screen.getByText("Flights").parentElement).toHaveTextContent("Flights 10");
-    expect(screen.getByText("Stays").parentElement).toHaveTextContent("Stays 5");
+    expect(screen.getByRole("link", { name: "Flights 10" })).toHaveAttribute(
+      "href",
+      "/trips/trip-1/reservations?category=flight"
+    );
+    expect(screen.getByRole("link", { name: "Stays 5" })).toHaveAttribute(
+      "href",
+      "/trips/trip-1/reservations?category=hotel"
+    );
 
     expect(screen.getByRole("link", { name: "View all 15 reservations" })).toHaveAttribute(
       "href",
@@ -1084,6 +1164,7 @@ describe("activity event details", () => {
     const onViewCost = vi.fn();
     renderDetails({ costs: [expense], travelers: expenseTravelers, editable: false, onViewCost });
 
+    await userEvent.click(screen.getByRole("button", { name: /^Costs/ }));
     await userEvent.click(screen.getByRole("button", { name: "View details for Museum tickets" }));
 
     expect(onViewCost).toHaveBeenCalledWith(expense);
@@ -1477,6 +1558,9 @@ describe("hotel timeline editing", () => {
     );
 
     await userEvent.click(
+      await screen.findByRole("button", { name: "Expand Check out · Palm Springs Hotel" })
+    );
+    await userEvent.click(
       await screen.findByRole("button", { name: "Open details for Check out · Palm Springs Hotel" })
     );
     const eventDetails = screen.getByRole("region", { name: "Check out · Palm Springs Hotel" });
@@ -1580,6 +1664,7 @@ describe("trip expense cards", () => {
     const onViewCost = vi.fn();
     renderDetails({ costs: [expense, refundedExpense], travelers: expenseTravelers, onViewCost });
 
+    await userEvent.click(screen.getByRole("button", { name: /^Costs/ }));
     const headline = screen.getByText(/^Cost ·/);
     expect(headline).toHaveTextContent(/12,000/);
     expect(headline).not.toHaveTextContent(/14,000/);
@@ -1684,6 +1769,28 @@ describe("reservation cards", () => {
 });
 
 describe("note cards", () => {
+  it("keeps the complete multiline note readable without edit actions for viewers", () => {
+    const body =
+      "Meet at the north entrance.\n\nBackup instructions: https://example.com/" + "a".repeat(100);
+    render(
+      <NoteCard
+        note={{
+          id: "note-readonly",
+          trip_id: "trip-1",
+          title: "Arrival instructions",
+          body,
+          created_at: "",
+          updated_at: ""
+        }}
+        editable={false}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+      />
+    );
+    expect(screen.getByText("Arrival instructions")).toBeVisible();
+    expect(screen.getByText(/Meet at the north entrance/).textContent).toBe(body);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
   it("opens edit from the card while archive remains an independent action", async () => {
     const note: TripNote = {
       id: "note-1",
@@ -1706,7 +1813,46 @@ describe("note cards", () => {
 });
 
 describe("flight event details", () => {
-  it("shows only the focused traveler's seat and boarding details as soon as the event opens", async () => {
+  it.each(["hotel", "activity"] as const)(
+    "opens the full %s booking from the existing date and status card",
+    async (type) => {
+      const booking: Booking = {
+        id: "booking-compact",
+        trip_id: "trip-1",
+        type,
+        title: "Reserved place",
+        provider: "Official Website",
+        reference_code: "REF123",
+        start_at: null,
+        end_at: null,
+        source_timezone: null,
+        location: null,
+        details: {},
+        created_at: "2026-09-01T00:00:00.000Z"
+      };
+      renderDetails({ item: { ...activity, booking_id: booking.id }, booking });
+      const summary = screen.getByRole("link", { name: "View booking details for Reserved place" });
+      expect(summary.parentElement).toHaveTextContent("planned");
+      expect(summary.parentElement?.querySelector("[data-event-type]")).not.toBeNull();
+      expect(summary.parentElement).not.toHaveClass("airline-accent-rail");
+      expect(
+        screen
+          .getAllByText("REF123")
+          .find((element) => !element.closest("[hidden]"))
+          ?.closest("a")
+      ).toBeNull();
+      expect(screen.getByRole("button", { name: /^Booking details/ })).toHaveAttribute(
+        "aria-expanded",
+        "false"
+      );
+      await userEvent.click(summary);
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "/trips/trip-1/bookings/booking-compact"
+      );
+    }
+  );
+
+  it("shows reference and gate immediately, with focused traveler details inside the booking accordion", async () => {
     const booking: Booking = {
       id: "booking-1",
       trip_id: "trip-1",
@@ -1790,11 +1936,46 @@ describe("flight event details", () => {
       item: { ...activity, event_type: "flight", booking_id: booking.id },
       booking,
       flights: [flight],
+      airlines: [
+        {
+          id: "airline-1",
+          trip_id: "trip-1",
+          name: "Air India",
+          iata_code: "AI",
+          icao_code: null,
+          check_in_url_template: null,
+          manage_booking_url_template: null,
+          status_url_template: null,
+          tracker_url_template: null,
+          brand_color: "#DA0E29",
+          metadata_source: "manual",
+          source_catalog_key: null,
+          source_config_version: null,
+          version: 1
+        }
+      ],
       flightTravelers,
       travelers,
       focusedTravelerId: "traveler-2"
     });
 
+    expect(screen.getByText("Terminal 3 · Gate 12")).toBeVisible();
+    const summary = screen.getByRole("link", { name: "View booking details for Flight to Dubai" });
+    expect(summary).toHaveAttribute("href", "/trips/trip-1/flights/flight-1");
+    expect(summary.parentElement).toHaveClass("airline-accent-rail");
+    expect(summary.parentElement?.style.getPropertyValue("--airline-accent")).toBe("#DA0E29");
+    expect(summary.parentElement).toHaveTextContent("planned");
+    expect(
+      screen.getAllByText("ABC123").filter((element) => !element.closest("[hidden]"))
+    ).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /^Booking details/ })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
+    expect(
+      screen.queryByRole("link", { name: "Open booking details for Flight to Dubai" })
+    ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^Booking details/ }));
     expect(
       screen.getByRole("link", { name: "Open booking details for Flight to Dubai" })
     ).toHaveAttribute("href", "/trips/trip-1/flights/flight-1");
@@ -1802,6 +1983,8 @@ describe("flight event details", () => {
       await screen.findByText("Rahul · Seat 14C · Group 3 · Ticket 098765")
     ).toBeInTheDocument();
     expect(screen.queryByText(/Seat 12A/)).not.toBeInTheDocument();
+    await userEvent.click(summary);
+    expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1/flights/flight-1");
   });
 });
 
@@ -1877,7 +2060,8 @@ describe("ground journey traveler details", () => {
       focusedTravelerId: "traveler-2"
     });
 
-    expect(await screen.findByText(/Shubham.*Seat 9.*85854179/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^Booking details/ }));
+    expect(await screen.findByText(/Shubham.*Seat 9.*85854179/)).toBeVisible();
     expect(screen.queryByText(/Shantanu.*Seat 5/)).not.toBeInTheDocument();
   });
 

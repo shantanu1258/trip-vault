@@ -1,4 +1,4 @@
-import { ChevronRight, Plus, RotateCcw, Settings, UsersRound } from "lucide-react";
+import { ChevronRight, Plus, RotateCcw, UsersRound } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { EventTypeIcon } from "../../components/EventTypeIcon";
@@ -7,10 +7,12 @@ import { TripDocumentRow } from "../../components/TripDocumentRow";
 import { CostTotals } from "../../components/TripUi";
 import { rankDocumentsForUpcomingEvents } from "../home/needNow";
 import { OfflinePackControl } from "../readiness/OfflinePackControl";
-import { formatDateRange, formatEventTime } from "./presentation";
+import { formatEventTime } from "./presentation";
 import { tripIntentNavigationState } from "./navigation";
 import { NoteCard, ReservationRow } from "./TripDetailsCards";
 import { TripDetailsSection } from "./TripDetailsSection";
+import { TripReadinessSection } from "./TripReadinessSummary";
+import { readinessSummary } from "../timeline/model";
 import { TripAirlinesPanel } from "../workspace/TripAirlinesPanel";
 import {
   bookingCategoryCounts,
@@ -24,12 +26,11 @@ import type {
   Booking,
   FlightLeg,
   JourneyLeg,
+  Requirement,
   Traveler,
   TripNote,
   VaultDocument
 } from "../workspace/types";
-
-type ReadinessSummary = { resolved: number; total: number };
 
 type TripDetailsViewProps = {
   trip: Trip;
@@ -42,21 +43,19 @@ type TripDetailsViewProps = {
   costs: TripCost[];
   documents: VaultDocument[];
   itinerary: ItineraryItem[];
+  requirements?: Requirement[];
+  onAddTask?: () => void;
   eventDocumentReferences?: EventDocumentReference[];
-  readiness: ReadinessSummary;
   archivedItems?: ArchivedTripItem[];
   notes?: TripNote[];
   editable: boolean;
-  isOwner: boolean;
   restorePending: boolean;
   navigationState?: unknown;
   online: boolean;
-  onOpenSettings: () => void;
   onAddEvent: () => void;
   onOpenExpenses: () => void;
   onAddCost: () => void;
   onOpenPeople: (trigger: HTMLButtonElement) => void;
-  onOpenReadiness: () => void;
   onUploadDocument: () => void;
   onRestoreArchived: (item: ArchivedTripItem) => void;
   onAddNote: () => void;
@@ -64,20 +63,41 @@ type TripDetailsViewProps = {
   onArchiveNote: (note: TripNote) => void;
 };
 
-function CollectionCounts({ values }: { values: Array<{ label: string; count: number }> }) {
+function CollectionCounts({
+  values,
+  tripId,
+  collection = "reservations",
+  navigationState
+}: {
+  values: Array<{ label: string; count: number }>;
+  tripId?: string;
+  collection?: "reservations" | "documents";
+  navigationState?: unknown;
+}) {
   const visible = values.filter((value) => value.count > 0);
   if (!visible.length) return null;
 
   return (
-    <div className="mb-4 flex flex-wrap gap-2" aria-label="Section summary">
-      {visible.map((value) => (
-        <span
-          key={value.label}
-          className="rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-bold text-muted"
-        >
-          {value.label} <strong className="text-ink">{value.count}</strong>
-        </span>
-      ))}
+    <div className="mb-2 flex flex-wrap gap-x-2" aria-label="Section summary">
+      {visible.map((value) =>
+        tripId ? (
+          <Link
+            key={value.label}
+            to={`/trips/${tripId}/${collection}?category=${collection === "documents" ? encodeURIComponent(value.label.replaceAll(" ", "_")) : value.label === "Flights" ? "flight" : value.label === "Stays" ? "hotel" : value.label === "Ground & water" ? "journey" : "plan"}`}
+            state={navigationState}
+            className="inline-flex min-h-11 items-center gap-1 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-bold text-muted hover:border-brand hover:text-ink"
+          >
+            {value.label} <strong className="text-ink">{value.count}</strong>
+          </Link>
+        ) : (
+          <span
+            key={value.label}
+            className="rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-bold text-muted"
+          >
+            {value.label} <strong className="text-ink">{value.count}</strong>
+          </span>
+        )
+      )}
     </div>
   );
 }
@@ -105,17 +125,16 @@ export function TripDetailsView(props: TripDetailsViewProps) {
     journeys,
     costs,
     documents,
-    readiness,
     archivedItems = [],
     notes = [],
     editable,
-    isOwner,
     restorePending,
     navigationState,
     online
   } = props;
 
   const flightsByBooking = useMemo(() => groupByBookingId(flights), [flights]);
+  const readiness = readinessSummary(props.requirements ?? []);
   const journeysByBooking = useMemo(() => groupByBookingId(journeys), [journeys]);
   const reservationCounts = useMemo(() => bookingCategoryCounts(bookings), [bookings]);
   const documentCounts = useMemo(() => documentCategoryCounts(documents), [documents]);
@@ -156,14 +175,13 @@ export function TripDetailsView(props: TripDetailsViewProps) {
       }));
 
   const navItems = [
+    ["readiness", "Readiness", readiness.remaining],
     ...(upcomingItinerary.length
       ? ([["upcoming", "Next up", upcomingItinerary.length]] as const)
       : []),
-    ["overview", "Overview"],
     ["reservations", "Reservations", bookings.length],
-    ["costs", "Costs", costs.length],
+    ["costs", "Expenses", costs.length],
     ["people", "People", travelers.length],
-    ["readiness", "Readiness", readiness.total],
     ["documents", "Documents", documents.length],
     ["archived", "Archived", archivedItems.length],
     ["offline", "Offline"],
@@ -172,10 +190,10 @@ export function TripDetailsView(props: TripDetailsViewProps) {
   ] as const;
 
   return (
-    <main className="mt-5 space-y-5">
+    <main className="mt-3 space-y-3 sm:space-y-4">
       <nav
         aria-label="Trip details sections"
-        className="sticky top-2 z-30 flex gap-2 overflow-auto rounded-2xl border border-line bg-surface/95 p-2 shadow-soft backdrop-blur"
+        className="flex gap-2 overflow-auto rounded-2xl border border-line bg-surface/95 p-2 shadow-soft backdrop-blur"
       >
         {navItems.map(([id, label, count]) => (
           <a
@@ -189,22 +207,22 @@ export function TripDetailsView(props: TripDetailsViewProps) {
         ))}
       </nav>
 
+      <TripReadinessSection
+        resolved={readiness.resolved}
+        total={readiness.total}
+        href={`/trips/${trip.id}/readiness`}
+        navigationState={navigationState}
+        onAddTask={editable ? props.onAddTask : undefined}
+      />
+
       {upcomingItinerary.length > 0 && (
-        <section
+        <TripDetailsSection
           id="upcoming"
-          data-trip-scroll-anchor="details"
-          className="surface-card scroll-mt-28 p-4 sm:p-5"
+          eyebrow="Coming up"
+          title="Next up"
+          count={upcomingItinerary.length}
         >
-          <div className="flex items-center gap-2">
-            <div>
-              <p className="eyebrow">Timeline</p>
-              <h2 className="mt-1 font-display text-xl font-black">Next up</h2>
-            </div>
-            <span className="mt-5 rounded-full bg-brand-soft px-2 py-0.5 text-xs font-black text-brand">
-              {upcomingItinerary.length}
-            </span>
-          </div>
-          <div className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line">
+          <div className="divide-y divide-line overflow-hidden rounded-xl border border-line">
             {upcomingItinerary.map((item) => (
               <Link
                 key={item.id}
@@ -213,58 +231,33 @@ export function TripDetailsView(props: TripDetailsViewProps) {
                   view: "timeline",
                   targetId: item.id
                 })}
-                className="group grid min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto_auto] items-center gap-3 px-3 py-2.5 hover:bg-elevated"
+                className="group grid min-h-16 min-w-0 grid-cols-[2rem_minmax(0,1fr)_1rem] items-center gap-3 px-3 py-2.5 hover:bg-elevated"
               >
                 <EventTypeIcon
                   type={item.event_type ?? "custom"}
                   className="size-8 rounded-lg"
                   iconClassName="size-3.5"
                 />
-                <strong className="min-w-0 whitespace-normal break-words text-sm [overflow-wrap:anywhere]">
-                  {item.title}
-                </strong>
-                <span className="whitespace-nowrap text-xs text-muted">
-                  {formatEventTime(item.starts_at, item.timezone)}
+                <span className="min-w-0">
+                  <strong className="block whitespace-normal break-words text-sm leading-snug [overflow-wrap:anywhere]">
+                    {item.title}
+                  </strong>
+                  <time
+                    dateTime={item.starts_at}
+                    className="mt-0.5 block text-xs leading-snug text-muted"
+                  >
+                    {formatEventTime(item.starts_at, item.timezone)}
+                  </time>
                 </span>
-                <ChevronRight className="size-4 shrink-0 text-muted transition-transform group-hover:translate-x-0.5" />
+                <ChevronRight
+                  aria-hidden="true"
+                  className="size-4 shrink-0 text-muted transition-transform group-hover:translate-x-0.5"
+                />
               </Link>
             ))}
           </div>
-        </section>
+        </TripDetailsSection>
       )}
-
-      <TripDetailsSection
-        id="overview"
-        eyebrow="Overview"
-        title="Trip information"
-        onActivate={isOwner ? props.onOpenSettings : undefined}
-        action={
-          isOwner && (
-            <button type="button" onClick={props.onOpenSettings} className="secondary-button">
-              <Settings className="size-4" /> Edit
-            </button>
-          )
-        }
-      >
-        <dl className="grid gap-4 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-muted">Destination</dt>
-            <dd className="mt-1 font-bold">{trip.destination_summary}</dd>
-          </div>
-          <div>
-            <dt className="text-muted">Dates</dt>
-            <dd className="mt-1 font-bold">{formatDateRange(trip.start_date, trip.end_date)}</dd>
-          </div>
-          <div>
-            <dt className="text-muted">Default currency</dt>
-            <dd className="mt-1 font-bold">{trip.base_currency}</dd>
-          </div>
-          <div>
-            <dt className="text-muted">Fallback time zone</dt>
-            <dd className="mt-1 font-bold">{trip.primary_timezone}</dd>
-          </div>
-        </dl>
-      </TripDetailsSection>
 
       <TripDetailsSection
         id="reservations"
@@ -279,7 +272,11 @@ export function TripDetailsView(props: TripDetailsViewProps) {
           )
         }
       >
-        <CollectionCounts values={reservationCounts} />
+        <CollectionCounts
+          values={reservationCounts}
+          tripId={trip.id}
+          navigationState={navigationState}
+        />
         {bookings.length ? (
           <div className="space-y-2">
             {bookings.slice(0, 3).map((booking) => (
@@ -310,7 +307,7 @@ export function TripDetailsView(props: TripDetailsViewProps) {
       <TripDetailsSection
         id="costs"
         eyebrow="Money"
-        title={focusedTraveler ? `${focusedTraveler.display_name}'s trip costs` : "Trip expenses"}
+        title={focusedTraveler ? `${focusedTraveler.display_name}'s expenses` : "Expenses"}
         count={costs.length}
         onActivate={() => props.onOpenExpenses()}
         activateLabel="Open itemized trip expenses"
@@ -332,9 +329,7 @@ export function TripDetailsView(props: TripDetailsViewProps) {
       <TripDetailsSection
         id="people"
         eyebrow="People & sharing"
-        title={
-          focusedTravelerId ? (focusedTraveler?.display_name ?? "Selected traveler") : "Everyone"
-        }
+        title="People"
         count={travelers.length}
         onActivate={props.onOpenPeople}
         activateLabel="Open People & sharing"
@@ -348,33 +343,7 @@ export function TripDetailsView(props: TripDetailsViewProps) {
           </button>
         }
       >
-        <p className="text-sm text-muted">
-          Switch between the complete trip and one person's relevant timeline, reservations, costs,
-          readiness, seats, and documents.
-        </p>
-      </TripDetailsSection>
-
-      <TripDetailsSection
-        id="readiness"
-        eyebrow="Tasks"
-        title="Tasks & readiness"
-        count={readiness.total}
-        onActivate={() => props.onOpenReadiness()}
-        activateLabel="Open trip readiness"
-        action={
-          <Link
-            className="secondary-button"
-            to={`/trips/${trip.id}/readiness`}
-            state={navigationState}
-          >
-            Open
-          </Link>
-        }
-      >
-        <p className="text-sm text-muted">
-          {readiness.resolved} of {readiness.total} tasks done. Scheduled tasks also appear in the
-          timeline.
-        </p>
+        <p className="text-sm text-muted">Showing {focusedTraveler?.display_name ?? "Everyone"}</p>
       </TripDetailsSection>
 
       <TripDetailsSection
@@ -388,12 +357,13 @@ export function TripDetailsView(props: TripDetailsViewProps) {
           </button>
         }
       >
-        <p className="text-sm text-muted">
-          {documents.length} document{documents.length === 1 ? "" : "s"}{" "}
-          {focusedTravelerId ? "for the selected traveler" : "in this trip"}
-        </p>
-        <div className="mt-3">
-          <CollectionCounts values={documentCounts} />
+        <div>
+          <CollectionCounts
+            values={documentCounts}
+            tripId={trip.id}
+            collection="documents"
+            navigationState={navigationState}
+          />
           {neededDocuments.length > 0 && (
             <p className="mb-2 text-xs font-black uppercase tracking-[.12em] text-muted">
               Needed next
@@ -430,11 +400,12 @@ export function TripDetailsView(props: TripDetailsViewProps) {
         title="Archived trip items"
         count={archivedItems.length}
       >
-        <p className="text-sm text-muted">
-          Archived events and booking groups leave the timeline, while their documents and costs
-          stay available. Archived costs can also be restored here.
-        </p>
-        <div className="mt-4">
+        {archivedItems.length > 0 && (
+          <p className="mb-2 text-xs text-muted">
+            Restore items to your trip. Documents and costs are kept.
+          </p>
+        )}
+        <div>
           <ProgressiveList
             items={archivedItems}
             initialCount={5}
@@ -472,11 +443,11 @@ export function TripDetailsView(props: TripDetailsViewProps) {
       </TripDetailsSection>
 
       <TripDetailsSection id="offline" eyebrow="On this device" title="Offline pack">
-        <OfflinePackControl tripId={trip.id} />
+        <OfflinePackControl tripId={trip.id} embedded />
       </TripDetailsSection>
 
       <TripDetailsSection id="metadata" eyebrow="Travel metadata" title="Airlines">
-        <TripAirlinesPanel tripId={trip.id} canEdit={editable} />
+        <TripAirlinesPanel tripId={trip.id} canEdit={editable} embedded />
       </TripDetailsSection>
 
       <TripDetailsSection
@@ -484,6 +455,7 @@ export function TripDetailsView(props: TripDetailsViewProps) {
         eyebrow="Useful details"
         title="Notes"
         count={notes.length}
+        contentClassName={notes.length ? "mt-2" : "mt-1"}
         action={
           editable && (
             <button type="button" className="secondary-button" onClick={props.onAddNote}>
@@ -497,7 +469,7 @@ export function TripDetailsView(props: TripDetailsViewProps) {
           initialCount={5}
           itemLabel="notes"
           getKey={(note) => note.id}
-          empty={<p className="text-sm text-muted">No notes yet.</p>}
+          empty={<p className="pb-1 text-center text-sm text-muted">No notes yet.</p>}
           renderItem={(note) => (
             <NoteCard
               note={note}

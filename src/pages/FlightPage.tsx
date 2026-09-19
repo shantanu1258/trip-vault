@@ -1,3 +1,4 @@
+import { FormSection } from "../components/FormSection";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Armchair,
@@ -311,7 +312,7 @@ export function FlightPage() {
           <>
             <section
               style={airlineStyle}
-              className={`airline-accent-hero page-enter mt-5 overflow-hidden rounded-[2rem] border shadow-focus ${flight.status === "cancelled" ? "border-danger bg-danger text-white" : flight.status === "delayed" ? "border-warning bg-brand text-surface" : "border-line bg-brand text-surface"}`}
+              className={`airline-accent-hero page-enter mt-5 overflow-hidden rounded-3xl border shadow-focus ${flight.status === "cancelled" ? "border-danger bg-danger text-white" : flight.status === "delayed" ? "border-warning bg-brand text-surface" : "border-line bg-brand text-surface"}`}
             >
               <div className="p-6 sm:p-8">
                 <div className="flex items-center justify-between">
@@ -615,9 +616,6 @@ export function FlightPage() {
               </label>
               {!showTimeZoneControls && tripQuery.data && (
                 <fieldset className="rounded-2xl border border-line p-4">
-                  <legend className="px-1 font-display text-lg font-black">
-                    Journey time zone
-                  </legend>
                   <div className="mt-3">
                     <EventTimeZoneField
                       name="eventTimezone"
@@ -626,7 +624,7 @@ export function FlightPage() {
                         itineraryQuery.data ?? [],
                         tripQuery.data.primary_timezone
                       )}
-                      label="Local time zone for this flight journey"
+                      label="Journey time zone"
                       hint="This applies to every connection while keeping each entered local clock time."
                     />
                   </div>
@@ -656,8 +654,8 @@ export function FlightPage() {
                   />
                 </div>
               </fieldset>
-              <fieldset className="rounded-2xl border border-line p-4">
-                <legend className="px-1 font-display text-lg font-black">Manual estimates</legend>
+              <FormSection>
+                <summary>Manual estimates</summary>
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
                   <ZonedEditField
                     label="Estimated departure"
@@ -691,9 +689,9 @@ export function FlightPage() {
                     showTimeZoneControls={showTimeZoneControls}
                   />
                 </div>
-              </fieldset>
-              <fieldset className="rounded-2xl border border-line p-4">
-                <legend className="px-1 font-display text-lg font-black">Boarding</legend>
+              </FormSection>
+              <FormSection>
+                <summary>Boarding</summary>
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
                   <ZonedEditField
                     label="Exact boarding time"
@@ -719,7 +717,7 @@ export function FlightPage() {
                   When no exact time is entered, Trip Vault automatically subtracts the lead from
                   scheduled departure. An exact boarding time takes precedence.
                 </p>
-              </fieldset>
+              </FormSection>
               <div className="grid grid-cols-2 gap-4">
                 <label className="form-label">
                   Departure terminal

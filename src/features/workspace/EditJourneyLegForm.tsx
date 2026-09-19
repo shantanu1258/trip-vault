@@ -810,13 +810,12 @@ export function EditJourneyLegForm({
         </fieldset>
         {!international && leg.segment_order === 0 && (
           <fieldset className="rounded-2xl border border-line p-4">
-            <legend className="px-1 text-sm font-extrabold">Journey time zone</legend>
             <div className="mt-2">
               <EventTimeZoneField
                 name="eventTimezone"
                 value={itineraryItem?.timezone ?? leg.origin_timezone ?? trip.primary_timezone}
                 localDefaultValue={furthestEventTimezone(itinerary, trip.primary_timezone)}
-                label="Local time zone for this journey"
+                label="Journey time zone"
                 hint="This applies to every connection in this journey while keeping each entered local clock time."
               />
             </div>

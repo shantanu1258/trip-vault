@@ -16,7 +16,14 @@ import {
   restoreTrip
 } from "../features/trips/api";
 import type { Trip } from "../features/trips/types";
-import { sortTripsByRelevance, tripPhase } from "../features/trips/presentation";
+import {
+  isTripInLaunchWindow,
+  sortTripsByRelevance,
+  tripPhase
+} from "../features/trips/presentation";
+import { TripInvitations } from "../features/trips/TripInvitations";
+import { TripAttentionCard } from "../features/trips/TripAttentionCard";
+import { Link } from "react-router-dom";
 
 export function TripsPage() {
   const queryClient = useQueryClient();
@@ -53,19 +60,30 @@ export function TripsPage() {
     <AppShell>
       <div className="mx-auto min-w-0 max-w-5xl overflow-x-clip">
         <PageHeader
-          eyebrow="Your journeys"
           title="Trips"
-          text="Every shared plan, booking, cost, and travel document starts here."
-          action={<PrimaryLink to="/trips/new">Create trip</PrimaryLink>}
+          action={<PrimaryLink to="/trips/new">Create a new trip</PrimaryLink>}
         />
+        <TripAttentionCard trips={trips} />
+        <Link
+          to="/join"
+          className="mt-3 inline-flex min-h-11 items-center text-sm font-bold text-brand"
+        >
+          Join with an invitation code
+        </Link>
+        <TripInvitations />
+        {trips.filter((trip) => isTripInLaunchWindow(trip)).length > 1 && (
+          <p className="mt-4 text-sm text-muted">
+            More than one trip is coming up. Choose the one you want to open.
+          </p>
+        )}
         {query.isLoading && <LoadingCard label="Loading trips" />}
         {query.error && <ErrorCard error={query.error} />}
         {!query.isLoading && !query.error && trips.length === 0 && archived.length === 0 && (
           <EmptyState
             icon={<Map className="size-7" />}
             title="Create your first trip"
-            text="Add its dates and destination, then the app will guide you through itinerary, costs, people, and documents."
-            action={<PrimaryLink to="/trips/new">Create a trip</PrimaryLink>}
+            text="Start with a destination and dates. Add your plans when you're ready."
+            action={<PrimaryLink to="/trips/new">Create a new trip</PrimaryLink>}
           />
         )}
         {trips.length > 0 && (
@@ -73,11 +91,22 @@ export function TripsPage() {
             {(["current", "upcoming", "past"] as const).map((phase) => {
               const matches = trips.filter((trip) => tripPhase(trip) === phase);
               if (!matches.length) return null;
+              if (phase === "past")
+                return (
+                  <details key={phase} className="border-t border-line pt-4">
+                    <summary className="cursor-pointer py-3 text-sm font-bold text-muted">
+                      Past trips · {matches.length}
+                    </summary>
+                    <div className="mt-3 grid min-w-0 gap-4 md:grid-cols-2">
+                      {matches.map((trip) => (
+                        <TripCard key={trip.id} trip={trip} />
+                      ))}
+                    </div>
+                  </details>
+                );
               return (
                 <section className="min-w-0" key={phase}>
-                  <h2 className="eyebrow mb-3 capitalize">
-                    {phase === "past" ? "Past trips" : `${phase} trips`}
-                  </h2>
+                  <h2 className="eyebrow mb-3 capitalize">{phase} trips</h2>
                   <div className="grid min-w-0 gap-4 md:grid-cols-2">
                     {matches.map((trip) => (
                       <TripCard key={trip.id} trip={trip} emphasized={phase === "current"} />

@@ -9,6 +9,8 @@ last_verified: 2026-09-19
 
 # Trip Vault Feature Catalog
 
+> **19 September UX amendment:** [Simpler trip experience](UX_SIMPLIFICATION_2026-09-19.md) supersedes the Home-dashboard, separate Agenda, floating navigation, and launch-window descriptions below. The change is client-side and requires no new database migration.
+
 This catalog is the product-scope source of truth for the personal Trip Vault application. Prototype and MVP items define the implemented release contract unless an item explicitly says it is deferred; Later and Not planned items remain outside this implementation.
 
 **Design status:** accepted product behavior is consolidated here; architecture and implementation detail live in the HLD and LLD.

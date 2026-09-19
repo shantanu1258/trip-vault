@@ -1,0 +1,354 @@
+import { act, createRef } from "react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TripTimeline, type TimelineHandle } from "./TripTimeline";
+import type { TripTimelineEntry } from "./model";
+
+function entry(id: string, day = "01"): TripTimelineEntry {
+  const startsAt = `2026-10-${day}T09:00:00Z`;
+  return {
+    kind: "event",
+    id,
+    startsAt,
+    timezone: "UTC",
+    item: {
+      id,
+      trip_id: "trip",
+      title: id,
+      starts_at: startsAt,
+      ends_at: null,
+      timezone: "UTC",
+      event_type: "activity",
+      location: null,
+      notes: null,
+      applies_to_all_travelers: true,
+      created_at: startsAt
+    }
+  };
+}
+const entries = [entry("Flight"), entry("Check out", "02")];
+const taskEntry: TripTimelineEntry = {
+  kind: "requirement",
+  id: "requirement:visa",
+  startsAt: "2026-09-01T00:00:00Z",
+  timezone: "UTC",
+  scheduleLabel: "Due Sep 1, 2026",
+  requirement: {
+    id: "visa",
+    trip_id: "trip",
+    type: "visa",
+    title: "Bali eVisa",
+    status: "to_check",
+    due_date: "2026-09-01",
+    destination_country_code: null,
+    visa_type: null,
+    issued_on: null,
+    expires_on: null,
+    validity_buffer_days: null,
+    official_guidance_url: null,
+    guidance_checked_at: null,
+    linked_document_id: null,
+    notes: null
+  }
+};
+const renderDetail = (event: TripTimelineEntry) => <p>{event.id} details</p>;
+function setup(storageKey = "test-outline", data = entries) {
+  const ref = createRef<TimelineHandle>();
+  const props = {
+    ref,
+    storageKey,
+    entries: data,
+    activeId: "Flight",
+    onJump: (id: string) => ref.current?.reveal(id),
+    renderDetail
+  };
+  return { ref, props, ...render(<TripTimeline {...props} />) };
+}
+async function viewOption(name: string) {
+  await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+  if (name === "Reset view") await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+  else {
+    await userEvent.click(screen.getByRole("button", { name: /Display/ }));
+    const group = screen.getByRole("group", {
+      name: name.endsWith("dates") ? "Date groups" : "Event details"
+    });
+    await userEvent.click(
+      within(group).getByRole("radio", {
+        name: name.startsWith("Expand") ? "All expanded" : "All collapsed"
+      })
+    );
+  }
+  await userEvent.click(screen.getByRole("button", { name: /^Apply/ }));
+}
+describe("compact trip timeline", () => {
+  beforeEach(() => sessionStorage.clear());
+  it("prioritizes readiness without an event badge while keeping modal and checkbox actions distinct", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-19T10:00:00Z"));
+    const onOpen = vi.fn();
+    const onToggle = vi.fn();
+    try {
+      render(
+        <TripTimeline
+          entries={[taskEntry, ...entries]}
+          activeId={taskEntry.id}
+          storageKey="task-vs-event"
+          onJump={() => {}}
+          renderDetail={renderDetail}
+          taskControl={(entry) =>
+            entry.kind === "requirement" ? { checked: false, onOpen, onToggle } : undefined
+          }
+        />
+      );
+      const taskButton = screen.getByRole("button", { name: "View details for Bali eVisa" });
+      const taskCard = taskButton.closest("article")!;
+      expect(taskButton).not.toHaveAttribute("aria-expanded");
+      expect(taskButton.querySelector("svg")).toBeNull();
+      expect(within(taskCard).queryByText("Next")).not.toBeInTheDocument();
+      expect(taskCard).toHaveAttribute("aria-current", "step");
+      expect(within(taskCard).getByText("Task")).toBeVisible();
+      expect(within(taskCard).getByText("To do")).toBeVisible();
+      expect(screen.queryByText("Next")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Expand Flight" })).toBeVisible();
+      await userEvent.click(taskButton);
+      expect(onOpen).toHaveBeenCalledOnce();
+      expect(onToggle).not.toHaveBeenCalled();
+      await userEvent.click(screen.getByRole("checkbox", { name: "Mark as done: Bali eVisa" }));
+      expect(onToggle).toHaveBeenCalledWith(true);
+      expect(onOpen).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("uses concise stay labels and keeps the event type visible alongside its status", () => {
+    const arrival = entry("Hotel arrival");
+    const departure = entry("Hotel departure", "02");
+    if (arrival.kind !== "event" || departure.kind !== "event")
+      throw new Error("Expected event fixtures");
+    setup("event-labels", [
+      {
+        ...arrival,
+        item: { ...arrival.item, event_type: "hotel_check_in", event_status: "cancelled" }
+      },
+      { ...departure, item: { ...departure.item, event_type: "hotel_check_out" } }
+    ]);
+    const checkIn = screen.getByRole("button", { name: "Expand Hotel arrival" });
+    expect(within(checkIn).getByText("Check-in")).toBeVisible();
+    expect(checkIn).toHaveTextContent("cancelled");
+    expect(
+      within(screen.getByRole("button", { name: "Expand Hotel departure" })).getByText("Check-out")
+    ).toBeVisible();
+    expect(screen.queryByText("hotel check in")).not.toBeInTheDocument();
+  });
+  it("opens dates and only the current event by default", () => {
+    setup();
+    expect(screen.getByRole("button", { name: "Collapse Flight" })).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Expand Check out" })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
+    expect(screen.queryByText("Check out details")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Fri, 2 Oct 2026/ })).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+  });
+  it("keeps other cards open and restores choices on return", async () => {
+    const { unmount } = setup();
+    await userEvent.click(screen.getByRole("button", { name: "Expand Check out" }));
+    expect(screen.getAllByRole("button", { name: /^Collapse (Flight|Check out)$/ })).toHaveLength(
+      2
+    );
+    unmount();
+    setup();
+    expect(screen.getByText("Check out details")).toBeInTheDocument();
+  });
+  it("changes dates without discarding card choices", async () => {
+    setup();
+    await viewOption("Collapse all dates");
+    expect(screen.queryByRole("button", { name: "Collapse Flight" })).not.toBeInTheDocument();
+    await viewOption("Expand all dates");
+    expect(screen.getByRole("button", { name: "Collapse Flight" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand Check out" })).toBeInTheDocument();
+  });
+  it("filters by date and clears that filter when search reveals another date", async () => {
+    const { ref } = setup();
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Fri, 2 Oct 2026" }));
+    await userEvent.click(screen.getByRole("button", { name: "Apply · 1 item" }));
+    expect(screen.queryByRole("button", { name: "Collapse Flight" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand Check out" })).toBeVisible();
+    act(() => ref.current?.reveal("Flight"));
+    expect(screen.getByRole("button", { name: "Collapse Flight" })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filter timeline" })).toHaveFocus();
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Fri, 2 Oct 2026" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Apply/ }));
+    await viewOption("Reset view");
+    expect(screen.getByRole("button", { name: "Collapse Flight" })).toBeVisible();
+  });
+  it("expands all cards and their dates, and collapses cards independently", async () => {
+    setup();
+    await viewOption("Collapse all dates");
+    await viewOption("Expand all cards");
+    expect(screen.getByText("Check out details")).toBeVisible();
+    await viewOption("Collapse all cards");
+    expect(screen.getByRole("button", { name: "Expand Flight" })).toBeVisible();
+    await viewOption("Reset view");
+    expect(screen.getByText("Flight details")).toBeVisible();
+    expect(screen.queryByText("Check out details")).not.toBeInTheDocument();
+  });
+  it("indicates an applied filter and removes it immediately without resetting expanded cards", async () => {
+    setup();
+    const filterButton = screen.getByRole("button", { name: "Filter timeline" });
+    expect(filterButton).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("button", { name: "Remove filters" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Expand Check out" }));
+    await userEvent.click(filterButton);
+    await userEvent.click(screen.getByRole("radio", { name: "Fri, 2 Oct 2026" }));
+    expect(screen.queryByRole("button", { name: "Remove filters" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^Apply/ }));
+    expect(filterButton).toHaveAttribute("aria-pressed", "true");
+    expect(within(filterButton).getByText("1")).toBeVisible();
+    const saved = sessionStorage.getItem("test-outline");
+    await userEvent.click(screen.getByRole("button", { name: "Remove filters" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove filters" })).not.toBeInTheDocument();
+    expect(filterButton).toHaveAttribute("aria-pressed", "false");
+    expect(filterButton).toHaveFocus();
+    expect(screen.getByText("Flight details")).toBeVisible();
+    expect(screen.getByText("Check out details")).toBeVisible();
+    expect(sessionStorage.getItem("test-outline")).toBe(saved);
+  });
+  it("reveals a search target even when its date is closed", async () => {
+    const { ref } = setup();
+    await viewOption("Collapse all dates");
+    act(() => ref.current?.reveal("Check out"));
+    expect(screen.getByText("Check out details")).toBeVisible();
+    expect(screen.getByRole("button", { name: /Thu, 1 Oct 2026/ })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
+  });
+  it("keeps draft filters unapplied on close and restores keyboard focus", async () => {
+    setup();
+    const original = sessionStorage.getItem("test-outline");
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    expect(screen.getByRole("dialog", { name: "Timeline filters" })).toBeVisible();
+    expect(document.body.style.overflow).toBe("hidden");
+    const close = screen.getByRole("button", { name: "Close timeline filters" });
+    expect(close).toHaveFocus();
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(screen.getByRole("button", { name: /^Apply/ })).toHaveFocus();
+    await userEvent.keyboard("{Tab}");
+    expect(close).toHaveFocus();
+    await userEvent.click(screen.getByRole("radio", { name: "Fri, 2 Oct 2026" }));
+    expect(screen.getByRole("button", { name: "Collapse Flight" })).toBeVisible();
+    expect(sessionStorage.getItem("test-outline")).toBe(original);
+    await userEvent.click(close);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe("");
+    expect(screen.getByRole("button", { name: "Filter timeline" })).toHaveFocus();
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    expect(screen.getByRole("radio", { name: "All dates" })).toBeChecked();
+  });
+  it("applies choices across sections together and resets only the draft", async () => {
+    setup();
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Fri, 2 Oct 2026" }));
+    await userEvent.click(screen.getByRole("button", { name: /Display/ }));
+    await userEvent.click(
+      within(screen.getByRole("group", { name: "Event details" })).getByRole("radio", {
+        name: "All expanded"
+      })
+    );
+    expect(screen.queryByText("Check out details")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Apply · 1 item" }));
+    expect(screen.getByText("Check out details")).toBeVisible();
+    expect(screen.queryByText("Flight details")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    expect(screen.getByRole("radio", { name: "All dates" })).toBeChecked();
+    expect(screen.queryByText("Flight details")).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByText("Check out details")).toBeVisible();
+    expect(screen.queryByText("Flight details")).not.toBeInTheDocument();
+  });
+  it("preserves individually expanded cards and collapsed dates when applying a date", async () => {
+    setup("custom", [...entries, entry("Museum", "03")]);
+    await userEvent.click(screen.getByRole("button", { name: "Expand Check out" }));
+    await userEvent.click(screen.getByRole("button", { name: /Sat, 3 Oct 2026/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    await userEvent.click(screen.getByRole("button", { name: /Display/ }));
+    expect(screen.getAllByRole("radio", { name: "My selection" })).toHaveLength(2);
+    screen
+      .getAllByRole("radio", { name: "My selection" })
+      .forEach((radio) => expect(radio).toBeChecked());
+    await userEvent.click(screen.getByRole("button", { name: /Dates All dates/ }));
+    await userEvent.click(screen.getByRole("radio", { name: "Fri, 2 Oct 2026" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Apply/ }));
+    expect(screen.getByText("Check out details")).toBeVisible();
+    expect(JSON.parse(sessionStorage.getItem("custom")!)).toEqual({
+      expanded: ["Flight", "Check out"],
+      collapsedDates: ["2026-10-03"]
+    });
+  });
+  it("shows the mixed date state when a chosen date is reopened in the draft", async () => {
+    setup();
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    await userEvent.click(screen.getByRole("button", { name: /Display/ }));
+    await userEvent.click(
+      within(screen.getByRole("group", { name: "Date groups" })).getByRole("radio", {
+        name: "All collapsed"
+      })
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Dates All dates" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Fri, 2 Oct 2026" }));
+    await userEvent.click(screen.getByRole("button", { name: /Display/ }));
+    expect(
+      within(screen.getByRole("group", { name: "Date groups" })).getByRole("radio", {
+        name: "My selection"
+      })
+    ).toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: /^Apply/ }));
+    expect(screen.getByRole("button", { name: "Expand Check out" })).toBeVisible();
+  });
+  it("does not carry another account or traveler's presentation state", async () => {
+    const { unmount } = setup("profile-a:trip:everyone");
+    await viewOption("Collapse all dates");
+    unmount();
+    setup("profile-b:trip:everyone");
+    expect(screen.getByText("Flight details")).toBeVisible();
+  });
+  it("initializes after asynchronous entries arrive", () => {
+    const { props, rerender } = setup("async", []);
+    rerender(<TripTimeline {...props} entries={entries} />);
+    expect(screen.getByText("Flight details")).toBeVisible();
+  });
+  it("falls back safely from corrupt view memory", () => {
+    sessionStorage.setItem("test-outline", "not json");
+    setup();
+    expect(screen.getByText("Flight details")).toBeVisible();
+  });
+  it("waits for readiness inputs before remembering the default expansion", () => {
+    const props = {
+      entries,
+      activeId: "Flight",
+      storageKey: "loading-tasks",
+      ready: false,
+      onJump: () => {},
+      renderDetail
+    };
+    const { rerender } = render(<TripTimeline {...props} />);
+    rerender(<TripTimeline {...props} activeId="Check out" ready />);
+    expect(screen.getByText("Check out details")).toBeVisible();
+    expect(screen.queryByText("Flight details")).not.toBeInTheDocument();
+  });
+});

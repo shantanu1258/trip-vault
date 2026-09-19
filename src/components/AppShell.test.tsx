@@ -42,6 +42,26 @@ function renderShell(path: string) {
 }
 
 describe("trip header search", () => {
+  it("opens active notifications in a modal without leaving the current trip", async () => {
+    renderShell("/trips/trip-1?view=details");
+    await userEvent.click(screen.getByRole("button", { name: "Alerts" }));
+    expect(screen.getByRole("dialog", { name: "Notifications" })).toBeInTheDocument();
+    expect(screen.getByText("No active notifications right now.")).toBeInTheDocument();
+    expect(screen.getByLabelText("location")).toHaveTextContent(
+      "/trips/trip-1?view=details&notifications=active"
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("location")).toHaveTextContent(
+      "/trips/trip-1?view=details|none|none"
+    );
+  });
+  it("keeps only Trips, Vault, and Profile in primary navigation", () => {
+    renderShell("/trips");
+    expect(screen.queryByRole("link", { name: "Home" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Add" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Trips" })).toHaveLength(2);
+  });
   it("opens the trip timeline with a one-shot search intent from a child page", async () => {
     renderShell("/trips/trip-1/bookings/booking-1");
 

@@ -509,7 +509,9 @@ describe("Upload document flow", () => {
         role: "editor"
       })
     );
-    expect(screen.getByText(/Ravi Singh can now accept Autumn trip from Home/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Ravi Singh can now accept Autumn trip from Trips/)
+    ).toBeInTheDocument();
     expect(mocks.createInvitation).not.toHaveBeenCalled();
   });
 

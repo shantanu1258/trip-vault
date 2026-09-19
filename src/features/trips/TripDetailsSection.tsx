@@ -8,6 +8,7 @@ type TripDetailsSectionProps = {
   action?: ReactNode;
   onActivate?: (trigger: HTMLButtonElement) => void;
   activateLabel?: string;
+  contentClassName?: string;
   children: ReactNode;
 };
 
@@ -20,13 +21,14 @@ export function TripDetailsSection({
   action,
   onActivate,
   activateLabel,
+  contentClassName = "mt-3",
   children
 }: TripDetailsSectionProps) {
   return (
     <section
       id={id}
       data-trip-scroll-anchor="details"
-      className={`surface-card group relative scroll-mt-28 p-5 sm:p-6 ${
+      className={`surface-card group relative scroll-mt-28 p-3 sm:p-5 ${
         onActivate
           ? "transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft motion-reduce:hover:translate-y-0"
           : ""
@@ -40,11 +42,10 @@ export function TripDetailsSection({
           aria-label={activateLabel ?? `Edit ${title}`}
         />
       )}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="eyebrow">{eyebrow}</p>
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-            <h2 className="break-words font-display text-2xl font-black [overflow-wrap:anywhere]">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h2 className="break-words font-display text-lg font-black sm:text-xl [overflow-wrap:anywhere]">
               {title}
             </h2>
             {typeof count === "number" && (
@@ -54,9 +55,15 @@ export function TripDetailsSection({
             )}
           </div>
         </div>
-        {action && <div className={onActivate ? "relative z-20" : ""}>{action}</div>}
+        {action && (
+          <div
+            className={`shrink-0 [&_button]:px-3 [&_button]:py-2 [&_button]:text-xs ${onActivate ? "relative z-20" : ""}`}
+          >
+            {action}
+          </div>
+        )}
       </div>
-      <div className="mt-5">{children}</div>
+      <div className={contentClassName}>{children}</div>
     </section>
   );
 }

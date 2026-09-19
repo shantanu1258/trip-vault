@@ -6,7 +6,15 @@ import { listTripAirlines, updateTripAirline } from "./api";
 import { airlineAccentStyle } from "./airlineAccent";
 import type { TripAirline } from "./types";
 
-export function TripAirlinesPanel({ tripId, canEdit }: { tripId: string; canEdit: boolean }) {
+export function TripAirlinesPanel({
+  tripId,
+  canEdit,
+  embedded = false
+}: {
+  tripId: string;
+  canEdit: boolean;
+  embedded?: boolean;
+}) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<TripAirline | null>(null);
   const [accentPreview, setAccentPreview] = useState("#142f31");
@@ -76,14 +84,16 @@ export function TripAirlinesPanel({ tripId, canEdit }: { tripId: string; canEdit
 
   if (!query.data?.length) return null;
   return (
-    <section className="surface-card p-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="eyebrow">Airlines</p>
-          <h2 className="mt-1 font-display text-xl font-black">Trip metadata</h2>
+    <section className={embedded ? "" : "surface-card p-5"}>
+      {!embedded && (
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="eyebrow">Airlines</p>
+            <h2 className="mt-1 font-display text-xl font-black">Trip metadata</h2>
+          </div>
+          <Plane className="size-5 text-brand" />
         </div>
-        <Plane className="size-5 text-brand" />
-      </div>
+      )}
       <div className="mt-4 space-y-2">
         {query.data.map((airline) => {
           const content = (

@@ -1,3 +1,4 @@
+import { FormSection } from "../../components/FormSection";
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { TimeZoneAutocomplete } from "../../components/TimeZoneAutocomplete";
@@ -198,7 +199,7 @@ export function RouteStructureFields({
           checked={value === "connecting"}
           onChange={() => onChange("connecting")}
         />{" "}
-        Connecting {mode === "flight" ? "flights" : `${noun}s`}
+        Connecting {mode === "flight" ? "flights" : mode === "bus" ? "buses" : `${noun}s`}
       </label>
     </fieldset>
   );
@@ -218,7 +219,7 @@ function TravelerAllocationFields({
   if (!travelers.length) return null;
   const seatLabel = mode === "train" ? "Berth or seat" : "Seat";
   return (
-    <details className="mt-4 rounded-xl border border-line/80 p-3">
+    <FormSection className="mt-4 rounded-xl border border-line/80 p-3">
       <summary className="cursor-pointer text-xs font-black uppercase tracking-[.1em] text-muted">
         Traveler ticket details
       </summary>
@@ -228,7 +229,7 @@ function TravelerAllocationFields({
       <div className="mt-3 space-y-3">
         {travelers.map((traveler) => (
           <fieldset key={traveler.id} className="rounded-xl bg-elevated p-3">
-            <legend className="px-1 text-sm font-extrabold">{traveler.display_name}</legend>
+            <legend className="px-1 text-lg font-extrabold">{traveler.display_name}</legend>
             <div className="mt-2 grid gap-3 sm:grid-cols-3">
               {showSeatAndCabin && (
                 <label className="form-label text-xs">
@@ -286,7 +287,7 @@ function TravelerAllocationFields({
           </fieldset>
         ))}
       </div>
-    </details>
+    </FormSection>
   );
 }
 
@@ -490,7 +491,7 @@ export function FlightLegFields({
           <input type="hidden" name={`${prefix}.arrivalOccurrence`} value="earlier" />
         )}
       </div>
-      <details className="mt-4 rounded-xl border border-line/80 p-3">
+      <FormSection className="mt-4 rounded-xl border border-line/80 p-3">
         <summary className="cursor-pointer text-xs font-black uppercase tracking-[.1em] text-muted">
           Boarding, terminal, and gate
         </summary>
@@ -552,7 +553,7 @@ export function FlightLegFields({
           </p>
         )}
         {international && <RepeatedClockHelp />}
-      </details>
+      </FormSection>
       <TravelerAllocationFields prefix={prefix} travelers={travelers} mode="flight" />
     </JourneyLegCard>
   );
@@ -858,7 +859,7 @@ export function GroundJourneyLegFields({
         )}
       </div>
       {booked && mode === "train" && (
-        <details className="mt-4 rounded-xl border border-line/80 p-3">
+        <FormSection className="mt-4 rounded-xl border border-line/80 p-3">
           <summary className="cursor-pointer text-xs font-black uppercase tracking-[.1em] text-muted">
             Train ticket details
           </summary>
@@ -912,10 +913,10 @@ export function GroundJourneyLegFields({
               />
             </label>
           </div>
-        </details>
+        </FormSection>
       )}
       {booked && mode === "bus" && (
-        <details className="mt-4 rounded-xl border border-line/80 p-3">
+        <FormSection className="mt-4 rounded-xl border border-line/80 p-3">
           <summary className="cursor-pointer text-xs font-black uppercase tracking-[.1em] text-muted">
             Bus ticket details
           </summary>
@@ -945,10 +946,10 @@ export function GroundJourneyLegFields({
               />
             </label>
           </div>
-        </details>
+        </FormSection>
       )}
       {mode !== "ferry" && (
-        <details className="mt-4 rounded-xl border border-line/80 p-3">
+        <FormSection className="mt-4 rounded-xl border border-line/80 p-3">
           <summary className="cursor-pointer text-xs font-black uppercase tracking-[.1em] text-muted">
             Boarding and platform details
           </summary>
@@ -993,7 +994,7 @@ export function GroundJourneyLegFields({
               point.
             </p>
           )}
-        </details>
+        </FormSection>
       )}
       {booked && mode !== "ferry" && (
         <TravelerAllocationFields prefix={prefix} travelers={travelers} mode={mode} />
@@ -1096,7 +1097,7 @@ export function CabFields({
       </fieldset>
       {renderItineraryTiming(!crossBorder)}
       {(booked || completed) && (
-        <details open className="rounded-2xl border border-line p-4">
+        <FormSection open className="rounded-2xl border border-line p-4">
           <summary className="cursor-pointer text-sm font-extrabold">
             {completed ? "Completed ride details" : "Booked ride details"}
           </summary>
@@ -1122,9 +1123,9 @@ export function CabFields({
               />
             </label>
           </div>
-        </details>
+        </FormSection>
       )}
-      <details className="rounded-2xl border border-line p-4">
+      <FormSection className="rounded-2xl border border-line p-4">
         <summary className="cursor-pointer text-sm font-extrabold">More ride details</summary>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="form-label">
@@ -1295,7 +1296,7 @@ export function CabFields({
             />
           </label>
         </div>
-      </details>
+      </FormSection>
       <input type="hidden" name="cab.crossBorder" value={crossBorder ? "yes" : "no"} />
       <input type="hidden" name="cab.tripShape" value={roundTrip ? "round_trip" : "one_way"} />
       <input type="hidden" name="cabAlreadyHappened" value={completed ? "yes" : "no"} />

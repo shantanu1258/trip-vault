@@ -4,22 +4,10 @@ import { Brand } from "../components/Brand";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { InstallAppButton } from "../components/InstallAppButton";
 
-const valueCards = [
-  {
-    icon: Plane,
-    title: "Know what is next",
-    text: "Flights, stays, activities, and the exact document you need - in one calm timeline."
-  },
-  {
-    icon: WifiOff,
-    title: "Prepared for no signal",
-    text: "Download and verify a trip before leaving. Your plans and documents still open in airplane mode."
-  },
-  {
-    icon: UsersRound,
-    title: "Travel together, clearly",
-    text: "Invite travelers and helpers while keeping roles and sensitive documents understandable."
-  }
+const welcomeSteps = [
+  { title: "Create a new trip", text: "Choose a destination and dates." },
+  { title: "Add your plans", text: "Keep events, travelers, and documents together." },
+  { title: "Take it with you", text: "Prepare your trip offline before you leave." }
 ];
 
 export function WelcomePage() {
@@ -87,7 +75,7 @@ export function WelcomePage() {
                   Ready offline
                 </span>
               </div>
-              <div className="mt-7 rounded-[1.35rem] bg-brand p-5 text-surface">
+              <div className="mt-7 rounded-3xl bg-brand p-5 text-surface">
                 <div className="flex items-center justify-between text-xs font-bold uppercase tracking-[0.16em] opacity-70">
                   <span>DEL</span>
                   <Plane className="size-4" aria-hidden="true" />
@@ -121,19 +109,19 @@ export function WelcomePage() {
         </section>
 
         <section className="border-t border-line bg-surface/50">
-          <div className="mx-auto grid max-w-7xl gap-4 px-5 py-14 sm:px-8 md:grid-cols-3">
-            {valueCards.map(({ icon: Icon, title, text }) => (
-              <article key={title} className="rounded-[1.5rem] border border-line bg-surface p-6">
-                <span className="grid size-11 place-items-center rounded-2xl bg-brand-soft text-brand">
-                  <Icon className="size-5" />
+          <ol className="mx-auto max-w-5xl space-y-8 px-5 py-14 sm:px-8">
+            {welcomeSteps.map(({ title, text }, index) => (
+              <li key={title} className="flex items-start gap-5">
+                <span className="text-3xl font-bold text-brand" aria-hidden="true">
+                  {index + 1}.
                 </span>
-                <h2 className="mt-5 font-display text-xl font-extrabold tracking-[-0.02em]">
-                  {title}
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-muted">{text}</p>
-              </article>
+                <div>
+                  <h2 className="font-display text-xl font-extrabold">{title}</h2>
+                  <p className="mt-1 text-base text-muted">{text}</p>
+                </div>
+              </li>
             ))}
-          </div>
+          </ol>
         </section>
       </main>
     </div>

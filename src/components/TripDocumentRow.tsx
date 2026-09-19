@@ -23,10 +23,20 @@ export function TripDocumentRow({
   context
 }: TripDocumentRowProps) {
   const className =
-    "group grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_auto] items-start gap-3 rounded-xl border border-line bg-elevated p-3.5 text-left transition hover:border-brand/40 hover:shadow-soft";
+    "group grid w-full min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto] items-start gap-2 rounded-xl border border-line bg-elevated p-3 text-left transition hover:border-brand/40 hover:shadow-soft";
+  // Automatically named files already contain their audience and event context.
+  const normalizedTitle = document.title.toLocaleLowerCase();
+  const metadata = [
+    documentPurposeLabel(document.purpose),
+    documentAudienceSummary(document, travelers),
+    context
+  ].filter(
+    (value): value is string =>
+      Boolean(value) && !normalizedTitle.includes(value!.toLocaleLowerCase())
+  );
   const content = (
     <>
-      <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand">
+      <span className="grid size-8 place-items-center rounded-lg bg-brand-soft text-brand">
         {document.current_version ? (
           <FileCheck2 className="size-4" />
         ) : (
@@ -37,18 +47,10 @@ export function TripDocumentRow({
         <strong className="block whitespace-normal break-words font-display text-sm leading-5 text-ink [overflow-wrap:anywhere]">
           {document.title}
         </strong>
-        <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-          <span>{documentPurposeLabel(document.purpose)}</span>
-          <span aria-hidden="true">·</span>
-          <span>{documentAudienceSummary(document, travelers)}</span>
-          {context && (
-            <>
-              <span aria-hidden="true">·</span>
-              <span>{context}</span>
-            </>
-          )}
-        </span>
-        <span className="mt-2 inline-flex">
+        {metadata.length > 0 && (
+          <span className="mt-1 block text-xs text-muted">{metadata.join(" · ")}</span>
+        )}
+        <span className="mt-1 inline-flex">
           <DocumentVisibilityBadge visibility={document.visibility} />
         </span>
       </span>

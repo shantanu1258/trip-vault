@@ -16,5 +16,5 @@ export function SignedOutOnlyRoute() {
     );
   }
 
-  return authenticated ? <Navigate to="/home" replace /> : <Outlet />;
+  return authenticated ? <Navigate to="/" replace /> : <Outlet />;
 }

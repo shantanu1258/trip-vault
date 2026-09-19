@@ -14,6 +14,7 @@ export function RequirementDetailsSheet({
   timezone,
   audience,
   editable,
+  manageHistory = true,
   onClose,
   onEdit
 }: {
@@ -22,6 +23,7 @@ export function RequirementDetailsSheet({
   timezone: string;
   audience?: string;
   editable: boolean;
+  manageHistory?: boolean;
   onClose: () => void;
   onEdit: () => void;
 }) {
@@ -60,39 +62,48 @@ export function RequirementDetailsSheet({
   });
   const actionPending = statusMutation.isPending || archiveMutation.isPending;
   return (
-    <ModalSheet eyebrow="Readiness task" title={requirement.title} onClose={onClose}>
-      <div className="mt-6 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-2xl bg-elevated p-4">
-          <p className="eyebrow">Status</p>
-          <p className="mt-2 font-bold capitalize">{requirement.status.replaceAll("_", " ")}</p>
+    <ModalSheet
+      eyebrow="Readiness task"
+      title={requirement.title}
+      onClose={onClose}
+      manageHistory={manageHistory}
+    >
+      <div className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-xl bg-elevated p-3">
+        <div className="pr-2">
+          <p className="text-xs text-muted">Status</p>
+          <p className="mt-1 text-sm font-bold capitalize">
+            {requirement.status.replaceAll("_", " ")}
+          </p>
         </div>
-        <div className="rounded-2xl bg-elevated p-4">
-          <p className="eyebrow">When</p>
-          <p className="mt-2 font-bold">{schedule?.label ?? "No date or event set"}</p>
+        <div className="min-w-0 border-l border-line pl-3">
+          <p className="text-xs text-muted">When</p>
+          <p className="mt-1 text-sm font-bold">{schedule?.label ?? "No date or event set"}</p>
         </div>
         {audience && (
-          <div className="rounded-2xl bg-elevated p-4 sm:col-span-2">
-            <p className="eyebrow">For</p>
-            <p className="mt-2 font-bold">{audience}</p>
+          <div className="col-span-2 border-t border-line pt-2 text-xs">
+            <span className="text-muted">For </span>
+            <strong>{audience}</strong>
           </div>
         )}
       </div>
-      <div className="mt-4 rounded-2xl border border-line p-4">
-        <p className="eyebrow">Notes</p>
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
-          {requirement.notes || "No notes added."}
-        </p>
-      </div>
+      {requirement.notes && (
+        <div className="mt-3 rounded-xl border border-line p-3">
+          <p className="eyebrow">Notes</p>
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-5 text-muted">
+            {requirement.notes}
+          </p>
+        </div>
+      )}
       {actionError && (
         <p role="alert" className="mt-4 rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">
           {actionError}
         </p>
       )}
       {editable && (
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <div className="mt-3 grid grid-cols-2 gap-2">
           <button
             type="button"
-            className="primary-button sm:col-span-2"
+            className="primary-button col-span-2"
             disabled={actionPending}
             onClick={() => statusMutation.mutate()}
           >

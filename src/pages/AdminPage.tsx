@@ -1917,7 +1917,7 @@ function TokenEditor({
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {Object.entries(tokens).map(([key, value]) => (
           <label className="form-label capitalize" key={key}>
-            {key}
+            {key === "coral" ? "Current event / accent" : key}
             <span className="mt-2 grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-2">
               <input
                 type="color"
@@ -1929,6 +1929,7 @@ function TokenEditor({
               <input
                 disabled={disabled}
                 className="form-input mt-0 min-w-0 font-mono"
+                aria-label={`${title} ${key === "coral" ? "current event accent" : key} hex`}
                 value={value}
                 onChange={(event) =>
                   onChange({ ...tokens, [key]: event.target.value } as ThemeTokens)

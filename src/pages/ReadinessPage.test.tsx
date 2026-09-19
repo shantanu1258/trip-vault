@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Trip } from "../features/trips/types";
 import { tripChildNavigationState } from "../features/trips/navigation";
@@ -113,6 +113,10 @@ const requirement: Requirement = {
   notes: "Check validity before departure."
 };
 
+function LocationProbe() {
+  return <div aria-label="Current search">{useLocation().search}</div>;
+}
+
 function renderPage(
   initialEntry: string | { pathname: string; state: unknown } = "/trips/trip-1/readiness"
 ) {
@@ -129,6 +133,7 @@ function renderPage(
           <Routes>
             <Route path="/trips/:tripId/readiness" element={<ReadinessPage />} />
           </Routes>
+          <LocationProbe />
         </MemoryRouter>
       </ConfirmDialogProvider>
     </QueryClientProvider>
@@ -190,6 +195,35 @@ describe("readiness checklist interactions", () => {
     const confirmation = screen.getByRole("dialog", { name: "Archive task?" });
     await user.click(within(confirmation).getByRole("button", { name: "Archive" }));
     await waitFor(() => expect(mocks.archiveRequirement).toHaveBeenCalledWith(requirement));
+  });
+
+  it("opens the exact linked task after loading and clears the target when closed", async () => {
+    let resolveTasks!: (items: Requirement[]) => void;
+    mocks.listRequirements.mockReturnValue(
+      new Promise<Requirement[]>((resolve) => {
+        resolveTasks = resolve;
+      })
+    );
+    renderPage("/trips/trip-1/readiness?task=requirement-1&source=review");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    resolveTasks([{ ...requirement, id: "other", title: "Other task" }, requirement]);
+    const dialog = await screen.findByRole("dialog", { name: "Passport ready" });
+    expect(within(dialog).getByText("Check validity before departure.")).toBeInTheDocument();
+    expect(mocks.updateRequirementStatus).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Back" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Current search")).toHaveTextContent("?source=review");
+    expect(screen.getByLabelText("Current search")).not.toHaveTextContent("task=");
+  });
+
+  it("reports a missing linked task without opening an unrelated task", async () => {
+    renderPage("/trips/trip-1/readiness?task=missing");
+    expect(
+      await screen.findByText("This task is no longer available in this trip.")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Show task list" }));
+    expect(screen.getByLabelText("Current search")).toBeEmptyDOMElement();
   });
 
   it("keeps the compact checkbox as the direct completion control", async () => {

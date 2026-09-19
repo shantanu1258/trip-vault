@@ -99,7 +99,7 @@ export function ReservationRow({
   navigationState?: unknown;
 }) {
   const className =
-    "group grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-xl border border-line bg-elevated p-3.5 text-left transition hover:border-brand/40 hover:shadow-soft";
+    "group grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-xl border border-line bg-elevated p-3 text-left transition hover:border-brand/40 hover:shadow-soft";
   const content = (
     <>
       <span className="min-w-0">
@@ -160,26 +160,32 @@ export function NoteCard({
 }) {
   return (
     <article
-      className={`group relative rounded-xl bg-elevated p-4 ${
+      className={`group relative min-h-14 rounded-xl bg-elevated px-3 py-2 ${
         editable ? "transition hover:-translate-y-0.5 hover:shadow-soft" : ""
       }`}
     >
       {editable && (
         <button
           type="button"
-          className="absolute inset-0 z-10 rounded-xl focus-visible:ring-2 focus-visible:ring-brand"
+          className="absolute inset-0 z-10 rounded-[inherit] focus-visible:ring-2 focus-visible:ring-brand"
           onClick={onEdit}
           aria-label={`Edit ${note.title || "note"}`}
         />
       )}
       <div className={editable ? "pr-10" : ""}>
-        <p className="font-bold">{note.title || "Note"}</p>
-        <p className="mt-2 whitespace-pre-wrap text-sm text-muted">{note.body}</p>
+        <p className="break-words text-sm font-bold leading-5 [overflow-wrap:anywhere]">
+          {note.title || "Note"}
+        </p>
+        {note.body && (
+          <p className="mt-0.5 whitespace-pre-wrap break-words text-sm leading-5 text-muted [overflow-wrap:anywhere]">
+            {note.body}
+          </p>
+        )}
       </div>
       {editable && (
         <button
           type="button"
-          className="absolute right-2 top-2 z-20 grid size-9 place-items-center text-danger"
+          className="absolute right-1 top-1 z-20 grid size-11 place-items-center rounded-lg text-danger"
           onClick={onArchive}
           aria-label={`Archive ${note.title || "note"}`}
         >
