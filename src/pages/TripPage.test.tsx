@@ -2033,6 +2033,98 @@ describe("ground journey traveler details", () => {
     status_note: null
   };
 
+  it.each(["hotel_check_in", "hotel_check_out"] as const)(
+    "shows the host and phone actions immediately for %s",
+    (eventType) => {
+      renderDetails({
+        booking: {
+          ...busBooking,
+          type: "hotel",
+          contact_name: "Example host",
+          contact_phone: "+65 6123 4567"
+        },
+        item: { ...activity, event_type: eventType, booking_id: busBooking.id },
+        editable: false
+      });
+      const contact = screen.getByRole("group", { name: "Host / property contact" });
+      expect(within(contact).getByText("Example host")).toBeVisible();
+      expect(within(contact).getByText("+65 6123 4567")).toBeVisible();
+      expect(
+        within(contact).getByRole("link", { name: "Call host / property contact" })
+      ).toHaveAttribute("href", "tel:+6561234567");
+      const whatsapp = within(contact).getByRole("link", {
+        name: "WhatsApp host / property contact"
+      });
+      expect(whatsapp).toHaveAttribute("href", "https://wa.me/6561234567");
+      expect(whatsapp.querySelector("svg")).not.toBeNull();
+      expect(screen.getByRole("button", { name: /^Booking details/ })).toHaveAttribute(
+        "aria-expanded",
+        "false"
+      );
+    }
+  );
+
+  it("shows the saved cab driver separately from the booking contact", () => {
+    renderDetails({
+      booking: {
+        ...busBooking,
+        type: "cab",
+        contact_name: "Cab dispatch",
+        contact_phone: "+65 6000 0000"
+      },
+      item: { ...activity, event_type: "cab", booking_id: busBooking.id },
+      journeys: [
+        {
+          ...busLeg,
+          mode: "cab",
+          details: {
+            kind: "cab",
+            ride_type: "local",
+            driver_name: "Example driver",
+            driver_phone: "+65 9000 0000"
+          }
+        },
+        {
+          ...busLeg,
+          id: "unrelated",
+          booking_id: "other-booking",
+          mode: "cab",
+          details: { kind: "cab", ride_type: "local", driver_name: "Other driver" }
+        }
+      ]
+    });
+    const driver = screen.getByRole("group", { name: "Driver" });
+    expect(within(driver).getByText("Example driver")).toBeVisible();
+    expect(within(driver).getByText("+65 9000 0000")).toBeVisible();
+    expect(within(driver).getByRole("link", { name: "Call driver" })).toHaveAttribute(
+      "href",
+      "tel:+6590000000"
+    );
+    expect(within(driver).getByRole("link", { name: "WhatsApp driver" })).toHaveAttribute(
+      "href",
+      "https://wa.me/6590000000"
+    );
+    expect(
+      within(screen.getByRole("group", { name: "Booking contact" })).getByText("Cab dispatch")
+    ).toBeVisible();
+    expect(screen.queryByText("Other driver")).not.toBeInTheDocument();
+  });
+
+  it("keeps a name-only contact visible without inventing call actions", () => {
+    renderDetails({
+      booking: { ...busBooking, type: "hotel", contact_name: "Host without a number" }
+    });
+    const contact = screen.getByRole("group", { name: "Host / property contact" });
+    expect(within(contact).getByText("Host without a number")).toBeVisible();
+    expect(within(contact).queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Driver" })).not.toBeInTheDocument();
+  });
+
+  it("does not add empty contact rows", () => {
+    renderDetails({ booking: busBooking });
+    expect(screen.queryByRole("group", { name: "Booking contact" })).not.toBeInTheDocument();
+  });
+
   it("shows cab stops and costs without opening the booking details accordion", async () => {
     mocks.listCabStopsForTrip.mockResolvedValueOnce([
       {

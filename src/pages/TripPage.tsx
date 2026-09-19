@@ -889,6 +889,56 @@ function EventDetailSection({
   );
 }
 
+function EventContactRow({
+  label,
+  name,
+  number
+}: {
+  label: string;
+  name?: string | null;
+  number?: string | null;
+}) {
+  if (!name && !number) return null;
+  const phone = number ? phoneActionUrls(number) : null;
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="mt-3 flex flex-wrap items-center gap-2 border-t border-line/70 pt-2"
+    >
+      <div className="min-w-0 flex-1 text-xs">
+        <p className="font-bold text-muted">{label}</p>
+        {name && <p className="mt-1 break-words font-bold">{name}</p>}
+        {number && <p className="mt-1 break-words text-muted">{number}</p>}
+      </div>
+      {phone && (
+        <div className="flex shrink-0 gap-1">
+          <a
+            className="tap-target inline-flex items-center justify-center gap-2 rounded-lg px-3 text-xs font-bold text-brand hover:bg-brand-soft"
+            href={phone.call}
+            aria-label={`Call ${label.toLowerCase()}`}
+            title={`Call ${label.toLowerCase()}`}
+          >
+            <Phone aria-hidden="true" className="size-4" />
+            <span className="hidden md:inline">Call</span>
+          </a>
+          <a
+            className="tap-target inline-flex items-center justify-center gap-2 rounded-lg px-3 text-xs font-bold text-brand hover:bg-brand-soft"
+            href={phone.whatsapp}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`WhatsApp ${label.toLowerCase()}`}
+            title={`WhatsApp ${label.toLowerCase()}`}
+          >
+            <WhatsAppIcon />
+            <span className="hidden md:inline">WhatsApp</span>
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EventBookingEssentials({
   booking,
   flights,
@@ -958,6 +1008,29 @@ function EventBookingEssentials({
           </div>
         );
       })}
+      <EventContactRow
+        label={booking.type === "hotel" ? "Host / property contact" : "Booking contact"}
+        name={booking.contact_name}
+        number={booking.contact_phone}
+      />
+      {travelLegs
+        .filter((leg) => leg.details?.kind === "cab")
+        .map((leg, index, cabLegs) => {
+          const details = leg.details;
+          if (details?.kind !== "cab") return null;
+          return (
+            <EventContactRow
+              key={leg.id}
+              label={
+                cabLegs.length > 1
+                  ? `Driver · ${leg.origin_name} → ${leg.destination_name} (${index + 1})`
+                  : "Driver"
+              }
+              name={details.driver_name}
+              number={details.driver_phone}
+            />
+          );
+        })}
     </div>
   );
 }
