@@ -247,7 +247,7 @@ describe("event document cards", () => {
     expect(screen.getByRole("link", { name: "Shared ticket" })).toBeVisible();
   });
 
-  it("uses a compact horizontal tablet row without hiding a long document name", async () => {
+  it("keeps a complete document link separate from its visibility and unlink action", async () => {
     const longTitle =
       "Universal Studios and Oceanarium family activity booking confirmation for everyone";
     mocks.listEventDocumentLinks.mockResolvedValue([
@@ -257,20 +257,17 @@ describe("event document cards", () => {
     renderDocuments();
 
     const title = await screen.findByText(longTitle);
-    expect(title).toHaveClass("break-words", "[overflow-wrap:anywhere]");
-    expect(title).not.toHaveClass("truncate");
     const documentLink = title.closest("a");
-    expect(documentLink?.parentElement).toHaveClass("flex-col", "sm:flex-row", "overflow-hidden");
-    expect(documentLink).toHaveClass("py-2", "sm:items-center");
+    expect(documentLink).toHaveAccessibleName(longTitle);
+    expect(documentLink).toHaveAttribute("href", "/trips/trip-1/documents/long-document");
 
     const visibility = screen.getByLabelText("Visible to all signed-in trip members");
     const detailsAndActions = visibility.parentElement?.parentElement;
-    expect(detailsAndActions).toHaveClass("border-t", "sm:border-l", "sm:border-t-0");
     expect(detailsAndActions).toHaveTextContent("Ticket");
     expect(detailsAndActions).toHaveTextContent("Trip members");
 
     const unlink = screen.getByRole("button", { name: `Unlink ${longTitle}` });
-    expect(unlink.parentElement).toBe(detailsAndActions);
+    expect(documentLink).not.toContainElement(unlink);
     expect(screen.queryByRole("button", { name: /Move .* earlier/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Move .* later/ })).not.toBeInTheDocument();
   });

@@ -169,13 +169,8 @@ describe("generic journey booking times", () => {
 
   it.each([
     ["hotel", "Edit hotel"],
-    ["train", "Edit train"],
-    ["bus", "Edit bus"],
     ["cab", "Edit cab"],
-    ["ferry", "Edit ferry"],
     ["restaurant", "Edit meal"],
-    ["activity", "Edit activity"],
-    ["transport", "Edit transport"],
     ["other", "Edit booking"]
   ])("places the %s edit action beside Back above the summary", async (type, label) => {
     mocks.getBooking.mockResolvedValue({ ...booking, type });
@@ -188,64 +183,27 @@ describe("generic journey booking times", () => {
     expect(
       within(edit.parentElement!).getByRole("link", { name: "Back to trip" })
     ).toBeInTheDocument();
-    expect(edit).toHaveClass("text-brand", "hover:bg-brand-soft");
+    expect(hero.querySelector('[data-silhouette-placement="hero"]')).toHaveAttribute(
+      "aria-hidden",
+      "true"
+    );
     await userEvent.click(edit);
     expect(screen.getByRole("region", { name: "Edit booking form" })).toBeInTheDocument();
   });
 
-  it.each([
-    "hotel",
-    "bus",
-    "train",
-    "ferry",
-    "cab",
-    "transport",
-    "activity",
-    "restaurant",
-    "other"
-  ])("keeps %s cards free of airline-style accent borders", async (type) => {
-    mocks.getBooking.mockResolvedValue({ ...booking, type });
+  // Navigation does not branch on booking type. Exercise the location variants
+  // below instead of mounting this same page once for every type.
+  it("offers summary navigation without documents or contact details", async () => {
+    mocks.getBooking.mockResolvedValue({
+      ...booking,
+      location: { label: "Main entrance" }
+    });
     renderPage();
-    const heading = await screen.findByRole("heading", { name: booking.title });
-    const hero = heading.closest("header");
-    const reference = screen.getByRole("region", { name: "Booking reference details" });
-    expect(hero).not.toHaveClass("airline-accent-hero");
-    expect(hero?.style.getPropertyValue("--airline-accent")).toBe("");
-    expect(reference).not.toHaveClass("airline-accent-rail");
-    expect(reference.style.getPropertyValue("--airline-accent")).toBe("");
-    expect(hero).toHaveClass("event-hero", "border-line");
-    expect(hero).toHaveClass(
-      `event-type-icon--${type === "restaurant" ? "meal" : type === "other" ? "custom" : type}`
-    );
-    expect(hero?.querySelector('[data-silhouette-placement="hero"]')).not.toBeNull();
+    const action = await screen.findByRole("link", { name: "Navigate to booking location" });
+    expect(action.closest("header")).not.toBeNull();
+    expect(action).toHaveAttribute("href", "https://maps.example/directions");
+    expect(action).toHaveAttribute("target", "_blank");
   });
-
-  it.each([
-    "hotel",
-    "bus",
-    "train",
-    "ferry",
-    "cab",
-    "transport",
-    "activity",
-    "restaurant",
-    "other"
-  ])(
-    "offers navigation in the %s summary even without documents or contact details",
-    async (type) => {
-      mocks.getBooking.mockResolvedValue({
-        ...booking,
-        type,
-        location: { label: "Main entrance" }
-      });
-      renderPage();
-      const action = await screen.findByRole("link", { name: "Navigate to booking location" });
-      expect(action.closest("header")).not.toBeNull();
-      expect(action).toHaveAttribute("href", "https://maps.example/directions");
-      expect(action).toHaveAttribute("target", "_blank");
-      expect(action.querySelector("svg")).not.toBeNull();
-    }
-  );
 
   it("supports coordinate-only locations in the summary", async () => {
     mocks.getBooking.mockResolvedValue({
@@ -365,12 +323,11 @@ describe("generic journey booking times", () => {
     }
   );
 
+  // Exact labels for every type belong to bookingPresentation.test.ts.
+  // Keep the special hotel stay and a generic booking's page wiring here.
   it.each([
     ["hotel", "Check-in", "Check-out"],
-    ["activity", "Entry", "Ends"],
-    ["restaurant", "Reservation", "Ends"],
-    ["other", "Starts", "Ends"],
-    ["transport", "Starts", "Ends"]
+    ["restaurant", "Reservation", "Ends"]
   ] as const)("uses useful schedule labels for %s bookings", async (type, startLabel, endLabel) => {
     mocks.getBooking.mockResolvedValue({ ...booking, type, provider: booking.title });
     mocks.listJourneyLegsForBooking.mockResolvedValue([]);
@@ -608,8 +565,6 @@ describe("booking detail card interactions", () => {
     for (const name of ["Call provider", "WhatsApp provider", "Navigate to booking location"]) {
       const action = screen.getByRole("link", { name });
       expect(action).toHaveAttribute("title", name);
-      expect(action).toHaveClass("hero-shortcut");
-      expect(action.querySelector("span")).toHaveClass("hidden", "md:inline");
       expect(action.querySelector("svg")).not.toBeNull();
     }
     expect(screen.getByRole("link", { name: "Navigate to Terminal Road, Delhi" })).toHaveAttribute(

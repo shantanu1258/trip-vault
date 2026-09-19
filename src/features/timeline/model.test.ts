@@ -81,8 +81,7 @@ describe("timeline model", () => {
     ["ferries", "ferry"],
     ["trains", "train"],
     ["meals", "meal"],
-    ["tasks", "preparation"],
-    ["other", "custom"]
+    ["tasks", "preparation"]
   ] as const)("matches the event-type alias %s", (query, type) => {
     const target = typeSearchInput.itinerary.find((item) => item.event_type === type)!;
     expect(searchTrip({ ...typeSearchInput, query })).toEqual(

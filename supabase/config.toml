@@ -1,0 +1,9 @@
+project_id = "trip-vault"
+
+# Both functions implement authentication themselves, including user JWT verification
+# for push-test. The scheduled function accepts ONLY PUSH_DISPATCH_SECRET.
+[functions.push-dispatch]
+verify_jwt = false
+
+[functions.push-test]
+verify_jwt = false

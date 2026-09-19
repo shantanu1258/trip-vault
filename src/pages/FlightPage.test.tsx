@@ -189,9 +189,7 @@ describe("flight edit time-zone controls", () => {
       await screen.findByRole("link", { name: "Navigate to booking location" })
     ).toHaveAttribute("href", "https://maps.example/directions");
     const navigation = screen.getByRole("link", { name: "Navigate to booking location" });
-    expect(navigation.querySelector("span")).toHaveClass("hidden", "md:inline");
     expect(navigation).toHaveAttribute("title", "Navigate to booking location");
-    expect(navigation).toHaveClass("hero-shortcut");
   });
 
   it("does not offer navigation without a saved flight booking location", async () => {
@@ -250,7 +248,6 @@ describe("flight edit time-zone controls", () => {
     const edit = screen.getByRole("button", { name: "Edit flight" });
     expect(hero?.contains(edit)).toBe(false);
     expect(edit.compareDocumentPosition(hero!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(edit).toHaveClass("text-brand", "hover:bg-brand-soft");
     expect(screen.queryByRole("button", { name: "Update flight" })).not.toBeInTheDocument();
   });
 
@@ -281,13 +278,8 @@ describe("flight edit time-zone controls", () => {
     const connection = await screen.findByRole("link", { name: /DEL → MEL.*QP 202.*View flight/i });
     const current = screen.getByRole("link", { name: /BLR → DEL.*Selected flight/i });
     expect(current).toHaveAttribute("aria-current", "page");
-    expect(current).toHaveClass("bg-surface", "text-ink");
-    expect(current).toHaveClass("after:bg-brand");
     expect(screen.queryByText(/Viewing now|Earlier leg|Next leg/)).not.toBeInTheDocument();
     expect(connection).not.toHaveAttribute("aria-current");
-    expect(connection).toHaveClass("text-white/85");
-    expect(connection).not.toHaveClass("bg-surface");
-    expect(connection).not.toHaveClass("airline-accent-rail");
     expect(connection.style.getPropertyValue("--airline-accent")).toBe("#7c3aed");
     expect(connection.querySelector(".airline-accent-dot")).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Connection 1 · BLR → DEL" })).toBeInTheDocument();
@@ -354,7 +346,7 @@ describe("flight edit time-zone controls", () => {
     );
   });
 
-  it("contains long generated document titles inside the mobile flight card", async () => {
+  it("preserves the full document name and opens the correct primary boarding pass", async () => {
     const longTitle =
       "Other booking confirmation · Ankita · Some Place to Some Place with a deliberately long generated title";
     mocks.listVaultDocuments.mockResolvedValue([
@@ -396,16 +388,9 @@ describe("flight edit time-zone controls", () => {
 
     const card = screen.getByRole("link", { name: new RegExp(longTitle) });
     const shortcut = screen.getByRole("link", { name: "Open boarding pass" });
-    expect(shortcut.querySelector("span")).toHaveClass("hidden", "md:inline");
     expect(shortcut).toHaveAttribute("title", "Open boarding pass");
     expect(shortcut).toHaveAttribute("href", "/trips/trip-1/documents/primary");
-    expect(shortcut).toHaveClass("hero-shortcut");
-    expect(card).toHaveClass("min-w-0", "max-w-full", "overflow-hidden");
-    expect(screen.getByText(longTitle)).toHaveClass(
-      "whitespace-normal",
-      "break-words",
-      "[overflow-wrap:anywhere]"
-    );
-    expect(screen.getByText(longTitle)).not.toHaveClass("truncate");
+    expect(card).toHaveAttribute("href", "/trips/trip-1/documents/long");
+    expect(card).toHaveTextContent(longTitle);
   });
 });

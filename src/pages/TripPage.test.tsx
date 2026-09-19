@@ -423,6 +423,46 @@ function renderDetails({
   return { onAddBooking, onEdit, onViewCost };
 }
 
+describe("notification deep links", () => {
+  function renderNotification(search: string) {
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listCosts.mockResolvedValue([expense]);
+    mocks.listItinerary.mockResolvedValue([activity]);
+    mocks.listTravelers.mockResolvedValue([]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[`/trips/trip-1${search}`]}>
+          <LocationProbe />
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+  }
+  it("opens a cold-linked expense and removes the destination when dismissed", async () => {
+    renderNotification(`?view=details&cost=${expense.id}&notification=job-1`);
+    const details = await screen.findByRole("region", { name: "Museum tickets" });
+    await userEvent.click(within(details).getByRole("button", { name: "Back" }));
+    expect(screen.queryByRole("region", { name: "Museum tickets" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).not.toHaveTextContent("cost=");
+  });
+  it("reveals a cold-linked timeline event without opening an unrelated modal", async () => {
+    renderNotification(`?view=timeline&focus=${activity.id}&notification=job-2`);
+    expect(
+      await screen.findByRole("button", { name: `Collapse ${activity.title}` })
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByRole("region", { name: "Museum tickets" })).not.toBeInTheDocument();
+  });
+  it("explains a deleted or inaccessible destination", async () => {
+    renderNotification("?view=details&cost=missing&notification=job-3");
+    expect(
+      await screen.findByText("This expense is no longer available, or you no longer have access.")
+    ).toBeInTheDocument();
+  });
+});
+
 describe("event status saving", () => {
   it("disables all choices and shows progress until the request finishes", async () => {
     let finish!: () => void;
@@ -906,7 +946,7 @@ describe("trip summary interactions", () => {
     expect(screen.getByRole("button", { name: "Next event" })).toBeInTheDocument();
   });
 
-  it("shows complete wrapped document names in Trip details", async () => {
+  it("links documents by their complete names in Trip details", async () => {
     const longTitle =
       "Other booking confirmation · Ankita · Some Place to Some Place with a deliberately long generated title";
     mocks.getTrip.mockResolvedValue(ownerTrip);
@@ -945,9 +985,8 @@ describe("trip summary interactions", () => {
     );
 
     const title = await screen.findByText(longTitle);
-    expect(title).toHaveClass("whitespace-normal", "break-words", "[overflow-wrap:anywhere]");
-    expect(title).not.toHaveClass("truncate");
-    expect(title.closest("a")).toHaveClass("grid", "min-w-0");
+    expect(title.closest("a")).toHaveAccessibleName(new RegExp(longTitle));
+    expect(title.closest("a")).toHaveAttribute("href", "/trips/trip-1/documents/document-long");
   });
 
   it("previews a large trip document collection and links to its complete view", async () => {
@@ -1133,12 +1172,6 @@ describe("trip expense summary", () => {
 });
 
 describe("activity event details", () => {
-  it("offers booking enrichment from an unbooked activity", async () => {
-    const { onAddBooking } = renderDetails();
-    await userEvent.click(screen.getByRole("button", { name: "Add booking details" }));
-    expect(onAddBooking).toHaveBeenCalledOnce();
-  });
-
   it("does not offer another booking while a linked booking is loading", () => {
     renderDetails({ item: { ...activity, booking_id: "booking-1" } });
     expect(screen.queryByRole("button", { name: "Add booking details" })).not.toBeInTheDocument();

@@ -229,26 +229,6 @@ describe("relative event timing", () => {
     expect(duration.checkValidity()).toBe(true);
   });
 
-  it("does not display an old synthetic anchor time as an explicit start", () => {
-    render(
-      <TimingFields
-        trip={trip}
-        itinerary={[anchor]}
-        item={{
-          ...anchor,
-          id: "relative-1",
-          title: "Museum",
-          timing_mode: "relative",
-          anchor_itinerary_item_id: anchor.id,
-          relative_position: "after",
-          has_explicit_start_time: false
-        }}
-      />
-    );
-
-    expect(screen.getByLabelText("Start date & time (optional)")).toHaveValue("");
-  });
-
   it("preloads a start added later to an existing relative event", () => {
     render(
       <TimingFields
@@ -274,7 +254,7 @@ describe("relative event timing", () => {
     expect(screen.getByRole("button", { name: "Event time zone" })).toHaveTextContent("Kolkata");
   });
 
-  it("retains the saved order while the anchor options load", () => {
+  it("retains the saved order and never exposes a synthetic start while the anchor options load", () => {
     const relativeItem: ItineraryItem = {
       ...anchor,
       id: "relative-1",
@@ -288,6 +268,7 @@ describe("relative event timing", () => {
 
     expect(screen.getByLabelText("Position")).toHaveValue("before");
     expect(screen.getByLabelText("Event")).toHaveValue("");
+    expect(screen.getByLabelText("Start date & time (optional)")).toHaveValue("");
 
     view.rerender(<TimingFields trip={trip} itinerary={[anchor]} item={relativeItem} />);
 

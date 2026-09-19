@@ -45,8 +45,8 @@ describe("compact trip cost", () => {
   });
 });
 
-describe("trip card text containment", () => {
-  it("wraps very long trip names and destinations inside the card", () => {
+describe("trip card navigation", () => {
+  it("keeps the full trip name accessible on its details link", () => {
     const longTitle = `A very long trip name ${"withoutbreaks".repeat(12)}`;
     const trip: Trip = {
       id: "trip-long-name",
@@ -69,7 +69,7 @@ describe("trip card text containment", () => {
 
     const card = screen.getByRole("link", { name: new RegExp("A very long trip name") });
     const title = screen.getByRole("heading", { name: longTitle });
-    expect(card).toHaveClass("min-w-0", "max-w-full", "overflow-hidden");
-    expect(title).toHaveClass("break-words", "[overflow-wrap:anywhere]");
+    expect(card).toHaveAttribute("href", "/trips/trip-long-name");
+    expect(card).toContainElement(title);
   });
 });

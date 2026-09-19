@@ -1,236 +1,162 @@
-import { render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventSilhouette } from "./EventSilhouette";
-import { timelineEventTypes } from "../features/trips/types";
+import { timelineEventTypes, type TimelineEventType } from "../features/trips/types";
+
+// Exercise distinct animation branches, not a type × placement × viewport matrix.
+// Responsive sizing belongs to browser QA: this component never reads viewport width.
+const motionCases = [
+  {
+    type: "flight",
+    placement: "summary",
+    departure: "translate(88px, -88px)",
+    arrival: "translate(-112px, 112px)"
+  },
+  { type: "cab", placement: "hero", departure: "translateX(137px)", arrival: "translateX(-350px)" },
+  {
+    type: "activity",
+    placement: "modal",
+    departure: "scale(.8) rotate(45deg)",
+    arrival: "translateY(6px) rotate(-35deg) scale(.9)"
+  },
+  {
+    type: "hotel_check_in",
+    placement: "fallback",
+    departure: "none",
+    arrival: "translateY(6px) rotate(0deg) scale(.9)"
+  }
+] as const;
+const cancel = vi.fn();
+const animate = vi.fn(() => ({ cancel }));
+let originalAnimate: PropertyDescriptor | undefined;
+
+beforeEach(() => {
+  cancel.mockClear();
+  animate.mockClear();
+  originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, "animate");
+  Object.defineProperty(Element.prototype, "animate", { configurable: true, value: animate });
+  vi.stubGlobal("matchMedia", () => ({ matches: false }));
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    if (this.matches("article")) return { top: 10, right: 375 } as DOMRect;
+    if (this.matches("section")) return { left: 20, bottom: 400 } as DOMRect;
+    return (
+      this.getAttribute("data-silhouette-placement") === "header"
+        ? { left: 250, top: 20, bottom: 86, right: 346, width: 96, height: 66 }
+        : { left: 230, top: 300, right: 358, bottom: 388, width: 128, height: 88 }
+    ) as DOMRect;
+  });
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  if (originalAnimate) Object.defineProperty(Element.prototype, "animate", originalAnimate);
+  else delete (Element.prototype as unknown as { animate?: unknown }).animate;
+});
+
+function pairedCard(type: TimelineEventType, expanded: boolean) {
+  return (
+    <article>
+      <EventSilhouette type={type} expanded={expanded} />
+      <section>
+        <EventSilhouette type={type} placement="summary" />
+      </section>
+    </article>
+  );
+}
 
 describe("event background silhouettes", () => {
-  it.each([
-    ["flight", "flight"],
-    ["hotel_check_in", "hotel"],
-    ["hotel_check_out", "hotel"],
-    ["cab", "cab"]
-  ] as const)("uses the existing %s color and stays decorative", (type, tone) => {
-    const { container, rerender } = render(<EventSilhouette type={type} />);
-    const artwork = container.firstElementChild!;
-    expect(artwork).toHaveAttribute("aria-hidden", "true");
-    expect(artwork).toHaveClass(`event-type-icon--${tone}`);
-    expect(artwork).toHaveAttribute("data-expanded", "false");
-    expect(artwork.querySelector("svg")).toHaveAttribute("focusable", "false");
-    rerender(<EventSilhouette type={type} expanded />);
-    expect(artwork).toHaveAttribute("data-expanded", "true");
-  });
-
-  it("provides decorative artwork for every event type", () => {
+  it("provides non-interactive decorative artwork for every event type", () => {
+    const { container } = render(
+      <>
+        {timelineEventTypes.map((type) => (
+          <EventSilhouette key={type} type={type} />
+        ))}
+      </>
+    );
     for (const type of timelineEventTypes) {
-      const { container } = render(<EventSilhouette type={type} />);
-      expect(container.querySelector("svg path")).not.toBeNull();
+      const artwork = container.querySelector(`[data-event-type="${type}"]`)!;
+      expect(artwork, type).toHaveAttribute("aria-hidden", "true");
+      expect(artwork.querySelector("svg"), type).toHaveAttribute("focusable", "false");
+      expect(artwork.querySelector("svg path"), type).not.toBeNull();
     }
+    expect(animate).not.toHaveBeenCalled();
   });
 
-  it("animates transport between the actual header and lower card, and cancels on collapse", () => {
-    const cancel = vi.fn();
-    const animate = vi.fn(() => ({ cancel }));
-    const bounds = vi
-      .spyOn(Element.prototype, "getBoundingClientRect")
-      .mockImplementation(function (this: Element) {
-        if (this.matches("article")) return { top: 10, right: 375 } as DOMRect;
-        return (
-          this.getAttribute("data-silhouette-placement") === "header"
-            ? { left: 10, top: 20, bottom: 90, width: 100, height: 70 }
-            : { left: 50, top: 230, right: 210, bottom: 340, width: 160, height: 110 }
-        ) as DOMRect;
-      });
-    Object.defineProperty(Element.prototype, "animate", { configurable: true, value: animate });
-    const card = (expanded: boolean) => (
-      <article>
-        <button>
-          <EventSilhouette type="flight" expanded={expanded} />
-        </button>
-        <section>
-          <EventSilhouette type="flight" placement="summary" />
-        </section>
-      </article>
-    );
-    const view = render(card(false));
-    view.rerender(card(true));
-    expect(animate).toHaveBeenCalledTimes(2);
-    expect(animate).toHaveBeenNthCalledWith(
-      1,
-      expect.arrayContaining([expect.objectContaining({ transform: "translate(92px, -92px)" })]),
-      expect.objectContaining({ duration: 450 })
-    );
-    view.rerender(card(false));
-    expect(cancel).toHaveBeenCalledTimes(2);
-    view.unmount();
-    bounds.mockRestore();
-    delete (Element.prototype as unknown as { animate?: unknown }).animate;
-  });
-
-  it.each(["header", "modal", "hero"] as const)(
-    "uses static %s artwork when reduced motion is requested",
-    (placement) => {
-      const animate = vi.fn();
-      Object.defineProperty(Element.prototype, "animate", { configurable: true, value: animate });
-      vi.stubGlobal("matchMedia", () => ({ matches: true }));
-      const view = render(
-        <article>
-          <EventSilhouette type="flight" placement={placement} expanded />
-          <EventSilhouette type="flight" placement="summary" />
-        </article>
-      );
-      expect(animate).not.toHaveBeenCalled();
-      expect(
-        view.container.querySelector(`[data-silhouette-placement="${placement}"]`)
-      ).toHaveAttribute("data-expanded", "true");
-      view.unmount();
-      vi.unstubAllGlobals();
-      delete (Element.prototype as unknown as { animate?: unknown }).animate;
-    }
-  );
-
-  it.each(
-    (
-      ["flight", "cab", "train", "ferry", "bus", "transport", "activity", "hotel_check_in"] as const
-    ).flatMap((type) => [375, 768, 1280].map((width) => ({ type, width })))
-  )(
-    "uses the same transition for $type at $width px without changing its resting destination",
-    ({ type, width }) => {
-      const cancel = vi.fn();
-      const animate = vi.fn(() => ({ cancel }));
-      vi.stubGlobal("matchMedia", (query: string) => ({
-        matches: query === "(max-width: 767px)" && width < 768
-      }));
-      Object.defineProperty(Element.prototype, "animate", { configurable: true, value: animate });
-      const bounds = vi
-        .spyOn(Element.prototype, "getBoundingClientRect")
-        .mockImplementation(function (this: Element) {
-          if (this.matches("article")) return { top: 10, right: 375 } as DOMRect;
-          if (this.matches("section")) return { left: 20, bottom: 400 } as DOMRect;
-          return (
-            this.getAttribute("data-silhouette-placement") === "header"
-              ? { left: 250, top: 20, bottom: 86, right: 346, width: 96, height: 66 }
-              : { left: 230, top: 300, right: 358, bottom: 388, width: 128, height: 88 }
-          ) as DOMRect;
-        });
-      const card = (expanded: boolean) => (
-        <article>
-          <button>
-            <EventSilhouette type={type} expanded={expanded} />
-          </button>
-          <section>
-            <EventSilhouette type={type} placement="summary" />
-          </section>
-        </article>
-      );
-      const view = render(card(false));
-      try {
-        view.rerender(card(true));
-        const hotel = type === "hotel_check_in";
-        const activity = type === "activity";
-        expect(animate).toHaveBeenCalledTimes(2);
-        expect(animate).toHaveBeenNthCalledWith(
-          1,
-          expect.arrayContaining([
-            expect.objectContaining({
-              transform: hotel
-                ? "none"
-                : activity
-                  ? "scale(.8) rotate(45deg)"
-                  : type === "flight"
-                    ? "translate(88px, -88px)"
-                    : "translateX(137px)",
-              opacity: 0
-            })
-          ]),
-          expect.objectContaining({ duration: hotel ? 700 : activity ? 350 : 450 })
-        );
-        expect(animate).toHaveBeenNthCalledWith(
-          2,
-          [
-            {
-              opacity: 0,
-              transform: hotel
-                ? "translateY(6px) rotate(0deg) scale(.9)"
-                : activity
-                  ? "translateY(6px) rotate(-35deg) scale(.9)"
-                  : type === "flight"
-                    ? "translate(-112px, 112px)"
-                    : "translateX(-350px)"
-            },
-            { opacity: 0.12, transform: "translateY(0) rotate(0) scale(1)" }
-          ],
-          expect.objectContaining({
-            duration: hotel || activity ? 500 : 650,
-            delay: hotel ? 450 : activity ? 250 : 350
-          })
-        );
-        view.rerender(card(false));
-        expect(cancel).toHaveBeenCalledTimes(2);
-      } finally {
-        view.unmount();
-        bounds.mockRestore();
-        vi.unstubAllGlobals();
-        delete (Element.prototype as unknown as { animate?: unknown }).animate;
-      }
-    }
-  );
-
-  it.each(
-    timelineEventTypes.flatMap((type) =>
-      (["modal", "hero", "summary", "fallback"] as const).map((placement) => ({ type, placement }))
-    )
-  )(
-    "animates $type on opening the $placement, not on ordinary rerenders",
-    ({ type, placement }) => {
-      const cancel = vi.fn();
-      const animate = vi.fn(() => ({ cancel }));
-      Object.defineProperty(Element.prototype, "animate", { configurable: true, value: animate });
-      vi.stubGlobal("matchMedia", () => ({ matches: false }));
-      const bounds = vi
-        .spyOn(Element.prototype, "getBoundingClientRect")
-        .mockImplementation(function (this: Element) {
-          return (
-            this.matches("section")
-              ? { left: 20, bottom: 400 }
-              : { left: 230, top: 300, right: 358, bottom: 388, width: 128, height: 88 }
-          ) as DOMRect;
-        });
+  it.each(motionCases)(
+    "opens $type artwork once in $placement and cancels on unmount",
+    ({ type, placement, arrival }) => {
       const card = (
         <section>
           <EventSilhouette type={type} placement={placement} />
         </section>
       );
       const view = render(card);
-      try {
-        const moves = ["flight", "cab", "bus", "ferry", "train", "transport"].includes(type);
-        expect(animate).toHaveBeenCalledTimes(1);
-        expect(animate).toHaveBeenCalledWith(
-          [
-            {
-              opacity: 0,
-              transform: moves
-                ? type === "flight"
-                  ? "translate(-112px, 112px)"
-                  : "translateX(-350px)"
-                : `translateY(6px) rotate(${type === "activity" ? -35 : 0}deg) scale(.9)`
-            },
-            { opacity: 0.12, transform: "translateY(0) rotate(0) scale(1)" }
-          ],
-          expect.objectContaining({ duration: moves ? 650 : 500, delay: 0 })
-        );
-        view.rerender(
-          <section>
-            <EventSilhouette type={type} placement={placement} />
-          </section>
-        );
-        expect(animate).toHaveBeenCalledTimes(1);
-      } finally {
-        view.unmount();
-        expect(cancel).toHaveBeenCalledTimes(1);
-        bounds.mockRestore();
-        vi.unstubAllGlobals();
-        delete (Element.prototype as unknown as { animate?: unknown }).animate;
-      }
+      expect(animate).toHaveBeenCalledTimes(1);
+      expect(animate).toHaveBeenCalledWith(
+        [
+          expect.objectContaining({ opacity: 0, transform: arrival }),
+          expect.objectContaining({ transform: "translateY(0) rotate(0) scale(1)" })
+        ],
+        expect.objectContaining({ delay: 0 })
+      );
+      view.rerender(
+        <section>
+          <EventSilhouette type={type} placement={placement} />
+        </section>
+      );
+      expect(animate).toHaveBeenCalledTimes(1);
+      view.unmount();
+      expect(cancel).toHaveBeenCalledTimes(1);
     }
   );
+
+  // The paired header path remains supported by the component even though current
+  // timeline headers use icons. Keep one case per distinct departure branch.
+  it.each(motionCases)(
+    "pairs $type departure/arrival and cancels both on collapse",
+    ({ type, departure, arrival }) => {
+      const view = render(pairedCard(type, false));
+      expect(animate).not.toHaveBeenCalled();
+      view.rerender(pairedCard(type, true));
+      expect(animate).toHaveBeenCalledTimes(2);
+      expect(animate).toHaveBeenNthCalledWith(
+        1,
+        expect.arrayContaining([expect.objectContaining({ transform: departure, opacity: 0 })]),
+        expect.any(Object)
+      );
+      expect(animate).toHaveBeenNthCalledWith(
+        2,
+        expect.arrayContaining([expect.objectContaining({ transform: arrival, opacity: 0 })]),
+        expect.any(Object)
+      );
+      view.rerender(pairedCard(type, false));
+      expect(cancel).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  it("keeps both standalone and paired artwork static under reduced motion", () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: true }));
+    const { container } = render(
+      <>
+        {pairedCard("flight", true)}
+        <section>
+          <EventSilhouette type="activity" placement="hero" />
+        </section>
+      </>
+    );
+    expect(container.querySelectorAll("svg")).toHaveLength(3);
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  it("still renders artwork when the browser has no animation API", () => {
+    delete (Element.prototype as unknown as { animate?: unknown }).animate;
+    const { container } = render(
+      <section>
+        <EventSilhouette type="flight" placement="hero" />
+      </section>
+    );
+    expect(container.querySelector("svg")).toBeInTheDocument();
+  });
 });

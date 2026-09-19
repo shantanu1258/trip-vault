@@ -1,44 +1,31 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ModalSheet } from "./ModalSheet";
 
 describe("ModalSheet", () => {
-  it("scrolls the entire modal without pinning its heading or actions", () => {
+  it("labels the dialog and allows editing its content before returning with Back", async () => {
+    const onClose = vi.fn();
+    const user = userEvent.setup();
     render(
-      <ModalSheet eyebrow="Trip" title="Long form" onClose={vi.fn()}>
+      <ModalSheet eyebrow="Trip" title="Edit event" onClose={onClose} manageHistory={false}>
         <form>
           <label>
-            Field
+            Event name
             <input />
           </label>
-          <button className="primary-button" type="submit">
-            Save
-          </button>
         </form>
       </ModalSheet>
     );
 
-    const dialog = screen.getByRole("dialog", { name: "Long form" });
-    expect(dialog).toHaveClass("overflow-y-auto");
-    expect(dialog).not.toHaveClass("overflow-hidden", "flex-col");
-    expect(dialog.querySelector(".modal-sheet-body")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save" })).toHaveClass("primary-button");
-  });
-
-  it("can become a full-height end drawer on larger screens", () => {
-    render(
-      <ModalSheet
-        eyebrow="Timeline navigator"
-        title="Trip agenda"
-        onClose={vi.fn()}
-        placement="end"
-      >
-        Agenda
-      </ModalSheet>
-    );
-
-    const dialog = screen.getByRole("dialog", { name: "Trip agenda" });
-    expect(dialog).toHaveClass("sm:h-full", "sm:max-h-full", "sm:max-w-md");
-    expect(dialog.parentElement).toHaveClass("sm:items-stretch", "sm:justify-end");
+    const dialog = screen.getByRole("dialog", { name: "Edit event" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    const field = screen.getByRole("textbox", { name: "Event name" });
+    expect(dialog).toContainElement(field);
+    await user.type(field, "Museum visit");
+    expect(field).toHaveValue("Museum visit");
+    expect(onClose).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

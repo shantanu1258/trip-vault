@@ -8,6 +8,27 @@ User-visible changes are listed newest first. The HLD, LLD, and feature catalog 
 - Existing expense participants can be edited even when the trip-wide splitting setting is off. Added an editor-only “Edit travelers” shortcut in expense details; an empty selection is rejected and selected travelers share the cost equally on save.
 - Existing saved expenses are not automatically reassigned; review and edit previously incorrect participant lists.
 
+## 2026-09-20 — Opt-in Web Push
+
+- Added per-device notification consent, category preferences, test delivery, and revocation in Profile, behind `VITE_PUSH_ENABLED` (off by default).
+- Added owner-scoped subscriptions, a protected delivery queue, event/booking/expense change triggers, and one-hour timed-event reminders. Private VAPID credentials stay on the server; lock-screen messages contain no trip details.
+- Added authenticated test and secret-protected dispatch functions, bounded retries/expiry, membership rechecks, and a separate opt-in Cron script. Applying the migration does not start delivery.
+- Notification links reveal/highlight a timeline event, open booking details, or open a specific expense; existing generated-worker offline caching is preserved.
+- Added [deployment instructions](docs/PUSH_SETUP.md) and a rollback-only SQL smoke test. The owner reports both SQL scripts succeeded, and deployment output confirms both functions. Unauthenticated POST checks returned HTTP 401; authenticated delivery, real-device behavior, and Cron execution remain **unverified**.
+- Verification: **690 tests across 105 files passed**, plus production TypeScript/build/PWA generation. These include 13 push-policy, worker, subscription, and destination tests and three cost-scope regressions beyond the test-cleanup baseline below.
+
+## 2026-09-20 — Test-suite maintenance
+
+- Replaced the 81-case silhouette matrix with 11 focused tests: all-type decorative artwork, representative animation branches, mount/rerender/collapse cleanup, reduced motion, and browsers without the animation API. Removed simulated viewport permutations that did not exercise any viewport-dependent code.
+- Reduced Booking page tests from 52 to 30 by removing repeated border-style assertions and sampling shared edit/navigation behavior. Retained the distinct edit-label branches, location variants, permissions, data, and journey workflows.
+- Removed a CSS-text pulse snapshot and a chevron-class test; retained scroll settlement, destination placement, pulse cleanup, reduced-motion logic, and actual expand/collapse behavior.
+- Replaced selected cosmetic Tailwind assertions with accessible-name, document-link, and route assertions. Responsive geometry, exact appearance, and visual pulse timing remain browser-QA checks, not claims made by JSDOM tests.
+- A second pass removed 15 redundant cases: checked ten event-type document defaults within their existing form workflows instead of separate mounts, removed two admin smoke cases already exercised by catalog workflows, and retained one launch-boundary routing check instead of four eligible-date permutations. All eleven document defaults remain checked; calendar/timezone boundaries remain in the presentation tests.
+- Replaced additional document-row and admin layout-class assertions with full accessible names, correct destinations, separate actions, and navigation presence. These tests no longer claim to verify responsive geometry in JSDOM.
+- A third pass removed 15 more overlapping cases: one presentation contract per booking type now checks exact schedule labels and countdowns (including three previously unchecked countdown types), with representative hotel/generic page checks. Removed duplicated search-alias, visibility-label, synthetic-start, and booking-action checks already covered by richer tests. Replaced two modal CSS-only cases with a content-editing/Back interaction test.
+- No runtime code, dependencies, or test timeouts changed; distinct data-safety scenarios remain covered. No tests were skipped or disabled to reduce the count.
+- Verification: **674 tests across 102 files passed** (798 → 704 → 689 → 674, a net reduction of 124); production build including TypeScript and PWA generation passed. The latest full-suite run took 26.06 seconds while the build ran concurrently; the benefit is reduced duplication and maintenance, not a claimed speedup.
+
 ## 2026-09-19 — Documentation reconciliation
 
 - Reconciled the HLD, LLD, and feature catalog with the implementation through `7cdd785`.
@@ -73,7 +94,6 @@ Implementation: `dc44af4`.
 - Added compact in-app notification and readiness surfaces, task deep links, responsive sticky navigation, progressive form sections, and bundled DM Sans typography.
 - Kept existing schema, authorization, offline, and synchronization boundaries. Later entries above supersede intermediate styling and focus experiments from this batch.
 
-## Proposed — Not shipped
+## Pending release acceptance
 
-- Opt-in Web Push using device subscriptions, a protected Supabase scheduled sender, server-held VAPID credentials, and notification handling in the PWA worker.
-- Requires separate implementation, security review, deployment, and device testing. No push sender or scheduler is currently enabled by this repository. Offline receipt, expiry, OS/browser restrictions, and backend pausing must be accounted for.
+- Web Push functions have been deployed and reject unauthenticated requests; the owner reports successful migration/smoke SQL. Authenticated delivery, real-device and scheduled-send checks remain release gates. Offline receipt, expiry, OS/browser restrictions, and backend pausing prevent guaranteed delivery.

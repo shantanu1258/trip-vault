@@ -33,6 +33,8 @@ import { TimeZoneAutocomplete } from "../components/TimeZoneAutocomplete";
 import { DocumentInboxPanel } from "../features/workspace/DocumentInboxPanel";
 import { useConfirmDialog } from "../components/ConfirmDialogProvider";
 import { RequiredMark } from "../components/RequiredMark";
+import { PushSettings } from "../features/notifications/PushSettings";
+import { disablePush } from "../features/notifications/api";
 
 export function ProfilePage() {
   const confirm = useConfirmDialog();
@@ -94,6 +96,7 @@ export function ProfilePage() {
     try {
       setMessage("");
       const id = query.data?.profile.id;
+      await disablePush();
       if (remove && id) await clearProfileOfflineData(id);
       markDeviceSignedOut(remove);
       const { error } = (await supabase?.auth.signOut({ scope: "local" })) ?? { error: null };
@@ -278,6 +281,7 @@ export function ProfilePage() {
               </div>
             </section>
             <DocumentInboxPanel />
+            <PushSettings />
             <SyncIssuesPanel />
             <section className="surface-card p-3 sm:p-5">
               <p className="eyebrow">Session</p>

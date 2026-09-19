@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ItineraryItem, Trip } from "../trips/types";
 import type { FlightLeg, Traveler } from "../workspace/types";
+import type { DocumentKind } from "../workspace/documentModel";
 
 const mocks = vi.hoisted(() => ({
   addBookedTimelineEvent: vi.fn(),
@@ -179,6 +180,14 @@ function renderForm(
   return { user, onClose, onTypeChange, onAddDocument };
 }
 
+// Check each type's document default in its existing form workflow, avoiding
+// another full form mount just to inspect the same picker.
+function expectOfficialDocumentPicker(kind: DocumentKind) {
+  expect(screen.getByText("Attach an official document (optional)")).toBeInTheDocument();
+  expect(screen.getByLabelText("Document type")).toHaveValue(kind);
+  expect(screen.getByLabelText("Official document")).toBeInTheDocument();
+}
+
 describe("event form architecture", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -267,6 +276,7 @@ describe("event form architecture", () => {
       screen.getByRole("button", { name: /Hotel A stay with check-in and checkout/i })
     );
     expect(screen.getByLabelText("Check-in date")).toHaveValue("2026-09-26");
+    expectOfficialDocumentPicker("hotel_confirmation");
     expect(screen.getByLabelText("Checkout date")).toHaveValue("2026-09-27");
     expect(screen.getByLabelText("Printed check-in time (optional)")).toHaveValue("");
     expect(screen.queryByText(/clock repeats/i)).not.toBeInTheDocument();
@@ -305,6 +315,7 @@ describe("event form architecture", () => {
     const { user, onAddDocument } = renderForm(travelers);
     await user.click(screen.getByRole("button", { name: /Flight Direct or connected flights/i }));
     expect(screen.getByRole("radio", { name: "Direct" })).toBeChecked();
+    expectOfficialDocumentPicker("flight_ticket");
     expect(screen.getByText("Flight details")).toBeInTheDocument();
     expect(screen.queryByLabelText("Contact name")).not.toBeInTheDocument();
     await user.click(screen.getByRole("radio", { name: "International" }));
@@ -364,25 +375,10 @@ describe("event form architecture", () => {
     );
   });
 
-  it.each([
-    [/Flight Direct or connected flights/i, "flight_ticket"],
-    [/Hotel A stay with check-in and checkout/i, "hotel_confirmation"],
-    [/Activity Visit, tour, ticket, or free time/i, "activity_confirmation"],
-    [/Bus Coach, shuttle, or local bus/i, "journey_ticket"],
-    [/Cab Local ride, transfer, or outstation/i, "journey_ticket"],
-    [/Ferry \/ boat Passenger or vehicle sailing/i, "journey_ticket"],
-    [/Train Rail plan, ticket, or connection/i, "journey_ticket"],
-    [/Meal Lunch, dinner, or reservation/i, "meal_voucher"],
-    [/Preparation A dated or flexible pre-trip task/i, "other"],
-    [/Other transport Metro, rental, transfer, or walk/i, "journey_ticket"],
-    [/Other Anything else on the timeline/i, "booking_confirmation"]
-  ])("offers an event-aware document picker for %s", async (choice, expectedKind) => {
+  it("offers a booking-confirmation picker for Other events", async () => {
     const { user } = renderForm(travelers);
-    await user.click(screen.getByRole("button", { name: choice }));
-
-    expect(screen.getByText("Attach an official document (optional)")).toBeInTheDocument();
-    expect(screen.getByLabelText("Document type")).toHaveValue(expectedKind);
-    expect(screen.getByLabelText("Official document")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Other Anything else on the timeline/i }));
+    expectOfficialDocumentPicker("booking_confirmation");
   });
 
   it("uploads an activity document with the saved event and inherited traveler scope", async () => {
@@ -394,6 +390,7 @@ describe("event form architecture", () => {
     const confirmation = new window.File(["%PDF-confirmation"], "museum.pdf", {
       type: "application/pdf"
     });
+    expectOfficialDocumentPicker("activity_confirmation");
     await user.upload(screen.getByLabelText<HTMLInputElement>("Official document"), confirmation);
     await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
 
@@ -437,6 +434,7 @@ describe("event form architecture", () => {
     const { user } = renderForm(travelers);
     await user.click(screen.getByRole("button", { name: /Bus Coach, shuttle, or local bus/i }));
     expect(screen.getByRole("radio", { name: "Single bus" })).toBeChecked();
+    expectOfficialDocumentPicker("journey_ticket");
     expect(screen.getByText("bus details", { exact: false })).toBeInTheDocument();
     expect(screen.queryByLabelText(/Journey country/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Origin time zone")).not.toBeInTheDocument();
@@ -612,6 +610,7 @@ describe("event form architecture", () => {
     await user.click(
       screen.getByRole("button", { name: /Ferry \/ boat Passenger or vehicle sailing/i })
     );
+    expectOfficialDocumentPicker("journey_ticket");
     await user.type(screen.getByLabelText("Booking reference (optional)"), "ORDER-42");
     await user.click(screen.getByRole("radio", { name: /^Ticket booked/ }));
     expect(screen.getAllByLabelText("Booking reference (optional)")).toHaveLength(1);
@@ -675,6 +674,7 @@ describe("event form architecture", () => {
     await user.click(
       screen.getByRole("button", { name: /Train Rail plan, ticket, or connection/i })
     );
+    expectOfficialDocumentPicker("journey_ticket");
     expect(screen.getByText("train details", { exact: false })).toBeInTheDocument();
     expect(screen.getByLabelText("Train name (optional)")).toHaveAttribute(
       "placeholder",
@@ -731,6 +731,7 @@ describe("event form architecture", () => {
     await user.click(
       screen.getByRole("button", { name: /Cab Local ride, transfer, or outstation/i })
     );
+    expectOfficialDocumentPicker("journey_ticket");
     expect(screen.getByRole("radio", { name: "Local ride" })).toBeChecked();
     expect(screen.getByRole("radio", { name: /^Need a cab/ })).toBeChecked();
     expect(
@@ -870,6 +871,7 @@ describe("event form architecture", () => {
   it("derives a booked meal party size from included travelers while keeping it editable", async () => {
     const { user } = renderForm([...travelers, secondTraveler]);
     await user.click(screen.getByRole("button", { name: /Meal Lunch, dinner, or reservation/i }));
+    expectOfficialDocumentPicker("meal_voucher");
     await user.click(screen.getByRole("radio", { name: /^Reserved/ }));
     const partySize = screen.getByLabelText("Party size (optional)");
     await waitFor(() => expect(partySize).toHaveValue(2));
@@ -895,6 +897,7 @@ describe("event form architecture", () => {
     await user.click(
       screen.getByRole("button", { name: /Preparation A dated or flexible pre-trip task/i })
     );
+    expectOfficialDocumentPicker("other");
     await user.type(screen.getByLabelText("Task name"), "Collect visas");
     await user.click(screen.getByText("More details"));
     await user.type(screen.getByLabelText("Place (optional)"), "Visa centre");
@@ -1091,6 +1094,7 @@ describe("event form architecture", () => {
     await user.click(
       screen.getByRole("button", { name: /Other transport Metro, rental, transfer, or walk/i })
     );
+    expectOfficialDocumentPicker("journey_ticket");
     await user.selectOptions(screen.getByLabelText("Transport type"), "walk");
     expect(screen.queryByRole("group", { name: "Booking status" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Booking reference/)).not.toBeInTheDocument();

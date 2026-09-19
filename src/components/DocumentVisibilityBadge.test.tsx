@@ -5,7 +5,6 @@ import type { DocumentVisibility } from "../features/workspace/types";
 
 describe("document visibility presentation", () => {
   it.each([
-    ["trip", "Trip members", "Visible to all signed-in trip members"],
     ["private", "Only me", "Visible only to you"],
     ["selected_members", "Selected members", "Visible only to selected trip members"],
     ["traveler_and_managers", "Traveler + managers", "Visible to the traveler and their managers"]

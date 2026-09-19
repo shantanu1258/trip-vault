@@ -59,6 +59,7 @@ export default defineConfig({
         ]
       },
       workbox: {
+        importScripts: ["/push-worker.js"],
         globPatterns: ["**/*.{js,mjs,css,html,svg,png,jpg,jpeg,webp,pdf,woff2}"],
         navigateFallback: "/index.html",
         cleanupOutdatedCaches: true

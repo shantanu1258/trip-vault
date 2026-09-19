@@ -28,7 +28,7 @@ describe("VaultPage document list", () => {
     mocks.restoreDocument.mockResolvedValue(undefined);
   });
 
-  it("uses compact rows while showing a complete long document name", async () => {
+  it("links a document by its complete name and shows its visibility", async () => {
     const longTitle =
       "Other booking confirmation · Ankita · Some Place to Some Place with a deliberately long generated title";
     mocks.listVaultDocuments.mockResolvedValue([
@@ -62,15 +62,9 @@ describe("VaultPage document list", () => {
     );
 
     const title = await screen.findByRole("heading", { name: longTitle });
-    expect(title).toHaveClass(
-      "whitespace-normal",
-      "break-words",
-      "text-base",
-      "[overflow-wrap:anywhere]"
-    );
-    expect(title).not.toHaveClass("truncate", "text-lg");
     const row = title.closest("a");
-    expect(row).toHaveClass("grid", "p-3.5", "overflow-hidden");
+    expect(row).toHaveAttribute("href", "/trips/trip-1/documents/document-long");
+    expect(row).toHaveAccessibleName(new RegExp(longTitle));
     expect(screen.getByLabelText("Visible to all signed-in trip members")).toBeInTheDocument();
   });
 });

@@ -9,3 +9,5 @@ coverage/
 tmp/
 *.log
 *.tsbuildinfo
+supabase/.temp/
+supabase/functions/.env

@@ -1,6 +1,6 @@
 # Supabase database workflow
 
-`TRIP_VAULT_COMPLETE_SETUP.sql` is the canonical current-state rollup for a new Supabase project. Its dated change log records when each database change entered the rollup; the executable sections remain in dependency order.
+`TRIP_VAULT_COMPLETE_SETUP.sql` is the canonical core-schema rollup for a new Supabase project. Its dated change log records when each database change entered the rollup; the executable sections remain in dependency order. The optional Web Push migration `202609200001_web_push.sql` is not yet included in that rollup; apply it afterward using [PUSH_SETUP.md](../docs/PUSH_SETUP.md). Its sender and Cron require separate deployment and verification.
 
 ## New projects
 
@@ -22,4 +22,5 @@ Released migrations are immutable because existing deployments may have applied 
 ## Verification and diagnostics
 
 - `tests/001_schema_smoke.sql` is separate so it can verify either installation path after deployment and roll back its probes without becoming part of the schema.
+- `tests/002_push_smoke.sql` checks optional push privileges, RLS, recipients, and reminder lifecycle on an isolated test project. It rolls back its fixtures and sends no HTTP; it has not been run against PostgreSQL locally.
 - Files under `diagnostics/` are opt-in, read-only investigations. They may expose account or trip details in query results and must never run as part of setup or migration deployment.

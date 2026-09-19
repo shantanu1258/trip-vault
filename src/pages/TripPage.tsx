@@ -43,6 +43,7 @@ import { ModalSheet } from "../components/ModalSheet";
 import { useConfirmDialog } from "../components/ConfirmDialogProvider";
 import { WhatsAppIcon } from "../components/WhatsAppIcon";
 import { CompactCostTotal, ErrorCard, LoadingCard } from "../components/TripUi";
+import { notificationDestination } from "../features/notifications/destination";
 import { AddEventForm } from "../features/timeline/AddEventForm";
 import {
   buildTripTimelineEntries,
@@ -1542,6 +1543,10 @@ export function TripPage() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const pushDestination = useMemo(
+    () => notificationDestination(location.search),
+    [location.search]
+  );
   const view: TripView = searchParams.get("view") === "details" ? "details" : "timeline";
   const requestedForm = openFormFromQuery(searchParams.get("add"));
   const routedEventId = searchParams.get("event");
@@ -1563,6 +1568,8 @@ export function TripPage() {
   const [viewingRequirement, setViewingRequirement] = useState<Requirement | null>(null);
   const [showingExpenses, setShowingExpenses] = useState(false);
   const [viewingCost, setViewingCost] = useState<TripCost | null>(null);
+  const [notificationMessage, setNotificationMessage] = useState("");
+  const handledPushCost = useRef<string | null>(null);
   const [costReturnEventId, setCostReturnEventId] = useState<string | null>(null);
   const [costReturnsToExpenses, setCostReturnsToExpenses] = useState(false);
   const [costTargetItem, setCostTargetItem] = useState<ItineraryItem | null>(null);
@@ -1572,7 +1579,7 @@ export function TripPage() {
   );
   const [eventBookingTarget, setEventBookingTarget] = useState<ItineraryItem | null>(null);
   const [focusedTravelerId, setFocusedTravelerId] = useState<string | null>(() =>
-    readTravelerFocus(tripId)
+    pushDestination ? null : readTravelerFocus(tripId)
   );
   const [travelerAnnouncement, setTravelerAnnouncement] = useState("");
   const [timelineStatus, setTimelineStatus] = useState("");
@@ -1584,7 +1591,20 @@ export function TripPage() {
   const peopleTriggerRef = useRef<HTMLButtonElement | null>(null);
   const handledIntentToken = useRef<string | null>(null);
   const handledSection = useRef<string | null>(null);
-  const navigationIntent = readTripNavigationIntent(location.state, tripId);
+  const pushIntent = useMemo(
+    () =>
+      pushDestination?.kind === "timeline"
+        ? readTripNavigationIntent(
+            tripIntentNavigationState(null, tripId, "target", {
+              view: "timeline",
+              targetId: pushDestination.id
+            }),
+            tripId
+          )
+        : null,
+    [pushDestination, tripId, location.key]
+  );
+  const navigationIntent = pushIntent ?? readTripNavigationIntent(location.state, tripId);
   const activeNavigationIntent =
     navigationIntent && !isTripNavigationIntentConsumed(navigationIntent) ? navigationIntent : null;
   const returningToEntry =
@@ -1600,9 +1620,9 @@ export function TripPage() {
     void localProfileId().then((id) => setUserId(id ?? ""));
   }, []);
   useEffect(() => {
-    setFocusedTravelerId(readTravelerFocus(tripId));
+    setFocusedTravelerId(pushDestination ? null : readTravelerFocus(tripId));
     positioned.current = false;
-  }, [tripId]);
+  }, [tripId, pushDestination]);
   useEffect(() => {
     if (requestedForm) setOpenForm(requestedForm);
     else setOpenForm((current) => (current === "event" ? null : current));
@@ -1639,8 +1659,16 @@ export function TripPage() {
   }, [activeNavigationIntent, location.state, searchParams, setSearchParams, view]);
 
   const tripQuery = useQuery({ ...tripQueries.trip(tripId), enabled: Boolean(tripId) });
-  const itineraryQuery = useQuery({ ...tripQueries.itinerary(tripId), enabled: Boolean(tripId) });
-  const costsQuery = useQuery({ ...tripQueries.costs(tripId), enabled: Boolean(tripId) });
+  const itineraryQuery = useQuery({
+    ...tripQueries.itinerary(tripId),
+    enabled: Boolean(tripId),
+    ...(pushDestination ? { staleTime: 0, refetchOnMount: "always" as const } : {})
+  });
+  const costsQuery = useQuery({
+    ...tripQueries.costs(tripId),
+    enabled: Boolean(tripId),
+    ...(pushDestination ? { staleTime: 0, refetchOnMount: "always" as const } : {})
+  });
   const bookingsQuery = useQuery({ ...tripQueries.bookings(tripId), enabled: Boolean(tripId) });
   const flightsQuery = useQuery({
     ...tripQueries.flights(tripId, bookingsQuery.data),
@@ -1761,6 +1789,45 @@ export function TripPage() {
   const viewingItineraryIndex = viewingItinerary
     ? itinerary.findIndex((item) => item.id === viewingItinerary.id)
     : -1;
+  useEffect(() => {
+    if (!pushDestination) {
+      handledPushCost.current = null;
+      setNotificationMessage("");
+      return;
+    }
+    const requestKey = `${tripId}:${location.key}:${location.search}`;
+    if (handledPushCost.current === requestKey || focusedTravelerId) return;
+    if (pushDestination.kind === "cost") {
+      if (!costsQuery.isSuccess || costsQuery.isFetching) return;
+      const cost = visibleCosts.find((item) => item.id === pushDestination.id);
+      handledPushCost.current = requestKey;
+      setViewingCost(cost ?? null);
+      setCostReturnEventId(null);
+      setCostReturnsToExpenses(false);
+      setNotificationMessage(
+        cost ? "" : "This expense is no longer available, or you no longer have access."
+      );
+    } else if (itineraryQuery.isSuccess && !itineraryQuery.isFetching) {
+      handledPushCost.current = requestKey;
+      setNotificationMessage(
+        visibleItinerary.some((item) => item.id === pushDestination.id)
+          ? ""
+          : "This event is no longer available, or you no longer have access."
+      );
+    }
+  }, [
+    pushDestination,
+    tripId,
+    location.key,
+    location.search,
+    focusedTravelerId,
+    costsQuery.isSuccess,
+    costsQuery.isFetching,
+    itineraryQuery.isSuccess,
+    itineraryQuery.isFetching,
+    visibleCosts,
+    visibleItinerary
+  ]);
   const timelineEntries = useMemo(
     () =>
       buildTripTimelineEntries(
@@ -1814,6 +1881,7 @@ export function TripPage() {
 
   useEffect(() => {
     if (positioned.current || !tripQuery.isSuccess) return;
+    if (pushDestination?.kind === "timeline" && itineraryQuery.isFetching) return;
     if (
       view === "details" &&
       (bookingsQuery.isLoading ||
@@ -1927,6 +1995,8 @@ export function TripPage() {
     notesQuery.isLoading,
     bookingTravelersQuery.isLoading,
     itineraryQuery.isSuccess,
+    itineraryQuery.isFetching,
+    pushDestination,
     location.state,
     location.pathname,
     location.search,
@@ -2116,6 +2186,7 @@ export function TripPage() {
     setCostReturnEventId(null);
     setCostReturnsToExpenses(false);
     if (!returnEventId && returnToExpenses) setShowingExpenses(true);
+    if (pushDestination?.kind === "cost") closeRouteModal(["cost", "notification"]);
   };
   const editTimelineItem = (item: ItineraryItem) => {
     const linkedBooking = item.booking_id
@@ -2262,6 +2333,11 @@ export function TripPage() {
         {tripQuery.isLoading && <LoadingCard />}
         {tripQuery.error && (
           <ErrorCard error={tripQuery.error} title="This trip could not be opened" />
+        )}
+        {notificationMessage && (
+          <p role="status" className="surface-card mt-4 p-4 text-sm">
+            {notificationMessage}
+          </p>
         )}
         {trip && (
           <>
@@ -2824,6 +2900,7 @@ export function TripPage() {
           onClose={closeCostDetails}
           onEdit={() => {
             setViewingCost(null);
+            if (pushDestination?.kind === "cost") closeRouteModal(["cost", "notification"]);
             setCostReturnEventId(null);
             setCostReturnsToExpenses(false);
             setEditingCost(viewingCost);

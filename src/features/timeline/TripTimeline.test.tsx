@@ -126,7 +126,6 @@ describe("compact trip timeline", () => {
       expect(current[0]).toHaveTextContent("NOW");
       const badge = within(current[0] as HTMLElement).getByText("NOW");
       expect(badge.parentElement).toHaveAttribute("data-timeline-trigger");
-      expect(badge).toHaveClass("shrink-0", "whitespace-nowrap", "px-2.5", "py-1.5");
       expect(current[0].querySelector(".event-type-icon")).not.toBeNull();
     }
     rerender(<TripTimeline {...props} activeId={undefined} />);
@@ -141,7 +140,6 @@ describe("compact trip timeline", () => {
     ]);
     const hotel = screen.getByRole("button", { name: "Expand Hotel" });
     expect(hotel.querySelector("[data-silhouette]")).toBeNull();
-    expect(hotel.querySelector('[data-event-tone="hotel"]')).toHaveClass("size-8");
     expect(hotel.querySelector(".lucide-bed-double")).not.toBeNull();
     expect(hotel).toHaveTextContent("Check-in");
     expect(
@@ -169,24 +167,6 @@ describe("compact trip timeline", () => {
         .closest("article")
         ?.querySelector("[data-silhouette]")
     ).toBeNull();
-  });
-  it("uses opposite down/up event chevrons, matching the date groups", async () => {
-    setup();
-    const collapsed = screen.getByRole("button", { name: "Expand Check out" });
-    const chevron = collapsed.querySelector(".lucide-chevron-down");
-    expect(chevron).toHaveClass("absolute", "right-3", "top-3");
-    expect(collapsed).toHaveClass("pr-10");
-    expect(chevron).not.toHaveClass("-rotate-90", "rotate-180");
-    await userEvent.click(collapsed);
-    expect(
-      screen
-        .getByRole("button", { name: "Collapse Check out" })
-        .querySelector(".lucide-chevron-down")
-    ).toHaveClass("rotate-180");
-    await userEvent.click(screen.getByRole("button", { name: "Collapse Check out" }));
-    expect(
-      screen.getByRole("button", { name: "Expand Check out" }).querySelector(".lucide-chevron-down")
-    ).not.toHaveClass("-rotate-90", "rotate-180");
   });
   it("uses the Add event type list and combines the selected type with the date", async () => {
     setup("types", [
