@@ -1,3 +1,4 @@
+import { BookingDisclosure } from "./BookingDetailSections";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Save, UsersRound } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -45,68 +46,83 @@ export function FlightTravelerDetails({
   };
 
   if (!travelers.length) return null;
+  if (query.isLoading)
+    return (
+      <p role="status" className="p-3 text-sm text-muted">
+        Loading passenger details…
+      </p>
+    );
+  if (query.error)
+    return (
+      <p role="alert" className="p-3 text-sm text-danger">
+        Could not load passenger details. Please try again.
+      </p>
+    );
   return (
-    <section className="surface-card mt-5 p-5">
-      <p className="flex items-center gap-2 font-display text-xl font-black">
+    <section className="rounded-xl border border-line bg-surface p-3">
+      <p className="flex items-center gap-2 font-display text-base font-black">
         <UsersRound className="size-5 text-brand" /> Traveler flight details
       </p>
-      <p className="mt-2 text-sm text-muted">
-        Seats, boarding groups, and ticket numbers are entered manually and remain sensitive trip
-        data.
-      </p>
-      <div className="mt-4 space-y-3">
+
+      <div className="mt-3 space-y-2">
         {travelers.map((traveler) => {
           const row = byTraveler.get(traveler.id);
           return canEdit ? (
-            <form
-              key={traveler.id}
-              onSubmit={(event) => save(event, traveler.id)}
-              className="rounded-2xl border border-line bg-elevated p-4"
+            <BookingDisclosure
+              key={`${traveler.id}:${row?.seat ?? ""}:${row?.boarding_group ?? ""}:${row?.ticket_number ?? ""}`}
+              title={`${traveler.display_name}${row?.seat ? ` · Seat ${row.seat}` : ""}${row?.boarding_group ? ` · Group ${row.boarding_group}` : ""}`}
+              hint={
+                row?.ticket_number ? `Ticket ${row.ticket_number} · Edit` : "Edit passenger details"
+              }
             >
-              <p className="text-lg font-extrabold">{traveler.display_name}</p>
-              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-[7rem_8rem_minmax(0,1fr)_auto]">
-                <label className="form-label text-xs">
-                  Seat
-                  <input
-                    className="form-input"
-                    name="seat"
-                    defaultValue={row?.seat ?? ""}
-                    placeholder="Enter the seat printed on the boarding pass"
-                  />
-                </label>
-                <label className="form-label text-xs">
-                  Boarding group
-                  <input
-                    className="form-input"
-                    name="boardingGroup"
-                    defaultValue={row?.boarding_group ?? ""}
-                    placeholder="Enter the boarding group, if provided"
-                  />
-                </label>
-                <label className="form-label col-span-2 text-xs sm:col-span-1">
-                  Ticket number
-                  <input
-                    className="form-input"
-                    name="ticketNumber"
-                    defaultValue={row?.ticket_number ?? ""}
-                    placeholder="Enter the passenger ticket number"
-                  />
-                </label>
-                <button
-                  className="secondary-button self-end"
-                  disabled={mutation.isPending}
-                  aria-label={`Save flight details for ${traveler.display_name}`}
-                >
-                  {mutation.isPending ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Save className="size-4" />
-                  )}
-                </button>
-              </div>
-            </form>
+              <form
+                onSubmit={(event) => save(event, traveler.id)}
+                className="rounded-lg bg-surface"
+              >
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-[7rem_8rem_minmax(0,1fr)_auto]">
+                  <label className="form-label text-xs">
+                    Seat
+                    <input
+                      className="form-input"
+                      name="seat"
+                      defaultValue={row?.seat ?? ""}
+                      placeholder="Enter the seat printed on the boarding pass"
+                    />
+                  </label>
+                  <label className="form-label text-xs">
+                    Boarding group
+                    <input
+                      className="form-input"
+                      name="boardingGroup"
+                      defaultValue={row?.boarding_group ?? ""}
+                      placeholder="Enter the boarding group, if provided"
+                    />
+                  </label>
+                  <label className="form-label col-span-2 text-xs sm:col-span-1">
+                    Ticket number
+                    <input
+                      className="form-input"
+                      name="ticketNumber"
+                      defaultValue={row?.ticket_number ?? ""}
+                      placeholder="Enter the passenger ticket number"
+                    />
+                  </label>
+                  <button
+                    className="secondary-button self-end"
+                    disabled={mutation.isPending}
+                    aria-label={`Save flight details for ${traveler.display_name}`}
+                  >
+                    {mutation.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Save className="size-4" />
+                    )}
+                  </button>
+                </div>
+              </form>
+            </BookingDisclosure>
           ) : (
-            <article key={traveler.id} className="rounded-2xl border border-line bg-elevated p-4">
+            <article key={traveler.id} className="rounded-lg bg-surface">
               <p className="text-lg font-extrabold">{traveler.display_name}</p>
               <p className="mt-2 text-sm text-muted">
                 Seat {row?.seat || "—"} · {row?.boarding_group || "Boarding group —"}

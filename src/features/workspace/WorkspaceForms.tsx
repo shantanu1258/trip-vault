@@ -401,6 +401,21 @@ export function EditBookingForm({
     try {
       const preservedBookingDetails = { ...booking.details };
       delete preservedBookingDetails.notes;
+      if (isHotel) {
+        const roomCount = String(form.get("roomCount") ?? "").trim();
+        if (roomCount && (!Number.isSafeInteger(Number(roomCount)) || Number(roomCount) < 1)) {
+          setMessage("Number of rooms must be a whole number of at least 1.");
+          return;
+        }
+        for (const key of ["room_type", "room_count", "lead_guest"]) {
+          delete preservedBookingDetails[key];
+        }
+        const roomType = String(form.get("roomType") ?? "").trim();
+        const leadGuest = String(form.get("leadGuest") ?? "").trim();
+        if (roomType) preservedBookingDetails.room_type = roomType;
+        if (roomCount) preservedBookingDetails.room_count = Number(roomCount);
+        if (leadGuest) preservedBookingDetails.lead_guest = leadGuest;
+      }
       mutation.mutate({
         ...parsed.data,
         provider: isHotel ? parsed.data.title : parsed.data.provider,
@@ -482,6 +497,7 @@ export function EditBookingForm({
           )}
           <label className="form-label">
             {booking.type === "flight" ? "Booking reference / PNR" : "Booking reference"}
+            {booking.type === "ferry" && " (optional)"}
             <input
               className="form-input uppercase"
               name="referenceCode"
@@ -537,6 +553,47 @@ export function EditBookingForm({
               />
             </label>
             <BookingMapUrlField booking={booking} />
+            <FormSection>
+              <summary>Room & guest details (optional)</summary>
+              <p className="text-xs text-muted">You can add or update these details later.</p>
+              <label className="form-label">
+                Room type (optional)
+                <input
+                  className="form-input"
+                  name="roomType"
+                  defaultValue={
+                    typeof booking.details.room_type === "string" ? booking.details.room_type : ""
+                  }
+                  placeholder="Room type shown on the confirmation"
+                />
+              </label>
+              <label className="form-label">
+                Number of rooms (optional)
+                <input
+                  className="form-input"
+                  name="roomCount"
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  defaultValue={
+                    typeof booking.details.room_count === "number" ? booking.details.room_count : ""
+                  }
+                  placeholder="How many rooms are reserved"
+                />
+              </label>
+              <label className="form-label">
+                Lead guest (optional)
+                <input
+                  className="form-input"
+                  name="leadGuest"
+                  defaultValue={
+                    typeof booking.details.lead_guest === "string" ? booking.details.lead_guest : ""
+                  }
+                  placeholder="Lead guest shown on the booking"
+                />
+              </label>
+            </FormSection>
           </>
         ) : isJourney ? (
           <>

@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { formatEventTime } from "../features/trips/presentation";
+import { formatEventTime, formatMoney } from "../features/trips/presentation";
 import { tripChildNavigationState } from "../features/trips/navigation";
 import type { Trip } from "../features/trips/types";
 import type { Booking, JourneyLeg } from "../features/workspace/types";
@@ -11,6 +11,9 @@ import type { Booking, JourneyLeg } from "../features/workspace/types";
 const mocks = vi.hoisted(() => ({
   getBooking: vi.fn(),
   getTrip: vi.fn(),
+  listCosts: vi.fn(),
+  listItinerary: vi.fn(),
+  listCabStopsForTrip: vi.fn(),
   listBookingTravelerIds: vi.fn(),
   listJourneyLegTravelers: vi.fn(),
   listJourneyLegsForBooking: vi.fn(),
@@ -22,7 +25,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../components/AppShell", () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</>
 }));
-vi.mock("../features/trips/api", () => ({ getTrip: mocks.getTrip }));
+vi.mock("../features/trips/api", () => ({
+  getTrip: mocks.getTrip,
+  listCosts: mocks.listCosts,
+  listItinerary: mocks.listItinerary,
+  archiveTripCost: vi.fn()
+}));
 vi.mock("../features/sync/localSync", () => ({
   localProfileId: vi.fn().mockResolvedValue("user-1")
 }));
@@ -52,6 +60,8 @@ vi.mock("../features/workspace/EditJourneyLegForm", () => ({
 }));
 vi.mock("../features/workspace/api", () => ({
   archiveBooking: vi.fn(),
+  archiveCabStop: vi.fn(),
+  listCabStopsForTrip: mocks.listCabStopsForTrip,
   getBooking: mocks.getBooking,
   googleMapsDirectionsUrl: vi.fn(() => "https://maps.example/directions"),
   googleMapsSearchUrl: vi.fn(() => "https://maps.example/search"),
@@ -140,6 +150,9 @@ function renderPage(
 }
 
 beforeEach(() => {
+  mocks.listCosts.mockResolvedValue([]);
+  mocks.listItinerary.mockResolvedValue([]);
+  mocks.listCabStopsForTrip.mockResolvedValue([]);
   mocks.listMembers.mockResolvedValue([]);
   mocks.listBookingTravelerIds.mockReset().mockResolvedValue([]);
   mocks.listJourneyLegTravelers.mockReset().mockResolvedValue([]);
@@ -154,17 +167,225 @@ describe("generic journey booking times", () => {
     mocks.listJourneyLegsForBooking.mockResolvedValue([leg]);
   });
 
+  it.each([
+    ["hotel", "Edit hotel"],
+    ["train", "Edit train"],
+    ["bus", "Edit bus"],
+    ["cab", "Edit cab"],
+    ["ferry", "Edit ferry"],
+    ["restaurant", "Edit meal"],
+    ["activity", "Edit activity"],
+    ["transport", "Edit transport"],
+    ["other", "Edit booking"]
+  ])("places the %s edit action beside Back above the summary", async (type, label) => {
+    mocks.getBooking.mockResolvedValue({ ...booking, type });
+    mocks.listMembers.mockResolvedValue([{ user_id: "user-1", role: "owner" }]);
+    renderPage();
+    const edit = await screen.findByRole("button", { name: label });
+    const hero = screen.getByRole("heading", { name: booking.title }).closest("header")!;
+    expect(edit.closest("header")).toBeNull();
+    expect(edit.compareDocumentPosition(hero) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      within(edit.parentElement!).getByRole("link", { name: "Back to trip" })
+    ).toBeInTheDocument();
+    expect(edit).toHaveClass("text-brand", "hover:bg-brand-soft");
+    await userEvent.click(edit);
+    expect(screen.getByRole("region", { name: "Edit booking form" })).toBeInTheDocument();
+  });
+
+  it.each([
+    "hotel",
+    "bus",
+    "train",
+    "ferry",
+    "cab",
+    "transport",
+    "activity",
+    "restaurant",
+    "other"
+  ])("keeps %s cards free of airline-style accent borders", async (type) => {
+    mocks.getBooking.mockResolvedValue({ ...booking, type });
+    renderPage();
+    const heading = await screen.findByRole("heading", { name: booking.title });
+    const hero = heading.closest("header");
+    const reference = screen.getByRole("region", { name: "Booking reference details" });
+    expect(hero).not.toHaveClass("airline-accent-hero");
+    expect(hero?.style.getPropertyValue("--airline-accent")).toBe("");
+    expect(reference).not.toHaveClass("airline-accent-rail");
+    expect(reference.style.getPropertyValue("--airline-accent")).toBe("");
+    expect(hero).toHaveClass("bg-brand", "border-line");
+  });
+
+  it.each([
+    "hotel",
+    "bus",
+    "train",
+    "ferry",
+    "cab",
+    "transport",
+    "activity",
+    "restaurant",
+    "other"
+  ])(
+    "offers navigation in the %s summary even without documents or contact details",
+    async (type) => {
+      mocks.getBooking.mockResolvedValue({
+        ...booking,
+        type,
+        location: { label: "Main entrance" }
+      });
+      renderPage();
+      const action = await screen.findByRole("link", { name: "Navigate to booking location" });
+      expect(action.closest("header")).not.toBeNull();
+      expect(action).toHaveAttribute("href", "https://maps.example/directions");
+      expect(action).toHaveAttribute("target", "_blank");
+      expect(action.querySelector("svg")).not.toBeNull();
+    }
+  );
+
+  it("supports coordinate-only locations in the summary", async () => {
+    mocks.getBooking.mockResolvedValue({
+      ...booking,
+      location: { latitude: 0, longitude: 103.85 }
+    });
+    renderPage();
+    expect(
+      await screen.findByRole("link", { name: "Navigate to booking location" })
+    ).toBeInTheDocument();
+  });
+
+  it("uses the saved map link even when no location label is present", async () => {
+    mocks.getBooking.mockResolvedValue({
+      ...booking,
+      location: { map_url: "https://maps.google.com/?q=hotel" }
+    });
+    renderPage();
+    expect(
+      await screen.findByRole("link", { name: "Navigate to booking location" })
+    ).toHaveAttribute("href", "https://maps.google.com/?q=hotel");
+  });
+
+  it("does not offer summary navigation without a location", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: booking.title });
+    expect(
+      screen.queryByRole("link", { name: "Navigate to booking location" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not count down a date-only booking as if it had a confirmed time", async () => {
+    mocks.listItinerary.mockResolvedValue([
+      { id: "event-1", booking_id: booking.id, timing_mode: "date_only" }
+    ]);
+    renderPage();
+    const heading = await screen.findByRole("heading", { name: booking.title });
+    expect(heading.closest("header")).not.toHaveTextContent(/to departure|Departure time passed/);
+  });
+
+  it("shows cab stops and their costs beside the journey, without an empty essentials card", async () => {
+    mocks.getBooking.mockResolvedValue({ ...booking, type: "cab", reference_code: null });
+    mocks.listJourneyLegsForBooking.mockResolvedValue([{ ...leg, mode: "cab" }]);
+    mocks.listMembers.mockResolvedValue([{ user_id: "user-1", role: "owner" }]);
+    mocks.listCabStopsForTrip.mockResolvedValue([
+      {
+        id: "stop-1",
+        journey_leg_id: leg.id,
+        stop_order: 100,
+        title: "Lunch",
+        location: { label: "Cafe" },
+        arrives_at: null,
+        departs_at: null,
+        timezone: leg.origin_timezone,
+        notes: "Vegetarian options",
+        linked_itinerary_item_id: null
+      }
+    ]);
+    mocks.listCosts.mockResolvedValue([
+      {
+        id: "lunch-cost",
+        trip_id: trip.id,
+        booking_id: booking.id,
+        cab_stop_id: "stop-1",
+        title: "Lunch cost",
+        amount_minor: 50000,
+        currency_code: "INR",
+        payment_status: "paid"
+      }
+    ]);
+    renderPage();
+    const stop = await screen.findByRole("listitem", { name: "Cab stop 1: Lunch" });
+    expect(stop).toBeVisible();
+    expect(within(stop).getByText(formatMoney(50000, "INR"))).toBeVisible();
+    expect(within(stop).getByText("Vegetarian options")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add stop" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Booking essentials" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Edit Lunch" }));
+    expect(screen.getByRole("form", { name: "Edit cab stop" })).toBeVisible();
+  });
+
+  it("shows saved room and lead guest information and allows editing it", async () => {
+    mocks.getBooking.mockResolvedValue({
+      ...booking,
+      type: "hotel",
+      details: { room_type: "Family suite", room_count: 2, lead_guest: "Asha" }
+    });
+    mocks.listJourneyLegsForBooking.mockResolvedValue([]);
+    mocks.listMembers.mockResolvedValue([{ user_id: "user-1", role: "owner" }]);
+    renderPage();
+    await userEvent.click(await screen.findByText("Room & guest details"));
+    expect(screen.getAllByText("Family suite").length).toBeGreaterThan(0);
+    expect(screen.getByText("Asha")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Booking essentials" })).getByText("2")
+    ).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Edit stay details" }));
+    expect(screen.getByRole("region", { name: "Edit booking form" })).toBeInTheDocument();
+  });
+
+  it.each(["FERRY-42", null])(
+    "shows a ferry booking reference only when present: %s",
+    async (reference) => {
+      mocks.getBooking.mockResolvedValue({ ...booking, type: "ferry", reference_code: reference });
+      mocks.listJourneyLegsForBooking.mockResolvedValue([{ ...leg, mode: "ferry" }]);
+      renderPage();
+      await screen.findByRole("article");
+      if (reference) {
+        expect(screen.getByText("Booking reference")).toBeVisible();
+        expect(screen.getByText(reference)).toBeVisible();
+      } else {
+        expect(screen.queryByText("Booking reference")).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole("region", { name: "Booking essentials" })
+        ).not.toBeInTheDocument();
+      }
+    }
+  );
+
+  it.each([
+    ["hotel", "Check-in", "Check-out"],
+    ["activity", "Entry", "Ends"],
+    ["restaurant", "Reservation", "Ends"],
+    ["other", "Starts", "Ends"],
+    ["transport", "Starts", "Ends"]
+  ] as const)("uses useful schedule labels for %s bookings", async (type, startLabel, endLabel) => {
+    mocks.getBooking.mockResolvedValue({ ...booking, type, provider: booking.title });
+    mocks.listJourneyLegsForBooking.mockResolvedValue([]);
+    renderPage();
+    expect(await screen.findByText(startLabel)).toBeInTheDocument();
+    expect(screen.getByText(endLabel)).toBeInTheDocument();
+    expect(screen.getAllByText(booking.title)).toHaveLength(1);
+    if (type === "hotel") expect(screen.getByText("1 day · 0 nights")).toBeInTheDocument();
+  });
+
   it("formats the booking end in the final destination time zone", async () => {
     renderPage();
 
     const expected = formatEventTime(booking.end_at!, leg.destination_timezone);
     const departureZoneValue = formatEventTime(booking.end_at!, booking.source_timezone!);
-    await waitFor(() => {
-      const endsCard = screen.getByText("Ends").closest("div");
-      expect(endsCard).not.toBeNull();
-      expect(within(endsCard!).getByText(expected)).toBeInTheDocument();
-      expect(within(endsCard!).queryByText(departureZoneValue)).not.toBeInTheDocument();
-    });
+    const journey = await screen.findByRole("article");
+    expect(journey).toHaveTextContent(expected);
+    expect(journey).not.toHaveTextContent(departureZoneValue);
+    expect(screen.queryByText("Ends")).not.toBeInTheDocument();
   });
 
   it("returns to the Trip details tab when that is where the booking was opened", async () => {
@@ -185,7 +406,7 @@ describe("generic journey booking times", () => {
     renderPage();
 
     expect(await screen.findByText(/Arrival not added/)).toBeInTheDocument();
-    expect(screen.getByText("Duration not available")).toBeInTheDocument();
+    expect(screen.getByText(/Duration not available/)).toBeInTheDocument();
   });
 
   it("hydrates only the travelers selected for this booking and shows their individual ticket details", async () => {
@@ -223,7 +444,8 @@ describe("generic journey booking times", () => {
     resolveTravelerIds([shantanu.id]);
 
     expect(await screen.findByText("Traveler journey details")).toBeInTheDocument();
-    expect(screen.getAllByText(/Shantanu.*Seat 5.*85854178/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Shantanu/).closest("article")).toHaveTextContent("Seat 5");
+    expect(screen.getByText(/Shantanu/).closest("article")).toHaveTextContent("85854178");
     expect(screen.queryByText(/Rahul/)).not.toBeInTheDocument();
   });
 });
@@ -258,21 +480,22 @@ describe("booking detail card interactions", () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect(await screen.findByRole("button", { name: "Edit Starts" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Edit journey connection 1" })
+    ).toBeInTheDocument();
+    await user.click(screen.getByText("Booking & contact"));
     expect(
       screen.getByRole("button", { name: "Edit Booking reference / PNR" })
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit booking source" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit booking contact" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit journey connection 1" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Edit Location" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Location" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit booking notes" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Edit Bus to Dubai" })).toHaveTextContent(
-      "Edit booking"
-    );
+    expect(screen.getByRole("button", { name: "Edit bus" })).toBeInTheDocument();
     expect(document.querySelector("button button, button a, a button, a a")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Edit Starts" }));
+    await user.click(screen.getByRole("button", { name: "Edit Booking reference / PNR" }));
 
     expect(screen.getByRole("region", { name: "Edit booking form" })).toBeInTheDocument();
   });
@@ -301,30 +524,54 @@ describe("booking detail card interactions", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(
-      await screen.findByRole("button", { name: "Upload document for journey connection 1" })
-    );
+    await user.click(await screen.findByRole("button", { name: "Upload" }));
 
     const upload = screen.getByRole("region", { name: "Upload document form" });
     expect(upload).toHaveAttribute("data-journey-leg-id", leg.id);
-    expect(upload).toHaveAttribute("data-context-title", "DEL to DXB");
+    expect(upload).toHaveAttribute("data-context-title", "Delhi → Dubai");
+    expect(
+      screen.queryByRole("button", { name: "Upload document for journey connection 1" })
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Edit journey leg form" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Edit booking form" })).not.toBeInTheDocument();
     expect(document.querySelector("button button, button a, a button, a a")).toBeNull();
   });
 
+  it.each(["Whole booking", "Connection 2: Dubai → Abu Dhabi"])(
+    "chooses %s through the single Documents upload action",
+    async (target) => {
+      mocks.listJourneyLegsForBooking.mockResolvedValue([
+        leg,
+        {
+          ...leg,
+          id: "leg-2",
+          segment_order: 1,
+          origin_name: "Dubai",
+          destination_name: "Abu Dhabi"
+        }
+      ]);
+      renderPage();
+      await userEvent.click(await screen.findByRole("button", { name: "Upload" }));
+      await userEvent.click(screen.getByRole("button", { name: target }));
+      const upload = screen.getByRole("region", { name: "Upload document form" });
+      if (target === "Whole booking") expect(upload).not.toHaveAttribute("data-journey-leg-id");
+      else expect(upload).toHaveAttribute("data-journey-leg-id", "leg-2");
+    }
+  );
+
   it("keeps copy, booking-site, phone, and map actions independent from editing", async () => {
     const user = userEvent.setup();
     renderPage();
 
+    await user.click(await screen.findByText("Booking & contact"));
     await screen.findByRole("button", { name: "Edit booking contact" });
     const independentActions = [
       screen.getByRole("button", { name: "Copy Booking reference / PNR" }),
       screen.getByRole("link", { name: "Travel vendor →" }),
       screen.getByRole("link", { name: "Call" }),
       screen.getByRole("link", { name: "WhatsApp" }),
-      screen.getByRole("link", { name: "Open in Maps" }),
-      screen.getByRole("link", { name: "Directions" }),
+      screen.getByRole("link", { name: "Navigate to Terminal Road, Delhi" }),
+      screen.getByRole("link", { name: "WhatsApp provider" }),
       screen.getByRole("button", { name: "Copy address" })
     ];
 
@@ -353,7 +600,22 @@ describe("booking detail card interactions", () => {
     expect(
       screen.getByRole("button", { name: "Copy Booking reference / PNR" })
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Call" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open in Maps" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Call provider" })).toBeInTheDocument();
+    for (const name of ["Call provider", "WhatsApp provider", "Navigate to booking location"]) {
+      const action = screen.getByRole("link", { name });
+      expect(action).toHaveAttribute("title", name);
+      expect(action).toHaveClass("hero-shortcut");
+      expect(action.querySelector("span")).toHaveClass("hidden", "md:inline");
+      expect(action.querySelector("svg")).not.toBeNull();
+    }
+    expect(screen.getByRole("link", { name: "Navigate to Terminal Road, Delhi" })).toHaveAttribute(
+      "href",
+      "https://maps.example/directions"
+    );
+    expect(screen.queryByRole("link", { name: "Open in Maps" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Directions" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "WhatsApp provider" }).querySelector("svg")
+    ).not.toBeNull();
   });
 });

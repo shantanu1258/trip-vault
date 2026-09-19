@@ -23,7 +23,7 @@ function assignedTravelerIds(document: VaultDocument) {
       : [];
 }
 
-function travelerGroup(document: VaultDocument, travelers: Traveler[]) {
+export function travelerGroup(document: VaultDocument, travelers: Traveler[]) {
   const ids = [...assignedTravelerIds(document)].sort();
   if (!ids.length)
     return document.assignment_mode === "unassigned"
@@ -191,26 +191,6 @@ export function EventDocuments({
           <Paperclip className="size-4" /> {visibleLinks.length} document
           {visibleLinks.length === 1 ? "" : "s"}
         </p>
-        {canEdit && (
-          <div className="flex flex-wrap items-center gap-1 sm:flex-nowrap">
-            {onUpload && (
-              <button
-                type="button"
-                onClick={onUpload}
-                className="tap-target inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-xs font-extrabold text-brand"
-              >
-                <FilePlus2 className="size-4" /> Upload new
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setPicking(true)}
-              className="tap-target inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-xs font-extrabold text-brand"
-            >
-              <Paperclip className="size-4" /> Attach existing
-            </button>
-          </div>
-        )}
       </div>
       {visibleLinks.length > 0 && (
         <div className="mt-3 space-y-3">
@@ -292,6 +272,37 @@ export function EventDocuments({
               )}
             </section>
           ))}
+        </div>
+      )}
+      {!visibleLinks.length && !linksQuery.isLoading && (
+        <p className="mt-3 text-sm text-muted">No documents attached yet.</p>
+      )}
+      {canEdit && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {onUpload && (
+            <button
+              type="button"
+              onClick={onUpload}
+              className={
+                visibleLinks.length
+                  ? "tap-target inline-flex items-center gap-1.5 rounded-lg px-2 text-xs font-bold text-brand hover:bg-brand-soft"
+                  : "primary-button text-sm"
+              }
+            >
+              <FilePlus2 aria-hidden="true" className="size-4" /> Upload new
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setPicking(true)}
+            className={
+              visibleLinks.length
+                ? "tap-target inline-flex items-center gap-1.5 rounded-lg px-2 text-xs font-bold text-brand hover:bg-brand-soft"
+                : "secondary-button text-sm"
+            }
+          >
+            <Paperclip aria-hidden="true" className="size-4" /> Attach existing
+          </button>
         </div>
       )}
       {picking && (

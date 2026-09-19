@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -924,6 +924,40 @@ describe("Upload document flow", () => {
     );
   });
 
+  it.each(["FERRY-84", ""])(
+    "lets a ferry reference be updated or cleared: %s",
+    async (reference) => {
+      const queryClient = new QueryClient({
+        defaultOptions: { mutations: { retry: false }, queries: { retry: false } }
+      });
+      const user = userEvent.setup();
+      render(
+        <MemoryRouter>
+          <QueryClientProvider client={queryClient}>
+            <EditBookingForm
+              trip={trip}
+              booking={booking("ferry")}
+              travelers={travelers}
+              selectedTravelerIds={[]}
+              onClose={vi.fn()}
+            />
+          </QueryClientProvider>
+        </MemoryRouter>
+      );
+      const field = screen.getByLabelText("Booking reference (optional)");
+      expect(field).not.toBeRequired();
+      expect(field).toHaveValue("ABC123");
+      await user.clear(field);
+      if (reference) await user.type(field, reference);
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() =>
+        expect(mocks.updateBooking).toHaveBeenCalledWith(
+          expect.objectContaining({ id: "booking-ferry", referenceCode: reference })
+        )
+      );
+    }
+  );
+
   it("does not let a flight edit remove its required PNR", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { mutations: { retry: false }, queries: { retry: false } }
@@ -1136,6 +1170,82 @@ describe("Upload document flow", () => {
     );
     expect(mocks.updateBooking).not.toHaveBeenCalled();
   });
+
+  it.each(["add", "edit", "clear", "invalid"])(
+    "can %s optional hotel room details later without losing metadata",
+    async (action) => {
+      const user = userEvent.setup();
+      const existing = {
+        ...booking("hotel"),
+        details: {
+          custom_instruction: "Keep this",
+          notes: "Late arrival",
+          ...(action === "add"
+            ? {}
+            : { room_type: "Family suite", room_count: 2, lead_guest: "Asha" })
+        }
+      };
+      mocks.listItinerary.mockResolvedValue([
+        hotelMilestone("hotel_check_in"),
+        hotelMilestone("hotel_check_out")
+      ]);
+      render(
+        <MemoryRouter>
+          <QueryClientProvider
+            client={
+              new QueryClient({
+                defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+              })
+            }
+          >
+            <EditBookingForm
+              trip={trip}
+              booking={existing}
+              travelers={travelers}
+              selectedTravelerIds={[]}
+              onClose={vi.fn()}
+            />
+          </QueryClientProvider>
+        </MemoryRouter>
+      );
+      await screen.findByLabelText("Check-in date");
+      const roomType = screen.getByLabelText("Room type (optional)");
+      const roomCount = screen.getByLabelText("Number of rooms (optional)");
+      const leadGuest = screen.getByLabelText("Lead guest (optional)");
+      expect(roomType).toHaveValue(action === "add" ? "" : "Family suite");
+      expect(roomCount).toHaveValue(action === "add" ? null : 2);
+      expect(leadGuest).toHaveValue(action === "add" ? "" : "Asha");
+      await user.clear(roomType);
+      await user.clear(roomCount);
+      await user.clear(leadGuest);
+      if (action !== "clear") {
+        await user.type(roomType, "Twin room");
+        await user.type(roomCount, action === "invalid" ? "1.5" : "3");
+        await user.type(leadGuest, "Ravi");
+      }
+      fireEvent.submit(screen.getByRole("button", { name: "Save changes" }).closest("form")!);
+      if (action === "invalid") {
+        expect(await screen.findByRole("alert")).toHaveTextContent(
+          "Number of rooms must be a whole number"
+        );
+        expect(mocks.saveHotelStay).not.toHaveBeenCalled();
+      } else {
+        await waitFor(() =>
+          expect(mocks.saveHotelStay).toHaveBeenCalledWith(
+            expect.objectContaining({
+              notes: "Late arrival",
+              bookingDetails: {
+                custom_instruction: "Keep this",
+                ...(action === "clear"
+                  ? {}
+                  : { room_type: "Twin room", room_count: 3, lead_guest: "Ravi" })
+              }
+            })
+          )
+        );
+      }
+    }
+  );
 
   it("preserves a planned booking and an explicit selected-all traveler scope", async () => {
     const queryClient = new QueryClient({

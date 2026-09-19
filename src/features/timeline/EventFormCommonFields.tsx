@@ -46,7 +46,7 @@ const bookingLabels: Partial<
   },
   ferry: {
     provider: "Ferry operator",
-    reference: "Seller order / reference",
+    reference: "Booking reference",
     phone: "Operator or support phone"
   },
   cab: {
@@ -194,13 +194,38 @@ export function ReservationStateFields({
   );
 }
 
+export function BookingReferenceField({
+  type,
+  required = false
+}: {
+  type: BookableEventType;
+  required?: boolean;
+}) {
+  const labels = bookingLabels[type] ?? bookingLabels.custom!;
+  return (
+    <label className="form-label">
+      {labels.reference}
+      {required ? <RequiredMark /> : " (optional)"}
+      <input
+        className="form-input uppercase"
+        name="referenceCode"
+        maxLength={160}
+        placeholder="Enter the reference shown on the confirmation"
+        required={required}
+      />
+    </label>
+  );
+}
+
 export function BookingFields({
   type,
   referenceRequired = false,
+  hideReference = false,
   hideProvider = false
 }: {
   type: BookableEventType;
   referenceRequired?: boolean;
+  hideReference?: boolean;
   hideProvider?: boolean;
 }) {
   const labels = bookingLabels[type] ?? bookingLabels.custom!;
@@ -222,17 +247,7 @@ export function BookingFields({
             />
           </label>
         )}
-        <label className="form-label">
-          {labels.reference}
-          {referenceRequired ? <RequiredMark /> : " (optional)"}
-          <input
-            className="form-input uppercase"
-            name="referenceCode"
-            maxLength={160}
-            placeholder="Enter the reference shown on the confirmation"
-            required={referenceRequired}
-          />
-        </label>
+        {!hideReference && <BookingReferenceField type={type} required={referenceRequired} />}
         <label className="form-label">
           Booked via
           <VendorPicker onWebsite={setWebsite} />

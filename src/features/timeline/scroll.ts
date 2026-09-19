@@ -67,7 +67,7 @@ export function scrollTimelineEventIntoView(eventId: string, behavior: ScrollBeh
   const topInset = Math.max(
     104,
     // Reserve the shown header height even when it is translated offscreen:
-    // scrolling upward to the target immediately reveals both bars.
+    // scrolling upward reveals the main header above the persistent trip tabs.
     (stickyHeader?.getBoundingClientRect().height ||
       stickyHeader?.getBoundingClientRect().bottom ||
       0) +
@@ -117,7 +117,7 @@ export function revealExpandedTimelineEvent(eventId: string) {
     });
   if (rect.top >= visibleTop && rect.bottom <= visibleBottom) return false;
 
-  // An upward scroll reveals the bars again, so reserve their shown heights.
+  // An upward scroll reveals the main header again; reserve it and the persistent tabs.
   const settledTop = viewportTop + (header?.height ?? 0) + (tabs?.height ?? 0) + gap;
   const availableHeight = Math.max(0, visibleBottom - settledTop);
   const delta =

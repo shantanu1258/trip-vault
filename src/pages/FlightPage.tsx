@@ -1,11 +1,13 @@
+import { BookingDisclosure, BookingDocuments } from "../features/workspace/BookingDetailSections";
+import { BookingCosts } from "../features/workspace/BookingCosts";
 import { FormSection } from "../components/FormSection";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Armchair,
   Clock3,
   FileText,
-  FileUp,
+  LocateFixed,
   Luggage,
+  Pencil,
   Phone,
   Plane,
   Plus,
@@ -21,20 +23,19 @@ import { DocumentVisibilityBadge } from "../components/DocumentVisibilityBadge";
 import { ModalSheet } from "../components/ModalSheet";
 import { ErrorCard, LoadingCard } from "../components/TripUi";
 import { isoToLocalDateTime, localDateTimeToIso } from "../features/trips/validation";
-import { getErrorMessage } from "../features/trips/presentation";
+import { formatEventTime, getErrorMessage } from "../features/trips/presentation";
 import {
   getBooking,
   getFlightLeg,
+  googleMapsDirectionsUrl,
   listBookingTravelerIds,
   listFlightLegsForBooking,
-  listFlightTravelers,
   listTripAirlines,
   updateFlightLeg
 } from "../features/workspace/api";
 import {
   delayMinutes,
   flightCountdown,
-  flightSeatLabels,
   primaryFlightDocument,
   resolveBoardingInstant,
   toDateTimeLocal,
@@ -108,17 +109,19 @@ export function FlightPage() {
     queryFn: () => listBookingTravelerIds(flight!.booking_id, tripId),
     enabled: Boolean(flight?.booking_id && tripId)
   });
-  const flightTravelersQuery = useQuery({
-    queryKey: ["flight-travelers", flightLegId],
-    queryFn: () => listFlightTravelers(flightLegId),
-    enabled: Boolean(flightLegId)
-  });
   const connectionsQuery = useQuery({
     queryKey: ["flight-legs", tripId, flight?.booking_id],
     queryFn: () => listFlightLegsForBooking(flight!.booking_id, tripId),
     enabled: Boolean(flight?.booking_id && tripId)
   });
   const booking = bookingQuery.data;
+  const hasNavigationLocation = Boolean(
+    booking?.location?.map_url ||
+    booking?.location?.address ||
+    booking?.location?.label ||
+    (typeof booking?.location?.latitude === "number" &&
+      typeof booking?.location?.longitude === "number")
+  );
   const showTimeZoneControls = (booking?.journey_scope ?? flight?.journey_scope) !== "domestic";
   const role = membersQuery.data?.find((member) => member.user_id === userId)?.role;
   const editable = role === "owner" || role === "editor";
@@ -153,14 +156,10 @@ export function FlightPage() {
       )
     : null;
   const bookingTravelerIds = bookingTravelersQuery.data ?? [];
-  const bookingTravelers = bookingTravelerIds.length
-    ? (travelersQuery.data ?? []).filter((traveler) => bookingTravelerIds.includes(traveler.id))
-    : (travelersQuery.data ?? []);
-  const seats = flightSeatLabels(
-    bookingTravelers,
-    flightTravelersQuery.data ?? [],
-    focusedTravelerId
-  );
+  const bookingTravelers =
+    booking?.participant_scope === "selected" || bookingTravelerIds.length > 0
+      ? (travelersQuery.data ?? []).filter((traveler) => bookingTravelerIds.includes(traveler.id))
+      : (travelersQuery.data ?? []);
   const dayOffset = flight
     ? arrivalDayOffset(
         flight.scheduled_departure_at,
@@ -305,82 +304,86 @@ export function FlightPage() {
   return (
     <AppShell>
       <div className="mx-auto min-w-0 max-w-4xl">
-        <TripBackLink {...returnNavigation} />
+        <div className="flex items-center justify-between gap-3">
+          <TripBackLink {...returnNavigation} />
+          {flight && editable && (
+            <button
+              type="button"
+              onClick={() => openEditor("status")}
+              className="tap-target inline-flex shrink-0 items-center gap-2 rounded-lg px-2 text-sm font-bold text-brand hover:bg-brand-soft"
+            >
+              <Pencil aria-hidden="true" className="size-4" /> Edit flight
+            </button>
+          )}
+        </div>
         {flightQuery.isLoading && <LoadingCard label="Loading flight" />}
         {flightQuery.error && <ErrorCard error={flightQuery.error} />}
         {flight && (
           <>
             <section
               style={airlineStyle}
-              className={`airline-accent-hero page-enter mt-5 overflow-hidden rounded-3xl border shadow-focus ${flight.status === "cancelled" ? "border-danger bg-danger text-white" : flight.status === "delayed" ? "border-warning bg-brand text-surface" : "border-line bg-brand text-surface"}`}
+              className={`airline-accent-hero page-enter mt-3 overflow-hidden rounded-xl border shadow-focus ${flight.status === "cancelled" ? "border-danger bg-danger text-white" : flight.status === "delayed" ? "border-warning bg-brand text-surface" : "border-line bg-brand text-surface"}`}
             >
-              <div className="p-6 sm:p-8">
+              <div className="p-4">
                 <div className="flex items-center justify-between">
                   <span className="rounded-full bg-surface/10 px-3 py-1.5 text-xs font-black uppercase tracking-[.14em]">
                     {flight.status.replace("_", " ")}
                   </span>
                   <Plane className="size-6" />
                 </div>
-                <div className="mt-7 flex items-end justify-between gap-6">
+                <div className="mt-3 flex items-end justify-between gap-6">
                   <div>
                     <p className="flex items-center gap-2 text-sm font-bold text-surface/65">
                       <span className="airline-accent-dot" aria-hidden="true" />
                       {flight.airline_name} · {flight.flight_number}
                     </p>
-                    <h1 className="mt-2 font-display text-4xl font-black tracking-[-.045em]">
+                    <h1 className="mt-2 break-words font-display text-2xl font-black tracking-[-.045em]">
                       {fullRoute}
                     </h1>
                   </div>
                 </div>
                 {connectionLegs.length > 1 && (
-                  <div className="mt-5">
+                  <div className="mt-3">
                     <p className="text-[.65rem] font-black uppercase tracking-[.14em] text-surface/55">
                       Connected journey
                     </p>
-                    <div className="mt-2 flex gap-2 overflow-auto pb-1">
+                    <nav
+                      aria-label="Flight connections"
+                      className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-surface/10 p-1"
+                    >
                       {connectionLegs.map((leg) => {
                         const legAirline = airlineForFlight(leg, airlinesQuery.data ?? []);
+                        const selected = leg.id === flight.id;
                         return (
                           <Link
                             key={leg.id}
                             to={`/trips/${tripId}/flights/${leg.id}`}
-                            state={nestedNavigationState}
+                            state={locationState}
+                            aria-current={selected ? "page" : undefined}
                             style={airlineAccentStyle(legAirline?.brand_color)}
-                            className={`shrink-0 rounded-xl border border-surface/30 bg-surface px-3 py-2 text-xs text-ink shadow-soft ${leg.id === flight.id ? "ring-2 ring-coral/80" : ""}`}
+                            className={`relative min-w-0 rounded-lg px-2 py-2.5 text-center text-xs transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface ${selected ? "bg-surface text-ink shadow-sm after:absolute after:bottom-0 after:left-1/4 after:h-0.5 after:w-1/2 after:rounded-full after:bg-brand" : "text-surface/80 hover:bg-surface/10"}`}
                           >
-                            <strong className="flex items-center gap-2">
-                              <span className="airline-accent-dot" aria-hidden="true" />
+                            <strong className="block break-words text-sm">
                               {leg.departure_airport_code || leg.departure_airport_name} →{" "}
                               {leg.arrival_airport_code || leg.arrival_airport_name}
                             </strong>
-                            <span className="mt-1 block text-muted">
-                              {leg.airline_name} ·{" "}
-                              {leg.id === flight.id
-                                ? "Viewing now"
-                                : leg.segment_order < flight.segment_order
-                                  ? "Earlier leg"
-                                  : "Next leg"}
+                            <span
+                              className={`mt-1 flex items-center justify-center gap-1.5 ${selected ? "text-muted" : "text-surface/80"}`}
+                            >
+                              <span className="airline-accent-dot shrink-0" aria-hidden="true" />
+                              <span className="min-w-0 break-words">{leg.flight_number}</span>
+                            </span>
+                            <span className="sr-only">
+                              {leg.airline_name}
+                              {selected ? " · Selected flight" : " · View flight"}
                             </span>
                           </Link>
                         );
                       })}
-                    </div>
+                    </nav>
                   </div>
                 )}
-                {seats.length > 0 && (
-                  <div className="mt-5 flex flex-wrap items-center gap-2">
-                    <Armchair className="size-4 text-surface/65" />
-                    {seats.map((seat) => (
-                      <span
-                        key={seat.travelerId}
-                        className="rounded-full bg-surface/10 px-3 py-1.5 text-xs font-bold"
-                      >
-                        {seat.travelerName} · {seat.seat ? `Seat ${seat.seat}` : "Seat not added"}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <p className="mt-6 flex items-center gap-2 font-bold">
+                <p className="mt-3 flex items-center gap-2 font-bold">
                   <Clock3 className="size-5" />
                   {flightCountdown(flight)}
                 </p>
@@ -389,66 +392,128 @@ export function FlightPage() {
                     Manual estimate: {delayMinutes(flight)} minutes later than scheduled
                   </p>
                 )}
-                <div className="mt-6 flex flex-wrap gap-2">
-                  {editable && (
-                    <button className="hero-action" onClick={() => openEditor("status")}>
-                      Update flight
-                    </button>
-                  )}
-                  {editable && booking && (
-                    <button className="hero-action" onClick={() => setAddingConnection(true)}>
-                      <Plus className="size-4" /> Add connection
-                    </button>
-                  )}
-                  <SafeExternalAction
-                    className="hero-action"
-                    href={
-                      actionUrl(airline?.tracker_url_template || airline?.status_url_template) ??
-                      trackerUrl(flight.flight_number)
-                    }
-                  >
-                    <Radar className="size-4" /> Public tracker
-                  </SafeExternalAction>
-                  {actionUrl(airline?.check_in_url_template) && (
-                    <SafeExternalAction
-                      className="hero-action"
-                      href={actionUrl(airline?.check_in_url_template)!}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {hasNavigationLocation && (
+                    <a
+                      className="hero-action hero-shortcut"
+                      href={
+                        booking?.location?.map_url || googleMapsDirectionsUrl(booking!.location!)
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label="Navigate to booking location"
+                      title="Navigate to booking location"
                     >
-                      Check in
-                    </SafeExternalAction>
-                  )}
-                  {actionUrl(airline?.manage_booking_url_template) && (
-                    <SafeExternalAction
-                      className="hero-action"
-                      href={actionUrl(airline?.manage_booking_url_template)!}
-                    >
-                      Manage booking
-                    </SafeExternalAction>
+                      <LocateFixed className="size-4" aria-hidden="true" />
+                      <span className="hidden md:inline">Navigate</span>
+                    </a>
                   )}
                   {primary && (
                     <Link
-                      className="hero-action"
+                      className="hero-action hero-shortcut"
                       to={`/trips/${tripId}/documents/${primary.id}`}
                       state={nestedNavigationState}
+                      aria-label={
+                        primary.purpose === "boarding_pass" ? "Open boarding pass" : "Open ticket"
+                      }
+                      title={
+                        primary.purpose === "boarding_pass" ? "Open boarding pass" : "Open ticket"
+                      }
                     >
-                      <FileText className="size-4" /> Open{" "}
-                      {primary.purpose === "boarding_pass" ? "boarding pass" : "ticket"}
-                      <DocumentVisibilityBadge className="ml-1" visibility={primary.visibility} />
+                      <FileText aria-hidden="true" className="size-4" />
+                      <span className="hidden md:inline">
+                        {primary.purpose === "boarding_pass" ? "Open boarding pass" : "Open ticket"}
+                      </span>
                     </Link>
                   )}
                 </div>
               </div>
             </section>
+            <section
+              aria-label="Flight schedule"
+              className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line"
+            >
+              {connectionLegs.length > 1 && (
+                <h2 className="col-span-2 flex items-center gap-2 bg-surface px-3 py-2 text-sm font-bold">
+                  <Plane className="size-4 shrink-0 text-brand" aria-hidden="true" />
+                  <span>
+                    Connection {connectionLegs.findIndex((leg) => leg.id === flight.id) + 1} ·{" "}
+                    {flight.departure_airport_code || flight.departure_airport_name} →{" "}
+                    {flight.arrival_airport_code || flight.arrival_airport_name}
+                  </span>
+                </h2>
+              )}
+              <Info
+                label="Departure"
+                value={formatEventTime(flight.scheduled_departure_at, flight.departure_timezone)}
+                detail={`${flight.departure_airport_name} · ${flight.departure_timezone}`}
+                onEdit={editable ? () => openEditor("scheduledDeparture") : undefined}
+              />
+              <Info
+                label="Arrival"
+                value={`${formatEventTime(flight.scheduled_arrival_at, flight.arrival_timezone)}${dayOffset > 0 ? ` · +${dayOffset} day` : dayOffset < 0 ? ` · ${dayOffset} day` : ""}`}
+                detail={`${flight.arrival_airport_name} · ${flight.arrival_timezone} · ${journeyDuration(flight.scheduled_departure_at, flight.scheduled_arrival_at)}`}
+                onEdit={editable ? () => openEditor("scheduledArrival") : undefined}
+              />
+              <Info
+                label="Boarding"
+                value={
+                  boardingInstant
+                    ? new Intl.DateTimeFormat(undefined, {
+                        timeStyle: "short",
+                        timeZone: flight.departure_timezone
+                      }).format(new Date(boardingInstant))
+                    : "Not added"
+                }
+                detail={[
+                  flight.boarding_at
+                    ? "Exact boarding time"
+                    : flight.boarding_lead_minutes != null
+                      ? `${flight.boarding_lead_minutes} min before departure`
+                      : null,
+                  flight.departure_terminal ? `Terminal ${flight.departure_terminal}` : null,
+                  flight.departure_gate ? `Gate ${flight.departure_gate}` : null
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                onEdit={editable ? () => openEditor("boardingAt") : undefined}
+              />
+              <Info
+                label="Arrival details"
+                value={
+                  flight.arrival_terminal
+                    ? `Terminal ${flight.arrival_terminal}`
+                    : "Terminal not added"
+                }
+                detail={[
+                  flight.arrival_gate ? `Gate ${flight.arrival_gate}` : null,
+                  flight.baggage_claim ? `Baggage ${flight.baggage_claim}` : null
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                onEdit={editable ? () => openEditor("arrivalTerminal") : undefined}
+              />
+            </section>
             {booking && (
               <section
                 style={airlineStyle}
-                className="airline-accent-rail surface-card mt-5 p-5 pl-6"
+                className="airline-accent-rail rounded-xl border border-line bg-surface mt-3 p-3 pl-4"
               >
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <p className="eyebrow">Booking</p>
                     <p className="mt-2 font-display text-xl font-black">
                       PNR {booking.reference_code || "not added"}
+                      {booking.reference_code && (
+                        <button
+                          type="button"
+                          className="ml-2 inline-flex min-h-11 items-center px-2 text-xs font-bold text-brand"
+                          onClick={() => navigator.clipboard.writeText(booking.reference_code!)}
+                          aria-label="Copy PNR"
+                        >
+                          Copy
+                        </button>
+                      )}
                     </p>
                     <p className="mt-1 text-sm text-muted">
                       {booking.journey_scope ? `${booking.journey_scope} · ` : ""}
@@ -491,45 +556,8 @@ export function FlightPage() {
                 )}
               </section>
             )}
-            <section className="mt-5 grid gap-4 sm:grid-cols-2">
-              <Info
-                label="Departure"
-                value={new Intl.DateTimeFormat(undefined, {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                  timeZone: flight.departure_timezone
-                }).format(new Date(flight.scheduled_departure_at))}
-                detail={`${flight.departure_airport_name} · ${flight.departure_timezone}`}
-                onEdit={editable ? () => openEditor("scheduledDeparture") : undefined}
-              />
-              <Info
-                label="Arrival"
-                value={`${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: flight.arrival_timezone }).format(new Date(flight.scheduled_arrival_at))}${dayOffset > 0 ? ` · +${dayOffset} day` : dayOffset < 0 ? ` · ${dayOffset} day` : ""}`}
-                detail={`${flight.arrival_airport_name} · ${flight.arrival_timezone} · ${journeyDuration(flight.scheduled_departure_at, flight.scheduled_arrival_at)}`}
-                onEdit={editable ? () => openEditor("scheduledArrival") : undefined}
-              />
-              <Info
-                label="Boarding"
-                value={
-                  boardingInstant
-                    ? new Intl.DateTimeFormat(undefined, {
-                        timeStyle: "short",
-                        timeZone: flight.departure_timezone
-                      }).format(new Date(boardingInstant))
-                    : "Not added"
-                }
-                detail={`${flight.boarding_at ? "Exact boarding time" : flight.boarding_lead_minutes !== null && flight.boarding_lead_minutes !== undefined ? `${flight.boarding_lead_minutes} min before departure` : "No boarding lead"} · Terminal ${flight.departure_terminal || "—"} · Gate ${flight.departure_gate || "—"}`}
-                onEdit={editable ? () => openEditor("boardingAt") : undefined}
-              />
-              <Info
-                label="Arrival details"
-                value={`Terminal ${flight.arrival_terminal || "—"}`}
-                detail={`Gate ${flight.arrival_gate || "—"} · Baggage ${flight.baggage_claim || "—"}`}
-                onEdit={editable ? () => openEditor("arrivalTerminal") : undefined}
-              />
-            </section>
             {flight.status === "landed" && (
-              <section className="surface-card mt-5 border-success/30 p-5">
+              <section className="mt-3 rounded-xl border border-success/30 bg-surface p-3">
                 <p className="flex items-center gap-2 font-display text-xl font-black">
                   <Luggage className="size-5 text-success" /> Baggage collection
                 </p>
@@ -551,37 +579,75 @@ export function FlightPage() {
                 </div>
               </section>
             )}
-            <section className="surface-card mt-5 min-w-0 overflow-hidden p-5">
-              <p className="eyebrow">Other flight documents</p>
-              <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">
-                {documents
-                  .filter((document) => document.id !== primary?.id)
-                  .map((document) => (
-                    <Link
-                      className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-line bg-elevated p-4 text-sm font-bold"
-                      to={`/trips/${tripId}/documents/${document.id}`}
-                      state={nestedNavigationState}
-                      key={document.id}
+            <div className="mt-3">
+              <BookingDocuments
+                documents={documents}
+                travelers={travelersQuery.data ?? []}
+                focusedTravelerId={focusedTravelerId}
+                navigationState={nestedNavigationState}
+                onUpload={() => setUploading(true)}
+              />
+            </div>
+            <div className="mt-3">
+              {" "}
+              {flight && (
+                <FlightTravelerDetails
+                  tripId={tripId}
+                  flightLegId={flight.id}
+                  travelers={
+                    focusedTravelerId
+                      ? bookingTravelers.filter((traveler) => traveler.id === focusedTravelerId)
+                      : bookingTravelers
+                  }
+                  canEdit={editable}
+                />
+              )}
+            </div>
+            <div className="mt-3 space-y-3">
+              {tripQuery.data && booking && (
+                <BookingCosts
+                  trip={tripQuery.data}
+                  booking={booking}
+                  travelers={travelersQuery.data ?? []}
+                  editable={editable}
+                />
+              )}
+              <BookingDisclosure title="Flight actions" hint="Check in, track or manage">
+                <div className="flex flex-wrap gap-2">
+                  {editable && booking && (
+                    <button className="secondary-button" onClick={() => setAddingConnection(true)}>
+                      <Plus className="size-4" /> Add connection
+                    </button>
+                  )}
+                  <SafeExternalAction
+                    className="secondary-button"
+                    href={
+                      actionUrl(airline?.tracker_url_template || airline?.status_url_template) ??
+                      trackerUrl(flight.flight_number)
+                    }
+                  >
+                    <Radar className="size-4" /> Public tracker
+                  </SafeExternalAction>
+                  {actionUrl(airline?.check_in_url_template) && (
+                    <SafeExternalAction
+                      className="secondary-button"
+                      href={actionUrl(airline?.check_in_url_template)!}
                     >
-                      <span className="flex min-w-0 max-w-full items-start gap-2">
-                        <span className="min-w-0 flex-1 whitespace-normal break-words [overflow-wrap:anywhere]">
-                          {document.title}
-                        </span>
-                        <DocumentVisibilityBadge visibility={document.visibility} />
-                      </span>
-                      <span className="mt-1 block text-xs capitalize text-muted">
-                        {document.purpose.replace("_", " ")}
-                      </span>
-                    </Link>
-                  ))}
-                {documents.length === 0 && (
-                  <p className="text-sm text-muted">
-                    No relevant ticket, boarding pass, or baggage tag is attached yet.
-                  </p>
-                )}
-              </div>
-            </section>
-            <p className="mt-4 flex items-center gap-2 text-xs text-muted">
+                      Check in
+                    </SafeExternalAction>
+                  )}
+                  {actionUrl(airline?.manage_booking_url_template) && (
+                    <SafeExternalAction
+                      className="secondary-button"
+                      href={actionUrl(airline?.manage_booking_url_template)!}
+                    >
+                      Manage booking
+                    </SafeExternalAction>
+                  )}
+                </div>
+              </BookingDisclosure>
+            </div>
+            <p className="mt-3 flex items-center gap-2 text-xs text-muted">
               <UserRound className="size-4" /> Updated by a traveler ·{" "}
               {new Intl.DateTimeFormat(undefined, {
                 dateStyle: "medium",
@@ -599,7 +665,7 @@ export function FlightPage() {
               setEditing(false);
             }}
           >
-            <form className="mt-6 space-y-5" onSubmit={submit}>
+            <form className="mt-3 space-y-5" onSubmit={submit}>
               <label className="form-label">
                 Status
                 <select
@@ -784,28 +850,6 @@ export function FlightPage() {
             </form>
           </ModalSheet>
         )}
-        {flight && (
-          <FlightTravelerDetails
-            tripId={tripId}
-            flightLegId={flight.id}
-            travelers={
-              focusedTravelerId
-                ? bookingTravelers.filter((traveler) => traveler.id === focusedTravelerId)
-                : bookingTravelers
-            }
-            canEdit={editable}
-          />
-        )}
-        {flight && tripQuery.data && (
-          <button
-            type="button"
-            onClick={() => setUploading(true)}
-            className="secondary-button mt-4"
-          >
-            <FileUp className="size-4" />{" "}
-            {editable ? "Upload flight document" : "Upload my private document"}
-          </button>
-        )}
         {uploading && flight && tripQuery.data && (
           <UploadDocumentForm
             trip={tripQuery.data}
@@ -846,19 +890,19 @@ function Info({
   const content = (
     <>
       <span className="eyebrow block">{label}</span>
-      <span className="mt-2 block font-display text-lg font-black">{value}</span>
-      <span className="mt-2 block text-sm text-muted">{detail}</span>
+      <span className="mt-1 block font-display text-base font-black">{value}</span>
+      <span className="mt-1 block break-words text-xs text-muted">{detail}</span>
     </>
   );
-  if (!onEdit) return <div className="surface-card p-5">{content}</div>;
+  if (!onEdit) return <div className="bg-surface p-3">{content}</div>;
   return (
     <button
       type="button"
       onClick={onEdit}
-      className="surface-card group w-full p-5 text-left transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft focus-visible:ring-2 focus-visible:ring-brand"
+      className="group w-full bg-surface p-3 text-left hover:bg-elevated focus-visible:ring-2 focus-visible:ring-brand"
     >
       {content}
-      <span className="mt-4 block text-xs font-extrabold text-brand">Edit details</span>
+      <span className="sr-only">Edit details</span>
     </button>
   );
 }

@@ -60,6 +60,8 @@ import {
   sortTimelineItems
 } from "../features/timeline/model";
 import { preferredScrollBehavior, scrollTimelineEventIntoView } from "../features/timeline/scroll";
+import { restoreTripReturnScroll } from "../features/trips/returnScroll";
+import { TripChildLink } from "../components/TripChildLink";
 import {
   archiveItineraryItem,
   archiveTripCost,
@@ -97,7 +99,10 @@ import {
   isTripNavigationIntentConsumed,
   readTripEntry,
   readTripNavigationIntent,
+  readTripReturnContext,
   tripChildNavigationState,
+  tripChildScrollState,
+  tripReturnNavigation,
   tripEntryNavigationState,
   tripIntentNavigationState,
   tripRouteModalNavigationState,
@@ -107,6 +112,7 @@ import { CostDetailsSheet, TripExpensesSheet } from "../features/trips/TripExpen
 import { TripDetailsView } from "../features/trips/TripDetailsView";
 import { ReadinessProgress } from "../features/trips/TripReadinessSummary";
 import { TripTimeline, type TimelineHandle } from "../features/timeline/TripTimeline";
+import { TripViewTabs } from "../features/trips/TripViewTabs";
 import { RequirementDetailsSheet } from "../features/readiness/RequirementDetailsSheet";
 import { localProfileId } from "../features/sync/localSync";
 import { suppressRealtimeRefresh } from "../features/sync/RealtimeRefresh";
@@ -362,7 +368,7 @@ function FlightTravelerSummary({
   const rows = flightTravelers
     .filter((row) => row.flight_leg_id === flightLegId)
     .filter((row) => !focusedTravelerId || row.traveler_id === focusedTravelerId)
-    .filter((row) => row.seat || row.boarding_group || row.ticket_number);
+    .filter((row) => row.seat || row.boarding_group);
   if (!rows.length) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Traveler flight details">
@@ -371,8 +377,7 @@ function FlightTravelerSummary({
           travelers.find((traveler) => traveler.id === row.traveler_id)?.display_name ?? "Traveler";
         const details = [
           row.seat ? `Seat ${row.seat}` : null,
-          row.boarding_group ? `Group ${row.boarding_group}` : null,
-          row.ticket_number ? `Ticket ${row.ticket_number}` : null
+          row.boarding_group ? `Group ${row.boarding_group}` : null
         ]
           .filter(Boolean)
           .join(" · ");
@@ -770,7 +775,8 @@ function BookingEventSummary({
         <strong>{booking.provider || booking.title}</strong>
         {booking.reference_code && (
           <span className="text-muted">
-            {booking.type === "flight" ? "PNR" : "Ref"} {booking.reference_code}
+            {booking.type === "flight" ? "PNR" : "Ref"}{" "}
+            <strong className="text-ink">{booking.reference_code}</strong>
           </span>
         )}
         {reservationState && (
@@ -1073,7 +1079,9 @@ export function EventDetailsSheet({
       >
         {bookingHref && (
           <>
-            <Link
+            <TripChildLink
+              tripId={tripId}
+              scrollAnchorId={`timeline-${item.id}`}
               to={bookingHref}
               state={navigationState}
               aria-label={`View booking details for ${booking!.title}`}
@@ -1151,6 +1159,24 @@ export function EventDetailsSheet({
       {booking && (
         <EventBookingEssentials booking={booking} flights={flights} journeys={journeys} />
       )}
+      {booking?.type === "cab" &&
+        journeys
+          .filter((leg) => leg.booking_id === booking.id && leg.mode === "cab")
+          .map((leg) => (
+            <CabStopsManager
+              key={leg.id}
+              tripId={tripId}
+              leg={leg}
+              itinerary={itinerary}
+              costs={costs}
+              currencyCode={tripCurrency ?? "USD"}
+              eventTimezone={leg.origin_timezone}
+              participantTravelerIds={
+                item.applies_to_all_travelers ? travelers.map((row) => row.id) : travelerIds
+              }
+              editable={editable}
+            />
+          ))}
       <EventDocuments
         compact
         item={item}
@@ -1173,24 +1199,6 @@ export function EventDetailsSheet({
             focusedTravelerId={focusedTravelerId}
             navigationState={navigationState}
           />
-          {booking.type === "cab" &&
-            journeys
-              .filter((leg) => leg.booking_id === booking.id && leg.mode === "cab")
-              .map((leg) => (
-                <CabStopsManager
-                  key={leg.id}
-                  tripId={tripId}
-                  leg={leg}
-                  itinerary={itinerary}
-                  costs={costs}
-                  currencyCode={tripCurrency ?? "USD"}
-                  eventTimezone={item.timezone}
-                  participantTravelerIds={
-                    item.applies_to_all_travelers ? travelers.map((row) => row.id) : travelerIds
-                  }
-                  editable={editable}
-                />
-              ))}
         </EventDetailSection>
       )}
       {editable && canAddEventBooking(item) && (
@@ -1732,6 +1740,19 @@ export function TripPage() {
     if (positioned.current || !tripQuery.isSuccess) return;
     if (
       view === "details" &&
+      (bookingsQuery.isLoading ||
+        flightsQuery.isLoading ||
+        journeysQuery.isLoading ||
+        costsQuery.isLoading ||
+        documentsQuery.isLoading ||
+        travelersQuery.isLoading ||
+        requirementsQuery.isLoading ||
+        notesQuery.isLoading ||
+        bookingTravelersQuery.isLoading)
+    )
+      return;
+    if (
+      view === "details" &&
       activeNavigationIntent &&
       ["search", "current", "target"].includes(activeNavigationIntent.kind)
     )
@@ -1754,7 +1775,15 @@ export function TripPage() {
       secondFrame = window.requestAnimationFrame(() => {
         if (view === "details") {
           const requested = requestedSection ? document.getElementById(requestedSection) : null;
-          if (requested)
+          if (
+            restoreTripReturnScroll(
+              location.state,
+              tripId,
+              `${location.pathname}${location.search}`
+            )
+          ) {
+            // The clicked card's offset takes precedence over a broad section anchor.
+          } else if (requested)
             requested.scrollIntoView({ behavior: preferredScrollBehavior(), block: "start" });
           else if (
             (activeNavigationIntent?.kind === "restore" || returningToEntry) &&
@@ -1773,7 +1802,18 @@ export function TripPage() {
             (activeNavigationIntent?.kind === "target"
               ? (activeNavigationIntent.targetId ?? null)
               : null);
-          if (requestedId && scrollTimelineEventIntoView(requestedId, preferredScrollBehavior()))
+          if (
+            restoreTripReturnScroll(
+              location.state,
+              tripId,
+              `${location.pathname}${location.search}`
+            )
+          ) {
+            // Restore the underlying event card before closing a returned modal.
+          } else if (
+            requestedId &&
+            scrollTimelineEventIntoView(requestedId, preferredScrollBehavior())
+          )
             requestedTimelineItem.current = null;
           else if (
             (activeNavigationIntent?.kind === "restore" || returningToEntry) &&
@@ -1795,9 +1835,18 @@ export function TripPage() {
   }, [
     activeTimelineEntry,
     activeNavigationIntent,
+    bookingsQuery.isLoading,
+    flightsQuery.isLoading,
+    journeysQuery.isLoading,
+    costsQuery.isLoading,
+    documentsQuery.isLoading,
+    travelersQuery.isLoading,
+    notesQuery.isLoading,
     bookingTravelersQuery.isLoading,
     itineraryQuery.isSuccess,
     location.state,
+    location.pathname,
+    location.search,
     participantsQuery.isLoading,
     requestedSection,
     requirementAssigneesQuery.isLoading,
@@ -1831,6 +1880,11 @@ export function TripPage() {
   }, [focusedTravelerId, travelersQuery.data, travelers]);
 
   const closeRouteModal = (keys: string[]) => {
+    if (readTripReturnContext(location.state, tripId)?.path) {
+      const back = tripReturnNavigation(location.state, tripId);
+      navigate(back.href, { replace: true, state: back.state });
+      return;
+    }
     if (isTripRouteModal(location.state, tripId)) {
       navigate(-1);
       return;
@@ -1848,8 +1902,24 @@ export function TripPage() {
     next.delete("add");
     next.delete("eventType");
     next.set("event", itemId);
+    const anchor = document.getElementById(`timeline-${itemId}`);
     setSearchParams(next, {
-      state: tripRouteModalNavigationState(location.state, tripId, view)
+      state: tripChildScrollState(
+        tripChildNavigationState(
+          tripRouteModalNavigationState(location.state, tripId, view),
+          tripId,
+          view,
+          `${location.pathname}${location.search}`
+        ),
+        tripId,
+        anchor
+          ? {
+              y: window.scrollY,
+              anchorId: anchor.id,
+              anchorOffset: anchor.getBoundingClientRect().top
+            }
+          : captureScroll(view)
+      )
     });
   };
   const openAddEvent = () => {
@@ -2144,30 +2214,7 @@ export function TripPage() {
                 <ChevronRight className="size-4 shrink-0 text-surface/60" />
               </button>
             </header>
-            <div data-trip-sticky-start aria-hidden="true" />
-            <div
-              data-trip-sticky
-              className="sticky top-[var(--app-header-height)] z-30 mt-4 border-b border-line bg-canvas/95 py-1 backdrop-blur-md"
-            >
-              <div className="grid grid-cols-2 rounded-2xl bg-elevated p-1">
-                <button
-                  type="button"
-                  aria-pressed={view === "timeline"}
-                  onClick={() => changeView("timeline")}
-                  className={`tap-target rounded-xl text-sm font-black ${view === "timeline" ? "bg-surface text-brand shadow-soft" : "text-muted"}`}
-                >
-                  Timeline
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={view === "details"}
-                  onClick={() => changeView("details")}
-                  className={`tap-target rounded-xl text-sm font-black ${view === "details" ? "bg-surface text-brand shadow-soft" : "text-muted"}`}
-                >
-                  Trip details
-                </button>
-              </div>
-            </div>
+            <TripViewTabs view={view} onChange={changeView} />
             {view === "timeline" && (
               <div
                 ref={searchRegionRef}

@@ -1,4 +1,5 @@
 import { TripTimeline, type TimelineHandle } from "../features/timeline/TripTimeline";
+import { TripViewTabs } from "../features/trips/TripViewTabs";
 import type { TripTimelineEntry } from "../features/timeline/model";
 import { preferredScrollBehavior, scrollTimelineEventIntoView } from "../features/timeline/scroll";
 import {
@@ -602,30 +603,7 @@ export function DemoTripPage() {
           </button>
         </header>
 
-        <div data-trip-sticky-start aria-hidden="true" />
-        <div
-          data-trip-sticky
-          className="sticky top-[var(--app-header-height)] z-30 mt-4 border-b border-line bg-canvas/95 py-1 backdrop-blur-md"
-        >
-          <div className="grid grid-cols-2 rounded-2xl bg-elevated p-1">
-            <button
-              type="button"
-              aria-pressed={view === "timeline"}
-              onClick={() => setView("timeline")}
-              className={`tap-target rounded-xl text-sm font-black ${view === "timeline" ? "bg-surface text-brand shadow-soft" : "text-muted"}`}
-            >
-              Timeline
-            </button>
-            <button
-              type="button"
-              aria-pressed={view === "details"}
-              onClick={() => setView("details")}
-              className={`tap-target rounded-xl text-sm font-black ${view === "details" ? "bg-surface text-brand shadow-soft" : "text-muted"}`}
-            >
-              Trip details
-            </button>
-          </div>
-        </div>
+        <TripViewTabs view={view} onChange={setView} />
         {view === "timeline" && (
           <div
             id="trip-search"

@@ -4,8 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TripTimeline, type TimelineHandle } from "./TripTimeline";
 import type { TripTimelineEntry } from "./model";
+import type { TimelineEventType } from "../trips/types";
+import { eventTypeChoices } from "./eventTypeChoices";
 
-function entry(id: string, day = "01"): TripTimelineEntry {
+function entry(id: string, day = "01", type: TimelineEventType = "activity"): TripTimelineEntry {
   const startsAt = `2026-10-${day}T09:00:00Z`;
   return {
     kind: "event",
@@ -19,7 +21,7 @@ function entry(id: string, day = "01"): TripTimelineEntry {
       starts_at: startsAt,
       ends_at: null,
       timezone: "UTC",
-      event_type: "activity",
+      event_type: type,
       location: null,
       notes: null,
       applies_to_all_travelers: true,
@@ -83,6 +85,112 @@ async function viewOption(name: string) {
 }
 describe("compact trip timeline", () => {
   beforeEach(() => sessionStorage.clear());
+  it("uses opposite down/up event chevrons, matching the date groups", async () => {
+    setup();
+    const collapsed = screen.getByRole("button", { name: "Expand Check out" });
+    const chevron = collapsed.querySelector(".lucide-chevron-down");
+    expect(chevron).not.toHaveClass("-rotate-90", "rotate-180");
+    await userEvent.click(collapsed);
+    expect(
+      screen
+        .getByRole("button", { name: "Collapse Check out" })
+        .querySelector(".lucide-chevron-down")
+    ).toHaveClass("rotate-180");
+    await userEvent.click(screen.getByRole("button", { name: "Collapse Check out" }));
+    expect(
+      screen.getByRole("button", { name: "Expand Check out" }).querySelector(".lucide-chevron-down")
+    ).not.toHaveClass("-rotate-90", "rotate-180");
+  });
+  it("uses the Add event type list and combines the selected type with the date", async () => {
+    setup("types", [
+      entry("Flight", "01", "flight"),
+      entry("Museum"),
+      entry("Later flight", "02", "flight")
+    ]);
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Thu, 1 Oct 2026" }));
+    await userEvent.click(screen.getByRole("button", { name: /Event type/ }));
+    const typeGroup = screen.getByRole("group", { name: "Show event type" });
+    expect(
+      within(typeGroup)
+        .getAllByRole("radio")
+        .map((input) => input.closest("label")?.textContent?.replace(/\d+$/, ""))
+    ).toEqual(["All types", ...eventTypeChoices.map((choice) => choice.label)]);
+    await userEvent.click(within(typeGroup).getByRole("radio", { name: "Flight" }));
+    expect(screen.getByRole("button", { name: "Expand Museum" })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Apply · 1 item" }));
+    expect(screen.getByRole("button", { name: "Collapse Flight" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Expand Museum" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Expand Later flight" })).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("button", { name: "Filter timeline" })).getByText("2")
+    ).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Remove filters" }));
+    expect(screen.getByRole("button", { name: "Expand Museum" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Expand Later flight" })).toBeVisible();
+  });
+
+  it.each([
+    {
+      label: "Hotel",
+      data: [
+        entry("Hotel arrival", "01", "hotel_check_in"),
+        entry("Hotel departure", "02", "hotel_check_out")
+      ],
+      expected: ["Hotel arrival", "Hotel departure"]
+    },
+    {
+      label: "Preparation",
+      data: [taskEntry, entry("Pack bags", "01", "preparation")],
+      expected: ["Bali eVisa", "Pack bags"]
+    }
+  ])("includes related entries under $label", async ({ label, data, expected }) => {
+    setup("related-types", [...data, entry("Museum")]);
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    await userEvent.click(screen.getByRole("button", { name: /Event type/ }));
+    await userEvent.click(screen.getByRole("radio", { name: label }));
+    await userEvent.click(screen.getByRole("button", { name: "Apply · 2 items" }));
+    expected.forEach((title) => expect(screen.getByText(title, { exact: true })).toBeVisible());
+    expect(screen.queryByRole("button", { name: "Expand Museum" })).not.toBeInTheDocument();
+  });
+
+  it("keeps type changes as drafts and clears them through Reset or reveal", async () => {
+    const { ref } = setup("draft-types", [entry("Flight", "01", "flight"), entry("Museum")]);
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    await userEvent.click(screen.getByRole("button", { name: /Event type/ }));
+    await userEvent.click(screen.getByRole("radio", { name: "Activity" }));
+    await userEvent.click(screen.getByRole("button", { name: "Close timeline filters" }));
+    expect(screen.getByRole("button", { name: "Collapse Flight" })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    await userEvent.click(screen.getByRole("button", { name: /Event type/ }));
+    expect(screen.getByRole("radio", { name: "All types" })).toBeChecked();
+    await userEvent.click(screen.getByRole("radio", { name: "Activity" }));
+    await userEvent.click(screen.getByRole("button", { name: "Apply · 1 item" }));
+    expect(screen.queryByRole("button", { name: "Collapse Flight" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    await userEvent.click(screen.getByRole("button", { name: /Event type/ }));
+    expect(screen.getByRole("radio", { name: "All types" })).toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Apply · 2 items" }));
+    expect(screen.getByRole("button", { name: "Collapse Flight" })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    await userEvent.click(screen.getByRole("button", { name: /Event type/ }));
+    await userEvent.click(screen.getByRole("radio", { name: "Activity" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Apply/ }));
+    act(() => ref.current?.reveal("Flight"));
+    expect(screen.getByRole("button", { name: "Collapse Flight" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Remove filters" })).not.toBeInTheDocument();
+  });
+
+  it("explains an empty type selection without showing empty date groups", async () => {
+    setup();
+    await userEvent.click(screen.getByRole("button", { name: "Filter timeline" }));
+    await userEvent.click(screen.getByRole("button", { name: /Event type/ }));
+    await userEvent.click(screen.getByRole("radio", { name: "Ferry / boat" }));
+    await userEvent.click(screen.getByRole("button", { name: "Apply · 0 items" }));
+    expect(screen.getByRole("status")).toHaveTextContent("No events match these filters");
+    expect(screen.queryByRole("button", { name: /Thu, 1 Oct 2026/ })).not.toBeInTheDocument();
+  });
   it("prioritizes readiness without an event badge while keeping modal and checkbox actions distinct", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-19T10:00:00Z"));

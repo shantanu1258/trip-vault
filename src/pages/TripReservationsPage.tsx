@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Search, TicketCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { EmptyState, ErrorCard, LoadingCard } from "../components/TripUi";
@@ -15,6 +15,7 @@ import { tripChildNavigationState, tripReturnNavigation } from "../features/trip
 import { ReservationRow } from "../features/trips/TripDetailsCards";
 import { listTripBookingTravelers } from "../features/workspace/api";
 import { readTravelerFocus } from "../features/workspace/travelerFocus";
+import { useTripReturnScroll } from "../features/trips/returnScroll";
 
 type ReservationFilter = "all" | "flight" | "hotel" | "journey" | "plan";
 
@@ -28,8 +29,19 @@ function matchesFilter(type: string, filter: ReservationFilter) {
 export function TripReservationsPage() {
   const { tripId = "" } = useParams();
   const location = useLocation();
-  const [search, setSearch] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
+  const search = searchParams.get("search") ?? "";
+  const setListParam = (key: string, value: string) =>
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (value) next.set(key, value);
+        else next.delete(key);
+        return next;
+      },
+      { replace: true, state: location.state }
+    );
+  const setSearch = (value: string) => setListParam("search", value);
   const category = searchParams.get("category");
   const filter: ReservationFilter =
     category === "flight" || category === "hotel" || category === "journey" || category === "plan"
@@ -45,7 +57,8 @@ export function TripReservationsPage() {
       },
       { replace: true, state: location.state }
     );
-  const [travelerId, setTravelerId] = useState(() => readTravelerFocus(tripId) ?? "all");
+  const travelerId = searchParams.get("traveler") ?? readTravelerFocus(tripId) ?? "all";
+  const setTravelerId = (value: string) => setListParam("traveler", value);
   const tripQuery = useQuery({ ...tripQueries.trip(tripId), enabled: Boolean(tripId) });
   const bookingsQuery = useQuery({ ...tripQueries.bookings(tripId), enabled: Boolean(tripId) });
   const flightsQuery = useQuery({
@@ -120,13 +133,29 @@ export function TripReservationsPage() {
   }, [bookings, filter, flightsByBooking, journeysByBooking, search]);
   const counts = bookingCategoryCounts(bookings);
   const returnNavigation = tripReturnNavigation(location.state, tripId);
-  const childState = tripChildNavigationState(location.state, tripId, "details");
+  const childState = tripChildNavigationState(
+    location.state,
+    tripId,
+    "details",
+    `${location.pathname}${location.search}`
+  );
+  useTripReturnScroll(
+    tripId,
+    tripQuery.isSuccess &&
+      bookingsQuery.isSuccess &&
+      !flightsQuery.isLoading &&
+      !journeysQuery.isLoading &&
+      !documentsQuery.isLoading &&
+      !travelersQuery.isLoading &&
+      !bookingTravelersQuery.isLoading
+  );
 
   return (
     <AppShell compactTop>
       <div className="mx-auto min-w-0 max-w-5xl pb-24">
         <header className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-2 py-1">
           <Link
+            replace
             to={returnNavigation.href}
             state={returnNavigation.state}
             aria-label="Back to trip details"

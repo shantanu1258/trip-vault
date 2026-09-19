@@ -283,27 +283,31 @@ export function DocumentPage() {
 
   return (
     <AppShell>
-      <div className="document-page mx-auto min-w-0 max-w-6xl">
+      <div className="document-page mx-auto min-w-0 max-w-5xl">
         <TripBackLink {...returnNavigation} />
         {query.isLoading && <LoadingCard label="Loading document" />}
         {query.error && <ErrorCard error={query.error} />}
         {document && (
           <>
-            <header className="page-enter mt-4 grid min-w-0 gap-4 rounded-2xl border border-line bg-surface p-4 shadow-soft sm:p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+            <header className="page-enter mt-3 min-w-0 rounded-xl border border-line bg-surface p-3">
               <div className="min-w-0">
-                <p className="eyebrow">{documentPurposeLabel(document.purpose)}</p>
-                <h1 className="mt-2 min-w-0 whitespace-normal break-words font-display text-xl font-black [overflow-wrap:anywhere] sm:text-2xl">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <p className="text-xs font-bold text-muted">
+                    {documentPurposeLabel(document.purpose)}
+                  </p>
+                  <DocumentVisibilityBadge visibility={document.visibility} />
+                </div>
+                <h1 className="mt-2 min-w-0 whitespace-normal break-words font-display text-base font-bold leading-snug [overflow-wrap:anywhere] sm:text-xl">
                   {document.title}
                 </h1>
-                <DocumentVisibilityBadge className="mt-3" visibility={document.visibility} />
               </div>
-              <div className="flex items-center gap-2 lg:justify-end">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 {url && (
                   <a
                     href={url}
                     target="_blank"
                     rel="noreferrer"
-                    className="secondary-button px-3 sm:px-4"
+                    className="secondary-button min-h-11 px-3 py-2 text-xs"
                     aria-label="Open with device viewer"
                   >
                     <ExternalLink className="size-4" />
@@ -312,14 +316,15 @@ export function DocumentPage() {
                 )}
                 <button
                   type="button"
-                  className="tap-target grid size-11 shrink-0 place-items-center rounded-full border border-line bg-surface text-brand hover:border-brand/40 sm:flex sm:w-auto sm:gap-2 sm:rounded-2xl sm:px-4"
+                  className="secondary-button min-h-11 gap-1.5 px-3 py-2 text-xs"
                   onClick={() => setShowInfo(true)}
                   aria-label="Document information and actions"
                   title="Document information and actions"
                 >
-                  <Info className="size-5" aria-hidden="true" />
-                  <span className="hidden sm:inline">Info</span>
+                  <Info className="size-4" aria-hidden="true" />
+                  <span>Details</span>
                 </button>
+                {source && <span className="ml-auto text-xs text-muted">Available offline</span>}
               </div>
             </header>
 
@@ -337,7 +342,10 @@ export function DocumentPage() {
               </p>
             )}
 
-            <section className="mt-3 min-h-[62dvh] overflow-hidden rounded-2xl border border-line bg-elevated shadow-soft sm:min-h-[70dvh]">
+            <section
+              aria-label="Document preview"
+              className="mt-2 overflow-hidden rounded-xl border border-line bg-elevated"
+            >
               {url && blob && document.current_version && (
                 <DocumentPreview
                   key={url}
@@ -379,11 +387,6 @@ export function DocumentPage() {
                 </div>
               )}
             </section>
-            <p className="mt-3 text-center text-xs text-muted">
-              {source
-                ? `Opened from ${source === "local" ? "this device" : "the cloud and now saved offline"}. Preview pages and zoom here, or use Open for your device's viewer.`
-                : "Trip Vault opens the document here first; downloading is optional."}
-            </p>
             {fileMessage && (
               <p
                 role="status"
@@ -399,7 +402,7 @@ export function DocumentPage() {
                 title="Document information"
                 onClose={() => setShowInfo(false)}
               >
-                <dl className="mt-6 grid min-w-0 gap-4 rounded-2xl bg-elevated p-4 text-sm sm:grid-cols-2">
+                <dl className="mt-4 grid min-w-0 gap-3 rounded-xl bg-elevated p-3 text-sm sm:grid-cols-2">
                   <div className="min-w-0">
                     <dt className="text-xs font-bold text-muted">Title</dt>
                     <dd className="mt-1 whitespace-normal break-words font-bold [overflow-wrap:anywhere]">
@@ -427,6 +430,13 @@ export function DocumentPage() {
                     <dd className="mt-1 inline-flex items-center gap-1.5 font-bold text-success">
                       <ShieldCheck className="size-4" /> Private Supabase bucket
                     </dd>
+                    {source && (
+                      <p className="mt-1 text-xs text-muted">
+                        {source === "local"
+                          ? "Opened from this device."
+                          : "Downloaded and saved on this device."}
+                      </p>
+                    )}
                   </div>
                   {document.current_version && (
                     <>

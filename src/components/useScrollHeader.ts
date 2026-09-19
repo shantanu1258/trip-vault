@@ -21,8 +21,8 @@ export function useScrollHeader(routeKey: string) {
       const keyboardInHeader =
         focused?.matches(":focus-visible") &&
         focused.closest("[data-scroll-header], [data-trip-sticky]");
-      // A trip's tabs may start below a tall hero. Do not hide them before
-      // they have reached their sticky position and content has scrolled past.
+      // Keep the main header until the trip tabs reach their sticky position.
+      // The tabs remain visible and move to the top when only the header hides.
       const stickyStart = document.querySelector("[data-trip-sticky-start]");
       const headerHeight =
         document.querySelector("[data-scroll-header]")?.getBoundingClientRect().height ?? 56;

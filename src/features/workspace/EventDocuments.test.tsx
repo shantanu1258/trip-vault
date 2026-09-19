@@ -95,7 +95,12 @@ function traveler(id: string, displayName: string): Traveler {
   };
 }
 
-function renderDocuments(travelers: Traveler[] = [], compact = false, travelerId?: string) {
+function renderDocuments(
+  travelers: Traveler[] = [],
+  compact = false,
+  travelerId?: string,
+  onUpload?: () => void
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
@@ -106,6 +111,7 @@ function renderDocuments(travelers: Traveler[] = [], compact = false, travelerId
           travelers={travelers}
           compact={compact}
           travelerId={travelerId}
+          onUpload={onUpload}
         />
       </MemoryRouter>
     </QueryClientProvider>
@@ -175,6 +181,29 @@ describe("event document cards", () => {
   beforeEach(() => {
     mocks.listEventDocumentLinks.mockReset().mockResolvedValue([]);
     mocks.listVaultDocuments.mockReset().mockResolvedValue([]);
+  });
+
+  it("puts existing documents before secondary upload and attach actions", async () => {
+    mocks.listEventDocumentLinks.mockResolvedValue([link(document({}), 0)]);
+    const upload = vi.fn();
+    renderDocuments([], false, undefined, upload);
+    const ticket = await screen.findByRole("link", { name: /Bus ticket/ });
+    for (const name of ["Upload new", "Attach existing"]) {
+      const action = screen.getByRole("button", { name });
+      expect(
+        ticket.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+      expect(action).toHaveClass("text-xs");
+    }
+    await userEvent.click(screen.getByRole("button", { name: "Upload new" }));
+    expect(upload).toHaveBeenCalledOnce();
+  });
+
+  it("emphasizes document actions when the event has no documents", async () => {
+    renderDocuments([], false, undefined, vi.fn());
+    await screen.findByText("No documents attached yet.");
+    expect(screen.getByRole("button", { name: "Upload new" })).toHaveClass("primary-button");
+    expect(screen.getByRole("button", { name: "Attach existing" })).toHaveClass("secondary-button");
   });
 
   it("keeps shared documents visible and collapses personal groups in compact mode", async () => {

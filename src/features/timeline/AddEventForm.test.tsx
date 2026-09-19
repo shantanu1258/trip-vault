@@ -634,9 +634,12 @@ describe("event form architecture", () => {
     await user.click(
       screen.getByRole("button", { name: /Ferry \/ boat Passenger or vehicle sailing/i })
     );
+    await user.type(screen.getByLabelText("Booking reference (optional)"), "ORDER-42");
     await user.click(screen.getByRole("radio", { name: /^Ticket booked/ }));
+    expect(screen.getAllByLabelText("Booking reference (optional)")).toHaveLength(1);
+    expect(screen.getByLabelText("Booking reference (optional)")).toHaveValue("ORDER-42");
     expect(screen.getByLabelText("Contact name (optional)")).toBeInTheDocument();
-    expect(screen.getByLabelText("Seller order / reference (optional)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Booking reference (optional)")).not.toBeRequired();
     expect(screen.queryByText("Traveler ticket details")).not.toBeInTheDocument();
     expect(screen.queryByText("Ferry ticket and vehicle details")).not.toBeInTheDocument();
     expect(screen.queryByText("Boarding and platform details")).not.toBeInTheDocument();
@@ -645,7 +648,6 @@ describe("event form architecture", () => {
     expect(screen.queryByLabelText("Seating")).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText("Timeline title"), "Ferry to Batam");
-    await user.type(screen.getByLabelText("Seller order / reference (optional)"), "ORDER-42");
     await user.type(screen.getByLabelText("Contact name (optional)"), "Shantanu Singh");
     await user.type(screen.getByLabelText("Operator or support phone (optional)"), "+6591234567");
     await user.type(screen.getByLabelText("Ferry operator"), "Batam Fast");

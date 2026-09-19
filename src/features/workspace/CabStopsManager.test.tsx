@@ -153,4 +153,29 @@ describe("CabStopsManager", () => {
     expect(screen.getByRole("form", { name: "Edit cab stop" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Edit stop" })).toHaveClass("text-xl");
   });
+
+  it("can add an optional cost to an existing stop with the booking and stop links intact", async () => {
+    const lunch = stop("stop-lunch", 100, "Lunch");
+    mocks.listCabStopsForTrip.mockResolvedValue([lunch]);
+    mocks.updateCabStop.mockResolvedValue(lunch);
+    const user = renderManager();
+    await user.click(await screen.findByRole("button", { name: "Edit Lunch" }));
+    await user.type(screen.getByRole("textbox", { name: "Extra cost (optional)" }), "500");
+    await user.selectOptions(screen.getByLabelText("Payment"), "paid");
+    await user.click(screen.getByRole("button", { name: "Save stop" }));
+    await waitFor(() =>
+      expect(mocks.saveOptionalCostForCreatedEvent).toHaveBeenCalledWith({
+        tripId: "trip-1",
+        bookingId: "booking-1",
+        itineraryItemId: undefined,
+        cabStopId: "stop-lunch",
+        title: "Lunch cost",
+        category: "transport",
+        amountMinor: 50000,
+        currencyCode: "INR",
+        paymentStatus: "paid",
+        participantTravelerIds: ["traveler-1"]
+      })
+    );
+  });
 });

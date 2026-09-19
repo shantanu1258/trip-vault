@@ -167,7 +167,9 @@ describe("DocumentPage", () => {
       "blob:ticket"
     );
     const info = screen.getByRole("button", { name: "Document information and actions" });
-    expect(info).toHaveClass("size-11", "rounded-full", "place-items-center");
+    expect(info).toHaveTextContent("Details");
+    expect(title).toHaveClass("text-base");
+    expect(screen.getByText("Available offline")).toBeInTheDocument();
     await user.click(info);
     expect(screen.getByRole("region", { name: "Document information" })).toBeInTheDocument();
     expect(screen.getByText("Visible to all signed-in trip members")).toBeInTheDocument();

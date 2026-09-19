@@ -136,11 +136,14 @@ textarea:focus-visible {
   background: rgb(var(--color-coral) / 0.25);
 }
 
-[data-scroll-header],
-[data-trip-sticky] {
+[data-scroll-header] {
   transition:
     transform 180ms ease-out,
     opacity 180ms ease-out;
+}
+
+[data-trip-sticky] {
+  transition: top 180ms ease-out;
 }
 
 /* Large dark-mode surfaces use the quiet brand tone, not the bright action tone. */
@@ -156,9 +159,7 @@ textarea:focus-visible {
 }
 
 [data-headers-hidden="true"] [data-trip-sticky] {
-  transform: translateY(calc(-100% - var(--app-header-height) - 1px));
-  opacity: 0;
-  pointer-events: none;
+  top: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -302,6 +303,10 @@ textarea:focus-visible {
 
   .hero-action {
     @apply tap-target inline-flex items-center gap-2 rounded-xl border border-surface/20 bg-surface/10 px-4 py-2.5 text-sm font-extrabold text-surface transition-colors hover:bg-surface/20;
+  }
+
+  .hero-shortcut {
+    @apply size-11 justify-center p-0 md:w-auto md:px-3;
   }
 }
 

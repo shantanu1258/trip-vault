@@ -469,7 +469,7 @@ export function AddCostForm({
           />
           <span className="mt-1 block text-xs font-normal text-muted">
             {sourceTitle && !cost
-              ? "This cost stays attached to the timeline event; you may adjust its label."
+              ? `This cost stays attached to the ${itineraryItemId ? "timeline event" : "booking"}; you may adjust its label.`
               : "Use a short name such as Airport cab or Museum tickets."}
           </span>
         </label>

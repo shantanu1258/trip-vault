@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   getTrip: vi.fn(),
   listArchivedTripItems: vi.fn().mockResolvedValue([]),
   listBookings: vi.fn().mockResolvedValue([]),
+  listCabStopsForTrip: vi.fn().mockResolvedValue([]),
   listCosts: vi.fn().mockResolvedValue([]),
   listFlightLegsForTrip: vi.fn().mockResolvedValue([]),
   listTripFlightTravelers: vi.fn().mockResolvedValue([]),
@@ -214,6 +215,7 @@ vi.mock("../features/workspace/api", async () => {
     ...actual,
     attachDocumentsToEvent: mocks.attachDocumentsToEvent,
     listBookings: mocks.listBookings,
+    listCabStopsForTrip: mocks.listCabStopsForTrip,
     listFlightLegsForTrip: mocks.listFlightLegsForTrip,
     listTripFlightTravelers: mocks.listTripFlightTravelers,
     listJourneyLegTravelers: mocks.listJourneyLegTravelers,
@@ -1979,9 +1981,8 @@ describe("flight event details", () => {
     expect(
       screen.getByRole("link", { name: "Open booking details for Flight to Dubai" })
     ).toHaveAttribute("href", "/trips/trip-1/flights/flight-1");
-    expect(
-      await screen.findByText("Rahul · Seat 14C · Group 3 · Ticket 098765")
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Rahul · Seat 14C · Group 3")).toBeInTheDocument();
+    expect(screen.queryByText(/Ticket 098765/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Seat 12A/)).not.toBeInTheDocument();
     await userEvent.click(summary);
     expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1/flights/flight-1");
@@ -2032,7 +2033,54 @@ describe("ground journey traveler details", () => {
     status_note: null
   };
 
-  it("shows only the focused passenger's bus seat and reference inside the opened event", async () => {
+  it("shows cab stops and costs without opening the booking details accordion", async () => {
+    mocks.listCabStopsForTrip.mockResolvedValueOnce([
+      {
+        id: "stop-lunch",
+        journey_leg_id: busLeg.id,
+        stop_order: 100,
+        title: "Lunch",
+        location: null,
+        arrives_at: null,
+        departs_at: null,
+        timezone: "Asia/Singapore",
+        notes: "Stop at the cafe",
+        linked_itinerary_item_id: null
+      }
+    ]);
+    renderDetails({
+      booking: { ...busBooking, type: "cab" },
+      item: { ...activity, event_type: "cab", booking_id: busBooking.id },
+      journeys: [{ ...busLeg, mode: "cab" }],
+      costs: [
+        {
+          id: "lunch-cost",
+          trip_id: "trip-1",
+          booking_id: busBooking.id,
+          itinerary_item_id: null,
+          cab_stop_id: "stop-lunch",
+          title: "Lunch cost",
+          category: "food",
+          amount_minor: 2500,
+          currency_code: "SGD",
+          payment_status: "paid",
+          notes: null,
+          created_at: "2026-09-19"
+        }
+      ],
+      editable: false
+    });
+    const stop = await screen.findByRole("listitem", { name: "Cab stop 1: Lunch" });
+    expect(stop).toBeVisible();
+    expect(within(stop).getByText(/25\.00/)).toBeVisible();
+    expect(screen.getByRole("button", { name: /^Booking details/ })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
+    expect(screen.queryByRole("button", { name: "Add stop" })).not.toBeInTheDocument();
+  });
+
+  it("shows only the focused passenger's bus seat inside the opened event", async () => {
     mocks.listJourneyLegTravelers.mockResolvedValue([
       {
         id: "bus-leg-1:traveler-1",
@@ -2061,7 +2109,8 @@ describe("ground journey traveler details", () => {
     });
 
     await userEvent.click(screen.getByRole("button", { name: /^Booking details/ }));
-    expect(await screen.findByText(/Shubham.*Seat 9.*85854179/)).toBeVisible();
+    expect(await screen.findByText("Shubham · Seat 9")).toBeVisible();
+    expect(screen.queryByText(/85854179/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Shantanu.*Seat 5/)).not.toBeInTheDocument();
   });
 
@@ -2112,7 +2161,9 @@ describe("ground journey traveler details", () => {
       </QueryClientProvider>
     );
 
-    expect(await screen.findByText(/Shubham.*Seat 9.*85854179/)).toBeInTheDocument();
+    expect(await screen.findByText("Shubham · Seat 9")).toBeInTheDocument();
+    expect(screen.queryByText(/85854179/)).not.toBeInTheDocument();
+    expect(screen.getByText("SGV8G20684227").tagName).toBe("STRONG");
     expect(screen.queryByText(/Shantanu.*Seat 5/)).not.toBeInTheDocument();
     expect(screen.queryByText(/OLD-SHARED-SEAT/)).not.toBeInTheDocument();
   });

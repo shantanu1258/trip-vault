@@ -137,7 +137,8 @@ describe("journey traveler details", () => {
       />
     );
 
-    expect(await screen.findByText(/Rahul.*Seat 9.*85854179/)).toBeInTheDocument();
+    expect(await screen.findByText("Rahul · Seat 9")).toBeInTheDocument();
+    expect(screen.queryByText(/85854179|Passenger PNR/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Shantanu.*Seat 5/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Executive/)).not.toBeInTheDocument();
 

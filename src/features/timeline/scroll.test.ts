@@ -13,7 +13,7 @@ function expandedViewport(top: number, height: number, hiddenHeaders = false) {
   vi.spyOn(header, "getBoundingClientRect").mockReturnValue(bounds(hiddenHeaders ? -60 : 0, 60));
   const tabs = document.createElement("div");
   tabs.dataset.tripSticky = "true";
-  vi.spyOn(tabs, "getBoundingClientRect").mockReturnValue(bounds(hiddenHeaders ? -50 : 60, 50));
+  vi.spyOn(tabs, "getBoundingClientRect").mockReturnValue(bounds(hiddenHeaders ? 0 : 60, 50));
   const dock = document.createElement("div");
   dock.dataset.tripActions = "true";
   vi.spyOn(dock, "getBoundingClientRect").mockReturnValue(bounds(600, 54));
@@ -87,10 +87,16 @@ describe("timeline positioning", () => {
     expect(scrollTo).toHaveBeenCalledWith({ top: 58, behavior: "auto" });
   });
 
-  it("does not scroll already visible content just because the headers are hidden", () => {
-    const { scrollTo } = expandedViewport(20, 200, true);
+  it("does not scroll content already below the tabs when only the main header is hidden", () => {
+    const { scrollTo } = expandedViewport(70, 200, true);
     expect(revealExpandedTimelineEvent("expanded")).toBe(false);
     expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("clears the persistent tabs when an expanded heading is behind them", () => {
+    const { scrollTo } = expandedViewport(20, 200, true);
+    expect(revealExpandedTimelineEvent("expanded")).toBe(true);
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
   });
 
   it("ignores a card that was collapsed before the scheduled measurement", () => {

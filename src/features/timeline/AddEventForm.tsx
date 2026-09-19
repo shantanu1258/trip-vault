@@ -43,6 +43,7 @@ import type {
 } from "../workspace/types";
 import {
   BookingFields,
+  BookingReferenceField,
   CostFields,
   EventTitleField,
   HotelStayFields,
@@ -72,36 +73,7 @@ import {
 } from "./TimingFields";
 import { upsertById } from "../queries/cache";
 
-type Choice = { type: TimelineEventType; label: string; hint: string };
-const choices: Choice[] = [
-  { type: "flight", label: "Flight", hint: "Direct or connected flights" },
-  {
-    type: "hotel_check_in",
-    label: "Hotel",
-    hint: "A stay with check-in and checkout"
-  },
-  {
-    type: "activity",
-    label: "Activity",
-    hint: "Visit, tour, ticket, or free time"
-  },
-  { type: "bus", label: "Bus", hint: "Coach, shuttle, or local bus" },
-  { type: "cab", label: "Cab", hint: "Local ride, transfer, or outstation" },
-  { type: "ferry", label: "Ferry / boat", hint: "Passenger or vehicle sailing" },
-  { type: "train", label: "Train", hint: "Rail plan, ticket, or connection" },
-  { type: "meal", label: "Meal", hint: "Lunch, dinner, or reservation" },
-  {
-    type: "preparation",
-    label: "Preparation",
-    hint: "A dated or flexible pre-trip task"
-  },
-  {
-    type: "transport",
-    label: "Other transport",
-    hint: "Metro, rental, transfer, or walk"
-  },
-  { type: "custom", label: "Other", hint: "Anything else on the timeline" }
-];
+import { eventTypeChoices as choices } from "./eventTypeChoices";
 
 function text(form: FormData, name: string) {
   return String(form.get(name) ?? "").trim();
@@ -1423,7 +1395,14 @@ export function AddEventForm({
           )}
           {groundMode && (
             <>
-              {reservationState === "booked" && <BookingFields type={groundMode} hideProvider />}
+              {groundMode === "ferry" && <BookingReferenceField type="ferry" />}
+              {reservationState === "booked" && (
+                <BookingFields
+                  type={groundMode}
+                  hideProvider
+                  hideReference={groundMode === "ferry"}
+                />
+              )}
               <JourneyTimelinePlacementFields
                 itinerary={itineraryQuery.data ?? []}
                 journeyLabel={groundMode === "ferry" ? "ferry" : groundMode}

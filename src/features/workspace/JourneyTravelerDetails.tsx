@@ -1,3 +1,4 @@
+import { BookingDisclosure } from "./BookingDetailSections";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Save, UsersRound } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -22,7 +23,11 @@ function travelerFieldVisibility(leg: JourneyLeg) {
   return { seat: assignedFerry, coach: assignedFerry };
 }
 
-function allocationDetails(row: JourneyLegTraveler | undefined, leg: JourneyLeg) {
+function allocationDetails(
+  row: JourneyLegTraveler | undefined,
+  leg: JourneyLeg,
+  includeReference = true
+) {
   if (!row) return [];
   if (leg.mode === "cab") return [];
   const labels = fieldLabels[leg.mode];
@@ -30,7 +35,9 @@ function allocationDetails(row: JourneyLegTraveler | undefined, leg: JourneyLeg)
   return [
     fields.seat && row.seat_or_berth ? `${labels.seat} ${row.seat_or_berth}` : null,
     fields.coach && row.coach_or_cabin ? `${labels.coach} ${row.coach_or_cabin}` : null,
-    row.passenger_reference ? `${labels.reference} ${row.passenger_reference}` : null
+    includeReference && row.passenger_reference
+      ? `${labels.reference} ${row.passenger_reference}`
+      : null
   ].filter((value): value is string => Boolean(value));
 }
 
@@ -69,7 +76,7 @@ export function JourneyTravelerBadges({
     .map((row) => ({
       row,
       traveler: travelers.find((traveler) => traveler.id === row.traveler_id),
-      details: allocationDetails(row, leg)
+      details: allocationDetails(row, leg, false)
     }))
     .filter(({ details }) => details.length > 0);
   const fields = travelerFieldVisibility(leg);
@@ -166,7 +173,7 @@ function JourneyTravelerLegDetails({
   if (query.isLoading)
     return (
       <section
-        className="rounded-2xl border border-line bg-elevated p-4"
+        className="rounded-lg bg-surface"
         aria-label={`${legLabel(leg, index, count)} traveler details`}
       >
         <p className="font-display text-base font-black">{legLabel(leg, index, count)}</p>
@@ -178,7 +185,7 @@ function JourneyTravelerLegDetails({
   if (query.error)
     return (
       <section
-        className="rounded-2xl border border-line bg-elevated p-4"
+        className="rounded-lg bg-surface"
         aria-label={`${legLabel(leg, index, count)} traveler details`}
       >
         <p className="font-display text-base font-black">{legLabel(leg, index, count)}</p>
@@ -190,11 +197,11 @@ function JourneyTravelerLegDetails({
 
   return (
     <section
-      className="rounded-2xl border border-line bg-elevated p-4"
+      className="rounded-lg bg-surface"
       aria-label={`${legLabel(leg, index, count)} traveler details`}
     >
       <p className="font-display text-base font-black">{legLabel(leg, index, count)}</p>
-      <div className="mt-3 space-y-3">
+      <div className="mt-2 space-y-2">
         {travelers.map((traveler) => {
           const row = byTraveler.get(traveler.id);
           const details = allocationDetails(row, leg);
@@ -208,59 +215,67 @@ function JourneyTravelerLegDetails({
               </article>
             );
           return (
-            <form
+            <BookingDisclosure
               key={`${traveler.id}:${row?.seat_or_berth ?? ""}:${row?.coach_or_cabin ?? ""}:${row?.passenger_reference ?? ""}`}
-              onSubmit={(event) => save(event, traveler.id)}
-              className="rounded-xl bg-surface p-3"
+              title={`${traveler.display_name}${details.filter((value) => !value.startsWith(labels.reference)).length ? ` · ${details.filter((value) => !value.startsWith(labels.reference)).join(" · ")}` : ""}`}
+              hint={
+                row?.passenger_reference
+                  ? `Ref ${row.passenger_reference} · Edit`
+                  : "Edit passenger details"
+              }
             >
-              <p className="text-lg font-extrabold">{traveler.display_name}</p>
-              <div
-                className={`mt-3 grid gap-3 ${fields.coach ? "sm:grid-cols-[minmax(7rem,0.8fr)_minmax(8rem,1fr)_minmax(10rem,1.4fr)_auto]" : fields.seat ? "sm:grid-cols-[minmax(7rem,0.8fr)_minmax(10rem,1.4fr)_auto]" : "sm:grid-cols-[minmax(10rem,1fr)_auto]"}`}
+              <form
+                onSubmit={(event) => save(event, traveler.id)}
+                className="rounded-xl bg-surface p-3"
               >
-                {fields.seat && (
-                  <label className="form-label text-xs">
-                    {labels.seat}
-                    <input
-                      className="form-input"
-                      name="seatOrBerth"
-                      defaultValue={row?.seat_or_berth ?? ""}
-                      placeholder={`Enter ${labels.seat.toLowerCase()} from the ticket`}
-                    />
-                  </label>
-                )}
-                {fields.coach && (
-                  <label className="form-label text-xs">
-                    {labels.coach}
-                    <input
-                      className="form-input"
-                      name="coachOrCabin"
-                      defaultValue={row?.coach_or_cabin ?? ""}
-                      placeholder={`Enter ${labels.coach.toLowerCase()}, if provided`}
-                    />
-                  </label>
-                )}
-                <label className="form-label text-xs">
-                  {labels.reference}
-                  <input
-                    className="form-input"
-                    name="passengerReference"
-                    defaultValue={row?.passenger_reference ?? ""}
-                    placeholder="Enter this traveler's reference, if provided"
-                  />
-                </label>
-                <button
-                  className="secondary-button self-end"
-                  disabled={mutation.isPending}
-                  aria-label={`Save ${leg.mode} details for ${traveler.display_name}`}
+                <div
+                  className={`mt-3 grid gap-3 ${fields.coach ? "sm:grid-cols-[minmax(7rem,0.8fr)_minmax(8rem,1fr)_minmax(10rem,1.4fr)_auto]" : fields.seat ? "sm:grid-cols-[minmax(7rem,0.8fr)_minmax(10rem,1.4fr)_auto]" : "sm:grid-cols-[minmax(10rem,1fr)_auto]"}`}
                 >
-                  {mutation.isPending ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Save className="size-4" />
+                  {fields.seat && (
+                    <label className="form-label text-xs">
+                      {labels.seat}
+                      <input
+                        className="form-input"
+                        name="seatOrBerth"
+                        defaultValue={row?.seat_or_berth ?? ""}
+                        placeholder={`Enter ${labels.seat.toLowerCase()} from the ticket`}
+                      />
+                    </label>
                   )}
-                </button>
-              </div>
-            </form>
+                  {fields.coach && (
+                    <label className="form-label text-xs">
+                      {labels.coach}
+                      <input
+                        className="form-input"
+                        name="coachOrCabin"
+                        defaultValue={row?.coach_or_cabin ?? ""}
+                        placeholder={`Enter ${labels.coach.toLowerCase()}, if provided`}
+                      />
+                    </label>
+                  )}
+                  <label className="form-label text-xs">
+                    {labels.reference}
+                    <input
+                      className="form-input"
+                      name="passengerReference"
+                      defaultValue={row?.passenger_reference ?? ""}
+                      placeholder="Enter this traveler's reference, if provided"
+                    />
+                  </label>
+                  <button
+                    className="secondary-button self-end"
+                    disabled={mutation.isPending}
+                    aria-label={`Save ${leg.mode} details for ${traveler.display_name}`}
+                  >
+                    {mutation.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Save className="size-4" />
+                    )}
+                  </button>
+                </div>
+              </form>
+            </BookingDisclosure>
           );
         })}
       </div>
@@ -290,15 +305,12 @@ export function JourneyTravelerDetails({
   const passengerDetailLegs = legs.filter((leg) => leg.mode !== "cab");
   if (!passengerDetailLegs.length || !travelers.length) return null;
   return (
-    <section className="surface-card mt-5 p-5">
-      <p className="flex items-center gap-2 font-display text-xl font-black">
+    <section className="rounded-xl border border-line bg-surface p-3">
+      <p className="flex items-center gap-2 font-display text-base font-black">
         <UsersRound className="size-5 text-brand" /> Traveler journey details
       </p>
-      <p className="mt-2 text-sm text-muted">
-        Keep each passenger's assigned place and individual ticket reference with the correct
-        journey connection.
-      </p>
-      <div className="mt-4 space-y-3">
+
+      <div className="mt-3 space-y-2">
         {passengerDetailLegs.map((leg) => (
           <JourneyTravelerLegDetails
             key={leg.id}

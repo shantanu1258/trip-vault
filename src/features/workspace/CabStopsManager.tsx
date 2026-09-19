@@ -199,14 +199,19 @@ export function CabStopsManager({
   const error = save.error ?? move.error ?? archive.error ?? stopsQuery.error;
 
   return (
-    <section className="mt-4 rounded-2xl border border-line bg-surface/70 p-3 sm:p-4">
+    <section
+      aria-label="Journey stops"
+      className="mt-3 rounded-xl border border-line bg-surface/70 p-3"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-extrabold">Journey stops</p>
-          <p className="mt-1 text-xs leading-5 text-muted">
-            Keep the whole-day cab together. Link only the stops that also need their own timeline
-            event.
-          </p>
+          {draft && (
+            <p className="mt-1 text-xs leading-5 text-muted">
+              Keep the whole-day cab together. Link only the stops that also need their own timeline
+              event.
+            </p>
+          )}
         </div>
         {editable && !draft && (
           <button

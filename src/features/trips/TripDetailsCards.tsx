@@ -1,5 +1,6 @@
 import { CalendarDays, ChevronRight, FileText, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { TripChildLink } from "../../components/TripChildLink";
 import { phoneActionUrls } from "../timeline/model";
 import type { Booking, FlightLeg, TripNote } from "../workspace/types";
 import { WhatsAppIcon } from "../../components/WhatsAppIcon";
@@ -134,9 +135,15 @@ export function ReservationRow({
 
   if (href) {
     return (
-      <Link to={href} state={navigationState} className={className}>
+      <TripChildLink
+        tripId={booking.trip_id}
+        id={`reservation-${booking.id}`}
+        to={href}
+        state={navigationState}
+        className={className}
+      >
         {content}
-      </Link>
+      </TripChildLink>
     );
   }
 

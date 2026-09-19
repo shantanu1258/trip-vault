@@ -2,9 +2,12 @@ import { LocateFixed, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useModalHistory } from "../../components/ModalHistoryProvider";
+import { EventTypeIcon } from "../../components/EventTypeIcon";
+import type { TimelineEventType } from "../trips/types";
+import { eventTypeChoices } from "./eventTypeChoices";
 
 export type TimelineViewState = { expanded: string[]; collapsedDates: string[] };
-type FilterState = TimelineViewState & { date: string };
+type FilterState = TimelineViewState & { date: string; eventType: "all" | TimelineEventType };
 type DateOption = { key: string; label: string; count: number };
 const sameIds = (left: string[], right: string[]) =>
   left.length === right.length && left.every((id) => right.includes(id));
@@ -14,12 +17,14 @@ function FilterChoice({
   label,
   checked,
   count,
+  icon,
   onChange
 }: {
   name: string;
   label: string;
   checked: boolean;
   count?: number;
+  icon?: ReactNode;
   onChange: () => void;
 }) {
   return (
@@ -33,7 +38,8 @@ function FilterChoice({
         onChange={onChange}
         className="size-4 shrink-0 accent-brand"
       />
-      <span className="flex-1">{label}</span>
+      {icon}
+      <span className="min-w-0 flex-1">{label}</span>
       {count !== undefined && (
         <span aria-hidden="true" className="text-xs tabular-nums text-muted">
           {count}
@@ -48,6 +54,7 @@ export function TimelineFilters({
   initial,
   dates,
   entryIds,
+  items,
   activeId,
   priorityLabel,
   calendarAction,
@@ -58,6 +65,7 @@ export function TimelineFilters({
   initial: FilterState;
   dates: DateOption[];
   entryIds: string[];
+  items: { date: string; type: TimelineEventType }[];
   activeId?: string;
   priorityLabel: string;
   calendarAction?: ReactNode;
@@ -66,7 +74,7 @@ export function TimelineFilters({
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState(initial);
-  const [section, setSection] = useState<"dates" | "display">("dates");
+  const [section, setSection] = useState<"dates" | "types" | "display">("dates");
   const dialog = useRef<HTMLElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -83,10 +91,12 @@ export function TimelineFilters({
         : sameIds(value, entryIds)
           ? "expanded"
           : "custom";
-  const count =
-    draft.date === "all"
-      ? entryIds.length
-      : (dates.find((date) => date.key === draft.date)?.count ?? 0);
+  const matchingCount = (date: string, eventType: string) =>
+    items.filter(
+      (item) =>
+        (date === "all" || item.date === date) && (eventType === "all" || item.type === eventType)
+    ).length;
+  const count = matchingCount(draft.date, draft.eventType);
   useModalHistory(onClose);
   useEffect(() => {
     const previousFocus =
@@ -152,7 +162,7 @@ export function TimelineFilters({
             aria-label="Filter sections"
             className="w-24 shrink-0 border-r border-line bg-elevated/60 py-2"
           >
-            {(["dates", "display"] as const).map((key) => (
+            {(["dates", "types", "display"] as const).map((key) => (
               <button
                 key={key}
                 type="button"
@@ -161,14 +171,18 @@ export function TimelineFilters({
                 onClick={() => setSection(key)}
               >
                 <span className="block text-sm font-bold">
-                  {key === "dates" ? "Dates" : "Display"}
+                  {key === "dates" ? "Dates" : key === "types" ? "Event type" : "Display"}
                 </span>
                 <span className="mt-0.5 block text-[11px] font-normal text-muted">
                   {key === "dates"
                     ? draft.date === "all"
                       ? "All dates"
                       : "1 selected"
-                    : "View options"}
+                    : key === "types"
+                      ? draft.eventType === "all"
+                        ? "All types"
+                        : eventTypeChoices.find((choice) => choice.type === draft.eventType)?.label
+                      : "View options"}
                 </span>
               </button>
             ))}
@@ -182,7 +196,7 @@ export function TimelineFilters({
                 <FilterChoice
                   name={`${radioId}-date`}
                   label="All dates"
-                  count={entryIds.length}
+                  count={matchingCount("all", draft.eventType)}
                   checked={draft.date === "all"}
                   onChange={() => setDraft({ ...draft, date: "all" })}
                 />
@@ -191,7 +205,7 @@ export function TimelineFilters({
                     key={date.key}
                     name={`${radioId}-date`}
                     label={date.label}
-                    count={date.count}
+                    count={matchingCount(date.key, draft.eventType)}
                     checked={draft.date === date.key}
                     onChange={() =>
                       setDraft({
@@ -200,6 +214,30 @@ export function TimelineFilters({
                         collapsedDates: draft.collapsedDates.filter((key) => key !== date.key)
                       })
                     }
+                  />
+                ))}
+              </fieldset>
+            ) : section === "types" ? (
+              <fieldset className="space-y-1">
+                <legend className="mb-2 px-2 text-xs font-bold uppercase tracking-wide text-muted">
+                  Show event type
+                </legend>
+                <FilterChoice
+                  name={`${radioId}-type`}
+                  label="All types"
+                  count={matchingCount(draft.date, "all")}
+                  checked={draft.eventType === "all"}
+                  onChange={() => setDraft({ ...draft, eventType: "all" })}
+                />
+                {eventTypeChoices.map(({ type, label }) => (
+                  <FilterChoice
+                    key={type}
+                    name={`${radioId}-type`}
+                    label={label}
+                    icon={<EventTypeIcon type={type} className="shrink-0" iconClassName="size-4" />}
+                    count={matchingCount(draft.date, type)}
+                    checked={draft.eventType === type}
+                    onChange={() => setDraft({ ...draft, eventType: type })}
                   />
                 ))}
               </fieldset>
@@ -298,7 +336,14 @@ export function TimelineFilters({
           <button
             type="button"
             className="tap-target px-2 text-sm font-bold text-muted underline underline-offset-4"
-            onClick={() => setDraft({ date: "all", expanded: defaultExpanded, collapsedDates: [] })}
+            onClick={() =>
+              setDraft({
+                date: "all",
+                eventType: "all",
+                expanded: defaultExpanded,
+                collapsedDates: []
+              })
+            }
           >
             Reset
           </button>

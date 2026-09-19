@@ -19,7 +19,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("scroll-aware headers", () => {
-  it("does not hide trip tabs before a tall hero has scrolled past their sticky position", () => {
+  it("keeps the main header visible until the trip tabs reach their sticky position", () => {
     const marker = document.createElement("div");
     marker.dataset.tripStickyStart = "";
     document.body.append(marker);

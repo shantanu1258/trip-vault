@@ -1,5 +1,5 @@
-import { ChevronLeft, ChevronRight, FileWarning, Loader2, Minus, Plus, Scan } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { FileWarning, Loader2, Maximize2, Minimize2, Minus, Plus } from "lucide-react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 const PDF_JS_MODULE_PATH = "/vendor/pdfjs/pdf.mjs";
 const PDF_JS_WORKER_PATH = "/vendor/pdfjs/pdf.worker.mjs";
@@ -102,16 +102,20 @@ function ViewerToolbar({
   onZoomOut,
   onZoomIn,
   onFit,
+  fullscreen,
+  onFullscreen,
   children
 }: {
   zoom: number;
   onZoomOut: () => void;
   onZoomIn: () => void;
   onFit: () => void;
+  fullscreen?: boolean;
+  onFullscreen?: () => void;
   children?: React.ReactNode;
 }) {
   return (
-    <div className="sticky top-0 z-10 flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-line bg-surface/95 px-2 py-2 shadow-soft backdrop-blur sm:px-3">
+    <div className="sticky left-0 top-0 z-10 flex min-h-12 items-center justify-between gap-1 border-b border-line bg-surface/95 px-1 py-1 backdrop-blur sm:px-2">
       <div className="flex items-center gap-1">{children}</div>
       <div className="flex items-center gap-1">
         <button
@@ -123,9 +127,15 @@ function ViewerToolbar({
         >
           <Minus className="size-4" />
         </button>
-        <span className="min-w-12 text-center text-xs font-bold text-muted" aria-live="polite">
-          {Math.round(zoom * 100)}%
-        </span>
+        <button
+          type="button"
+          onClick={onFit}
+          className="tap-target rounded-xl px-1 text-center text-xs font-bold text-muted hover:bg-elevated"
+          aria-label="Fit document to width"
+          title="Fit document to width"
+        >
+          <span aria-live="polite">{Math.round(zoom * 100)}%</span>
+        </button>
         <button
           type="button"
           onClick={onZoomIn}
@@ -135,24 +145,52 @@ function ViewerToolbar({
         >
           <Plus className="size-4" />
         </button>
-        <button
-          type="button"
-          onClick={onFit}
-          className="tap-target grid size-10 place-items-center rounded-xl hover:bg-elevated"
-          aria-label="Fit document to width"
-        >
-          <Scan className="size-4" />
-        </button>
+        {onFullscreen && (
+          <button
+            type="button"
+            className="tap-target grid size-10 place-items-center rounded-xl hover:bg-elevated"
+            onClick={onFullscreen}
+            aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen document"}
+          >
+            {fullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
+function useViewerFullscreen(ref: RefObject<HTMLDivElement>) {
+  const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState("");
+  useEffect(() => {
+    const update = () => setFullscreen(document.fullscreenElement === ref.current);
+    document.addEventListener("fullscreenchange", update);
+    return () => document.removeEventListener("fullscreenchange", update);
+  }, [ref]);
+  const toggle = document.fullscreenEnabled
+    ? () => {
+        setFullscreenError("");
+        const action =
+          document.fullscreenElement === ref.current
+            ? document.exitFullscreen()
+            : ref.current?.requestFullscreen();
+        void action?.catch(() =>
+          setFullscreenError("Fullscreen is unavailable. You can still zoom here or use Open.")
+        );
+      }
+    : undefined;
+  return { fullscreen, fullscreenError, toggle };
+}
+
 function ImageViewer({ url, title }: { url: string; title: string }) {
   const [zoom, setZoom] = useState(1);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const { fullscreen, fullscreenError, toggle } = useViewerFullscreen(viewportRef);
   return (
     <div
-      className="h-[72dvh] min-h-[34rem] overflow-auto bg-elevated"
+      ref={viewportRef}
+      className="h-[75dvh] min-h-80 overflow-auto bg-elevated [scrollbar-gutter:stable] [&:fullscreen]:h-screen [&:fullscreen]:w-screen"
       style={{ touchAction: "pan-x pan-y pinch-zoom" }}
     >
       <ViewerToolbar
@@ -160,7 +198,14 @@ function ImageViewer({ url, title }: { url: string; title: string }) {
         onZoomOut={() => setZoom((value) => Math.max(0.75, value - 0.25))}
         onZoomIn={() => setZoom((value) => Math.min(2.5, value + 0.25))}
         onFit={() => setZoom(1)}
+        fullscreen={fullscreen}
+        onFullscreen={toggle}
       />
+      {fullscreenError && (
+        <p role="status" className="p-2 text-xs text-muted">
+          {fullscreenError}
+        </p>
+      )}
       <div className="grid min-h-[calc(100%_-_3.5rem)] place-items-start justify-center p-3 sm:p-5">
         <img
           alt={title}
@@ -183,15 +228,13 @@ function PdfCanvasViewer({
   title: string;
   pdfModuleLoader: PdfModuleLoader;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [pdf, setPdf] = useState<PdfDocument | null>(null);
-  const [pageNumber, setPageNumber] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [rendering, setRendering] = useState(false);
   const [error, setError] = useState("");
+  const { fullscreen, fullscreenError, toggle } = useViewerFullscreen(viewportRef);
 
   useEffect(() => {
     const node = viewportRef.current;
@@ -213,7 +256,7 @@ function PdfCanvasViewer({
     let loadedDocument: PdfDocument | undefined;
     setLoading(true);
     setError("");
-    setPageNumber(1);
+    setZoom(1);
     setPdf(null);
     void (async () => {
       try {
@@ -223,7 +266,9 @@ function PdfCanvasViewer({
           PDF_JS_WORKER_PATH,
           window.location.origin
         ).toString();
-        loadingTask = pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) });
+        const data = new Uint8Array(await blob.arrayBuffer());
+        if (!active) return;
+        loadingTask = pdfjs.getDocument({ data });
         loadedDocument = await loadingTask.promise;
         if (!active) return;
         setPdf(loadedDocument);
@@ -241,50 +286,6 @@ function PdfCanvasViewer({
       void loadingTask?.destroy?.();
     };
   }, [blob, pdfModuleLoader]);
-
-  useEffect(() => {
-    if (!pdf || !canvasRef.current) return;
-    let active = true;
-    let renderTask: PdfRenderTask | undefined;
-    setRendering(true);
-    setError("");
-    void (async () => {
-      try {
-        const page = await pdf.getPage(pageNumber);
-        if (!active || !canvasRef.current) return;
-        const baseViewport = page.getViewport({ scale: 1 });
-        const availableWidth = Math.max(
-          280,
-          (viewportWidth || viewportRef.current?.clientWidth || 760) - 32
-        );
-        const fitScale = Math.min(2, availableWidth / baseViewport.width);
-        const cssScale = fitScale * zoom;
-        const outputScale = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
-        const renderViewport = page.getViewport({ scale: cssScale * outputScale });
-        const canvas = canvasRef.current;
-        const context = canvas.getContext("2d", { alpha: false });
-        if (!context) throw new Error("This browser could not start the PDF canvas.");
-        canvas.width = Math.max(1, Math.floor(renderViewport.width));
-        canvas.height = Math.max(1, Math.floor(renderViewport.height));
-        canvas.style.width = `${Math.floor(baseViewport.width * cssScale)}px`;
-        canvas.style.height = `${Math.floor(baseViewport.height * cssScale)}px`;
-        renderTask = page.render({ canvas, canvasContext: context, viewport: renderViewport });
-        await renderTask.promise;
-        page.cleanup?.();
-      } catch (caught) {
-        if (active && !(caught instanceof Error && caught.name === "RenderingCancelledException"))
-          setError(
-            caught instanceof Error ? caught.message : "This PDF page could not be rendered."
-          );
-      } finally {
-        if (active) setRendering(false);
-      }
-    })();
-    return () => {
-      active = false;
-      renderTask?.cancel();
-    };
-  }, [pageNumber, pdf, viewportWidth, zoom]);
 
   if (loading)
     return (
@@ -313,7 +314,10 @@ function PdfCanvasViewer({
   return (
     <div
       ref={viewportRef}
-      className="h-[72dvh] min-h-[34rem] overflow-auto bg-elevated"
+      className="h-[75dvh] min-h-80 overflow-auto bg-elevated [scrollbar-gutter:stable] [&:fullscreen]:h-screen [&:fullscreen]:w-screen"
+      role="region"
+      aria-label="PDF pages, scroll vertically"
+      tabIndex={0}
       style={{ touchAction: "pan-x pan-y pinch-zoom" }}
     >
       <ViewerToolbar
@@ -321,45 +325,161 @@ function PdfCanvasViewer({
         onZoomOut={() => setZoom((value) => Math.max(0.75, value - 0.25))}
         onZoomIn={() => setZoom((value) => Math.min(2.5, value + 0.25))}
         onFit={() => setZoom(1)}
+        fullscreen={fullscreen}
+        onFullscreen={toggle}
       >
-        <button
-          type="button"
-          onClick={() => setPageNumber((value) => Math.max(1, value - 1))}
-          disabled={pageNumber === 1}
-          className="tap-target grid size-10 place-items-center rounded-xl hover:bg-elevated disabled:opacity-30"
-          aria-label="Previous PDF page"
-        >
-          <ChevronLeft className="size-4" />
-        </button>
-        <span className="whitespace-nowrap text-xs font-bold text-muted" aria-live="polite">
-          Page {pageNumber} of {pdf.numPages}
+        <span className="whitespace-nowrap px-2 text-xs font-bold text-muted">
+          {pdf.numPages} {pdf.numPages === 1 ? "page" : "pages"}
         </span>
-        <button
-          type="button"
-          onClick={() => setPageNumber((value) => Math.min(pdf.numPages, value + 1))}
-          disabled={pageNumber === pdf.numPages}
-          className="tap-target grid size-10 place-items-center rounded-xl hover:bg-elevated disabled:opacity-30"
-          aria-label="Next PDF page"
-        >
-          <ChevronRight className="size-4" />
-        </button>
       </ViewerToolbar>
-      <div className="relative flex min-h-[calc(100%_-_3.5rem)] min-w-full items-start justify-center p-4">
-        {rendering && (
-          <span
-            role="status"
-            className="absolute left-1/2 top-6 z-[1] -translate-x-1/2 rounded-full bg-brand px-3 py-1.5 text-xs font-bold text-surface shadow-soft"
-          >
-            <Loader2 className="mr-1 inline size-3 animate-spin motion-reduce:animate-none" />{" "}
-            Rendering page
-          </span>
-        )}
-        <canvas
-          ref={canvasRef}
-          aria-label={`${title}, PDF page ${pageNumber}`}
-          className="max-w-none bg-white shadow-soft"
-        />
+      {fullscreenError && (
+        <p role="status" className="p-2 text-xs text-muted">
+          {fullscreenError}
+        </p>
+      )}
+      <div className="w-max min-w-full space-y-3 p-2">
+        {Array.from({ length: pdf.numPages }, (_, index) => (
+          <PdfPageCanvas
+            key={index + 1}
+            pdf={pdf}
+            pageNumber={index + 1}
+            title={title}
+            width={Math.max(1, (viewportWidth || 320) - 16)}
+            zoom={zoom}
+            scrollRoot={viewportRef}
+          />
+        ))}
       </div>
     </div>
+  );
+}
+
+function PdfPageCanvas({
+  pdf,
+  pageNumber,
+  title,
+  width,
+  zoom,
+  scrollRoot
+}: {
+  pdf: PdfDocument;
+  pageNumber: number;
+  title: string;
+  width: number;
+  zoom: number;
+  scrollRoot: RefObject<HTMLDivElement>;
+}) {
+  const pageRef = useRef<HTMLElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [nearby, setNearby] = useState(
+    typeof IntersectionObserver === "undefined" || pageNumber === 1
+  );
+  const [ratio, setRatio] = useState(4 / 3);
+  const [rendering, setRendering] = useState(true);
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const displayWidth = Math.floor(width * zoom);
+
+  useEffect(() => {
+    if (!pageRef.current || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(([entry]) => setNearby(entry.isIntersecting), {
+      root: scrollRoot.current,
+      rootMargin: "700px 0px"
+    });
+    observer.observe(pageRef.current);
+    return () => observer.disconnect();
+  }, [scrollRoot]);
+
+  useEffect(() => {
+    if (!nearby || !canvasRef.current) return;
+    let active = true;
+    const canvas = canvasRef.current;
+    let task: PdfRenderTask | undefined;
+    setRendering(true);
+    setError("");
+    void (async () => {
+      try {
+        const page = await pdf.getPage(pageNumber);
+        if (!active) return;
+        const base = page.getViewport({ scale: 1 });
+        setRatio(base.height / base.width);
+        const cssScale = displayWidth / base.width;
+        // Limit very large/zoomed pages on memory-constrained phones.
+        const outputScale = Math.min(
+          2,
+          window.devicePixelRatio || 1,
+          Math.sqrt(8_000_000 / ((displayWidth * displayWidth * base.height) / base.width))
+        );
+        const viewport = page.getViewport({ scale: cssScale * outputScale });
+        const context = canvas.getContext("2d", { alpha: false });
+        if (!context) throw new Error("This browser could not start the PDF canvas.");
+        canvas.width = Math.max(1, Math.floor(viewport.width));
+        canvas.height = Math.max(1, Math.floor(viewport.height));
+        task = page.render({ canvas, canvasContext: context, viewport });
+        await task.promise;
+      } catch (caught) {
+        if (active && !(caught instanceof Error && caught.name === "RenderingCancelledException"))
+          setError("This page could not be rendered. Try again or use Open.");
+      } finally {
+        if (active) setRendering(false);
+      }
+    })();
+    return () => {
+      active = false;
+      task?.cancel();
+      // The canvas is replaced on zoom/resize, so a cancelled render cannot draw over a new one.
+      void (task?.promise ?? Promise.resolve())
+        .catch(() => undefined)
+        .then(() => {
+          canvas.width = 0;
+          canvas.height = 0;
+        });
+    };
+  }, [pdf, pageNumber, nearby, displayWidth, retry]);
+
+  return (
+    <figure
+      ref={pageRef}
+      className="mx-auto"
+      style={{ width: displayWidth }}
+      aria-label={`Page ${pageNumber}`}
+    >
+      <figcaption className="mb-1 text-center text-xs text-muted">Page {pageNumber}</figcaption>
+      <div
+        className="relative bg-white shadow-soft"
+        style={{ height: Math.floor(displayWidth * ratio) }}
+      >
+        {nearby && (
+          <canvas
+            key={`${displayWidth}:${retry}`}
+            ref={canvasRef}
+            aria-label={`${title}, PDF page ${pageNumber}`}
+            className="block size-full"
+          />
+        )}
+        {nearby && rendering && (
+          <span
+            role="status"
+            className="absolute inset-0 grid place-items-center text-xs text-gray-600"
+          >
+            <span>
+              <Loader2 className="mr-1 inline size-4 animate-spin motion-reduce:animate-none" />
+              Loading page {pageNumber}…
+            </span>
+          </span>
+        )}
+        {nearby && error && (
+          <div
+            role="alert"
+            className="absolute inset-0 grid place-content-center gap-3 p-4 text-center text-sm text-gray-700"
+          >
+            <p>{error}</p>
+            <button className="secondary-button" onClick={() => setRetry((value) => value + 1)}>
+              Retry page {pageNumber}
+            </button>
+          </div>
+        )}
+      </div>
+    </figure>
   );
 }

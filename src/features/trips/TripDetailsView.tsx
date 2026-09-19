@@ -1,6 +1,7 @@
 import { ChevronRight, Plus, RotateCcw, UsersRound } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { TripChildLink } from "../../components/TripChildLink";
 import { EventTypeIcon } from "../../components/EventTypeIcon";
 import { ProgressiveList } from "../../components/ProgressiveList";
 import { TripDocumentRow } from "../../components/TripDocumentRow";
@@ -81,14 +82,15 @@ function CollectionCounts({
     <div className="mb-2 flex flex-wrap gap-x-2" aria-label="Section summary">
       {visible.map((value) =>
         tripId ? (
-          <Link
+          <TripChildLink
+            tripId={tripId}
             key={value.label}
             to={`/trips/${tripId}/${collection}?category=${collection === "documents" ? encodeURIComponent(value.label.replaceAll(" ", "_")) : value.label === "Flights" ? "flight" : value.label === "Stays" ? "hotel" : value.label === "Ground & water" ? "journey" : "plan"}`}
             state={navigationState}
             className="inline-flex min-h-11 items-center gap-1 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-bold text-muted hover:border-brand hover:text-ink"
           >
             {value.label} <strong className="text-ink">{value.count}</strong>
-          </Link>
+          </TripChildLink>
         ) : (
           <span
             key={value.label}
@@ -294,13 +296,15 @@ export function TripDetailsView(props: TripDetailsViewProps) {
           <p className="text-sm text-muted">No relevant reservations yet.</p>
         )}
         {bookings.length > 0 && (
-          <Link
+          <TripChildLink
+            tripId={trip.id}
+            id="view-all-reservations"
             to={`/trips/${trip.id}/reservations`}
             state={navigationState}
             className="mt-4 flex items-center justify-end gap-1 text-sm font-extrabold text-brand"
           >
             View all {bookings.length} reservations <ChevronRight className="size-4" />
-          </Link>
+          </TripChildLink>
         )}
       </TripDetailsSection>
 

@@ -12,6 +12,8 @@ export type TripReturnContext = {
   tripId: string;
   view: TripView;
   path?: string;
+  parent?: TripReturnContext;
+  scroll?: { y: number; anchorId?: string; anchorOffset?: number };
 };
 
 type TripEntry = {
@@ -24,6 +26,11 @@ type NavigationEnvelope = {
   returnTo?: TripReturnContext;
   entry?: TripEntry;
   routeModal?: { tripId: string };
+  scrollRestore?: {
+    tripId: string;
+    path: string;
+    scroll: NonNullable<TripReturnContext["scroll"]>;
+  };
 };
 
 const navigationKey = "__tripVaultNavigation";
@@ -75,7 +82,14 @@ export function tripChildNavigationState(
   const path = safeTripPath(returnPath, tripId);
   return withEnvelope(state, {
     ...current,
-    returnTo: path ? { tripId, view, path } : (existingReturn ?? { tripId, view }),
+    returnTo: path
+      ? {
+          tripId,
+          view,
+          path,
+          parent: existingReturn?.path === path ? existingReturn.parent : existingReturn
+        }
+      : (existingReturn ?? { tripId, view }),
     intent: undefined
   });
 }
@@ -159,10 +173,42 @@ export function tripReturnHref(tripId: string, view: TripView) {
 
 export function tripReturnNavigation(state: unknown, tripId: string) {
   const context = readTripReturnContext(state, tripId) ?? { tripId, view: "timeline" as const };
+  const current = readEnvelope(state);
+  const href = context.path ?? tripReturnHref(tripId, context.view);
+  const returnState = withEnvelope(state, {
+    ...current,
+    returnTo: context.parent,
+    // The restored modal is a destination, not the previous browser-history entry.
+    routeModal: undefined,
+    scrollRestore: context.scroll ? { tripId, path: href, scroll: context.scroll } : undefined
+  });
   return {
-    href: context.path ?? tripReturnHref(tripId, context.view),
-    state: tripIntentNavigationState(state, tripId, "restore", { view: context.view }),
+    href,
+    state: tripIntentNavigationState(returnState, tripId, "restore", { view: context.view }),
     view: context.view,
-    historyBack: Boolean(context.path)
+    hasOrigin: Boolean(context.path)
   };
+}
+
+export function tripChildScrollState(
+  state: unknown,
+  tripId: string,
+  scroll: NonNullable<TripReturnContext["scroll"]>
+) {
+  const current = readEnvelope(state);
+  const context = readTripReturnContext(state, tripId);
+  return context
+    ? withEnvelope(state, {
+        ...current,
+        returnTo: { ...context, scroll },
+        scrollRestore: undefined
+      })
+    : state;
+}
+
+export function readTripScrollRestore(state: unknown, tripId: string, path: string) {
+  const restore = readEnvelope(state).scrollRestore;
+  return restore?.tripId === tripId && restore.path === path && Number.isFinite(restore.scroll?.y)
+    ? restore.scroll
+    : null;
 }

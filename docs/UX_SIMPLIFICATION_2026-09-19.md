@@ -73,7 +73,33 @@ Accepted and implemented locally on 19 September 2026. This amendment supersedes
 
 The earlier review's offline/sync/authorization findings remain a separate backlog. The existing Flight connection assertion was changed to await asynchronous rendering; application behavior was not changed to accommodate the test.
 
+## Booking detail refinement
+
+- Extended the flight-style hero/schedule/reference hierarchy to all generic booking types. Each uses its timeline icon/accent, honest reservation state, relevant countdown, paired schedule facts, and a separate reference rail. Hotels emphasize check-in/out, stay length and saved room count; transport uses local departure/arrival or pickup/drop-off, with operational facts below. Long instructions and unpaired grid facts span the full row. Existing edit/copy/contact/document actions, cab stops/costs, traveler access and secondary disclosures remain intact.
+
+- Flight connections use a compact joined selector: route above flight number, a filled selected state and underline, without repeated leg/viewing labels or numbered circles. Airline dots and accessible current-page state remain. The schedule names the selected leg and route. Reviewed Flighty's published detail design and TripIt's connection documentation; verified switching real flights at 320px/375px. Ferry creation now exposes an optional Booking reference even for plans, preserves it when switching reservation state, and editing allows adding/changing/clearing it. Booking pages display populated references without empty panels. All 102 targeted tests passed.
+
+- Cab journey stops are visible below the journey on the booking page and above documents in the event modal, not hidden within Booking details. Existing stop costs, optional cost entry, add/edit/reorder/archive controls and permissions are reused without database changes. Empty essentials panels are omitted. Regression coverage verifies stop/cost visibility, read-only access, and adding costs to existing stops with booking/stop associations intact.
+
+- Mobile Timeline / Trip details navigation uses a flat, 45px-high underlined tab bar instead of raised pills. Only the main app header hides on downward scrolling; trip tabs remain visible and interactive at the viewport top, moving below the main header when it returns. The demo shares the same component. Verified both views at 320px and 375px, including upward reveal and no horizontal overflow; 64 targeted tests passed.
+
+- Compact essentials panels now have straight internal dividers, a single location/directions link using the timeline navigation icon, and Call/WhatsApp shortcuts. Documents stay prominent; booking/contact details, long notes, costs, and management controls are disclosed on demand.
+- Hotel room type, number of rooms, and lead guest can be added, changed, or cleared in Edit booking. Notes and unrelated booking metadata are preserved. Saved room/guest information appears on the booking page.
+- Booking costs reuse existing expense records and forms, including costs attached to linked check-in/checkout events. Totals remain separate by currency and exclude refunded amounts. Viewers have read-only access.
+- Documents has the single Upload entry point; multi-leg bookings offer whole-booking or specific-connection attachment. Compact timeline passenger badges show names and seats, with the main booking reference bold beside the operator. Passenger references remain in full booking details.
+- Shared documents appear first; personal documents are grouped by traveler. Passenger editors start collapsed. Flight schedules retain local timezones, operational details, and connection navigation.
+- Read-only mobile browser checks covered hotel room prefill and linked costs, bus upload consolidation, navigation/contact controls, and compact seat badges. No real booking, expense, passenger, or document changes were submitted. Automated suite: 593 tests across 95 files; the final seat/reference adjustment additionally passed its 45 targeted tests. Production build and formatting checks passed. No dependency or database changes are required.
+
+## Document reader refinement
+
+- Reduced the document title/header scale and spacing, retaining the complete title, visibility, Open, and a labeled Details action. The preview uses the smaller shared radius and a single-row toolbar.
+- Multi-page PDFs now scroll vertically with page labels instead of previous/next buttons. Nearby pages render lazily; offscreen canvases are released. Zoom applies to the stack, the percentage resets fit-to-width, and supported browsers offer fullscreen. Individual failed pages can be retried without hiding successful pages.
+- Verified the real two-page flight ticket at 375px and 320px: vertical scrolling reaches page two, fit-to-width has no horizontal overflow, zoom and fullscreen work, and no browser errors were recorded. No document metadata or permissions were changed. Unit coverage includes vertical page rendering, lazy rendering, page retry, zoom/reset, and existing image/document actions. Production build passed; dependencies are unchanged.
+
 ## Verification
+
+- Final booking refinements: existing documents precede smaller upload/attach actions, with prominent actions for empty states. Summary shortcuts are icon-only on phones and show labels at tablet/desktop widths; accessible names and tooltips remain available. Mobile targets measure 44 × 44px.
+- Release check for this refinement batch: **673 tests passed across 100 files**, production build and formatting/diff checks passed, and an offline `npm ci --dry-run --ignore-scripts` confirmed lockfile consistency. No dependency or schema changes. The separately identified booking-reference corner-clipping issue is not changed in this batch.
 
 - Automated coverage includes date/card independence, multiple expanded cards, session/account separation, search-target reveal, async data arrival, launch-window boundaries and overlaps, explicit return to Trips, user-set checkout ordering, field help, and validation of collapsed fields.
 - Signed-in demo-profile browser checks: 320px/390px phone and 1365px desktop layouts, sticky navigation/search, collapsed-date search reveal, form disclosures, timezone-help bounds, and traveler seat fields. No event save, upload, invitation response, or deletion was submitted.
