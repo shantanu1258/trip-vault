@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import styles from "../../styles/globals.css?raw";
 import {
   preferredScrollBehavior,
   revealExpandedTimelineEvent,
@@ -32,6 +33,12 @@ function expandedViewport(top: number, height: number, hiddenHeaders = false) {
 }
 
 describe("timeline positioning", () => {
+  it("keeps the landing highlight for 3.5 seconds without delaying reduced-motion users", () => {
+    expect(styles).toContain("animation: timeline-focus-pulse 3500ms");
+    expect(styles).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*animation-duration: 0\.01ms !important/
+    );
+  });
   it("keeps a grouped date visible below both sticky headers", () => {
     const header = document.createElement("header");
     header.className = "sticky";
