@@ -4,7 +4,7 @@ description: "Implemented routes, modules, data model, authorization, file stora
 scope: [service-wide]
 agents: [coder, reviewer, planner, debugger]
 tags: [implementation, data-model, sync, storage, authorization, testing]
-last_verified: 2026-09-17
+last_verified: 2026-09-19
 ---
 
 # Trip Vault Low-Level Design
@@ -17,29 +17,29 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 
 ## 1. Technology Set
 
-| Concern | Implemented choice | Decision state | Notes |
-|---|---|---|---|
-| Language | TypeScript | Implemented | Shared types and safer data migrations |
-| UI | React | Implemented | Responsive component model |
-| Build and local development | Vite | Implemented | Supported by Cloudflare tooling |
-| Hosting | Cloudflare Workers with Static Assets | Configured | SPA hosting is configured; successful post-push deployment is not verified in this document |
-| Routing | React Router | Implemented | Explicit route and layout model |
-| Remote query cache | TanStack Query | Implemented | Online request lifecycle; not the offline source of truth |
-| Local metadata database | IndexedDB through Dexie | Implemented | Queryable structured offline data and migration support |
-| Local file storage | Origin Private File System with fallback | Implemented | Pinned documents and checksum verification |
-| PWA lifecycle | Service worker generated through a Vite-compatible PWA plugin | Implemented | App-shell caching and update prompts |
-| Safe document rendering | Vendored Mozilla PDF.js 6.3.289 plus native image rendering | Implemented | Same-origin module/worker assets render PDFs to canvas; device Open remains fallback |
-| Database and identity backend | Supabase | Accepted | Auth, Postgres, and Realtime in a dedicated Trip Vault project |
-| Cloud file storage | Supabase private Storage | Implemented | Separate private account inbox and trip-version bucket keep persistence independent from association |
-| Authentication | Supabase email-only authentication | Accepted | Onboarding has no separate confirmation gate for now; detailed session behavior follows the Supabase project configuration |
-| Administrator authorization | Dedicated Supabase Auth account plus `app_admins` allowlist and RLS | Accepted | Separate Admin entry; no new authentication provider and no implicit trip access |
-| Validation | Zod | Implemented | Shared parsing at network and form boundaries |
-| Styling | Design tokens plus Tailwind CSS | Implemented | Semantic tokens support both appearance modes |
-| Appearance modes | CSS custom properties with System, Light, and Dark | Accepted | Bundled fallback palettes, local preference, published admin palette, and offline startup |
-| Motion | Property-specific Tailwind transitions plus CSS scroll snap and Intersection Observer | Implemented | Restrained focus changes and reduced-motion fallback |
-| Map hand-off | Google Maps URLs | Accepted | Search and directions links need no API key; no embedded maps, geocoding, or downloads in MVP |
-| Flight status | Manual records plus external links | Accepted | No live-data provider, scraping, or background polling |
-| Testing | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance | Implemented | Exact automated baseline is recorded in 16.1; remote SQL, phone/desktop, Storage, and airplane-mode acceptance remain manual |
+| Concern                       | Implemented choice                                                                    | Decision state | Notes                                                                                                                        |
+| ----------------------------- | ------------------------------------------------------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Language                      | TypeScript                                                                            | Implemented    | Shared types and safer data migrations                                                                                       |
+| UI                            | React                                                                                 | Implemented    | Responsive component model                                                                                                   |
+| Build and local development   | Vite                                                                                  | Implemented    | Supported by Cloudflare tooling                                                                                              |
+| Hosting                       | Cloudflare Workers with Static Assets                                                 | Configured     | SPA hosting is configured; successful post-push deployment is not verified in this document                                  |
+| Routing                       | React Router                                                                          | Implemented    | Explicit route and layout model                                                                                              |
+| Remote query cache            | TanStack Query                                                                        | Implemented    | Online request lifecycle; not the offline source of truth                                                                    |
+| Local metadata database       | IndexedDB through Dexie                                                               | Implemented    | Queryable structured offline data and migration support                                                                      |
+| Local file storage            | Origin Private File System with fallback                                              | Implemented    | Pinned documents and checksum verification                                                                                   |
+| PWA lifecycle                 | Service worker generated through a Vite-compatible PWA plugin                         | Implemented    | App-shell caching and update prompts                                                                                         |
+| Safe document rendering       | Vendored Mozilla PDF.js 6.3.289 plus native image rendering                           | Implemented    | Same-origin module/worker assets render PDFs to canvas; device Open remains fallback                                         |
+| Database and identity backend | Supabase                                                                              | Accepted       | Auth, Postgres, and Realtime in a dedicated Trip Vault project                                                               |
+| Cloud file storage            | Supabase private Storage                                                              | Implemented    | Separate private account inbox and trip-version bucket keep persistence independent from association                         |
+| Authentication                | Supabase email-only authentication                                                    | Accepted       | Onboarding has no separate confirmation gate for now; detailed session behavior follows the Supabase project configuration   |
+| Administrator authorization   | Dedicated Supabase Auth account plus `app_admins` allowlist and RLS                   | Accepted       | Separate Admin entry; no new authentication provider and no implicit trip access                                             |
+| Validation                    | Zod                                                                                   | Implemented    | Shared parsing at network and form boundaries                                                                                |
+| Styling                       | Design tokens plus Tailwind CSS                                                       | Implemented    | Semantic tokens support both appearance modes                                                                                |
+| Appearance modes              | CSS custom properties with System, Light, and Dark                                    | Accepted       | Bundled fallback palettes, local preference, published admin palette, and offline startup                                    |
+| Motion                        | Property-specific Tailwind transitions plus CSS scroll snap and Intersection Observer | Implemented    | Restrained focus changes and reduced-motion fallback                                                                         |
+| Map hand-off                  | Google Maps URLs                                                                      | Accepted       | Search and directions links need no API key; no embedded maps, geocoding, or downloads in MVP                                |
+| Flight status                 | Manual records plus external links                                                    | Accepted       | No live-data provider, scraping, or background polling                                                                       |
+| Testing                       | Vitest, React Testing Library, SQL smoke test, and manual browser acceptance          | Implemented    | Exact automated baseline is recorded in 16.1; remote SQL, phone/desktop, Storage, and airplane-mode acceptance remain manual |
 
 ## 2. Implemented Repository Layout
 
@@ -49,9 +49,6 @@ trip-vault/
 │   ├── HIGH_LEVEL_DESIGN.md
 │   ├── LOW_LEVEL_DESIGN.md
 │   ├── FEATURES.md
-│   ├── REDESIGN_CHECKLIST.md
-│   ├── FEATURE_TEST_CHECKLIST.md
-│   ├── source-index.md
 │   └── doc-conventions.md
 ├── public/
 │   ├── demo-documents/
@@ -101,36 +98,36 @@ Feature folders should own their views, hooks, validation, and tests. Shared pri
 
 ## 3. Route Map
 
-| Route | Access | Primary view | Offline behavior |
-|---|---|---|---|
-| `/` | Public or authenticated | Redirect to onboarding or home | App shell available |
-| `/welcome` | Public | Welcome and value introduction | Fully available |
-| `/preview` | Public | Sample Mediterranean trip | Fully available with bundled demo data |
-| `/sign-in` | Public | Email-only Supabase sign-in | Explains that connection is required |
-| `/join` | Authenticated | Enter and redeem a one-time trip code | Connection required; reveals no real trip data before successful redemption |
-| `/admin/sign-in` | Public | Dedicated administrator account sign-in | Connection required; generic denial reveals no allowlist membership |
-| `/admin` | Application administrator | Configuration overview, validation failures, and published version | Cached view optional; all changes require connection |
-| `/admin/airlines` | Application administrator | Global airline catalog and action templates | Read-only cached view; publishing unavailable |
-| `/admin/airports` | Application administrator | Airport names, codes, timezones, aliases, and optional location | Read-only cached view; publishing unavailable |
-| `/admin/vendors` | Application administrator | Booking vendor names, links, branding, ordering, and enablement | Read-only cached view; publishing unavailable |
-| `/admin/suggestions` | Application administrator | Privacy-safe airline, airport, vendor, and provider suggestions | Not available offline |
-| `/admin/defaults` | Application administrator | Booking, document, readiness, reminder, and link defaults | Read-only cached view; publishing unavailable |
-| `/admin/appearance` | Application administrator | Light/dark token editor and preview | Bundled preview works; saving and publishing require connection |
-| `/admin/releases` | Application administrator | Draft, publish history, audit, and rollback | Connection required |
-| `/home` | Authenticated | Upcoming-trip or current-trip Home | Online trip read refreshes Supabase first; mode and focus are derived locally from the returned or cached collection |
-| `/alerts` | Authenticated | Urgent, Today, Upcoming, and dismissed alerts | Alerts and unread count are derived locally from the currently loaded or cached data |
-| `/trips` | Authenticated | Upcoming, active, and past trips | Supabase first online; cached trip index on failure or offline |
-| `/trips/new` | Authenticated | Create a trip | A valid submitted creation is cached and queued; unfinished fields are not an autosaved draft |
-| `/trips/:tripId` | Trip member | Complete chronological timeline by default; `?view=details` opens sectioned trip details | Online refresh with cached fallback; offline reads the authorized device snapshot and restores timeline position |
-| `/trips/:tripId/reservations` | Trip member | Complete chronological reservation index with search, category counts, and traveler filter | Uses the same cached trip, booking, leg, document, and traveler collections as Trip details |
-| `/trips/:tripId/documents` | Trip member | Complete trip-document index with Needed next, search, category filter, and traveler filter | Uses cached authorized document metadata and cached event/document relationships; opening a file follows the existing local-first document route |
-| `/trips/:tripId/bookings/:bookingId` | Trip member | Booking details and attachments | Network-first metadata with cached fallback |
-| `/trips/:tripId/flights/:flightLegId` | Trip member | Flight details, manual update, ticket, boarding pass, and baggage tags | Network-first metadata with cached fallback; local document files remain available |
-| `/trips/:tripId/readiness` | Trip member | Visa, passport, insurance, check-in, and custom requirements | Network-first list with cached fallback; supported submissions queue locally |
-| `/trips/:tripId/documents/:documentId` | Authorized member | Local-first document viewer with secondary information/actions sheet | Verified local version opens immediately; a permitted cloud version downloads once and is cached |
-| `/vault` | Authenticated | Searchable cross-trip document index | Searches local metadata; remote refresh when online |
-| `/add` | Authenticated | Quick-add chooser | Drafts can be stored locally |
-| `/profile` | Authenticated | Account, private document inbox, devices, storage, and security | Local settings and locally staged uploads remain available |
+| Route                                  | Access                    | Primary view                                                                                | Offline behavior                                                                                                                                 |
+| -------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/`                                    | Public or authenticated   | Redirect to onboarding or home                                                              | App shell available                                                                                                                              |
+| `/welcome`                             | Public                    | Welcome and value introduction                                                              | Fully available                                                                                                                                  |
+| `/preview`                             | Public                    | Sample Mediterranean trip                                                                   | Fully available with bundled demo data                                                                                                           |
+| `/sign-in`                             | Public                    | Email-only Supabase sign-in                                                                 | Explains that connection is required                                                                                                             |
+| `/join`                                | Authenticated             | Enter and redeem a one-time trip code                                                       | Connection required; reveals no real trip data before successful redemption                                                                      |
+| `/admin/sign-in`                       | Public                    | Dedicated administrator account sign-in                                                     | Connection required; generic denial reveals no allowlist membership                                                                              |
+| `/admin`                               | Application administrator | Configuration overview, validation failures, and published version                          | Cached view optional; all changes require connection                                                                                             |
+| `/admin/airlines`                      | Application administrator | Global airline catalog and action templates                                                 | Read-only cached view; publishing unavailable                                                                                                    |
+| `/admin/airports`                      | Application administrator | Airport names, codes, timezones, aliases, and optional location                             | Read-only cached view; publishing unavailable                                                                                                    |
+| `/admin/vendors`                       | Application administrator | Booking vendor names, links, branding, ordering, and enablement                             | Read-only cached view; publishing unavailable                                                                                                    |
+| `/admin/suggestions`                   | Application administrator | Privacy-safe airline, airport, vendor, and provider suggestions                             | Not available offline                                                                                                                            |
+| `/admin/defaults`                      | Application administrator | Booking, document, readiness, reminder, and link defaults                                   | Read-only cached view; publishing unavailable                                                                                                    |
+| `/admin/appearance`                    | Application administrator | Light/dark token editor and preview                                                         | Bundled preview works; saving and publishing require connection                                                                                  |
+| `/admin/releases`                      | Application administrator | Draft, publish history, audit, and rollback                                                 | Connection required                                                                                                                              |
+| `/home`                                | Authenticated             | Upcoming-trip or current-trip Home                                                          | Online trip read refreshes Supabase first; mode and focus are derived locally from the returned or cached collection                             |
+| `/alerts`                              | Authenticated             | Urgent, Today, Upcoming, and dismissed alerts                                               | Alerts and unread count are derived locally from the currently loaded or cached data                                                             |
+| `/trips`                               | Authenticated             | Upcoming, active, and past trips                                                            | Supabase first online; cached trip index on failure or offline                                                                                   |
+| `/trips/new`                           | Authenticated             | Create a trip                                                                               | A valid submitted creation is cached and queued; unfinished fields are not an autosaved draft                                                    |
+| `/trips/:tripId`                       | Trip member               | Complete chronological timeline by default; `?view=details` opens sectioned trip details    | Online refresh with cached fallback; offline reads the authorized device snapshot and restores timeline position                                 |
+| `/trips/:tripId/reservations`          | Trip member               | Complete chronological reservation index with search, category counts, and traveler filter  | Uses the same cached trip, booking, leg, document, and traveler collections as Trip details                                                      |
+| `/trips/:tripId/documents`             | Trip member               | Complete trip-document index with Needed next, search, category filter, and traveler filter | Uses cached authorized document metadata and cached event/document relationships; opening a file follows the existing local-first document route |
+| `/trips/:tripId/bookings/:bookingId`   | Trip member               | Booking details and attachments                                                             | Network-first metadata with cached fallback                                                                                                      |
+| `/trips/:tripId/flights/:flightLegId`  | Trip member               | Flight details, manual update, ticket, boarding pass, and baggage tags                      | Network-first metadata with cached fallback; local document files remain available                                                               |
+| `/trips/:tripId/readiness`             | Trip member               | Visa, passport, insurance, check-in, and custom requirements                                | Network-first list with cached fallback; supported submissions queue locally                                                                     |
+| `/trips/:tripId/documents/:documentId` | Authorized member         | Local-first document viewer with secondary information/actions sheet                        | Verified local version opens immediately; a permitted cloud version downloads once and is cached                                                 |
+| `/vault`                               | Authenticated             | Searchable cross-trip document index                                                        | Searches local metadata; remote refresh when online                                                                                              |
+| `/add`                                 | Authenticated             | Quick-add chooser                                                                           | Drafts can be stored locally                                                                                                                     |
+| `/profile`                             | Authenticated             | Account, private document inbox, devices, storage, and security                             | Local settings and locally staged uploads remain available                                                                                       |
 
 The wide-screen layout may render several routes as side panels, but URL identity must remain stable.
 
@@ -138,47 +135,47 @@ The wide-screen layout may render several routes as side panels, but URL identit
 
 ### 4.1 Enumerations
 
-| Type | Implemented values |
-|---|---|
-| `trip_status` | `draft`, `upcoming`, `active`, `completed`, `archived` |
-| `member_role` | `owner`, `editor`, `viewer` |
-| `member_status` | `active`, `removed` |
-| `participation_type` | `traveler`, `collaborator` |
-| `traveler_status` | `active`, `removed` |
-| `invitation_target_type` | `traveler`, `collaborator` |
-| `app_admin_status` | `active`, `disabled` |
-| `config_release_status` | `draft`, `published`, `retired` |
-| `theme_preference` | `system`, `light`, `dark` |
-| `booking_type` | `flight`, `hotel`, `train`, `bus`, `ferry`, `cab`, `transport`, `activity`, `restaurant`, `other` |
-| `booking_reservation_state` | `planned`, `walk_up`, `booked` |
-| `participant_scope` | `everyone`, `selected` |
-| `timeline_event_type` | `flight`, `train`, `bus`, `ferry`, `cab`, `hotel_check_in`, `hotel_check_out`, `transport`, `meal`, `activity`, `preparation`, `custom` |
-| `journey_mode` | `train`, `bus`, `ferry`, `cab` |
-| `journey_scope` | `domestic`, `international` |
-| `journey_structure` | Transient form choice only: `direct`, `connecting`; persisted ordered-leg count is authoritative |
-| `cost_category` | `flight`, `hotel`, `transport`, `activity`, `food`, `visa`, `insurance`, `other` |
-| `payment_status` | `planned`, `paid`, `refunded` |
-| `document_category` | `flight`, `hotel`, `activity`, `visa`, `passport`, `insurance`, `ticket`, `transport`, `receipt`, `other` |
-| `document_purpose` | `confirmation`, `ticket`, `boarding_pass`, `baggage_tag`, `visa`, `passport`, `insurance`, `hotel_confirmation`, `activity_ticket`, `meal_voucher`, `receipt`, `other` |
-| `document_assignment_mode` | `shared`, `selected`, `unassigned` |
-| `document_visibility` | `private`, `traveler_and_managers`, `trip`, `selected_members` |
-| `flight_status` | `scheduled`, `check_in_open`, `boarding`, `delayed`, `departed`, `landed`, `cancelled` |
-| `requirement_type` | `visa`, `passport`, `insurance`, `check_in`, `payment`, `packing`, `custom` |
-| `requirement_status` | `to_check`, `not_required`, `required`, `in_progress`, `complete`, `expired` |
-| `alert_severity` | `urgent`, `today`, `upcoming`, `information` |
-| `focus_source` | `automatic`, `manual` |
-| `sync_state` | `local_only`, `queued`, `syncing`, `synced`, `conflict`, `failed` |
-| `offline_state` | `not_requested`, `preparing`, `essentials_ready`, `ready`, `stale`, `failed`, `insufficient_space` |
+| Type                        | Implemented values                                                                                                                                                     |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trip_status`               | `draft`, `upcoming`, `active`, `completed`, `archived`                                                                                                                 |
+| `member_role`               | `owner`, `editor`, `viewer`                                                                                                                                            |
+| `member_status`             | `active`, `removed`                                                                                                                                                    |
+| `participation_type`        | `traveler`, `collaborator`                                                                                                                                             |
+| `traveler_status`           | `active`, `removed`                                                                                                                                                    |
+| `invitation_target_type`    | `traveler`, `collaborator`                                                                                                                                             |
+| `app_admin_status`          | `active`, `disabled`                                                                                                                                                   |
+| `config_release_status`     | `draft`, `published`, `retired`                                                                                                                                        |
+| `theme_preference`          | `system`, `light`, `dark`                                                                                                                                              |
+| `booking_type`              | `flight`, `hotel`, `train`, `bus`, `ferry`, `cab`, `transport`, `activity`, `restaurant`, `other`                                                                      |
+| `booking_reservation_state` | `planned`, `walk_up`, `booked`                                                                                                                                         |
+| `participant_scope`         | `everyone`, `selected`                                                                                                                                                 |
+| `timeline_event_type`       | `flight`, `train`, `bus`, `ferry`, `cab`, `hotel_check_in`, `hotel_check_out`, `transport`, `meal`, `activity`, `preparation`, `custom`                                |
+| `journey_mode`              | `train`, `bus`, `ferry`, `cab`                                                                                                                                         |
+| `journey_scope`             | `domestic`, `international`                                                                                                                                            |
+| `journey_structure`         | Transient form choice only: `direct`, `connecting`; persisted ordered-leg count is authoritative                                                                       |
+| `cost_category`             | `flight`, `hotel`, `transport`, `activity`, `food`, `visa`, `insurance`, `other`                                                                                       |
+| `payment_status`            | `planned`, `paid`, `refunded`                                                                                                                                          |
+| `document_category`         | `flight`, `hotel`, `activity`, `visa`, `passport`, `insurance`, `ticket`, `transport`, `receipt`, `other`                                                              |
+| `document_purpose`          | `confirmation`, `ticket`, `boarding_pass`, `baggage_tag`, `visa`, `passport`, `insurance`, `hotel_confirmation`, `activity_ticket`, `meal_voucher`, `receipt`, `other` |
+| `document_assignment_mode`  | `shared`, `selected`, `unassigned`                                                                                                                                     |
+| `document_visibility`       | `private`, `traveler_and_managers`, `trip`, `selected_members`                                                                                                         |
+| `flight_status`             | `scheduled`, `check_in_open`, `boarding`, `delayed`, `departed`, `landed`, `cancelled`                                                                                 |
+| `requirement_type`          | `visa`, `passport`, `insurance`, `check_in`, `payment`, `packing`, `custom`                                                                                            |
+| `requirement_status`        | `to_check`, `not_required`, `required`, `in_progress`, `complete`, `expired`                                                                                           |
+| `alert_severity`            | `urgent`, `today`, `upcoming`, `information`                                                                                                                           |
+| `focus_source`              | `automatic`, `manual`                                                                                                                                                  |
+| `sync_state`                | `local_only`, `queued`, `syncing`, `synced`, `conflict`, `failed`                                                                                                      |
+| `offline_state`             | `not_requested`, `preparing`, `essentials_ready`, `ready`, `stale`, `failed`, `insufficient_space`                                                                     |
 
 ### 4.2 Shared value objects
 
 Location data is context-specific rather than one shared database type:
 
-| Context | Stored shape | Rule |
-|---|---|---|
-| Booking | Human-readable label/address in booking `location`, with optional future coordinates | User entry is preserved; coordinates are never required |
-| Itinerary item | `label`, `address`, and optional HTTPS `map_url` | At least one useful location value is supplied when a map action is expected |
-| Journey endpoint | Name/code/country plus a strict IANA time zone on each leg | Origin and destination are independent snapshots |
+| Context          | Stored shape                                                                         | Rule                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| Booking          | Human-readable label/address in booking `location`, with optional future coordinates | User entry is preserved; coordinates are never required                      |
+| Itinerary item   | `label`, `address`, and optional HTTPS `map_url`                                     | At least one useful location value is supplied when a map action is expected |
+| Journey endpoint | Name/code/country plus a strict IANA time zone on each leg                           | Origin and destination are independent snapshots                             |
 
 The app uses an explicit `map_url` when present; otherwise it builds a keyless Google Maps search from the stored label or address. Flight, train, bus, ferry, and cab forms do not ask for this generic location: their complete route is derived from ordered endpoints. Local stays, meals, activities, preparation, other transport, and custom events may use the shared place/address shape.
 
@@ -188,103 +185,103 @@ The catalog below is the logical model implemented by the migration set. The mig
 
 #### `profiles`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Matches authenticated user ID |
-| `display_name` | Text | Name shown to trip members |
-| `avatar_path` | Text, nullable | Private or public-safe avatar reference |
-| `home_timezone` | Text | Default for new trips |
-| `created_at` | Timestamp | Audit timestamp |
-| `updated_at` | Timestamp | Change detection |
+| Field           | Type              | Purpose                                 |
+| --------------- | ----------------- | --------------------------------------- |
+| `id`            | UUID, primary key | Matches authenticated user ID           |
+| `display_name`  | Text              | Name shown to trip members              |
+| `avatar_path`   | Text, nullable    | Private or public-safe avatar reference |
+| `home_timezone` | Text              | Default for new trips                   |
+| `created_at`    | Timestamp         | Audit timestamp                         |
+| `updated_at`    | Timestamp         | Change detection                        |
 
 #### `app_admins`
 
 This table authorizes the separate administrator account. It is bootstrapped through a migration or trusted Supabase administrative operation; the browser has no insert, update, delete, or self-promotion policy.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `user_id` | UUID, primary key | Dedicated Supabase Auth administrator account |
-| `status` | `app_admin_status` | Active or disabled |
-| `granted_by` | UUID, nullable | Trusted bootstrap or prior administrator audit |
-| `created_at` | Timestamp | Grant audit |
-| `disabled_at` | Timestamp, nullable | Revocation audit |
+| Field         | Type                | Purpose                                        |
+| ------------- | ------------------- | ---------------------------------------------- |
+| `user_id`     | UUID, primary key   | Dedicated Supabase Auth administrator account  |
+| `status`      | `app_admin_status`  | Active or disabled                             |
+| `granted_by`  | UUID, nullable      | Trusted bootstrap or prior administrator audit |
+| `created_at`  | Timestamp           | Grant audit                                    |
+| `disabled_at` | Timestamp, nullable | Revocation audit                               |
 
 #### `config_releases`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Configuration release identity |
-| `version_number` | Integer, unique | Monotonic version shown to clients |
-| `status` | `config_release_status` | Draft, currently published, or retired |
-| `based_on_release_id` | UUID, nullable | Version copied to create the draft |
-| `change_note` | Text | Administrator summary |
-| `created_by` | UUID | Administrator author |
-| `created_at` | Timestamp | Draft creation time |
-| `published_by` | UUID, nullable | Administrator who published or rolled back |
-| `published_at` | Timestamp, nullable | Activation time |
+| Field                 | Type                    | Purpose                                    |
+| --------------------- | ----------------------- | ------------------------------------------ |
+| `id`                  | UUID, primary key       | Configuration release identity             |
+| `version_number`      | Integer, unique         | Monotonic version shown to clients         |
+| `status`              | `config_release_status` | Draft, currently published, or retired     |
+| `based_on_release_id` | UUID, nullable          | Version copied to create the draft         |
+| `change_note`         | Text                    | Administrator summary                      |
+| `created_by`          | UUID                    | Administrator author                       |
+| `created_at`          | Timestamp               | Draft creation time                        |
+| `published_by`        | UUID, nullable          | Administrator who published or rolled back |
+| `published_at`        | Timestamp, nullable     | Activation time                            |
 
 Exactly one release may be `published`. Publishing or rollback is a server transaction; travelers never read draft rows.
 
 #### `airline_catalog_entries`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Stable catalog-entry identity |
-| `config_release_id` | UUID | Draft or published version containing the row |
-| `stable_key` | Text | Identity preserved across configuration releases |
-| `name` | Text | Airline display name |
-| `iata_code` | Text, nullable | Two-character code where known |
-| `icao_code` | Text, nullable | Three-character code where known |
-| `aliases` | Text array | Searchable former or familiar names |
-| `check_in_url_template` | Text, nullable | Official check-in action |
-| `manage_booking_url_template` | Text, nullable | Official booking-management action |
-| `status_url_template` | Text, nullable | Official status action |
-| `tracker_url_template` | Text, nullable | Default public tracker action |
-| `brand_color` | Text, nullable | Optional accessible accent |
-| `logo_asset_path` | Text, nullable | Immutable catalog asset |
-| `banner_asset_path` | Text, nullable | Immutable catalog asset |
-| `is_enabled` | Boolean | Available in new-flight pickers |
-| `updated_by` | UUID | Administrator audit |
-| `updated_at` | Timestamp | Change time |
+| Field                         | Type              | Purpose                                          |
+| ----------------------------- | ----------------- | ------------------------------------------------ |
+| `id`                          | UUID, primary key | Stable catalog-entry identity                    |
+| `config_release_id`           | UUID              | Draft or published version containing the row    |
+| `stable_key`                  | Text              | Identity preserved across configuration releases |
+| `name`                        | Text              | Airline display name                             |
+| `iata_code`                   | Text, nullable    | Two-character code where known                   |
+| `icao_code`                   | Text, nullable    | Three-character code where known                 |
+| `aliases`                     | Text array        | Searchable former or familiar names              |
+| `check_in_url_template`       | Text, nullable    | Official check-in action                         |
+| `manage_booking_url_template` | Text, nullable    | Official booking-management action               |
+| `status_url_template`         | Text, nullable    | Official status action                           |
+| `tracker_url_template`        | Text, nullable    | Default public tracker action                    |
+| `brand_color`                 | Text, nullable    | Optional accessible accent                       |
+| `logo_asset_path`             | Text, nullable    | Immutable catalog asset                          |
+| `banner_asset_path`           | Text, nullable    | Immutable catalog asset                          |
+| `is_enabled`                  | Boolean           | Available in new-flight pickers                  |
+| `updated_by`                  | UUID              | Administrator audit                              |
+| `updated_at`                  | Timestamp         | Change time                                      |
 
 #### `airport_catalog_entries`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Stable catalog-entry identity |
-| `config_release_id` | UUID | Draft or published version containing the row |
-| `stable_key` | Text | Identity preserved across releases |
-| `iata_code` | Text, nullable | Three-character passenger airport code |
-| `icao_code` | Text, nullable | Four-character airport code |
-| `name` | Text | Airport display name |
-| `city` | Text | Primary served city |
-| `country_code` | Text | ISO country code |
-| `timezone` | Text | IANA timezone used to seed flight times |
-| `aliases` | Text array | Search terms such as metro or former names |
-| `latitude` | Decimal, nullable | Optional picker/map seed |
-| `longitude` | Decimal, nullable | Optional picker/map seed |
-| `is_enabled` | Boolean | Available in new-flight pickers |
-| `updated_by` | UUID | Administrator audit |
-| `updated_at` | Timestamp | Change time |
+| Field               | Type              | Purpose                                       |
+| ------------------- | ----------------- | --------------------------------------------- |
+| `id`                | UUID, primary key | Stable catalog-entry identity                 |
+| `config_release_id` | UUID              | Draft or published version containing the row |
+| `stable_key`        | Text              | Identity preserved across releases            |
+| `iata_code`         | Text, nullable    | Three-character passenger airport code        |
+| `icao_code`         | Text, nullable    | Four-character airport code                   |
+| `name`              | Text              | Airport display name                          |
+| `city`              | Text              | Primary served city                           |
+| `country_code`      | Text              | ISO country code                              |
+| `timezone`          | Text              | IANA timezone used to seed flight times       |
+| `aliases`           | Text array        | Search terms such as metro or former names    |
+| `latitude`          | Decimal, nullable | Optional picker/map seed                      |
+| `longitude`         | Decimal, nullable | Optional picker/map seed                      |
+| `is_enabled`        | Boolean           | Available in new-flight pickers               |
+| `updated_by`        | UUID              | Administrator audit                           |
+| `updated_at`        | Timestamp         | Change time                                   |
 
 Airport entries seed a flight leg. The leg keeps its own code, name, and timezone snapshot so later catalog corrections do not rewrite travel history.
 
 #### `booking_vendor_catalog_entries`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Catalog-entry identity |
-| `config_release_id` | UUID | Draft or published configuration version |
-| `stable_key` | Text | Identity copied into a booking snapshot |
-| `name` | Text | Vendor display name |
-| `aliases` | Text array | Autocomplete search values |
-| `website_url` | HTTPS URL, nullable | Safe hand-off to the vendor |
-| `logo_asset_path` | Text, nullable | Validated catalog artwork |
-| `brand_color` | Hex color, nullable | Optional accessible accent |
-| `is_enabled` | Boolean | Included in new-entry autocomplete |
-| `sort_order` | Integer | Admin-controlled ordering |
-| `updated_by` | UUID | Administrator audit actor |
-| `updated_at` | Timestamp | Change time |
+| Field               | Type                | Purpose                                  |
+| ------------------- | ------------------- | ---------------------------------------- |
+| `id`                | UUID, primary key   | Catalog-entry identity                   |
+| `config_release_id` | UUID                | Draft or published configuration version |
+| `stable_key`        | Text                | Identity copied into a booking snapshot  |
+| `name`              | Text                | Vendor display name                      |
+| `aliases`           | Text array          | Autocomplete search values               |
+| `website_url`       | HTTPS URL, nullable | Safe hand-off to the vendor              |
+| `logo_asset_path`   | Text, nullable      | Validated catalog artwork                |
+| `brand_color`       | Hex color, nullable | Optional accessible accent               |
+| `is_enabled`        | Boolean             | Included in new-entry autocomplete       |
+| `sort_order`        | Integer             | Admin-controlled ordering                |
+| `updated_by`        | UUID                | Administrator audit actor                |
+| `updated_at`        | Timestamp           | Change time                              |
 
 #### `catalog_suggestions`
 
@@ -292,81 +289,81 @@ Authenticated users may submit a privacy-safe unknown airline, airport, booking 
 
 #### `metadata_defaults`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `config_release_id` | UUID | Parent release |
-| `namespace` | Text | `booking`, `document`, `readiness`, `alerts`, or `external_links` |
-| `key` | Text | Code-defined setting identifier |
-| `value` | JSON | Value validated by the matching Zod and database schema |
-| `updated_by` | UUID | Administrator audit |
-| `updated_at` | Timestamp | Change time |
+| Field               | Type      | Purpose                                                           |
+| ------------------- | --------- | ----------------------------------------------------------------- |
+| `config_release_id` | UUID      | Parent release                                                    |
+| `namespace`         | Text      | `booking`, `document`, `readiness`, `alerts`, or `external_links` |
+| `key`               | Text      | Code-defined setting identifier                                   |
+| `value`             | JSON      | Value validated by the matching Zod and database schema           |
+| `updated_by`        | UUID      | Administrator audit                                               |
+| `updated_at`        | Timestamp | Change time                                                       |
 
 Primary key: `(config_release_id, namespace, key)`. Admin can adjust labels, icons, ordering, enablement, suggested document visibility, readiness templates, reminder thresholds, and external-link defaults, but cannot invent executable schemas or authorization rules.
 
 #### `theme_palettes`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `config_release_id` | UUID, primary key | Parent release |
-| `light_tokens` | JSON | Allowlisted light-palette token values |
-| `dark_tokens` | JSON | Allowlisted dark-palette token values |
-| `updated_by` | UUID | Administrator audit |
-| `updated_at` | Timestamp | Change time |
+| Field               | Type              | Purpose                                |
+| ------------------- | ----------------- | -------------------------------------- |
+| `config_release_id` | UUID, primary key | Parent release                         |
+| `light_tokens`      | JSON              | Allowlisted light-palette token values |
+| `dark_tokens`       | JSON              | Allowlisted dark-palette token values  |
+| `updated_by`        | UUID              | Administrator audit                    |
+| `updated_at`        | Timestamp         | Change time                            |
 
 Only fixed token names and validated color values are accepted; arbitrary CSS, selectors, URLs, fonts, or scripts are prohibited.
 
 #### `config_audit_events`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Audit identity |
-| `config_release_id` | UUID | Affected draft or published release |
-| `actor_id` | UUID | Application administrator |
-| `action` | Text | Created, edited, validated, published, retired, or rolled_back |
-| `safe_summary` | JSON | Changed keys and identifiers without secrets |
-| `created_at` | Timestamp | Event time |
+| Field               | Type              | Purpose                                                        |
+| ------------------- | ----------------- | -------------------------------------------------------------- |
+| `id`                | UUID, primary key | Audit identity                                                 |
+| `config_release_id` | UUID              | Affected draft or published release                            |
+| `actor_id`          | UUID              | Application administrator                                      |
+| `action`            | Text              | Created, edited, validated, published, retired, or rolled_back |
+| `safe_summary`      | JSON              | Changed keys and identifiers without secrets                   |
+| `created_at`        | Timestamp         | Event time                                                     |
 
 #### `trips`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Stable trip identifier |
-| `title` | Text | User-facing trip name |
-| `destination_summary` | Text | Short destination label |
-| `start_date` | Date | Trip start |
-| `end_date` | Date | Trip end |
-| `primary_timezone` | Text | Device-captured final fallback when no prior event can seed a local zone; not a free-text user field |
-| `status` | `trip_status` | Lifecycle state |
-| `cover_image_path` | Text, nullable | Optional visual |
-| `created_by` | UUID | Original owner |
-| `version` | Integer | Optimistic concurrency counter |
-| `created_at` | Timestamp | Audit timestamp |
-| `updated_at` | Timestamp | Change detection and cache freshness |
-| `deleted_at` | Timestamp, nullable | Recoverable soft deletion |
+| Field                 | Type                | Purpose                                                                                              |
+| --------------------- | ------------------- | ---------------------------------------------------------------------------------------------------- |
+| `id`                  | UUID, primary key   | Stable trip identifier                                                                               |
+| `title`               | Text                | User-facing trip name                                                                                |
+| `destination_summary` | Text                | Short destination label                                                                              |
+| `start_date`          | Date                | Trip start                                                                                           |
+| `end_date`            | Date                | Trip end                                                                                             |
+| `primary_timezone`    | Text                | Device-captured final fallback when no prior event can seed a local zone; not a free-text user field |
+| `status`              | `trip_status`       | Lifecycle state                                                                                      |
+| `cover_image_path`    | Text, nullable      | Optional visual                                                                                      |
+| `created_by`          | UUID                | Original owner                                                                                       |
+| `version`             | Integer             | Optimistic concurrency counter                                                                       |
+| `created_at`          | Timestamp           | Audit timestamp                                                                                      |
+| `updated_at`          | Timestamp           | Change detection and cache freshness                                                                 |
+| `deleted_at`          | Timestamp, nullable | Recoverable soft deletion                                                                            |
 
 #### `user_trip_focus`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `user_id` | UUID, primary key | One focus record per user |
-| `trip_id` | UUID | Current candidate selected for Home |
-| `source` | `focus_source` | Distinguishes automatic choice from explicit switching |
-| `updated_at` | Timestamp | Resolves newer local or remote choices |
+| Field        | Type              | Purpose                                                |
+| ------------ | ----------------- | ------------------------------------------------------ |
+| `user_id`    | UUID, primary key | One focus record per user                              |
+| `trip_id`    | UUID              | Current candidate selected for Home                    |
+| `source`     | `focus_source`    | Distinguishes automatic choice from explicit switching |
+| `updated_at` | Timestamp         | Resolves newer local or remote choices                 |
 
 This table does not make a trip current. The Home selector must still verify active membership and the D-1 date window before honoring it.
 
 #### `trip_members`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `trip_id` | UUID | Membership scope |
-| `user_id` | UUID | Member identity |
-| `role` | `member_role` | Trip-level capability |
+| Field                | Type                 | Purpose                                |
+| -------------------- | -------------------- | -------------------------------------- |
+| `trip_id`            | UUID                 | Membership scope                       |
+| `user_id`            | UUID                 | Member identity                        |
+| `role`               | `member_role`        | Trip-level capability                  |
 | `participation_type` | `participation_type` | Traveler or non-traveling collaborator |
-| `status` | `member_status` | Invitation and access state |
-| `joined_at` | Timestamp, nullable | Acceptance audit |
-| `added_by` | UUID | Actor who initiated membership |
-| `removed_at` | Timestamp, nullable | Revocation audit |
+| `status`             | `member_status`      | Invitation and access state            |
+| `joined_at`          | Timestamp, nullable  | Acceptance audit                       |
+| `added_by`           | UUID                 | Actor who initiated membership         |
+| `removed_at`         | Timestamp, nullable  | Revocation audit                       |
 
 Primary key: `(trip_id, user_id)`.
 
@@ -374,27 +371,27 @@ Primary key: `(trip_id, user_id)`.
 
 A traveler is a person represented in bookings, itinerary items, requirements, and documents. The person may or may not operate an account.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Traveler identity within the trip |
-| `trip_id` | UUID | Parent trip and authorization scope |
-| `display_name` | Text | Name used in trip planning |
-| `status` | `traveler_status` | Active or removed; claimed and managed labels are derived from relationship rows |
-| `is_minor` | Boolean | Optional workflow hint; never used to infer legal authority |
-| `created_by` | UUID | Member who added the traveler |
-| `version` | Integer | Optimistic concurrency counter |
-| `created_at` | Timestamp | Audit timestamp |
-| `updated_at` | Timestamp | Change detection and cache freshness |
-| `removed_at` | Timestamp, nullable | Removal audit |
+| Field          | Type                | Purpose                                                                          |
+| -------------- | ------------------- | -------------------------------------------------------------------------------- |
+| `id`           | UUID, primary key   | Traveler identity within the trip                                                |
+| `trip_id`      | UUID                | Parent trip and authorization scope                                              |
+| `display_name` | Text                | Name used in trip planning                                                       |
+| `status`       | `traveler_status`   | Active or removed; claimed and managed labels are derived from relationship rows |
+| `is_minor`     | Boolean             | Optional workflow hint; never used to infer legal authority                      |
+| `created_by`   | UUID                | Member who added the traveler                                                    |
+| `version`      | Integer             | Optimistic concurrency counter                                                   |
+| `created_at`   | Timestamp           | Audit timestamp                                                                  |
+| `updated_at`   | Timestamp           | Change detection and cache freshness                                             |
+| `removed_at`   | Timestamp, nullable | Removal audit                                                                    |
 
 #### `traveler_accounts`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `traveler_id` | UUID, primary key | Claimed traveler profile |
-| `user_id` | UUID | Signed-in account linked to that traveler |
-| `invitation_id` | UUID | One-time code redemption that established the link |
-| `linked_at` | Timestamp | Claim audit |
+| Field           | Type              | Purpose                                            |
+| --------------- | ----------------- | -------------------------------------------------- |
+| `traveler_id`   | UUID, primary key | Claimed traveler profile                           |
+| `user_id`       | UUID              | Signed-in account linked to that traveler          |
+| `invitation_id` | UUID              | One-time code redemption that established the link |
+| `linked_at`     | Timestamp         | Claim audit                                        |
 
 One account can claim at most one traveler per trip. Non-traveling collaborators have no row here.
 
@@ -402,35 +399,35 @@ One account can claim at most one traveler per trip. Non-traveling collaborators
 
 This table is retained as a forward-compatible authorization boundary but is not configured by the personal MVP UI. In the MVP, an Owner or Editor stays signed in as themselves and uses a local traveler context switcher; this is selection, not impersonation.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `traveler_id` | UUID | Managed traveler |
-| `user_id` | UUID | Active trip member acting as manager |
-| `can_view_documents` | Boolean | Can open traveler-and-manager documents |
-| `can_manage_documents` | Boolean | Can upload or replace those documents |
-| `can_edit_profile` | Boolean | Can update traveler details |
-| `assigned_by` | UUID | Owner who delegated management |
-| `created_at` | Timestamp | Audit timestamp |
-| `revoked_at` | Timestamp, nullable | Delegation end |
+| Field                  | Type                | Purpose                                 |
+| ---------------------- | ------------------- | --------------------------------------- |
+| `traveler_id`          | UUID                | Managed traveler                        |
+| `user_id`              | UUID                | Active trip member acting as manager    |
+| `can_view_documents`   | Boolean             | Can open traveler-and-manager documents |
+| `can_manage_documents` | Boolean             | Can upload or replace those documents   |
+| `can_edit_profile`     | Boolean             | Can update traveler details             |
+| `assigned_by`          | UUID                | Owner who delegated management          |
+| `created_at`           | Timestamp           | Audit timestamp                         |
+| `revoked_at`           | Timestamp, nullable | Delegation end                          |
 
 Primary key: `(traveler_id, user_id)`.
 
 #### `trip_invitations`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Invitation identifier |
-| `trip_id` | UUID | Trip being shared |
-| `target_type` | `invitation_target_type` | Traveler claim or non-traveling collaboration |
-| `traveler_id` | UUID, nullable | Required for traveler invitations; null for collaborators |
-| `role` | `member_role` | Editor or Viewer role granted after redemption |
-| `code_lookup` | Text, unique | Non-secret prefix used to locate the invitation safely |
-| `code_secret_hash` | Text | Salted hash of the high-entropy secret; raw code is shown only when created |
-| `expires_at` | Timestamp | Invitation expiry |
-| `invited_by` | UUID | Inviting member |
-| `redeemed_by` | UUID, nullable | Resulting member identity |
-| `redeemed_at` | Timestamp, nullable | Atomic single-use audit |
-| `revoked_at` | Timestamp, nullable | Manual invalidation |
+| Field              | Type                     | Purpose                                                                     |
+| ------------------ | ------------------------ | --------------------------------------------------------------------------- |
+| `id`               | UUID, primary key        | Invitation identifier                                                       |
+| `trip_id`          | UUID                     | Trip being shared                                                           |
+| `target_type`      | `invitation_target_type` | Traveler claim or non-traveling collaboration                               |
+| `traveler_id`      | UUID, nullable           | Required for traveler invitations; null for collaborators                   |
+| `role`             | `member_role`            | Editor or Viewer role granted after redemption                              |
+| `code_lookup`      | Text, unique             | Non-secret prefix used to locate the invitation safely                      |
+| `code_secret_hash` | Text                     | Salted hash of the high-entropy secret; raw code is shown only when created |
+| `expires_at`       | Timestamp                | Invitation expiry                                                           |
+| `invited_by`       | UUID                     | Inviting member                                                             |
+| `redeemed_by`      | UUID, nullable           | Resulting member identity                                                   |
+| `redeemed_at`      | Timestamp, nullable      | Atomic single-use audit                                                     |
+| `revoked_at`       | Timestamp, nullable      | Manual invalidation                                                         |
 
 The displayed code contains the lookup prefix and a cryptographically random secret. It is unique per invitation, not shared across the trip. Before redemption it is bound to an intended traveler slot or collaborator role; after redemption it is permanently bound to that authenticated user.
 
@@ -438,84 +435,84 @@ The displayed code contains the lookup prefix and a cryptographically random sec
 
 This table supports later trips between accounts that have already shared an accepted trip. The owner selects a known account rather than sending another code, but the recipient still decides whether to join.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Offer identity |
-| `trip_id` | UUID | Trip being offered |
-| `invited_user_id` | UUID | Existing associated account that must respond |
-| `target_type` | `traveler` or `collaborator` | Whether acceptance links a traveler profile |
-| `traveler_id` | UUID, nullable | Intended traveler; null for a helper |
-| `role` | `editor` or `viewer` | Membership role created on acceptance |
-| `status` | Text | Pending, accepted, declined, or revoked |
-| `offered_by` | UUID | Owner who sent the offer |
-| `created_at`, `responded_at` | Timestamps | Consent audit |
+| Field                        | Type                         | Purpose                                       |
+| ---------------------------- | ---------------------------- | --------------------------------------------- |
+| `id`                         | UUID, primary key            | Offer identity                                |
+| `trip_id`                    | UUID                         | Trip being offered                            |
+| `invited_user_id`            | UUID                         | Existing associated account that must respond |
+| `target_type`                | `traveler` or `collaborator` | Whether acceptance links a traveler profile   |
+| `traveler_id`                | UUID, nullable               | Intended traveler; null for a helper          |
+| `role`                       | `editor` or `viewer`         | Membership role created on acceptance         |
+| `status`                     | Text                         | Pending, accepted, declined, or revoked       |
+| `offered_by`                 | UUID                         | Owner who sent the offer                      |
+| `created_at`, `responded_at` | Timestamps                   | Consent audit                                 |
 
 Only one pending offer may exist for an account and trip. A security-definer RPC verifies prior association, trip ownership, target shape, and traveler availability. Acceptance creates membership and the optional traveler-account link atomically.
 
 #### `booking_travelers`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `booking_id` | UUID | Parent booking |
-| `traveler_id` | UUID | Traveler covered by the reservation |
-| `updated_at` | Timestamp | Change detection |
+| Field         | Type      | Purpose                             |
+| ------------- | --------- | ----------------------------------- |
+| `booking_id`  | UUID      | Parent booking                      |
+| `traveler_id` | UUID      | Traveler covered by the reservation |
+| `updated_at`  | Timestamp | Change detection                    |
 
 Primary key: `(booking_id, traveler_id)`.
 
 #### `bookings`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Booking identifier |
-| `trip_id` | UUID | Parent trip |
-| `type` | `booking_type` | Display and form behavior |
-| `title` | Text | Human-readable label |
-| `provider` | Text, nullable | Airline/operator snapshot for a journey, property name for a hotel, or service provider for another reservation |
-| `reference_code` | Text, nullable | Confirmation or reservation code; mandatory for flights |
-| `start_at` | Timestamp, nullable | Chronological placement |
-| `end_at` | Timestamp, nullable | Duration or checkout |
-| `source_timezone` | Text, nullable | Time zone as issued by provider |
-| `journey_scope` | `domestic` / `international`, nullable | User-classified travel scope |
-| `booked_via_name` | Text, nullable | Booking website, agency, or direct channel snapshot |
-| `booked_via_url` | HTTPS URL, nullable | Booking-management hand-off |
-| `booking_vendor_catalog_key` | Text, nullable | Optional published vendor source |
-| `contact_name` | Text, nullable | Driver, property, operator, or agent contact |
-| `contact_phone` | Text, nullable | Number exposed through platform Call and WhatsApp handlers |
-| `location` | JSON, nullable | Structured name and address |
-| `details` | JSON | Type-specific fields validated by schema |
-| `reservation_state` | `booking_reservation_state` | Planned only, arrange/buy locally, or booked; independent from itinerary Done/Skipped/Cancelled status |
-| `participant_scope` | `participant_scope` | Explicit Everyone or Selected behavior; never inferred from an empty assignment list |
-| `created_by` | UUID | Audit actor |
-| `version` | Integer | Optimistic concurrency counter |
-| `created_at` | Timestamp | Audit timestamp |
-| `updated_at` | Timestamp | Change detection and cache freshness |
-| `deleted_at` | Timestamp, nullable | Recoverable soft deletion |
+| Field                        | Type                                   | Purpose                                                                                                         |
+| ---------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `id`                         | UUID, primary key                      | Booking identifier                                                                                              |
+| `trip_id`                    | UUID                                   | Parent trip                                                                                                     |
+| `type`                       | `booking_type`                         | Display and form behavior                                                                                       |
+| `title`                      | Text                                   | Human-readable label                                                                                            |
+| `provider`                   | Text, nullable                         | Airline/operator snapshot for a journey, property name for a hotel, or service provider for another reservation |
+| `reference_code`             | Text, nullable                         | Confirmation or reservation code; mandatory for flights                                                         |
+| `start_at`                   | Timestamp, nullable                    | Chronological placement                                                                                         |
+| `end_at`                     | Timestamp, nullable                    | Duration or checkout                                                                                            |
+| `source_timezone`            | Text, nullable                         | Time zone as issued by provider                                                                                 |
+| `journey_scope`              | `domestic` / `international`, nullable | User-classified travel scope                                                                                    |
+| `booked_via_name`            | Text, nullable                         | Booking website, agency, or direct channel snapshot                                                             |
+| `booked_via_url`             | HTTPS URL, nullable                    | Booking-management hand-off                                                                                     |
+| `booking_vendor_catalog_key` | Text, nullable                         | Optional published vendor source                                                                                |
+| `contact_name`               | Text, nullable                         | Driver, property, operator, or agent contact                                                                    |
+| `contact_phone`              | Text, nullable                         | Number exposed through platform Call and WhatsApp handlers                                                      |
+| `location`                   | JSON, nullable                         | Structured name and address                                                                                     |
+| `details`                    | JSON                                   | Type-specific fields validated by schema                                                                        |
+| `reservation_state`          | `booking_reservation_state`            | Planned only, arrange/buy locally, or booked; independent from itinerary Done/Skipped/Cancelled status          |
+| `participant_scope`          | `participant_scope`                    | Explicit Everyone or Selected behavior; never inferred from an empty assignment list                            |
+| `created_by`                 | UUID                                   | Audit actor                                                                                                     |
+| `version`                    | Integer                                | Optimistic concurrency counter                                                                                  |
+| `created_at`                 | Timestamp                              | Audit timestamp                                                                                                 |
+| `updated_at`                 | Timestamp                              | Change detection and cache freshness                                                                            |
+| `deleted_at`                 | Timestamp, nullable                    | Recoverable soft deletion                                                                                       |
 
 #### `trip_airlines`
 
 An airline selected from the bundled starter catalog is copied into the trip before a flight leg references it. This keeps existing trips stable when the starter catalog changes and lets the trip owner or editor correct stale metadata.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Trip-scoped airline identity |
-| `trip_id` | UUID | Authorization and edit scope |
-| `name` | Text | Display name |
-| `iata_code` | Text, nullable | Two-character airline code where known |
-| `icao_code` | Text, nullable | Three-character airline code where known |
-| `check_in_url_template` | Text, nullable | Approved official action template |
-| `manage_booking_url_template` | Text, nullable | Approved official action template |
-| `status_url_template` | Text, nullable | Approved official flight-status template |
-| `tracker_url_template` | Text, nullable | User-selected public tracker template |
-| `brand_color` | Text, nullable | Accessible card accent, never the only identity cue |
-| `logo_asset_key` | Text, nullable | Bundled, licensed, or user-supplied asset reference |
-| `banner_asset_key` | Text, nullable | Optional safe card artwork reference |
-| `source_catalog_key` | Text, nullable | Global stable key copied from the published catalog |
-| `source_config_version` | Integer, nullable | Published version from which metadata was copied |
-| `metadata_source` | Text | `bundled_fallback`, `published_catalog`, or `manual` |
-| `last_verified_at` | Timestamp, nullable | When action URLs were last checked by a user |
-| `created_by` | UUID | Audit actor |
-| `version` | Integer | Optimistic concurrency counter |
-| `updated_at` | Timestamp | Change detection and cache freshness |
+| Field                         | Type                | Purpose                                              |
+| ----------------------------- | ------------------- | ---------------------------------------------------- |
+| `id`                          | UUID, primary key   | Trip-scoped airline identity                         |
+| `trip_id`                     | UUID                | Authorization and edit scope                         |
+| `name`                        | Text                | Display name                                         |
+| `iata_code`                   | Text, nullable      | Two-character airline code where known               |
+| `icao_code`                   | Text, nullable      | Three-character airline code where known             |
+| `check_in_url_template`       | Text, nullable      | Approved official action template                    |
+| `manage_booking_url_template` | Text, nullable      | Approved official action template                    |
+| `status_url_template`         | Text, nullable      | Approved official flight-status template             |
+| `tracker_url_template`        | Text, nullable      | User-selected public tracker template                |
+| `brand_color`                 | Text, nullable      | Accessible card accent, never the only identity cue  |
+| `logo_asset_key`              | Text, nullable      | Bundled, licensed, or user-supplied asset reference  |
+| `banner_asset_key`            | Text, nullable      | Optional safe card artwork reference                 |
+| `source_catalog_key`          | Text, nullable      | Global stable key copied from the published catalog  |
+| `source_config_version`       | Integer, nullable   | Published version from which metadata was copied     |
+| `metadata_source`             | Text                | `bundled_fallback`, `published_catalog`, or `manual` |
+| `last_verified_at`            | Timestamp, nullable | When action URLs were last checked by a user         |
+| `created_by`                  | UUID                | Audit actor                                          |
+| `version`                     | Integer             | Optimistic concurrency counter                       |
+| `updated_at`                  | Timestamp           | Change detection and cache freshness                 |
 
 The client does not scrape or hotlink airline branding. Missing artwork falls back to a neutral monogram and the airline name.
 
@@ -523,58 +520,58 @@ The client does not scrape or hotlink airline branding. Missing artwork falls ba
 
 One flight booking may contain several ordered legs. Each leg keeps scheduled values intact and records manual operational changes separately.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Flight-leg identifier |
-| `booking_id` | UUID | Parent booking, which must have type `flight` |
-| `segment_order` | Integer | Stable order within the booking |
-| `marketing_airline_id` | UUID, nullable | Trip airline shown with the flight number |
-| `operating_airline_id` | UUID, nullable | Operating carrier when different |
-| `flight_number` | Text | Number as shown on the ticket |
-| `departure_airport_catalog_key` | Text, nullable | Optional source catalog identity; display uses the snapshot fields below |
-| `departure_airport_code` | Text, nullable | Usually IATA code |
-| `departure_airport_name` | Text | Human-readable source airport |
-| `arrival_airport_catalog_key` | Text, nullable | Optional source catalog identity; display uses the snapshot fields below |
-| `arrival_airport_code` | Text, nullable | Usually IATA code |
-| `arrival_airport_name` | Text | Human-readable destination airport |
-| `scheduled_departure_at` | Timestamp | Original planned departure instant |
-| `scheduled_arrival_at` | Timestamp | Original planned arrival instant |
-| `estimated_departure_at` | Timestamp, nullable | Latest user-entered revised departure |
-| `estimated_arrival_at` | Timestamp, nullable | Latest user-entered revised arrival |
-| `actual_departure_at` | Timestamp, nullable | User-entered actual departure |
-| `actual_arrival_at` | Timestamp, nullable | User-entered actual arrival |
-| `departure_timezone` | Text | IANA timezone for source display |
-| `arrival_timezone` | Text | IANA timezone for destination display |
-| `boarding_at` | Timestamp, nullable | User-entered boarding time |
-| `boarding_lead_minutes` | Integer, nullable | Derives boarding from departure when no exact time exists |
-| `journey_scope` | `domestic` / `international`, nullable | Booking scope copied to the leg |
-| `departure_country_code` | Two-letter code, nullable | Origin country snapshot |
-| `arrival_country_code` | Two-letter code, nullable | Destination country snapshot |
-| `departure_terminal` | Text, nullable | Current terminal |
-| `departure_gate` | Text, nullable | Current gate |
-| `arrival_terminal` | Text, nullable | Current arrival terminal |
-| `arrival_gate` | Text, nullable | Current arrival gate when relevant |
-| `baggage_claim` | Text, nullable | Arrival belt or collection note |
-| `status` | `flight_status` | Current user-maintained state |
-| `status_note` | Text, nullable | Delay, cancellation, or operational note |
-| `status_updated_by` | UUID | User responsible for latest operational values |
-| `status_updated_at` | Timestamp | Freshness shown in the UI |
-| `version` | Integer | Optimistic concurrency counter |
-| `updated_at` | Timestamp | Change detection and cache freshness |
-| `deleted_at` | Timestamp, nullable | Recoverable soft deletion |
+| Field                           | Type                                   | Purpose                                                                  |
+| ------------------------------- | -------------------------------------- | ------------------------------------------------------------------------ |
+| `id`                            | UUID, primary key                      | Flight-leg identifier                                                    |
+| `booking_id`                    | UUID                                   | Parent booking, which must have type `flight`                            |
+| `segment_order`                 | Integer                                | Stable order within the booking                                          |
+| `marketing_airline_id`          | UUID, nullable                         | Trip airline shown with the flight number                                |
+| `operating_airline_id`          | UUID, nullable                         | Operating carrier when different                                         |
+| `flight_number`                 | Text                                   | Number as shown on the ticket                                            |
+| `departure_airport_catalog_key` | Text, nullable                         | Optional source catalog identity; display uses the snapshot fields below |
+| `departure_airport_code`        | Text, nullable                         | Usually IATA code                                                        |
+| `departure_airport_name`        | Text                                   | Human-readable source airport                                            |
+| `arrival_airport_catalog_key`   | Text, nullable                         | Optional source catalog identity; display uses the snapshot fields below |
+| `arrival_airport_code`          | Text, nullable                         | Usually IATA code                                                        |
+| `arrival_airport_name`          | Text                                   | Human-readable destination airport                                       |
+| `scheduled_departure_at`        | Timestamp                              | Original planned departure instant                                       |
+| `scheduled_arrival_at`          | Timestamp                              | Original planned arrival instant                                         |
+| `estimated_departure_at`        | Timestamp, nullable                    | Latest user-entered revised departure                                    |
+| `estimated_arrival_at`          | Timestamp, nullable                    | Latest user-entered revised arrival                                      |
+| `actual_departure_at`           | Timestamp, nullable                    | User-entered actual departure                                            |
+| `actual_arrival_at`             | Timestamp, nullable                    | User-entered actual arrival                                              |
+| `departure_timezone`            | Text                                   | IANA timezone for source display                                         |
+| `arrival_timezone`              | Text                                   | IANA timezone for destination display                                    |
+| `boarding_at`                   | Timestamp, nullable                    | User-entered boarding time                                               |
+| `boarding_lead_minutes`         | Integer, nullable                      | Derives boarding from departure when no exact time exists                |
+| `journey_scope`                 | `domestic` / `international`, nullable | Booking scope copied to the leg                                          |
+| `departure_country_code`        | Two-letter code, nullable              | Origin country snapshot                                                  |
+| `arrival_country_code`          | Two-letter code, nullable              | Destination country snapshot                                             |
+| `departure_terminal`            | Text, nullable                         | Current terminal                                                         |
+| `departure_gate`                | Text, nullable                         | Current gate                                                             |
+| `arrival_terminal`              | Text, nullable                         | Current arrival terminal                                                 |
+| `arrival_gate`                  | Text, nullable                         | Current arrival gate when relevant                                       |
+| `baggage_claim`                 | Text, nullable                         | Arrival belt or collection note                                          |
+| `status`                        | `flight_status`                        | Current user-maintained state                                            |
+| `status_note`                   | Text, nullable                         | Delay, cancellation, or operational note                                 |
+| `status_updated_by`             | UUID                                   | User responsible for latest operational values                           |
+| `status_updated_at`             | Timestamp                              | Freshness shown in the UI                                                |
+| `version`                       | Integer                                | Optimistic concurrency counter                                           |
+| `updated_at`                    | Timestamp                              | Change detection and cache freshness                                     |
+| `deleted_at`                    | Timestamp, nullable                    | Recoverable soft deletion                                                |
 
 Unique constraint: `(booking_id, segment_order)`.
 
 #### `flight_leg_travelers`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `flight_leg_id` | UUID | Parent leg |
-| `traveler_id` | UUID | Traveler on the leg, with or without an account |
-| `seat` | Text, nullable | Seat shown on the boarding pass |
-| `boarding_group` | Text, nullable | Boarding group or sequence |
-| `ticket_number` | Text, nullable | Optional ticket number; treated as sensitive metadata |
-| `updated_at` | Timestamp | Change detection |
+| Field            | Type           | Purpose                                               |
+| ---------------- | -------------- | ----------------------------------------------------- |
+| `flight_leg_id`  | UUID           | Parent leg                                            |
+| `traveler_id`    | UUID           | Traveler on the leg, with or without an account       |
+| `seat`           | Text, nullable | Seat shown on the boarding pass                       |
+| `boarding_group` | Text, nullable | Boarding group or sequence                            |
+| `ticket_number`  | Text, nullable | Optional ticket number; treated as sensitive metadata |
+| `updated_at`     | Timestamp      | Change detection                                      |
 
 Primary key: `(flight_leg_id, traveler_id)`.
 
@@ -582,70 +579,70 @@ Primary key: `(flight_leg_id, traveler_id)`.
 
 Train, Bus, Ferry/Boat, and Cab bookings share one ordered-leg model.
 
-| Field group | Purpose |
-|---|---|
-| `booking_id`, `segment_order`, `mode` | Parent, stable connection order, and Train/Bus/Ferry/Cab discriminator |
-| `operator_name`, `service_number` | Optional operator/service snapshot; a booked Train/Bus/Ferry requires an operator in the current form |
-| origin/destination name, code, country, timezone | Independent endpoint snapshots; Domestic UI omits country/zone entry and uses the inherited local default |
-| `scheduled_departure_at` | Required journey start instant |
-| `scheduled_arrival_at` | Nullable destination instant; when present it must be after departure |
-| boarding/platform fields | Optional exact/lead boarding information and bays/platforms |
-| `details` | Required validated discriminated object whose `kind` matches `mode`; only allowlisted mode-specific keys are accepted |
-| legacy shared coach/seat columns | Retained for compatibility but new form writes traveler allocations instead |
+| Field group                                      | Purpose                                                                                                               |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `booking_id`, `segment_order`, `mode`            | Parent, stable connection order, and Train/Bus/Ferry/Cab discriminator                                                |
+| `operator_name`, `service_number`                | Optional operator/service snapshot; a booked Train/Bus/Ferry requires an operator in the current form                 |
+| origin/destination name, code, country, timezone | Independent endpoint snapshots; Domestic UI omits country/zone entry and uses the inherited local default             |
+| `scheduled_departure_at`                         | Required journey start instant                                                                                        |
+| `scheduled_arrival_at`                           | Nullable destination instant; when present it must be after departure                                                 |
+| boarding/platform fields                         | Optional exact/lead boarding information and bays/platforms                                                           |
+| `details`                                        | Required validated discriminated object whose `kind` matches `mode`; only allowlisted mode-specific keys are accepted |
+| legacy shared coach/seat columns                 | Retained for compatibility but new form writes traveler allocations instead                                           |
 
 The UI enters departure in origin-local time and an optional arrival in destination-local time. When arrival exists, it converts both to instants, rejects invalid order/DST inputs, and derives elapsed duration; when absent it displays **Arrival time not added** and does not invent a booking/timeline end. Domestic journeys hide country, per-connection zone, and repeated-clock controls while showing one event-level zone prefilled from the chronologically furthest scheduled event, falling back to the trip zone only when no prior scheduled event exists. International non-flight journeys show country and strict endpoint-zone controls because there is no station/port catalog from which to derive them. Every later connection is prefilled and locked to the previous destination in the form, then independently validated on save.
 
 #### `journey_leg_travelers`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `journey_leg_id` | UUID | Parent Train/Bus/Ferry leg |
-| `traveler_id` | UUID | Included traveler from the same trip and, for Selected bookings, the booking roster |
-| `seat_or_berth` | Text, nullable | Train berth/seat, Bus seat, or assigned-seat Ferry place |
-| `coach_or_cabin` | Text, nullable | Train coach or assigned-seat Ferry cabin; unused by the Bus form |
-| `passenger_reference` | Text, nullable | Optional passenger-specific Train/Bus/Ferry ticket reference |
-| `updated_at` | Timestamp | Sync freshness |
+| Field                 | Type           | Purpose                                                                             |
+| --------------------- | -------------- | ----------------------------------------------------------------------------------- |
+| `journey_leg_id`      | UUID           | Parent Train/Bus/Ferry leg                                                          |
+| `traveler_id`         | UUID           | Included traveler from the same trip and, for Selected bookings, the booking roster |
+| `seat_or_berth`       | Text, nullable | Train berth/seat, Bus seat, or assigned-seat Ferry place                            |
+| `coach_or_cabin`      | Text, nullable | Train coach or assigned-seat Ferry cabin; unused by the Bus form                    |
+| `passenger_reference` | Text, nullable | Optional passenger-specific Train/Bus/Ferry ticket reference                        |
+| `updated_at`          | Timestamp      | Sync freshness                                                                      |
 
 Primary key: `(journey_leg_id, traveler_id)`. RLS uses the parent booking's trip. Assignment triggers reject cross-trip travelers and a leg allocation outside a Selected booking's traveler roster. The collection is cached and included in offline preparation.
 
 #### `itinerary_items`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Itinerary identifier |
-| `trip_id` | UUID | Parent trip |
-| `booking_id` | UUID, nullable | Optional booking source |
-| `title` | Text | Timeline label |
-| `event_type` | `timeline_event_type` | Flight, Train, Bus, Ferry, Cab, hotel milestone, transport, meal, activity, preparation, or custom |
-| `completed_at` | Timestamp, nullable | Completion state for preparation events |
-| `starts_at` | Timestamp | Real start when `has_explicit_start_time` is true; otherwise a compatibility ordering fallback |
-| `ends_at` | Timestamp, nullable | Real end, present only when a real start exists |
-| `timezone` | Text | Display time zone |
-| `is_all_day` | Boolean | Compatibility flag for date-only/all-day presentation |
-| `timing_mode` | `exact`, `date_only`, `all_day`, `relative`, or `unscheduled` | Controls placement without requiring every event to have a user-entered clock time |
-| `scheduled_date` | Date, nullable | User-facing date for date-only/all-day and dated ordering; null for Unscheduled |
-| `anchor_itinerary_item_id` | UUID, nullable | Dated same-trip anchor for a relative item |
-| `relative_position` | `before` / `after`, nullable | Places a relative item beside its anchor |
-| `has_explicit_start_time` | Boolean | Distinguishes a real user-entered start from a non-null ordering fallback |
-| `duration_minutes` | Positive integer, nullable | Planned duration; a relative event may retain it before its real start is known |
-| `event_status` | `planned`, `done`, `skipped`, or `cancelled` | Visible lifecycle state independent from archive |
-| `location` | JSON, nullable | Structured place |
-| `notes` | Text, nullable | Shared contextual note |
-| `applies_to_all_travelers` | Boolean | Uses the whole active traveler roster instead of selected participant rows |
-| `sort_key` | Text | Stable ordering for equal times |
-| `version` | Integer | Optimistic concurrency counter |
-| `updated_at` | Timestamp | Change detection and cache freshness |
-| `deleted_at` | Timestamp, nullable | Recoverable soft deletion |
+| Field                      | Type                                                          | Purpose                                                                                            |
+| -------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `id`                       | UUID, primary key                                             | Itinerary identifier                                                                               |
+| `trip_id`                  | UUID                                                          | Parent trip                                                                                        |
+| `booking_id`               | UUID, nullable                                                | Optional booking source                                                                            |
+| `title`                    | Text                                                          | Timeline label                                                                                     |
+| `event_type`               | `timeline_event_type`                                         | Flight, Train, Bus, Ferry, Cab, hotel milestone, transport, meal, activity, preparation, or custom |
+| `completed_at`             | Timestamp, nullable                                           | Completion state for preparation events                                                            |
+| `starts_at`                | Timestamp                                                     | Real start when `has_explicit_start_time` is true; otherwise a compatibility ordering fallback     |
+| `ends_at`                  | Timestamp, nullable                                           | Real end, present only when a real start exists                                                    |
+| `timezone`                 | Text                                                          | Display time zone                                                                                  |
+| `is_all_day`               | Boolean                                                       | Compatibility flag for date-only/all-day presentation                                              |
+| `timing_mode`              | `exact`, `date_only`, `all_day`, `relative`, or `unscheduled` | Controls placement without requiring every event to have a user-entered clock time                 |
+| `scheduled_date`           | Date, nullable                                                | User-facing date for date-only/all-day and dated ordering; null for Unscheduled                    |
+| `anchor_itinerary_item_id` | UUID, nullable                                                | Dated same-trip anchor for a relative item                                                         |
+| `relative_position`        | `before` / `after`, nullable                                  | Places a relative item beside its anchor                                                           |
+| `has_explicit_start_time`  | Boolean                                                       | Distinguishes a real user-entered start from a non-null ordering fallback                          |
+| `duration_minutes`         | Positive integer, nullable                                    | Planned duration; a relative event may retain it before its real start is known                    |
+| `event_status`             | `planned`, `done`, `skipped`, or `cancelled`                  | Visible lifecycle state independent from archive                                                   |
+| `location`                 | JSON, nullable                                                | Structured place                                                                                   |
+| `notes`                    | Text, nullable                                                | Shared contextual note                                                                             |
+| `applies_to_all_travelers` | Boolean                                                       | Uses the whole active traveler roster instead of selected participant rows                         |
+| `sort_key`                 | Text                                                          | Stable ordering for equal times                                                                    |
+| `version`                  | Integer                                                       | Optimistic concurrency counter                                                                     |
+| `updated_at`               | Timestamp                                                     | Change detection and cache freshness                                                               |
+| `deleted_at`               | Timestamp, nullable                                           | Recoverable soft deletion                                                                          |
 
 #### `itinerary_participants`
 
 If `itinerary_items.applies_to_all_travelers` is true, no participant rows are required. Otherwise this table contains the selected travelers.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `itinerary_item_id` | UUID | Parent itinerary item |
-| `traveler_id` | UUID | Included traveler |
-| `updated_at` | Timestamp | Change detection |
+| Field               | Type      | Purpose               |
+| ------------------- | --------- | --------------------- |
+| `itinerary_item_id` | UUID      | Parent itinerary item |
+| `traveler_id`       | UUID      | Included traveler     |
+| `updated_at`        | Timestamp | Change detection      |
 
 Primary key: `(itinerary_item_id, traveler_id)`.
 
@@ -653,41 +650,41 @@ Primary key: `(itinerary_item_id, traveler_id)`.
 
 An itinerary event may link any number of documents without owning or duplicating their stored files. The same document may be reused on more than one event.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `itinerary_item_id` | UUID | Parent itinerary event |
-| `document_id` | UUID | Linked Vault document |
-| `label` | Text, nullable | Optional event-specific label such as Entry ticket or Waiver |
-| `sort_order` | Integer | Stable order within the event's document section |
-| `created_by` | UUID | Member who attached the document |
-| `version` | Integer | Optimistic concurrency for reorder or unlink |
-| `created_at` | Timestamp | Attachment time |
-| `updated_at` | Timestamp | Change detection and cache freshness |
-| `deleted_at` | Timestamp, nullable | Recoverable unlink without deleting the document |
+| Field               | Type                | Purpose                                                      |
+| ------------------- | ------------------- | ------------------------------------------------------------ |
+| `itinerary_item_id` | UUID                | Parent itinerary event                                       |
+| `document_id`       | UUID                | Linked Vault document                                        |
+| `label`             | Text, nullable      | Optional event-specific label such as Entry ticket or Waiver |
+| `sort_order`        | Integer             | Stable order within the event's document section             |
+| `created_by`        | UUID                | Member who attached the document                             |
+| `version`           | Integer             | Optimistic concurrency for reorder or unlink                 |
+| `created_at`        | Timestamp           | Attachment time                                              |
+| `updated_at`        | Timestamp           | Change detection and cache freshness                         |
+| `deleted_at`        | Timestamp, nullable | Recoverable unlink without deleting the document             |
 
 Primary key: `(itinerary_item_id, document_id)`. Unlinking a row or deleting an itinerary event does not delete the referenced document or any immutable file version.
 
 #### `documents`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Stable document identity |
-| `trip_id` | UUID | Parent trip |
-| `booking_id` | UUID, nullable | Optional related booking |
-| `flight_leg_id` | UUID, nullable | Optional related flight leg |
-| `traveler_id` | UUID, nullable | Legacy single-traveler compatibility value; new usage assignment is authoritative in `document_travelers` |
-| `assignment_mode` | `document_assignment_mode` | Shared booking/event, selected traveler set, or ticket awaiting assignment |
-| `title` | Text | User-facing name |
-| `category` | `document_category` | Search and filtering |
-| `purpose` | `document_purpose` | Contextual presentation such as ticket, boarding pass, or baggage tag |
-| `short_label` | Text, nullable | Bag number or another compact differentiator |
-| `visibility` | `document_visibility` | Access scope |
-| `current_version_id` | UUID, nullable | Version presented by default |
-| `uploaded_by` | UUID | Original uploader |
-| `version` | Integer | Metadata concurrency counter |
-| `created_at` | Timestamp | Audit timestamp |
-| `updated_at` | Timestamp | Change detection and cache freshness |
-| `deleted_at` | Timestamp, nullable | Recoverable soft deletion |
+| Field                | Type                       | Purpose                                                                                                   |
+| -------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `id`                 | UUID, primary key          | Stable document identity                                                                                  |
+| `trip_id`            | UUID                       | Parent trip                                                                                               |
+| `booking_id`         | UUID, nullable             | Optional related booking                                                                                  |
+| `flight_leg_id`      | UUID, nullable             | Optional related flight leg                                                                               |
+| `traveler_id`        | UUID, nullable             | Legacy single-traveler compatibility value; new usage assignment is authoritative in `document_travelers` |
+| `assignment_mode`    | `document_assignment_mode` | Shared booking/event, selected traveler set, or ticket awaiting assignment                                |
+| `title`              | Text                       | User-facing name                                                                                          |
+| `category`           | `document_category`        | Search and filtering                                                                                      |
+| `purpose`            | `document_purpose`         | Contextual presentation such as ticket, boarding pass, or baggage tag                                     |
+| `short_label`        | Text, nullable             | Bag number or another compact differentiator                                                              |
+| `visibility`         | `document_visibility`      | Access scope                                                                                              |
+| `current_version_id` | UUID, nullable             | Version presented by default                                                                              |
+| `uploaded_by`        | UUID                       | Original uploader                                                                                         |
+| `version`            | Integer                    | Metadata concurrency counter                                                                              |
+| `created_at`         | Timestamp                  | Audit timestamp                                                                                           |
+| `updated_at`         | Timestamp                  | Change detection and cache freshness                                                                      |
+| `deleted_at`         | Timestamp, nullable        | Recoverable soft deletion                                                                                 |
 
 Traveler usage and authorization are deliberately independent. A shared document is not public: its `visibility` still determines which signed-in members may open it. A selected assignment may contain one or several travelers. An unassigned activity ticket or meal voucher remains visible in the all-travelers trip view until someone decides who will use it.
 
@@ -695,18 +692,18 @@ Traveler usage and authorization are deliberately independent. A shared document
 
 This is the private, account-owned staging record created before any trip association. Only the owner can list an unfinished row. Association is performed by one database function after the Storage object exists.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Upload identity and first immutable-version identity |
-| `owner_id` | UUID | Signed-in account that owns the unassociated upload |
-| `storage_path` | Text, unique | Path beneath the owner's UUID in the `account-documents` bucket |
-| `original_filename` | Text | Original device filename |
-| `mime_type` | Text | Approved PDF/image type |
-| `byte_size` | Big integer | Must remain below 5,000,000 bytes |
-| `sha256` | Text | Integrity proof shared with the eventual document version |
-| `associated_document_id` | UUID, nullable | Set only by the atomic association function |
-| `stored_at` | Timestamp, nullable | Set by the server only after the matching private Storage object is verified |
-| `created_at`, `updated_at` | Timestamp | Recovery ordering and synchronization state |
+| Field                      | Type                | Purpose                                                                      |
+| -------------------------- | ------------------- | ---------------------------------------------------------------------------- |
+| `id`                       | UUID, primary key   | Upload identity and first immutable-version identity                         |
+| `owner_id`                 | UUID                | Signed-in account that owns the unassociated upload                          |
+| `storage_path`             | Text, unique        | Path beneath the owner's UUID in the `account-documents` bucket              |
+| `original_filename`        | Text                | Original device filename                                                     |
+| `mime_type`                | Text                | Approved PDF/image type                                                      |
+| `byte_size`                | Big integer         | Must remain below 5,000,000 bytes                                            |
+| `sha256`                   | Text                | Integrity proof shared with the eventual document version                    |
+| `associated_document_id`   | UUID, nullable      | Set only by the atomic association function                                  |
+| `stored_at`                | Timestamp, nullable | Set by the server only after the matching private Storage object is verified |
+| `created_at`, `updated_at` | Timestamp           | Recovery ordering and synchronization state                                  |
 
 Unassociated rows appear in Profile. The browser may INSERT a receipt only for the current owner with `associated_document_id` and `stored_at` still null; it has no direct UPDATE grant. The finalization and association functions alone record server-verified storage and association. Storage follows the same append-only boundary: an object INSERT requires an owned pending unassociated receipt, no object UPDATE policy exists, and object DELETE requires the receipt to remain unassociated. Deleting an unassociated inbox entry removes its private object and local copy. Once associated, its receipt and object are immutable through the inbox and are managed through the Vault document/version lifecycle instead.
 
@@ -716,14 +713,14 @@ After the association function returns, the sync layer updates the cached receip
 
 This owner-scoped database queue preserves legacy `trip-documents` object paths across permanent trip deletion. It is separate from the Profile document inbox and deliberately has no trip foreign key.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Cleanup-work identity |
-| `owner_id` | UUID | Trip owner authorized to inspect and acknowledge the row |
-| `trip_id` | UUID | Deleted trip identity retained for grouping; no foreign key |
-| `storage_bucket` | Text | Restricted to `trip-documents` |
-| `storage_path` | Text | Exact immutable legacy object path |
-| `created_at` | Timestamp | Queue age and recovery ordering |
+| Field            | Type              | Purpose                                                     |
+| ---------------- | ----------------- | ----------------------------------------------------------- |
+| `id`             | UUID, primary key | Cleanup-work identity                                       |
+| `owner_id`       | UUID              | Trip owner authorized to inspect and acknowledge the row    |
+| `trip_id`        | UUID              | Deleted trip identity retained for grouping; no foreign key |
+| `storage_bucket` | Text              | Restricted to `trip-documents`                              |
+| `storage_path`   | Text              | Exact immutable legacy object path                          |
+| `created_at`     | Timestamp         | Queue age and recovery ordering                             |
 
 The authenticated client can read and delete only its own rows and cannot insert them directly. `delete_trip_permanently` inserts the complete distinct path set and deletes the trip in one database transaction. `can_cleanup_trip_storage_object` authorizes Storage deletion only for an owned queued `trip-documents` path that is no longer referenced by a live `document_versions` row. The client acknowledges a queue row only after its Storage deletion succeeds.
 
@@ -731,95 +728,95 @@ The authenticated client can read and delete only its own rows and cannot insert
 
 Used only when `documents.assignment_mode = selected`.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `document_id` | UUID | Parent Vault document |
-| `traveler_id` | UUID | Traveler who will use or carry it |
-| `assigned_by` | UUID | Audit actor |
-| `created_at` | Timestamp | Assignment time |
+| Field         | Type      | Purpose                           |
+| ------------- | --------- | --------------------------------- |
+| `document_id` | UUID      | Parent Vault document             |
+| `traveler_id` | UUID      | Traveler who will use or carry it |
+| `assigned_by` | UUID      | Audit actor                       |
+| `created_at`  | Timestamp | Assignment time                   |
 
 Primary key: `(document_id, traveler_id)`. A same-trip trigger rejects cross-trip assignments. The client retains `documents.traveler_id` only as backward-compatible support for older one-traveler records.
 
 #### `document_versions`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | File-version identity |
-| `document_id` | UUID | Parent document |
-| `version_number` | Integer | Monotonic version |
-| `storage_bucket` | Text | `trip-documents` for legacy/replacement versions or `account-documents` for inbox-originated versions |
-| `storage_path` | Text, unique | Private object location |
-| `original_filename` | Text | Download name |
-| `mime_type` | Text | Preview and validation |
-| `byte_size` | Big integer | Quota and progress |
-| `sha256` | Text | Integrity and offline verification |
-| `source_upload_id` | UUID, nullable | Account-inbox provenance for the first associated version |
-| `created_by` | UUID | Upload actor |
-| `created_at` | Timestamp | Audit timestamp |
+| Field               | Type              | Purpose                                                                                               |
+| ------------------- | ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `id`                | UUID, primary key | File-version identity                                                                                 |
+| `document_id`       | UUID              | Parent document                                                                                       |
+| `version_number`    | Integer           | Monotonic version                                                                                     |
+| `storage_bucket`    | Text              | `trip-documents` for legacy/replacement versions or `account-documents` for inbox-originated versions |
+| `storage_path`      | Text, unique      | Private object location                                                                               |
+| `original_filename` | Text              | Download name                                                                                         |
+| `mime_type`         | Text              | Preview and validation                                                                                |
+| `byte_size`         | Big integer       | Quota and progress                                                                                    |
+| `sha256`            | Text              | Integrity and offline verification                                                                    |
+| `source_upload_id`  | UUID, nullable    | Account-inbox provenance for the first associated version                                             |
+| `created_by`        | UUID              | Upload actor                                                                                          |
+| `created_at`        | Timestamp         | Audit timestamp                                                                                       |
 
 #### `document_access`
 
 Used only when a document has `selected_members` visibility.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `document_id` | UUID | Protected document |
-| `user_id` | UUID | Explicitly permitted active trip member |
-| `granted_by` | UUID | Audit actor |
-| `created_at` | Timestamp | Audit timestamp |
+| Field         | Type      | Purpose                                 |
+| ------------- | --------- | --------------------------------------- |
+| `document_id` | UUID      | Protected document                      |
+| `user_id`     | UUID      | Explicitly permitted active trip member |
+| `granted_by`  | UUID      | Audit actor                             |
+| `created_at`  | Timestamp | Audit timestamp                         |
 
 Primary key: `(document_id, user_id)`.
 
 #### `notes`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Note identity |
-| `trip_id` | UUID | Parent trip |
-| `title` | Text, nullable | Optional heading |
-| `body` | Text | Plain text or constrained Markdown |
-| `created_by` | UUID | Author |
-| `version` | Integer | Optimistic concurrency counter |
-| `created_at` | Timestamp | Audit timestamp |
-| `updated_at` | Timestamp | Change detection and cache freshness |
-| `deleted_at` | Timestamp, nullable | Recoverable soft deletion |
+| Field        | Type                | Purpose                              |
+| ------------ | ------------------- | ------------------------------------ |
+| `id`         | UUID, primary key   | Note identity                        |
+| `trip_id`    | UUID                | Parent trip                          |
+| `title`      | Text, nullable      | Optional heading                     |
+| `body`       | Text                | Plain text or constrained Markdown   |
+| `created_by` | UUID                | Author                               |
+| `version`    | Integer             | Optimistic concurrency counter       |
+| `created_at` | Timestamp           | Audit timestamp                      |
+| `updated_at` | Timestamp           | Change detection and cache freshness |
+| `deleted_at` | Timestamp, nullable | Recoverable soft deletion            |
 
 #### `trip_requirements`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Requirement identifier |
-| `trip_id` | UUID | Parent trip |
-| `type` | `requirement_type` | Visa, passport, insurance, check-in, or custom workflow |
-| `title` | Text | User-facing requirement name |
-| `destination_country_code` | Text, nullable | Relevant destination for a visa or entry requirement |
-| `visa_type` | Text, nullable | User-entered visa or permit type |
-| `status` | `requirement_status` | Current manual state |
-| `timing_mode` | Text | `unscheduled`, `date_only`, or `relative` |
-| `due_date` | Date, nullable | Required only for date-only task timing |
-| `anchor_itinerary_item_id` | UUID, nullable | Dated event used by relative timing |
-| `relative_position` | Text, nullable | `before` or `after` the anchor event |
-| `offset_minutes` | Integer, nullable | Non-negative distance from the anchor |
-| `issued_on` | Date, nullable | User-entered document issue date |
-| `expires_on` | Date, nullable | User-entered expiry date |
-| `validity_buffer_days` | Integer, nullable | User-defined desired validity after the trip |
-| `official_guidance_url` | Text, nullable | Embassy or government source selected by the user |
-| `guidance_checked_at` | Timestamp, nullable | When the user last checked that source |
-| `linked_document_id` | UUID, nullable | Direct resolution or viewing action |
-| `notes` | Text, nullable | User-entered context and caveats |
-| `created_by` | UUID | Audit actor |
-| `version` | Integer | Optimistic concurrency counter |
-| `updated_at` | Timestamp | Change detection and cache freshness |
-| `deleted_at` | Timestamp, nullable | Recoverable soft deletion |
+| Field                      | Type                 | Purpose                                                 |
+| -------------------------- | -------------------- | ------------------------------------------------------- |
+| `id`                       | UUID, primary key    | Requirement identifier                                  |
+| `trip_id`                  | UUID                 | Parent trip                                             |
+| `type`                     | `requirement_type`   | Visa, passport, insurance, check-in, or custom workflow |
+| `title`                    | Text                 | User-facing requirement name                            |
+| `destination_country_code` | Text, nullable       | Relevant destination for a visa or entry requirement    |
+| `visa_type`                | Text, nullable       | User-entered visa or permit type                        |
+| `status`                   | `requirement_status` | Current manual state                                    |
+| `timing_mode`              | Text                 | `unscheduled`, `date_only`, or `relative`               |
+| `due_date`                 | Date, nullable       | Required only for date-only task timing                 |
+| `anchor_itinerary_item_id` | UUID, nullable       | Dated event used by relative timing                     |
+| `relative_position`        | Text, nullable       | `before` or `after` the anchor event                    |
+| `offset_minutes`           | Integer, nullable    | Non-negative distance from the anchor                   |
+| `issued_on`                | Date, nullable       | User-entered document issue date                        |
+| `expires_on`               | Date, nullable       | User-entered expiry date                                |
+| `validity_buffer_days`     | Integer, nullable    | User-defined desired validity after the trip            |
+| `official_guidance_url`    | Text, nullable       | Embassy or government source selected by the user       |
+| `guidance_checked_at`      | Timestamp, nullable  | When the user last checked that source                  |
+| `linked_document_id`       | UUID, nullable       | Direct resolution or viewing action                     |
+| `notes`                    | Text, nullable       | User-entered context and caveats                        |
+| `created_by`               | UUID                 | Audit actor                                             |
+| `version`                  | Integer              | Optimistic concurrency counter                          |
+| `updated_at`               | Timestamp            | Change detection and cache freshness                    |
+| `deleted_at`               | Timestamp, nullable  | Recoverable soft deletion                               |
 
 The timing-shape constraint permits exactly one scheduling mode. A relative task must reference an active, dated, non-relative event in the same trip. Scheduled tasks join the main timeline projection; checklist-only tasks remain on **Tasks & readiness**. Completed tasks stay in that list but cannot become the active timeline entry or produce a due alert. Trip Vault stores this information but never labels a traveler legally eligible or replaces official immigration guidance.
 
 #### `requirement_assignees`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `requirement_id` | UUID | Parent requirement |
-| `traveler_id` | UUID | Traveler affected, including a managed traveler without an account |
+| Field            | Type | Purpose                                                            |
+| ---------------- | ---- | ------------------------------------------------------------------ |
+| `requirement_id` | UUID | Parent requirement                                                 |
+| `traveler_id`    | UUID | Traveler affected, including a managed traveler without an account |
 
 Audience uses sparse assignment semantics: zero active assignee rows means **Everyone**, while one or more rows means **Selected travelers**. New tasks default to Everyone, so travelers added later inherit them without a backfill. Editing a task from Everyone to Selected creates the chosen rows; returning it to Everyone removes them. An older task that explicitly names every existing traveler remains selected-to-those-travelers until an editor changes it.
 | `completed_at` | Timestamp, nullable | Optional per-person completion |
@@ -829,34 +826,34 @@ Primary key: `(requirement_id, traveler_id)`.
 
 #### `trip_costs`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Cost identity |
-| `trip_id` | UUID | Parent trip |
-| `booking_id` | UUID, nullable | Optional booking relationship |
-| `itinerary_item_id` | UUID, nullable | Optional event relationship |
-| `title` | Text | User-facing description |
-| `category` | `cost_category` | Flight, stay, transport, activity, food, visa, insurance, or other |
-| `amount_minor` | Big integer | Non-negative amount in minor currency units |
-| `currency_code` | Three-letter code | Currency used for the amount |
-| `payment_status` | `payment_status` | Planned, paid, or refunded |
-| `paid_by` | UUID, nullable | Legacy optional paying account retained for compatibility |
-| `paid_by_traveler_id` | UUID, nullable | Traveler who paid, including an organizer-managed traveler without an account |
-| `notes` | Text, nullable | User-entered context |
-| `created_by` | UUID | Audit actor |
-| `version` | Integer | Optimistic concurrency counter |
-| `created_at`, `updated_at`, `deleted_at` | Timestamps | Audit, synchronization, and soft deletion |
+| Field                                    | Type              | Purpose                                                                       |
+| ---------------------------------------- | ----------------- | ----------------------------------------------------------------------------- |
+| `id`                                     | UUID, primary key | Cost identity                                                                 |
+| `trip_id`                                | UUID              | Parent trip                                                                   |
+| `booking_id`                             | UUID, nullable    | Optional booking relationship                                                 |
+| `itinerary_item_id`                      | UUID, nullable    | Optional event relationship                                                   |
+| `title`                                  | Text              | User-facing description                                                       |
+| `category`                               | `cost_category`   | Flight, stay, transport, activity, food, visa, insurance, or other            |
+| `amount_minor`                           | Big integer       | Non-negative amount in minor currency units                                   |
+| `currency_code`                          | Three-letter code | Currency used for the amount                                                  |
+| `payment_status`                         | `payment_status`  | Planned, paid, or refunded                                                    |
+| `paid_by`                                | UUID, nullable    | Legacy optional paying account retained for compatibility                     |
+| `paid_by_traveler_id`                    | UUID, nullable    | Traveler who paid, including an organizer-managed traveler without an account |
+| `notes`                                  | Text, nullable    | User-entered context                                                          |
+| `created_by`                             | UUID              | Audit actor                                                                   |
+| `version`                                | Integer           | Optimistic concurrency counter                                                |
+| `created_at`, `updated_at`, `deleted_at` | Timestamps        | Audit, synchronization, and soft deletion                                     |
 
 Trip totals group non-refunded costs by currency. Every Add Event path may create an optional linked cost; if none exists, the event details explicitly show that cost is missing and offer a completion action. A cost may be archived and restored without archiving its event.
 
 #### `trip_cost_participants`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `cost_id` | UUID | Parent trip cost |
-| `traveler_id` | UUID | Traveler included in the expense |
+| Field                | Type                  | Purpose                                                               |
+| -------------------- | --------------------- | --------------------------------------------------------------------- |
+| `cost_id`            | UUID                  | Parent trip cost                                                      |
+| `traveler_id`        | UUID                  | Traveler included in the expense                                      |
 | `share_amount_minor` | Big integer, nullable | Explicit minor-unit share; null currently means derive an equal split |
-| `updated_at` | Timestamp | Change detection |
+| `updated_at`         | Timestamp             | Change detection                                                      |
 
 Primary key: `(cost_id, traveler_id)`. `trips.expense_splitting_enabled` is a non-null boolean that defaults to false. When false, Add/Edit Cost hides participant controls and writes every active traveler as an equal participant for new costs; editing an existing cost preserves its saved participants. When true, the form exposes participant selection. The current trip companion divides equal shares deterministically in minor currency units, assigns any remainder in stable traveler order, and derives per-currency balances from source costs. It never combines currencies or stores mutable running balances as authoritative data.
 
@@ -864,45 +861,64 @@ Primary key: `(cost_id, traveler_id)`. `trips.expense_splitting_enabled` is a no
 
 Manual reminders are persistent inputs to the alert engine; generated alerts themselves are not duplicated as server rows.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Reminder identifier |
-| `user_id` | UUID | User who should see it |
-| `trip_id` | UUID, nullable | Optional trip context |
-| `entity_type` | Text, nullable | Flight leg, requirement, booking, document, or itinerary item |
-| `entity_id` | UUID, nullable | Optional direct action target |
-| `title` | Text | Reminder label |
-| `due_at` | Timestamp | When it becomes active |
-| `severity` | `alert_severity` | User-selected importance |
-| `completed_at` | Timestamp, nullable | Resolution state |
-| `version` | Integer | Optimistic concurrency counter |
-| `updated_at` | Timestamp | Change detection and cache freshness |
+| Field          | Type                | Purpose                                                       |
+| -------------- | ------------------- | ------------------------------------------------------------- |
+| `id`           | UUID, primary key   | Reminder identifier                                           |
+| `user_id`      | UUID                | User who should see it                                        |
+| `trip_id`      | UUID, nullable      | Optional trip context                                         |
+| `entity_type`  | Text, nullable      | Flight leg, requirement, booking, document, or itinerary item |
+| `entity_id`    | UUID, nullable      | Optional direct action target                                 |
+| `title`        | Text                | Reminder label                                                |
+| `due_at`       | Timestamp           | When it becomes active                                        |
+| `severity`     | `alert_severity`    | User-selected importance                                      |
+| `completed_at` | Timestamp, nullable | Resolution state                                              |
+| `version`      | Integer             | Optimistic concurrency counter                                |
+| `updated_at`   | Timestamp           | Change detection and cache freshness                          |
 
 #### `alert_states`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `user_id` | UUID | User-specific state |
-| `alert_key` | Text | Stable deterministic key produced by the alert engine |
-| `read_at` | Timestamp, nullable | Excludes alert from unread count |
-| `dismissed_at` | Timestamp, nullable | Hides this occurrence until its key changes |
-| `snoozed_until` | Timestamp, nullable | Temporarily suppresses it |
-| `updated_at` | Timestamp | Reconciles device changes |
+| Field           | Type                | Purpose                                               |
+| --------------- | ------------------- | ----------------------------------------------------- |
+| `user_id`       | UUID                | User-specific state                                   |
+| `alert_key`     | Text                | Stable deterministic key produced by the alert engine |
+| `read_at`       | Timestamp, nullable | Excludes alert from unread count                      |
+| `dismissed_at`  | Timestamp, nullable | Hides this occurrence until its key changes           |
+| `snoozed_until` | Timestamp, nullable | Temporarily suppresses it                             |
+| `updated_at`    | Timestamp           | Reconciles device changes                             |
 
 Primary key: `(user_id, alert_key)`.
 
 #### `activity_events`
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | UUID, primary key | Audit-event identity |
-| `trip_id` | UUID | Parent trip |
-| `actor_id` | UUID | Member responsible |
-| `entity_type` | Text | Trip, booking, document, note, or member |
-| `entity_id` | UUID | Changed record |
-| `action` | Text | Created, updated, deleted, invited, or access_changed |
-| `safe_summary` | JSON | Redacted display details only |
-| `created_at` | Timestamp | Event time |
+| Field          | Type              | Purpose                                               |
+| -------------- | ----------------- | ----------------------------------------------------- |
+| `id`           | UUID, primary key | Audit-event identity                                  |
+| `trip_id`      | UUID              | Parent trip                                           |
+| `actor_id`     | UUID              | Member responsible                                    |
+| `entity_type`  | Text              | Trip, booking, document, note, or member              |
+| `entity_id`    | UUID              | Changed record                                        |
+| `action`       | Text              | Created, updated, deleted, invited, or access_changed |
+| `safe_summary` | JSON              | Redacted display details only                         |
+| `created_at`   | Timestamp         | Event time                                            |
+
+#### `cab_stops`
+
+Ordered intermediate stops for a Cab journey are first-class rows rather than free-form booking JSON.
+
+| Column                              | Type                          | Rule                                                                   |
+| ----------------------------------- | ----------------------------- | ---------------------------------------------------------------------- |
+| `id`                                | uuid                          | Primary key                                                            |
+| `journey_leg_id`                    | uuid                          | Required active Cab `journey_legs` parent; cascades on parent deletion |
+| `stop_order`                        | integer                       | Non-negative and unique per active journey                             |
+| `title`                             | text                          | Trimmed length 1–160                                                   |
+| `location`                          | jsonb                         | Optional object                                                        |
+| `arrives_at`, `departs_at`          | timestamptz                   | Optional; departure cannot precede arrival                             |
+| `timezone`                          | text                          | Required valid IANA zone, resolved from the Cab event                  |
+| `notes`                             | text                          | Optional                                                               |
+| `linked_itinerary_item_id`          | uuid                          | Optional same-trip active event; clears when that event is deleted     |
+| `version`, timestamps, `deleted_at` | standard versioned-row fields | Supports optimistic update, offline queueing, and soft deletion        |
+
+`trip_costs.cab_stop_id` optionally associates a same-trip cost with one stop. `enforce_cab_stop_context()` rejects non-Cab parents, invalid zones, or cross-trip event links; `enforce_trip_cost_cab_stop()` rejects cross-trip cost links. Row Level Security resolves membership/edit permission through the parent journey booking. Offline mutations preserve stop ordering and entity-version semantics; reordering updates the affected rows explicitly.
 
 ### 4.4 Critical constraints and indexes
 
@@ -1008,24 +1024,24 @@ erDiagram
 
 ### 6.1 Trip-level matrix
 
-| Action | Owner | Editor | Viewer |
-|---|---:|---:|---:|
-| View trip and permitted shared records after sign-in | Yes | Yes | Yes |
-| Edit trip details | Yes | Yes | No |
-| Create and edit bookings or itinerary | Yes | Yes | No |
-| Link, order, or unlink documents on an itinerary event | Yes | Yes | No |
-| Update manual flight operations | Yes | Yes | No |
-| Edit trip airline metadata | Yes | Yes | No |
-| Edit shared readiness requirements | Yes | Yes | No |
-| Upload trip-wide non-traveler documents | Yes | Yes | No |
-| Upload and manage documents for self or assigned travelers | Yes | Yes | Yes |
-| Manage own private documents | Yes | Yes | Yes |
-| Generate, revoke, or replace join codes | Yes | No | No |
-| Add a non-traveling collaborator | Yes | No | No |
-| Delegate traveler management | Yes | No | No |
-| Change member roles | Yes | No | No |
-| Remove members | Yes | No | No |
-| Delete or archive trip | Yes | No | No |
+| Action                                                     | Owner | Editor | Viewer |
+| ---------------------------------------------------------- | ----: | -----: | -----: |
+| View trip and permitted shared records after sign-in       |   Yes |    Yes |    Yes |
+| Edit trip details                                          |   Yes |    Yes |     No |
+| Create and edit bookings or itinerary                      |   Yes |    Yes |     No |
+| Link, order, or unlink documents on an itinerary event     |   Yes |    Yes |     No |
+| Update manual flight operations                            |   Yes |    Yes |     No |
+| Edit trip airline metadata                                 |   Yes |    Yes |     No |
+| Edit shared readiness requirements                         |   Yes |    Yes |     No |
+| Upload trip-wide non-traveler documents                    |   Yes |    Yes |     No |
+| Upload and manage documents for self or assigned travelers |   Yes |    Yes |    Yes |
+| Manage own private documents                               |   Yes |    Yes |    Yes |
+| Generate, revoke, or replace join codes                    |   Yes |     No |     No |
+| Add a non-traveling collaborator                           |   Yes |     No |     No |
+| Delegate traveler management                               |   Yes |     No |     No |
+| Change member roles                                        |   Yes |     No |     No |
+| Remove members                                             |   Yes |     No |     No |
+| Delete or archive trip                                     |   Yes |     No |     No |
 
 Non-traveling collaborators receive the capabilities of their Editor or Viewer role but are excluded from traveler counts, booking participants, traveler requirements, and traveler-document ownership.
 
@@ -1033,17 +1049,17 @@ Non-traveling collaborators receive the capabilities of their Editor or Viewer r
 
 The Admin entry uses the same Supabase Auth service but a dedicated account. After authentication, every Admin route and database mutation checks `is_app_admin(auth.uid())` against `app_admins`; a client-side route check alone is never trusted. Supabase RLS remains the enforcement layer for exposed tables.
 
-| Action | Active app administrator | Ordinary authenticated member |
-|---|---:|---:|
-| Read published catalog and theme | Yes | Yes |
-| Read drafts and audit history | Yes | No |
-| Create or edit a draft | Yes | No |
-| Publish or roll back configuration | Yes | No |
-| Upload an immutable catalog asset | Yes | No |
-| Add or promote an app administrator from the browser | No | No |
-| View a private trip without trip membership | No | No |
-| View or manage users' documents by being an app administrator | No | No |
-| Edit API secrets, RLS, or executable validation schemas | No | No |
+| Action                                                        | Active app administrator | Ordinary authenticated member |
+| ------------------------------------------------------------- | -----------------------: | ----------------------------: |
+| Read published catalog and theme                              |                      Yes |                           Yes |
+| Read drafts and audit history                                 |                      Yes |                            No |
+| Create or edit a draft                                        |                      Yes |                            No |
+| Publish or roll back configuration                            |                      Yes |                            No |
+| Upload an immutable catalog asset                             |                      Yes |                            No |
+| Add or promote an app administrator from the browser          |                       No |                            No |
+| View a private trip without trip membership                   |                       No |                            No |
+| View or manage users' documents by being an app administrator |                       No |                            No |
+| Edit API secrets, RLS, or executable validation schemas       |                       No |                            No |
 
 Administrator changes require a live connection and a current authenticated session. If the dedicated administrator account is also invited to a trip, that separate trip membership is evaluated normally and is unrelated to its configuration authority.
 
@@ -1104,11 +1120,11 @@ After a recipient has joined any trip shared with the owner, People & sharing ca
 
 ### 6.5 Traveler and collaborator behavior
 
-| Membership case | Traveler link | Appears in traveler roster | Can receive itinerary/bookings | Can use the app |
-|---|---|---:|---:|---:|
-| Claimed traveler | One `traveler_accounts` row | Yes | Yes | Yes |
-| Managed child or parent | No account link required | Yes | Yes | Through a signed-in Owner or Editor |
-| Non-traveling collaborator | None | Separately as collaborator | No | Yes, according to Editor/Viewer role |
+| Membership case            | Traveler link               | Appears in traveler roster | Can receive itinerary/bookings |                      Can use the app |
+| -------------------------- | --------------------------- | -------------------------: | -----------------------------: | -----------------------------------: |
+| Claimed traveler           | One `traveler_accounts` row |                        Yes |                            Yes |                                  Yes |
+| Managed child or parent    | No account link required    |                        Yes |                            Yes |  Through a signed-in Owner or Editor |
+| Non-traveling collaborator | None                        | Separately as collaborator |                             No | Yes, according to Editor/Viewer role |
 
 If an elderly parent uses their own phone, the organizer helps create that parent's account, redeem their targeted code, and prepare the device offline. If the parent does not operate an account, an Owner or Editor remains signed in as themselves and selects the managed traveler from the persistent trip switcher. The selection pre-populates new records and filters the visible trip to shared records plus that traveler's timeline, bookings, requirements, costs, seats, and documents; it never changes the authenticated identity or server permissions.
 
@@ -1125,11 +1141,11 @@ If an elderly parent uses their own phone, the organizer helps create that paren
 
 Three Supabase Storage buckets are configured by the schema:
 
-| Bucket | Read policy | Write policy | Contents |
-|---|---|---|---|
-| `trip-documents` | Authorized document predicate | Authorized trip uploader | Private travel documents and immutable versions |
-| `account-documents` | Upload owner or authorized associated-document reader | Signed-in owner folder only | Private originals retained before trip association |
-| `catalog-assets` | Public, non-sensitive read | Active application administrator only | Immutable approved airline logos and banners |
+| Bucket              | Read policy                                           | Write policy                          | Contents                                           |
+| ------------------- | ----------------------------------------------------- | ------------------------------------- | -------------------------------------------------- |
+| `trip-documents`    | Authorized document predicate                         | Authorized trip uploader              | Private travel documents and immutable versions    |
+| `account-documents` | Upload owner or authorized associated-document reader | Signed-in owner folder only           | Private originals retained before trip association |
+| `catalog-assets`    | Public, non-sensitive read                            | Active application administrator only | Immutable approved airline logos and banners       |
 
 No personal trip data, booking reference, traveler image, or uploaded travel document may enter `catalog-assets`.
 
@@ -1252,53 +1268,53 @@ For an oversized file, the MVP preserves the selected original on the user's dev
 
 Dexie uses six physical stores. Most server domains share the generic `entities` store and are distinguished by a profile-scoped entity key; they are not separate IndexedDB object stores.
 
-| Physical store | Contents |
-|---|---|
-| `settings` | Device-specific preferences and small non-secret values |
-| `localDocuments` | Profile-scoped local file metadata, verification state, and OPFS path |
-| `localFileBlobs` | IndexedDB blob fallback when OPFS is unavailable |
-| `entities` | Profile-scoped structured snapshots keyed by logical domain and entity ID |
-| `outbox` | Pending local mutations with dependency, attempt, and error state |
+| Physical store     | Contents                                                                        |
+| ------------------ | ------------------------------------------------------------------------------- |
+| `settings`         | Device-specific preferences and small non-secret values                         |
+| `localDocuments`   | Profile-scoped local file metadata, verification state, and OPFS path           |
+| `localFileBlobs`   | IndexedDB blob fallback when OPFS is unavailable                                |
+| `entities`         | Profile-scoped structured snapshots keyed by logical domain and entity ID       |
+| `outbox`           | Pending local mutations with dependency, attempt, and error state               |
 | `offlineManifests` | Prepared-trip level, expected document-version IDs, byte totals, and timestamps |
 
 Logical keys in `entities` include profiles, published configuration, airlines, airports, vendors, trips, memberships, travelers, bookings, flight legs, generic journey legs, itinerary items and links, documents, requirements, costs, reminders, alert state, focus, and notes. The current client does not store incremental pull cursors; an online collection read replaces that authorized logical collection in the cache.
 
 ### 8.2 Local file record
 
-| Field | Purpose |
-|---|---|
-| `profile_id` | Namespaces the copy to the profile that downloaded or created it |
-| `document_version_id` | Connects local blob to immutable server version |
-| `local_path` | OPFS-internal location |
-| `byte_size` | Quota accounting |
-| `sha256` | Integrity verification |
-| `downloaded_at` | Readiness timestamp |
-| `last_verified_at` | Last successful local checksum check |
-| `pin_reason` | Explicit document pin or inherited trip pin |
+| Field                 | Purpose                                                          |
+| --------------------- | ---------------------------------------------------------------- |
+| `profile_id`          | Namespaces the copy to the profile that downloaded or created it |
+| `document_version_id` | Connects local blob to immutable server version                  |
+| `local_path`          | OPFS-internal location                                           |
+| `byte_size`           | Quota accounting                                                 |
+| `sha256`              | Integrity verification                                           |
+| `downloaded_at`       | Readiness timestamp                                              |
+| `last_verified_at`    | Last successful local checksum check                             |
+| `pin_reason`          | Explicit document pin or inherited trip pin                      |
 
 Every local metadata row and OPFS document path is namespaced by `profile_id`. Signing into another account on the same browser opens a different local namespace and cannot list or open the prior profile's cached files. Sign-out follows the user-selected keep-or-remove-local-copies behavior; retained files become reachable again only when that same profile signs in or resumes its enrolled offline context.
 
 ### 8.3 Caching boundaries
 
-| Content | Mechanism | Strategy |
-|---|---|---|
-| Versioned JS, CSS, icons, fonts, PDF.js module and worker | Service worker cache | Precache current application shell and same-origin document-rendering runtime |
-| Theme preference and validated bootstrap palette | LocalStorage plus bundled CSS fallback | Apply before React renders; contains no personal data |
-| Published metadata catalogs | IndexedDB plus bundled JSON fallbacks | Use cached/bundled values at startup and refresh published configuration online |
-| HTML navigation | Service worker precache and SPA navigation fallback | Serve the installed app shell without runtime-caching Supabase requests |
-| Supabase structured records | IndexedDB | Supabase first while online, replacing the cached collection on success; cached collection on request failure or offline |
-| Current-account traveler links and trip event/document links | IndexedDB logical collections plus TanStack Query | Fetch each relationship set once per trip, reuse it across Home/Trip details/full collection pages, invalidate it from Realtime and attachment mutations, and fall back to the last authorized cache offline |
-| Opened or prepared file originals | OPFS with IndexedDB blob fallback | Persist the verified profile-scoped copy until the user removes local data |
-| Authenticated download URLs | Memory only | Never persist signed URLs |
+| Content                                                      | Mechanism                                           | Strategy                                                                                                                                                                                                     |
+| ------------------------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Versioned JS, CSS, icons, fonts, PDF.js module and worker    | Service worker cache                                | Precache current application shell and same-origin document-rendering runtime                                                                                                                                |
+| Theme preference and validated bootstrap palette             | LocalStorage plus bundled CSS fallback              | Apply before React renders; contains no personal data                                                                                                                                                        |
+| Published metadata catalogs                                  | IndexedDB plus bundled JSON fallbacks               | Use cached/bundled values at startup and refresh published configuration online                                                                                                                              |
+| HTML navigation                                              | Service worker precache and SPA navigation fallback | Serve the installed app shell without runtime-caching Supabase requests                                                                                                                                      |
+| Supabase structured records                                  | IndexedDB                                           | Supabase first while online, replacing the cached collection on success; cached collection on request failure or offline                                                                                     |
+| Current-account traveler links and trip event/document links | IndexedDB logical collections plus TanStack Query   | Fetch each relationship set once per trip, reuse it across Home/Trip details/full collection pages, invalidate it from Realtime and attachment mutations, and fall back to the last authorized cache offline |
+| Opened or prepared file originals                            | OPFS with IndexedDB blob fallback                   | Persist the verified profile-scoped copy until the user removes local data                                                                                                                                   |
+| Authenticated download URLs                                  | Memory only                                         | Never persist signed URLs                                                                                                                                                                                    |
 
 ### 8.4 Prepared-trip levels
 
-| Level | Required local content | Meaning |
-|---|---|---|
-| Not prepared | App shell only or incomplete trip data | Do not promise travel access |
-| Essentials ready | Complete structured trip data plus every explicitly selected document, all checksum-verified | Core itinerary works, but some authorized documents were intentionally excluded |
-| Ready offline | Complete structured trip data plus the current version of every document the user is authorized to open for that trip, all checksum-verified | The prepared trip can be used fully within the offline capability boundary |
-| Stale | The expected document-version set changed or a required local copy no longer verifies | Local content still opens, but structured-record staleness is not yet detected by the manifest |
+| Level            | Required local content                                                                                                                       | Meaning                                                                                        |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Not prepared     | App shell only or incomplete trip data                                                                                                       | Do not promise travel access                                                                   |
+| Essentials ready | Complete structured trip data plus every explicitly selected document, all checksum-verified                                                 | Core itinerary works, but some authorized documents were intentionally excluded                |
+| Ready offline    | Complete structured trip data plus the current version of every document the user is authorized to open for that trip, all checksum-verified | The prepared trip can be used fully within the offline capability boundary                     |
+| Stale            | The expected document-version set changed or a required local copy no longer verifies                                                        | Local content still opens, but structured-record staleness is not yet detected by the manifest |
 
 The default **Make trip available offline** action targets **Ready offline**. If quota is insufficient, the app may offer a reviewed essentials subset but must label it **Essentials ready**, not fully ready.
 
@@ -1323,21 +1339,21 @@ When the browser is offline and an enrolled device profile exists, the app does 
 
 ### 8.6 Offline capability matrix
 
-| Capability | Fully offline after preparation? | Behavior |
-|---|---:|---|
-| Start the app and open Home | Yes | Cached shell and local database |
-| View trips, itinerary, bookings, requirements, costs, and notes | Yes, when cached | Local authorized snapshot; preparation fetches these domains |
-| View flight times, gate, ticket, boarding pass, and baggage tag | Yes | Structured cache plus verified OPFS files |
-| View train, bus, ferry, or cab leg detail | Not guaranteed by preparation yet | Works if the journey-leg collection was already cached; LLD-044 adds an explicit preparation fetch |
-| Compute D-1 mode, countdowns, and alerts | Yes | Device clock and local rules |
-| Add or edit supported structured data | Yes | Validate locally and enqueue mutation |
-| Add a document from the device | Yes, when smaller than 5,000,000 bytes and within quota | Validate size before copying to OPFS, checksum it, and queue upload metadata and bytes |
-| Search trip and document metadata | Yes | IndexedDB indexes; no OCR |
-| Sign up, sign in on a new device, or redeem a join code | No | Backend identity and atomic membership are required |
-| Download a missing or changed cloud document | No | Existing local version may be shown as stale; missing file stays unavailable |
-| Change membership or permissions | No | Requires authoritative server checks |
-| Use Google Maps, airline check-in, or external flight tracking | No | Keep address/reference copy actions available |
-| Receive another person's latest changes | No | Arrives during foreground synchronization after reconnecting |
+| Capability                                                      |                        Fully offline after preparation? | Behavior                                                                                           |
+| --------------------------------------------------------------- | ------------------------------------------------------: | -------------------------------------------------------------------------------------------------- |
+| Start the app and open Home                                     |                                                     Yes | Cached shell and local database                                                                    |
+| View trips, itinerary, bookings, requirements, costs, and notes |                                        Yes, when cached | Local authorized snapshot; preparation fetches these domains                                       |
+| View flight times, gate, ticket, boarding pass, and baggage tag |                                                     Yes | Structured cache plus verified OPFS files                                                          |
+| View train, bus, ferry, or cab leg detail                       |                       Not guaranteed by preparation yet | Works if the journey-leg collection was already cached; LLD-044 adds an explicit preparation fetch |
+| Compute D-1 mode, countdowns, and alerts                        |                                                     Yes | Device clock and local rules                                                                       |
+| Add or edit supported structured data                           |                                                     Yes | Validate locally and enqueue mutation                                                              |
+| Add a document from the device                                  | Yes, when smaller than 5,000,000 bytes and within quota | Validate size before copying to OPFS, checksum it, and queue upload metadata and bytes             |
+| Search trip and document metadata                               |                                                     Yes | IndexedDB indexes; no OCR                                                                          |
+| Sign up, sign in on a new device, or redeem a join code         |                                                      No | Backend identity and atomic membership are required                                                |
+| Download a missing or changed cloud document                    |                                                      No | Existing local version may be shown as stale; missing file stays unavailable                       |
+| Change membership or permissions                                |                                                      No | Requires authoritative server checks                                                               |
+| Use Google Maps, airline check-in, or external flight tracking  |                                                      No | Keep address/reference copy actions available                                                      |
+| Receive another person's latest changes                         |                                                      No | Arrives during foreground synchronization after reconnecting                                       |
 
 Offline access relies on the device and browser profile that was previously authenticated. The app cannot learn that membership was revoked while disconnected; it reauthorizes before pushing or pulling on reconnection and then applies the removal policy. Without a later app-lock/encryption decision, the actual local security boundary is the device lock plus browser-origin isolation.
 
@@ -1347,18 +1363,18 @@ The app requests persistent storage through `navigator.storage.persist()` and re
 
 ### 9.1 Local mutation envelope
 
-| Field | Purpose |
-|---|---|
-| `operation_id` | Client-generated idempotency key |
-| `entity_type` | Target domain |
-| `entity_id` | Stable client-generated UUID |
-| `operation` | Create, update, delete, account-file upload, or account-file association |
-| `payload` | Validated mutation data |
-| `base_version` | Server version observed before edit |
-| `depends_on` | Earlier operations that must finish first |
-| `attempt_count` | Retry control |
-| `last_error_code` | User-action or retry classification |
-| `created_at` | Stable local ordering |
+| Field             | Purpose                                                                  |
+| ----------------- | ------------------------------------------------------------------------ |
+| `operation_id`    | Client-generated idempotency key                                         |
+| `entity_type`     | Target domain                                                            |
+| `entity_id`       | Stable client-generated UUID                                             |
+| `operation`       | Create, update, delete, account-file upload, or account-file association |
+| `payload`         | Validated mutation data                                                  |
+| `base_version`    | Server version observed before edit                                      |
+| `depends_on`      | Earlier operations that must finish first                                |
+| `attempt_count`   | Retry control                                                            |
+| `last_error_code` | User-action or retry classification                                      |
+| `created_at`      | Stable local ordering                                                    |
 
 ### 9.2 Foreground synchronization
 
@@ -1387,18 +1403,18 @@ For new documents, `upload_account_document` always precedes `associate_account_
 
 ### 9.3 Conflict policy
 
-| Data | Default conflict behavior |
-|---|---|
-| Trip fields | Show local and server values; user chooses |
-| Booking fields | Field-level comparison where possible; otherwise user chooses version |
-| Flight operational fields | Show both updates with actor and time; user selects the authoritative manual value |
-| Airline action templates | Preserve both versions and require an editor to choose before launching a disputed URL |
-| Itinerary ordering | Merge distinct items; flag edits to the same item |
-| Itinerary-document links | Merge links to different documents; version-check reorder or unlink of the same relationship |
-| Readiness requirements | Merge different assignees; conflict on edits to the same requirement |
-| Notes | Preserve both bodies and request merge |
-| Document binary | Never merge; create separate immutable versions |
-| Deletion versus edit | Preserve edit locally and request restore-or-discard decision |
+| Data                      | Default conflict behavior                                                                    |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| Trip fields               | Show local and server values; user chooses                                                   |
+| Booking fields            | Field-level comparison where possible; otherwise user chooses version                        |
+| Flight operational fields | Show both updates with actor and time; user selects the authoritative manual value           |
+| Airline action templates  | Preserve both versions and require an editor to choose before launching a disputed URL       |
+| Itinerary ordering        | Merge distinct items; flag edits to the same item                                            |
+| Itinerary-document links  | Merge links to different documents; version-check reorder or unlink of the same relationship |
+| Readiness requirements    | Merge different assignees; conflict on edits to the same requirement                         |
+| Notes                     | Preserve both bodies and request merge                                                       |
+| Document binary           | Never merge; create separate immutable versions                                              |
+| Deletion versus edit      | Preserve edit locally and request restore-or-discard decision                                |
 
 Server updates require `base_version` to match. A mismatch returns a conflict rather than silently using last-write-wins.
 
@@ -1437,65 +1453,71 @@ Today, readiness becomes `stale` automatically when the authorized document-vers
 
 ### 11.1 Application shell
 
-| Region | Phone | Wide screen |
-|---|---|---|
-| Header | Sticky brand, Alerts button, and theme action | Sticky brand plus visible sync status, Alerts, and theme action |
-| Primary navigation | Fixed bottom bar: Home, Trips, Add, Vault, Profile | Persistent side navigation from the `lg` breakpoint |
-| Content | Single-column responsive surfaces with safe-area spacing | Centered content area with wider cards and details sections |
-| Add action | Central Add navigation action; trip timeline also has a floating Add Event control | Add navigation entry plus the same trip-scoped floating controls |
-| Sync state | Compact icon/state with the issues panel available | Text status in the header with the same issues panel |
+| Region             | Phone                                                                              | Wide screen                                                      |
+| ------------------ | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Header             | Sticky brand, Alerts button, and theme action                                      | Sticky brand plus visible sync status, Alerts, and theme action  |
+| Primary navigation | Fixed bottom bar: Home, Trips, Add, Vault, Profile                                 | Persistent side navigation from the `lg` breakpoint              |
+| Content            | Single-column responsive surfaces with safe-area spacing                           | Centered content area with wider cards and details sections      |
+| Add action         | Central Add navigation action; trip timeline also has a floating Add Event control | Add navigation entry plus the same trip-scoped floating controls |
+| Sync state         | Compact icon/state with the issues panel available                                 | Text status in the header with the same issues panel             |
 
 ### 11.2 Core shared components
 
-| Component | Responsibility |
-|---|---|
-| `AppShell` | Responsive header, desktop side navigation, phone bottom navigation, alert count, theme, and sync placement |
-| `RouteScrollManager` | Resets document scroll on pathname changes while leaving same-trip query-string Timeline/Details navigation to `TripPage` |
-| `TripUi` exports | Shared `PageHeader`, `TripCard`, badges, empty states, and trip-facing visual primitives |
-| `ModalSheet` | Accessible modal/sheet container with an explicit Back action and Escape dismissal for mobile-friendly creation and management flows |
-| `FocusSurface` | Current/active label, accent, elevation, and reduced-motion-safe emphasis |
-| `TripPage` timeline composition | Complete timeline, phase jumps, active-event scroll, event detail sheet, people/sharing sheet, and Details switch |
-| `TripDetailsView` | Three-item Next up, reservation, and document previews; category counts; section navigation; links to the complete reservation/document routes |
-| `ReservationRow`, `TripDocumentRow` | Compact whole-row navigation with complete route/document context, document counts, full wrapping titles, traveler audience, and visibility |
-| `TripReservationsPage`, `TripDocumentsPage` | Stable full-collection routes with search, category and traveler filtering, event-ranked documents, and Back continuity to Trip details |
-| `ReadinessPage` | Readiness requirement list whose Owner/Editor card body opens the requirement editor while status, guidance, document, and Archive controls remain independent; Viewer cards stay read-only |
-| `ReservationCard` | Makes the complete reservation surface a native details link while keeping Call and WhatsApp as independent actions |
-| `CostDetailsSheet`, `TripExpensesContent`, and `EventCost` | Shared read-first expense detail, role-gated editing/archive, itemized cost rows, and opt-in per-currency balances |
-| `AddEventForm` | Progressive creation ordered Flight, Hotel, Activity, Bus, Cab, Ferry/Boat, Train, Meal, Preparation, Other transport, Other; saves the core record before optional document transfer |
-| `CatalogPicker` | Shared searchable desktop popover/mobile dialog that stays inside the visual viewport when the phone keyboard opens and always exposes an explicit Other path |
-| `TimeZoneAutocomplete` | Strict searchable IANA-zone chooser with compact desktop list and a keyboard-aware mobile dialog |
-| `AirlinePicker`, `AirportPicker`, `VendorPicker` | Published/bundled catalog selectors with manual Other inputs and privacy-safe administrator suggestions; airport selection atomically supplies name, code, country, and time zone; vendor selection fills or clears the controlled website snapshot |
-| `AddFlightConnectionForm` | Locks the new origin to the previous arrival, country-filters Domestic destinations, and calls the server-validated append that extends the booking and timeline end |
-| `EventFormCommonFields`, `JourneyEventFields` | Progressive reservation, stay, cost, route, endpoint, Cab mode, and per-traveler ticket sections shared by `AddEventForm` |
-| `ParticipantSelector`, `TravelerSwitcher` | Everyone/selected-traveler assignment and persistent management context without impersonation |
-| `EventDocuments` | Complete event document list, multi-select existing attachment, one-at-a-time classified upload, ordering, and unlink |
-| `FileDropzone` | Large centered trip/Profile picker plus compact replacement variant, with touch/keyboard/drop input, immediate validation, phone-MIME normalization, selected-file feedback, and busy locking |
-| `UploadDocumentForm` and `documentModel` | Travel-purpose presets, assignment/access separation, duplicate recovery, and queued local copy |
-| `DocumentPreview` | Approved image zoom and PDF.js canvas rendering with page, zoom, fit, loading, and safe failure states |
-| `DocumentPage` | Loads and verifies the local-first file, renders `DocumentPreview`, retains device Open, and keeps facts/management in the Info sheet |
-| `OfflinePackControl` | Quota check, persistence request, preparation progress, document verification, and provisional manifest state |
-| `SyncStatus`, `SyncIssuesPanel`, `ForegroundSync`, `RealtimeRefresh` | Visible outbox state, foreground retry, issue recovery, and online query invalidation |
-| `LocalQrCode` | Generates a share-code QR locally without a third-party QR service |
-| `StoragePermissionPrompt` | Requests persistent browser storage after authentication and explains the device-copy boundary |
-| `AdminPage` / `AdminShell` | Protected, online-only catalog, suggestion, appearance, release, and rollback experience |
-| `ThemeProvider`, `ThemeToggle` | System/Light/Dark resolution with bundled offline-safe tokens |
+| Component                                                            | Responsibility                                                                                                                                                                                                                                      |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AppShell`                                                           | Responsive header, desktop side navigation, phone bottom navigation, alert count, theme, and sync placement                                                                                                                                         |
+| `RouteScrollManager`                                                 | Resets document scroll on pathname changes while leaving same-trip query-string Timeline/Details navigation to `TripPage`                                                                                                                           |
+| `TripUi` exports                                                     | Shared `PageHeader`, `TripCard`, badges, empty states, and trip-facing visual primitives                                                                                                                                                            |
+| `ModalSheet`                                                         | Accessible modal/sheet container with an explicit Back action and Escape dismissal for mobile-friendly creation and management flows                                                                                                                |
+| `FocusSurface`                                                       | Current/active label, accent, elevation, and reduced-motion-safe emphasis                                                                                                                                                                           |
+| `TripPage` timeline composition                                      | Complete timeline, phase jumps, active-event scroll, event detail sheet, people/sharing sheet, and Details switch                                                                                                                                   |
+| `TripDetailsView`                                                    | Three-item Next up, reservation, and document previews; category counts; section navigation; links to the complete reservation/document routes                                                                                                      |
+| `ReservationRow`, `TripDocumentRow`                                  | Compact whole-row navigation with complete route/document context, document counts, full wrapping titles, traveler audience, and visibility                                                                                                         |
+| `TripReservationsPage`, `TripDocumentsPage`                          | Stable full-collection routes with search, category and traveler filtering, event-ranked documents, and Back continuity to Trip details                                                                                                             |
+| `ReadinessPage`                                                      | Readiness requirement list whose Owner/Editor card body opens the requirement editor while status, guidance, document, and Archive controls remain independent; Viewer cards stay read-only                                                         |
+| `ReservationCard`                                                    | Makes the complete reservation surface a native details link while keeping Call and WhatsApp as independent actions                                                                                                                                 |
+| `CostDetailsSheet`, `TripExpensesContent`, and `EventCost`           | Shared read-first expense detail, role-gated editing/archive, itemized cost rows, and opt-in per-currency balances                                                                                                                                  |
+| `AddEventForm`                                                       | Progressive creation ordered Flight, Hotel, Activity, Bus, Cab, Ferry/Boat, Train, Meal, Preparation, Other transport, Other; saves the core record before optional document transfer                                                               |
+| `CatalogPicker`                                                      | Shared searchable desktop popover/mobile dialog that stays inside the visual viewport when the phone keyboard opens and always exposes an explicit Other path                                                                                       |
+| `TimeZoneAutocomplete`                                               | Strict searchable IANA-zone chooser with compact desktop list and a keyboard-aware mobile dialog                                                                                                                                                    |
+| `AirlinePicker`, `AirportPicker`, `VendorPicker`                     | Published/bundled catalog selectors with manual Other inputs and privacy-safe administrator suggestions; airport selection atomically supplies name, code, country, and time zone; vendor selection fills or clears the controlled website snapshot |
+| `AddFlightConnectionForm`                                            | Locks the new origin to the previous arrival, country-filters Domestic destinations, and calls the server-validated append that extends the booking and timeline end                                                                                |
+| `EventFormCommonFields`, `JourneyEventFields`                        | Progressive reservation, stay, cost, route, endpoint, Cab mode, and per-traveler ticket sections shared by `AddEventForm`                                                                                                                           |
+| `ParticipantSelector`, `TravelerSwitcher`                            | Everyone/selected-traveler assignment and persistent management context without impersonation                                                                                                                                                       |
+| `EventDocuments`                                                     | Complete event document list, multi-select existing attachment, one-at-a-time classified upload, ordering, and unlink                                                                                                                               |
+| `FileDropzone`                                                       | Large centered trip/Profile picker plus compact replacement variant, with touch/keyboard/drop input, immediate validation, phone-MIME normalization, selected-file feedback, and busy locking                                                       |
+| `UploadDocumentForm` and `documentModel`                             | Travel-purpose presets, assignment/access separation, duplicate recovery, and queued local copy                                                                                                                                                     |
+| `DocumentPreview`                                                    | Approved image zoom and PDF.js canvas rendering with page, zoom, fit, loading, and safe failure states                                                                                                                                              |
+| `DocumentPage`                                                       | Loads and verifies the local-first file, renders `DocumentPreview`, retains device Open, and keeps facts/management in the Info sheet                                                                                                               |
+| `OfflinePackControl`                                                 | Quota check, persistence request, preparation progress, document verification, and provisional manifest state                                                                                                                                       |
+| `SyncStatus`, `SyncIssuesPanel`, `ForegroundSync`, `RealtimeRefresh` | Visible outbox state, foreground retry, issue recovery, and online query invalidation                                                                                                                                                               |
+| `LocalQrCode`                                                        | Generates a share-code QR locally without a third-party QR service                                                                                                                                                                                  |
+| `StoragePermissionPrompt`                                            | Requests persistent browser storage after authentication and explains the device-copy boundary                                                                                                                                                      |
+| `AdminPage` / `AdminShell`                                           | Protected, online-only catalog, suggestion, appearance, release, and rollback experience                                                                                                                                                            |
+| `ThemeProvider`, `ThemeToggle`                                       | System/Light/Dark resolution with bundled offline-safe tokens                                                                                                                                                                                       |
 
 ### 11.3 Implemented visual tokens
 
-| Token | Current direction |
-|---|---|
-| Background | Warm off-white |
-| Surface | White with hairline gray border |
-| Accent | Deep navy |
-| Secondary accent | Muted coral |
-| Text | Near-black with softer gray metadata |
-| Radius | Moderate; restrained rather than pill-heavy |
-| Shadow | Minimal; elevation only for overlays and active controls |
-| Typography | Neutral sans-serif with strong numeric legibility |
+| Token            | Current direction                                        |
+| ---------------- | -------------------------------------------------------- |
+| Background       | Warm off-white                                           |
+| Surface          | White with hairline gray border                          |
+| Accent           | Deep navy                                                |
+| Secondary accent | Muted coral                                              |
+| Text             | Near-black with softer gray metadata                     |
+| Radius           | Moderate; restrained rather than pill-heavy              |
+| Shadow           | Minimal; elevation only for overlays and active controls |
+| Typography       | Neutral sans-serif with strong numeric legibility        |
 
 No gradients should be used. Decorative elements must not compete with urgent trip information.
 
 ### 11.4 Timeline and trip details
+
+`TripAgendaSheet` is opened through `?agenda=open`, so Back and close behavior follow the existing route-backed sheet contract. It consumes the same `TripTimelineEntry[]` projection as the page, groups by `itineraryDateKey`, expands current/future dates by default, and keeps a selected date or text-filter result expanded. Category filtering maps Flight/Train/Bus/Ferry/Cab/Transport to Travel, hotel milestones to Stay, and the remainder to Activities. Agenda selection removes the query parameter and calls the common timeline-focus path.
+
+`searchTrip()` creates one result per matching local date before event/booking/document/traveler results. Date aliases are normalized and include ISO/slashed dates, long/short weekdays, US and GB day-month order, full/short month names, and optional year. A date result holds the first chronological item ID for that local date, so selection focuses the heading and top event without introducing a separate calendar route. The visible placeholder is **Search hotel, date, flight, activity, document, traveler…**.
+
+`scrollTimelineEventIntoView()` resolves the event's date/phase heading as its anchor and computes a top offset from the actual sticky-header bottom plus 28 px, with a 104 px minimum. It performs one window scroll and waits for `scrollend` (650 ms fallback) before applying `timeline-focus-pulse` to the card. The CSS uses the active event accent for `[aria-current="step"]` and a light-blue border for other targets; reduced motion selects instant scrolling and static focus feedback.
 
 `/trips/:tripId` opens in Timeline view unless `?view=details` is present.
 
@@ -1518,17 +1540,17 @@ The complete reservation page sorts by real booking start and then title, search
 
 Cards are primary interaction targets. Their primary activation depends on whether the summarized record has a meaningful read-only detail surface:
 
-| Surface | Primary activation | Role and secondary-action behavior |
-|---|---|---|
-| Timeline event card | Opens `EventDetailsSheet` in display mode | Every trip member can inspect it. Edit, Archive, status, cost, booking, and document-management actions appear inside the sheet only when the role permits them. Navigation remains a separate link on the card. |
-| Reservation card | The whole card is a native link to Flight or Booking details | Owner, Editor, and Viewer use the same read-first details route; applicable role-gated Edit, Archive, update, and connection actions live there. Call and WhatsApp remain separately focusable links above the card-wide target and do not navigate into the reservation. |
-| Event-linked expense row | Opens `CostDetailsSheet` | Owner, Editor, and Viewer can inspect the same expense. The surrounding event sheet closes before the cost sheet opens; Edit and Archive remain role-gated inside the cost sheet. |
-| Main Trip expenses row | Opens the same `CostDetailsSheet` | The full row is one button for every trip role. It does not send an Editor directly into the form. |
-| Departure, Arrival, Boarding, and Arrival details fact card | Opens the manual Flight editor directly | These facts already appear in full on Flight details, so there is no second read-only layer. Only Owner/Editor render the card as a button; Viewer receives a static card. |
-| Trip note or airline snapshot card | Opens its edit form directly | The complete note/snapshot is already visible. Only Owner/Editor receive the direct edit target; note Archive remains a separate destructive button and Viewer receives static content. |
-| Readiness requirement card | Opens the requirement editor directly | Owner/Editor receive the card-wide edit target. Status, official guidance, linked document, and Archive remain independent controls above that target; Viewer receives a static card with permitted read-only links. |
-| Trip information overview card | Opens Trip settings directly | Only Owner receives the card-wide settings target. The explicit Settings action remains an independent control with the same destination; Editor and Viewer receive static overview content. |
-| Admin catalog card | No card-wide convention yet | Admin catalog cards retain their explicit named controls until the Admin responsive redesign instead of receiving a competing card target. |
+| Surface                                                     | Primary activation                                           | Role and secondary-action behavior                                                                                                                                                                                                                                        |
+| ----------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Timeline event card                                         | Opens `EventDetailsSheet` in display mode                    | Every trip member can inspect it. Edit, Archive, status, cost, booking, and document-management actions appear inside the sheet only when the role permits them. Navigation remains a separate link on the card.                                                          |
+| Reservation card                                            | The whole card is a native link to Flight or Booking details | Owner, Editor, and Viewer use the same read-first details route; applicable role-gated Edit, Archive, update, and connection actions live there. Call and WhatsApp remain separately focusable links above the card-wide target and do not navigate into the reservation. |
+| Event-linked expense row                                    | Opens `CostDetailsSheet`                                     | Owner, Editor, and Viewer can inspect the same expense. The surrounding event sheet closes before the cost sheet opens; Edit and Archive remain role-gated inside the cost sheet.                                                                                         |
+| Main Trip expenses row                                      | Opens the same `CostDetailsSheet`                            | The full row is one button for every trip role. It does not send an Editor directly into the form.                                                                                                                                                                        |
+| Departure, Arrival, Boarding, and Arrival details fact card | Opens the manual Flight editor directly                      | These facts already appear in full on Flight details, so there is no second read-only layer. Only Owner/Editor render the card as a button; Viewer receives a static card.                                                                                                |
+| Trip note or airline snapshot card                          | Opens its edit form directly                                 | The complete note/snapshot is already visible. Only Owner/Editor receive the direct edit target; note Archive remains a separate destructive button and Viewer receives static content.                                                                                   |
+| Readiness requirement card                                  | Opens the requirement editor directly                        | Owner/Editor receive the card-wide edit target. Status, official guidance, linked document, and Archive remain independent controls above that target; Viewer receives a static card with permitted read-only links.                                                      |
+| Trip information overview card                              | Opens Trip settings directly                                 | Only Owner receives the card-wide settings target. The explicit Settings action remains an independent control with the same destination; Editor and Viewer receive static overview content.                                                                              |
+| Admin catalog card                                          | No card-wide convention yet                                  | Admin catalog cards retain their explicit named controls until the Admin responsive redesign instead of receiving a competing card target.                                                                                                                                |
 
 `CostDetailsSheet` presents amount, payment status, category, payer, linked event or booking, included travelers with equal or explicit shares, and optional notes before any mutation controls. **Balances by currency** is not rendered on initial expense-section load. A member explicitly enables **Show balances** to calculate and reveal it; hiding it again leaves the underlying costs unchanged. The toggle is available to Viewers because it is a local presentation choice, not a mutation.
 
@@ -1589,13 +1611,13 @@ This calendar-day rule avoids treating “one day early” as exactly 24 hours, 
 
 The first eligible item wins within each severity group; ties use event time and then stable ID.
 
-| Priority | Candidate examples | Primary action |
-|---:|---|---|
-| 1 | Cancelled flight, expired required document, unresolved sync conflict | Review or resolve |
-| 2 | Boarding pass available, incomplete offline pack on D-1, overdue requirement | Open document or complete action |
-| 3 | Delayed flight, departure/boarding approaching, check-in due | Open flight or check-in action |
-| 4 | Current accommodation or next transport | Navigate, call, or copy reference |
-| 5 | Next itinerary event | Open event |
+| Priority | Candidate examples                                                           | Primary action                    |
+| -------: | ---------------------------------------------------------------------------- | --------------------------------- |
+|        1 | Cancelled flight, expired required document, unresolved sync conflict        | Review or resolve                 |
+|        2 | Boarding pass available, incomplete offline pack on D-1, overdue requirement | Open document or complete action  |
+|        3 | Delayed flight, departure/boarding approaching, check-in due                 | Open flight or check-in action    |
+|        4 | Current accommodation or next transport                                      | Navigate, call, or copy reference |
+|        5 | Next itinerary event                                                         | Open event                        |
 
 Home applies authorization before relevance. From the already authorized document set it retains Shared documents plus Selected documents assigned to any traveler linked to the signed-in account for that trip; it excludes Assign later and another traveler's selected document. Explicit itinerary-document links outrank inferred booking/flight links. The next applicable event time is the primary ordering key and document purpose is only a tie-breaker, so a later boarding pass cannot displace a ticket required for an earlier event. Shortcut labels use the complete document title, while purpose, audience, and event/route context remain visible below it.
 
@@ -1659,6 +1681,8 @@ Web Push and scheduled server delivery remain later experiments. The data model 
 
 ### 11.9 Airline metadata and action URLs
 
+`airlineForFlight()` resolves a trip-airline snapshot by `marketing_airline_id` and falls back to a case-insensitive airline-name match. `airlineAccentStyle()` exposes only the CSS custom property `--airline-accent`. Flight summaries and metadata cards apply `airline-accent-rail`; Flight detail applies `airline-accent-hero`; connected-journey cards stay on neutral, theme-safe surfaces and show a small accent dot for each connection. Missing color falls back to the semantic Flight blue. Airline color never changes body text, status meaning, selection borders, or contrast-critical controls.
+
 The starter dropdown is a small, versioned JSON catalog bundled with the application. Selecting an airline copies its metadata to `trip_airlines`; later catalog releases never silently overwrite a trip's edited values.
 
 Allowed URL placeholders are limited to `{flightNumber}`, `{airlineCode}`, `{departureDate}`, `{bookingReference}`, `{departureAirport}`, and `{arrivalAirport}`. Expansion must URL-encode every value, allow only `https`, show the destination hostname before first use, and fall back to opening the airline's base page when a template is invalid. An owner or editor can disable or correct a stale action.
@@ -1682,14 +1706,14 @@ No Google key is created for MVP. Google Static Maps and Geocoding require a bil
 
 The administrator experience has its own `/admin/sign-in` entry and `AdminShell`. It uses the same Supabase authentication service as the traveler application, but only a dedicated account whose user ID is active in `app_admins` can open protected Admin routes. An administrator who is also invited to a trip uses normal trip membership and document-visibility rules for that trip.
 
-| Admin area | Editable browser-safe configuration |
-|---|---|
-| Overview | Current published version, draft validation state, catalog completeness, and recent publication history |
-| Airlines | Name, IATA/ICAO codes, aliases, tracker/check-in/base URL templates, logo/banner asset, accent, ordering, and enabled state |
-| Airports | IATA/ICAO codes, name, city, country, IANA timezone, aliases, optional coordinates, ordering, and enabled state |
+| Admin area      | Editable browser-safe configuration                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Overview        | Current published version, draft validation state, catalog completeness, and recent publication history                                          |
+| Airlines        | Name, IATA/ICAO codes, aliases, tracker/check-in/base URL templates, logo/banner asset, accent, ordering, and enabled state                      |
+| Airports        | IATA/ICAO codes, name, city, country, IANA timezone, aliases, optional coordinates, ordering, and enabled state                                  |
 | Travel defaults | Booking/document labels, category order, icons, readiness templates, reminder thresholds, and external-link defaults within code-defined schemas |
-| Appearance | Allowlisted semantic color tokens for light and dark modes plus previews for important trip states |
-| Releases | Draft comparison, validation results, publish, prior versions, audit details, and rollback |
+| Appearance      | Allowlisted semantic color tokens for light and dark modes plus previews for important trip states                                               |
+| Releases        | Draft comparison, validation results, publish, prior versions, audit details, and rollback                                                       |
 
 The console never exposes API secrets, Row Level Security policies, executable validation code, user management, trip data, traveler data, or private documents. Airline and airport records are reference metadata, not live operational data; gate, terminal, delay, cancellation, and baggage values remain traveler-maintained trip information.
 
@@ -1718,14 +1742,14 @@ The traveler chooses **System**, **Light**, or **Dark** per device. This is a lo
 
 Before React starts, a small inline bootstrap reads the local preference and last validated published palette, selects a mode, and places `data-theme="light|dark"` plus the matching `color-scheme` on the document root. If local data is absent or invalid, it uses the bundled light/dark palette. This prevents a bright first-frame flash and works before IndexedDB, Supabase, or the network is available.
 
-| Semantic token group | Examples | Constraint |
-|---|---|---|
-| Foundations | background, surface, elevated surface, border | Separate light and dark values; preserve visual hierarchy |
-| Content | primary text, muted text, inverse text, link | Meet the selected WCAG 2.2 AA contrast targets on every allowed surface |
-| Brand/action | accent, text on accent, focus ring | Focus remains visible; accent is never the only state indicator |
-| Status | danger, warning, success, information | Pair color with an icon, label, or shape |
-| Interaction | hover, pressed, selected, disabled, overlay | Preview keyboard, touch, and disabled states in both modes |
-| Loading/offline | skeleton, stale, pending sync, conflict | Stay distinguishable without implying online freshness |
+| Semantic token group | Examples                                      | Constraint                                                              |
+| -------------------- | --------------------------------------------- | ----------------------------------------------------------------------- |
+| Foundations          | background, surface, elevated surface, border | Separate light and dark values; preserve visual hierarchy               |
+| Content              | primary text, muted text, inverse text, link  | Meet the selected WCAG 2.2 AA contrast targets on every allowed surface |
+| Brand/action         | accent, text on accent, focus ring            | Focus remains visible; accent is never the only state indicator         |
+| Status               | danger, warning, success, information         | Pair color with an icon, label, or shape                                |
+| Interaction          | hover, pressed, selected, disabled, overlay   | Preview keyboard, touch, and disabled states in both modes              |
+| Loading/offline      | skeleton, stale, pending sync, conflict       | Stay distinguishable without implying online freshness                  |
 
 Admin-entered token values accept only fixed color formats supported by the schema; arbitrary CSS, URLs, functions, or scripts are rejected. Publication validation covers Home, flight cards, tickets and boarding passes, urgent alerts, document rows, dialogs, forms, disabled controls, offline/stale states, conflicts, and visible keyboard focus in both modes.
 
@@ -1735,23 +1759,23 @@ The service-worker package always includes safe default light and dark CSS. A co
 
 The visual direction uses several references for different problems rather than copying one application:
 
-| Reference | Principle to study | Trip Vault interpretation |
-|---|---|---|
-| [Flighty design story](https://developer.apple.com/news/?id=970ncww4) | Put the one operational fact needed now ahead of secondary detail | A current flight or next action becomes the Home hero with time, gate, status, and document action visible at a glance |
-| [Tripsy itinerary preferences](https://tripsy.help/article/59-itinerary-preferences) | Support readable day-by-day structure and useful density choices | Timeline groups remain clear on a phone and can later offer comfortable/compact density without changing information |
-| [TripIt sample itinerary](https://help.tripit.com/en/support/solutions/articles/103000063427/) | Keep heterogeneous reservations in one chronological language | Flight, hotel, transport, and activity cards share predictable time/location/document positions |
-| Trip Vault's own direction | Feel personal, calm, and dependable rather than like an airline operations screen | Warm surfaces, restrained travel imagery, document-vault clarity, explicit offline state, and no copied assets or layouts |
+| Reference                                                                                      | Principle to study                                                                | Trip Vault interpretation                                                                                                 |
+| ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| [Flighty design story](https://developer.apple.com/news/?id=970ncww4)                          | Put the one operational fact needed now ahead of secondary detail                 | A current flight or next action becomes the Home hero with time, gate, status, and document action visible at a glance    |
+| [Tripsy itinerary preferences](https://tripsy.help/article/59-itinerary-preferences)           | Support readable day-by-day structure and useful density choices                  | Timeline groups remain clear on a phone and can later offer comfortable/compact density without changing information      |
+| [TripIt sample itinerary](https://help.tripit.com/en/support/solutions/articles/103000063427/) | Keep heterogeneous reservations in one chronological language                     | Flight, hotel, transport, and activity cards share predictable time/location/document positions                           |
+| Trip Vault's own direction                                                                     | Feel personal, calm, and dependable rather than like an airline operations screen | Warm surfaces, restrained travel imagery, document-vault clarity, explicit offline state, and no copied assets or layouts |
 
 The time-based **Current** item and the viewport-focused item are different concepts. The app's clock and trip data determine Current; scrolling cannot change it. A carousel may additionally emphasize the card that has settled in the viewport, but that card never receives the **Current** label unless it is actually current.
 
-| Surface or change | Visual treatment | Motion-enabled behavior | Reduced-motion behavior |
-|---|---|---|---|
-| Current trip hero | **Current trip** label, accent edge, stronger surface, scale `1.01` | One `180ms` settle when it becomes current | Static emphasized surface; no transform |
-| Current timeline/Now card | **Now** label, accent marker, elevation, scale up to `1.02`, optional `-2px` lift | Discrete `180ms` transition when current state changes | Label, marker, and elevation change instantly |
-| Settled carousel card | Full contrast and scale `1`; neighbors remain readable at approximately `0.97` | Change only after scroll settling or intersection threshold, never for every scroll pixel | Same discrete sizes with no interpolation |
-| Pressed control | Shape, border, and pressed state | `80–100ms` scale to approximately `0.985` | Immediate pressed styling without movement |
-| Page/route change | Stable header and navigation; content continuity | Optional `120–180ms` cross-fade | Immediate replacement with focus restored |
-| Sheet or dialog | Modal surface and clear focus movement | `180–220ms` opacity plus short transform | Opacity-only or immediate presentation |
+| Surface or change         | Visual treatment                                                                  | Motion-enabled behavior                                                                   | Reduced-motion behavior                       |
+| ------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------- |
+| Current trip hero         | **Current trip** label, accent edge, stronger surface, scale `1.01`               | One `180ms` settle when it becomes current                                                | Static emphasized surface; no transform       |
+| Current timeline/Now card | **Now** label, accent marker, elevation, scale up to `1.02`, optional `-2px` lift | Discrete `180ms` transition when current state changes                                    | Label, marker, and elevation change instantly |
+| Settled carousel card     | Full contrast and scale `1`; neighbors remain readable at approximately `0.97`    | Change only after scroll settling or intersection threshold, never for every scroll pixel | Same discrete sizes with no interpolation     |
+| Pressed control           | Shape, border, and pressed state                                                  | `80–100ms` scale to approximately `0.985`                                                 | Immediate pressed styling without movement    |
+| Page/route change         | Stable header and navigation; content continuity                                  | Optional `120–180ms` cross-fade                                                           | Immediate replacement with focus restored     |
+| Sheet or dialog           | Modal surface and clear focus movement                                            | `180–220ms` opacity plus short transform                                                  | Opacity-only or immediate presentation        |
 
 Implementation rules:
 
@@ -1770,19 +1794,23 @@ Implementation rules:
 
 The fixture contains four stops, flights, hotels, ground transport, activities, readiness checks, manual reminders, and six membership/traveler cases: an owner-traveler, editor-traveler, viewer-traveler, managed parent, managed child, and non-traveling collaborator. A demo clock can switch between planning, D-1, travel-day, in-trip, and completed states without changing the real device clock. Its traveler focus mirrors the real workspace: Everyone tasks and person-specific tasks are distinguished, readiness totals recalculate for the chosen traveler, and scheduled tasks appear in the connected timeline rather than an older static preview.
 
-| Sample asset | Format | Visibility demonstrated | Target size |
-|---|---|---|---:|
-| Fictional-airline e-ticket | PDF | Selected travelers | Under 350 KB |
-| Fictional boarding pass with non-functional sample code | PDF | Traveler and managers | Under 250 KB |
-| Hotel confirmation | PDF | Whole trip | Under 300 KB |
-| Travel-insurance summary | PDF | Selected members | Under 400 KB |
-| Museum ticket | PNG or PDF | Selected travelers | Under 250 KB |
-| Two baggage-tag images | JPEG or WebP | Traveler and managers | Under 200 KB each |
-| Visa-readiness checklist—not a visa | PDF | Whole trip | Under 250 KB |
+| Sample asset                                            | Format       | Visibility demonstrated |       Target size |
+| ------------------------------------------------------- | ------------ | ----------------------- | ----------------: |
+| Fictional-airline e-ticket                              | PDF          | Selected travelers      |      Under 350 KB |
+| Fictional boarding pass with non-functional sample code | PDF          | Traveler and managers   |      Under 250 KB |
+| Hotel confirmation                                      | PDF          | Whole trip              |      Under 300 KB |
+| Travel-insurance summary                                | PDF          | Selected members        |      Under 400 KB |
+| Museum ticket                                           | PNG or PDF   | Selected travelers      |      Under 250 KB |
+| Two baggage-tag images                                  | JPEG or WebP | Traveler and managers   | Under 200 KB each |
+| Visa-readiness checklist—not a visa                     | PDF          | Whole trip              |      Under 250 KB |
 
 Every page carries a prominent **SAMPLE — NOT VALID** watermark. Airlines, hotels, addresses, people, confirmation references, document numbers, signatures, QR codes, and barcodes are fictional and intentionally non-functional. The demo must not include a simulated passport or government identity document. All demo assets together target less than 3 MB and are precached so design review and the complete preview still work in airplane mode.
 
 ### 11.15 Itinerary event documents
+
+`EventDocuments` merges explicit event links with inherited booking documents, then groups them by traveler usage. Shared/Everyone has order `-1`; selected groups use the earliest matching index in the trip's traveler array; unassigned sorts last. Group headings are collapsible and start expanded. The surface retains Upload new, Attach existing, Open, and Unlink, but omits per-document up/down controls because traveler grouping is the meaningful order.
+
+Readiness tasks use one `RequirementDetailsSheet` from both Trip timeline and Readiness page. Activating the row opens status, resolved schedule, audience, notes, and role-gated Mark done/undo, Edit, and Archive actions. Only the row checkbox performs direct completion. Offline readiness alerts use `/trips/:tripId?view=details&section=offline`, allowing the requested Trip Details section to own focus.
 
 An itinerary event has a **Documents** section containing zero or more ordered document links. Timeline cards stay compact; selecting a card opens the event detail, which shows the complete authorized list with title, purpose, traveler label where relevant, file size, and offline state.
 
@@ -1814,6 +1842,12 @@ Rules:
 - When prepared offline, every authorized event link remains visible, and each locally present document opens through the same immediate profile-local flow. A missing file is labeled **Not downloaded** rather than making the event unavailable.
 
 ## 12. Form and Validation Behavior
+
+Journey-backed timeline titles are editable independently from route facts. Train, Bus, Ferry, Cab, and Flight event editing presents the timeline-name field plus an explicit action explaining that route/ticket details are managed by the associated travel record.
+
+Ferry create/edit forms intentionally render the minimal ticket contract: journey structure, route and provider-local timing, operator, travelers, optional contact, reservation state, main reference, event placement, notes, and documents. Advanced legacy detail keys remain round-tripped in stored `details` when an unrelated edit saves, but age, insurance, vehicle, accommodation, baggage, gate, and vessel prompts are not shown.
+
+Cab creation can collect initial ordered stops; Booking details owns later stop management. `CabStopsManager` supports add/edit/remove and explicit up/down reorder, links a stop to an optional same-trip timeline event, and can associate stop-specific costs. `CabTimelineStops` displays the first three ordered stops and a remaining count. Cab route/time editing stays in the linked journey record, and every stop displays with the Cab event timezone.
 
 - Create-trip and legacy itinerary/cost forms use `useFormDraft`; the unified Add Event sheet currently persists only after a valid submission and does not promise an incomplete draft.
 - Initialize a new trip at local today + 15 calendar days and suggest an end seven calendar days after that start. Continue moving the suggestion when the untouched start changes, but never overwrite an end date the user deliberately edited. The versioned form-draft key prevents an older saved default from masquerading as the new suggestion.
@@ -1872,19 +1906,19 @@ Rules:
 
 ## 14. Error Model
 
-| Error class | Example | UI response |
-|---|---|---|
-| Validation | Missing destination | Inline correction; no retry |
-| Offline | No connection during save | Save locally and show queued state |
-| Authentication | Session cannot refresh | Preserve local read-only view and request sign-in online |
-| Authorization | Membership removed | Block future cloud access and explain that an existing device copy must be removed locally |
-| Conflict | Server version changed | Preserve both and open resolution flow |
-| Quota | Insufficient local storage | Show required space and selective unpin options |
-| Upload | Interrupted transfer | Keep the verified local original and retry the whole sub-5-MB file when the app is open and connected |
-| Integrity | Checksum mismatch | Delete bad local copy and redownload |
-| Admin offline | Connection lost in Admin console | Keep the last fetched view visible but disable all mutations and publishing |
-| Published config | Downloaded version is incomplete or invalid | Keep the prior cached version and use bundled defaults if none exists |
-| Unexpected | Unknown client error | Safe message plus redacted diagnostic ID |
+| Error class      | Example                                     | UI response                                                                                           |
+| ---------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Validation       | Missing destination                         | Inline correction; no retry                                                                           |
+| Offline          | No connection during save                   | Save locally and show queued state                                                                    |
+| Authentication   | Session cannot refresh                      | Preserve local read-only view and request sign-in online                                              |
+| Authorization    | Membership removed                          | Block future cloud access and explain that an existing device copy must be removed locally            |
+| Conflict         | Server version changed                      | Preserve both and open resolution flow                                                                |
+| Quota            | Insufficient local storage                  | Show required space and selective unpin options                                                       |
+| Upload           | Interrupted transfer                        | Keep the verified local original and retry the whole sub-5-MB file when the app is open and connected |
+| Integrity        | Checksum mismatch                           | Delete bad local copy and redownload                                                                  |
+| Admin offline    | Connection lost in Admin console            | Keep the last fetched view visible but disable all mutations and publishing                           |
+| Published config | Downloaded version is incomplete or invalid | Keep the prior cached version and use bundled defaults if none exists                                 |
+| Unexpected       | Unknown client error                        | Safe message plus redacted diagnostic ID                                                              |
 
 ## 15. Accessibility and Internationalization
 
@@ -1900,14 +1934,15 @@ Rules:
 
 ### 16.1 Current executable baseline
 
-| Check | Last verified | Result |
-|---|---|---|
-| `npm run typecheck` | 2026-09-16 | Pass |
-| `npm test` | 2026-09-17 | Pass: 83 files, 480 tests |
-| `npm run build` | 2026-09-17 | Pass; only the existing chunk-size and dynamic-import advisories remain |
-| `npm run format:check` | 2026-09-16 | Pass |
-| `supabase/tests/001_schema_smoke.sql` | Current local SQL includes booking-vendor, trip-cleanup, relative-event timing, reservation/scope, ground-detail, allocation, optional-arrival, and hotel-RPC assertions | Rerun remotely after every pending existing-project migration or both fresh-install phases |
-| Phone, desktop, sharing, upload, Cloudflare, and airplane mode | Current release | Manual acceptance pending in `docs/FEATURE_TEST_CHECKLIST.md` |
+| Check                                                          | Last verified                                                                                                                                                            | Result                                                                                                                                                                                                                                       |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run typecheck`                                            | 2026-09-19                                                                                                                                                               | Pass                                                                                                                                                                                                                                         |
+| `npm test`                                                     | 2026-09-19                                                                                                                                                               | Known application-test issue: 85 files pass; 503 tests pass; the Flight connection-card selector fails and one form test timed out only in the full run. Isolated form rerun passed all 41 tests; isolated Flight rerun retained one failure |
+| `npm run build`                                                | 2026-09-19                                                                                                                                                               | Pass; only the existing chunk-size and dynamic-import advisories remain                                                                                                                                                                      |
+| Documentation Prettier check                                   | 2026-09-19                                                                                                                                                               | Pass for `README.md` and `docs/*.md`                                                                                                                                                                                                         |
+| `npm run format:check`                                         | 2026-09-16                                                                                                                                                               | Previously passed for application source                                                                                                                                                                                                     |
+| `supabase/tests/001_schema_smoke.sql`                          | Current local SQL includes booking-vendor, trip-cleanup, relative-event timing, reservation/scope, ground-detail, allocation, optional-arrival, and hotel-RPC assertions | Rerun remotely after every pending existing-project migration or both fresh-install phases                                                                                                                                                   |
+| Phone, desktop, sharing, upload, Cloudflare, and airplane mode | Current release                                                                                                                                                          | Manual acceptance remains a release gate; the compact matrix is in `docs/FEATURES.md`                                                                                                                                                        |
 
 The lists below are the release coverage contract. They do not imply that every bullet already has a dedicated automated test; remote RLS, Storage, PWA installation, and true airplane-mode behavior require the named manual or SQL acceptance step.
 
@@ -2094,7 +2129,7 @@ The lists below are the release coverage contract. They do not imply that every 
 
 ### 16.6 Supabase rollout order
 
-For an existing Trip Vault database, do not use `TRIP_VAULT_COMPLETE_SETUP.sql` as an upgrade script. Apply every not-yet-run immutable file under `supabase/migrations/` in filename order through the current tail, `202609170001_journey_timeline_and_timezone.sql`, then run `supabase/tests/001_schema_smoke.sql`. Continue from the first file that deployment has not already applied; do not rerun or edit an applied migration. A correction to released SQL is always a new dated migration.
+For an existing Trip Vault database, do not use `TRIP_VAULT_COMPLETE_SETUP.sql` as an upgrade script. Apply every not-yet-run immutable file under `supabase/migrations/` in filename order through the current tail, `202609170002_cab_journey_stops.sql`, then run `supabase/tests/001_schema_smoke.sql`. Continue from the first file that deployment has not already applied; do not rerun or edit an applied migration. A correction to released SQL is always a new dated migration.
 
 Migration `202609130005_booking_vendor_catalog_additions.sql` still requires both an active `app_admins` row and the published release created by `202609130002_regional_travel_catalog.sql`; if either is absent in an existing deployment, establish the prerequisite instead of bypassing the guard.
 
@@ -2109,147 +2144,159 @@ Phase 2 is safe to retry because both catalog releases have stable change-note g
 
 ## 17. Configuration Boundaries
 
-| Setting | Exposure | Purpose |
-|---|---|---|
-| Supabase project URL | Browser-safe | Client endpoint |
-| Supabase publishable key | Browser-safe with correct RLS | Identifies project |
-| Cloudflare environment name | Browser-safe | Diagnostics and feature flags |
-| Published configuration version | Browser-safe | Lets clients atomically cache airline, airport, travel-default, and theme metadata |
-| Appearance preference | Device-local | Stores System, Light, or Dark before application startup; contains no account or trip data |
-| Application-administrator account ID | Server or migration only | Bootstraps the dedicated account in `app_admins`; never writable by the browser |
-| Catalog asset bucket | Public-read, admin-write | Holds approved non-personal airline and presentation assets only |
-| `MAX_DOCUMENT_BYTES` | Shared browser and server constant | `5_000_000`; accepted files must be strictly smaller and the bucket limit is configured to `4_999_999` bytes |
-| Google Maps API key | Not present in MVP | Keyless Maps URLs are used; adding a provider API requires a new decision |
-| Service-role or secret key | Server only | Administrative operations |
-| Join-code hashing or HMAC secret | Server only | Protects one-time code verification if the selected hashing scheme requires a server-held pepper |
-| Error-reporting token | Build or server scoped | Must avoid personal-data payloads |
+| Setting                              | Exposure                           | Purpose                                                                                                      |
+| ------------------------------------ | ---------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Supabase project URL                 | Browser-safe                       | Client endpoint                                                                                              |
+| Supabase publishable key             | Browser-safe with correct RLS      | Identifies project                                                                                           |
+| Cloudflare environment name          | Browser-safe                       | Diagnostics and feature flags                                                                                |
+| Published configuration version      | Browser-safe                       | Lets clients atomically cache airline, airport, travel-default, and theme metadata                           |
+| Appearance preference                | Device-local                       | Stores System, Light, or Dark before application startup; contains no account or trip data                   |
+| Application-administrator account ID | Server or migration only           | Bootstraps the dedicated account in `app_admins`; never writable by the browser                              |
+| Catalog asset bucket                 | Public-read, admin-write           | Holds approved non-personal airline and presentation assets only                                             |
+| `MAX_DOCUMENT_BYTES`                 | Shared browser and server constant | `5_000_000`; accepted files must be strictly smaller and the bucket limit is configured to `4_999_999` bytes |
+| Google Maps API key                  | Not present in MVP                 | Keyless Maps URLs are used; adding a provider API requires a new decision                                    |
+| Service-role or secret key           | Server only                        | Administrative operations                                                                                    |
+| Join-code hashing or HMAC secret     | Server only                        | Protects one-time code verification if the selected hashing scheme requires a server-held pepper             |
+| Error-reporting token                | Build or server scoped             | Must avoid personal-data payloads                                                                            |
 
 `.env.example` should contain names and explanations only, never live values.
 
 ## 18. Detailed Decision Register
 
-| ID | Question | Current options or decision | Status |
-|---|---|---|---|
-| LLD-001 | May editors invite members? | Owner only for MVP | Accepted |
-| LLD-002 | How are sensitive documents protected locally? | Browser/OS profile isolation for the personal MVP; clear-local-copy and sign-out controls are provided | Accepted |
-| LLD-003 | What is mandatory in a trip offline pack? | Product contract: complete structured trip data and all authorized current files; an explicitly reduced document set is `Essentials ready` | Accepted |
-| LLD-004 | How long is recoverable deletion retained? | Current lists surface soft-deleted records for 30 days; a separately confirmed owner-only irreversible purge exists temporarily for test cleanup | Revisit after testing |
-| LLD-005 | Which files may preview inline? | PDF and common images only | Accepted |
-| LLD-006 | Does v1 include activity history? | Retain scoped security/configuration events; defer a general user-visible history screen | Accepted |
-| LLD-007 | Styling implementation | Tailwind plus semantic CSS design tokens | Accepted |
-| LLD-008 | Authentication method | Email-only Supabase authentication; onboarding has no separate confirmation gate for now | Accepted |
-| LLD-009 | Offline session behavior | Previously enrolled, locally signed-in device supports reads and queued edits; reauthentication is required before synchronization | Accepted |
-| LLD-010 | Conflict resolution depth | Record-level keep-local or use-cloud choice with both versions shown | Accepted |
-| LLD-011 | Current trip selection | One focused trip per user; D-1 through trip end using the hidden captured trip-time-zone fallback; root fresh launch uses saved eligible focus or deterministic overlap fallback, while explicit `/home` remains Home | Accepted |
-| LLD-012 | Flight status source | Traveler-maintained operational fields with visible actor/freshness and external links; no provider feed | Accepted |
-| LLD-013 | Flight document priority | Ticket first until a boarding pass exists; boarding pass first afterward; baggage tags remain leg/traveler attachments | Accepted |
-| LLD-014 | Visa assistance | Manual requirements, dates, status, document, and official link only; no eligibility automation | Accepted |
-| LLD-015 | Notification boundary | Derived Alerts page and unread badge in MVP; Web Push and scheduled delivery later | Accepted |
-| LLD-016 | Map boundary | Keyless Google Maps URLs; no embedded images, automatic geocoding, route optimization, or offline maps | Accepted |
-| LLD-017 | Airline metadata ownership | Bundled starter catalog copied to editable trip-scoped records with safe local asset fallbacks | Accepted |
-| LLD-018 | Invitation mechanism | Signed-in recipient redeems a unique 16-character, expiring, revocable, single-use code targeted to one traveler or collaborator | Accepted |
-| LLD-019 | Traveler and account identity | Separate traveler profiles, optional account claim, and a persistent local traveler context for Owner/Editor management without identity impersonation; granular per-traveler delegation is deferred | Accepted |
-| LLD-020 | Non-traveling help | Collaborator membership receives Editor or Viewer capabilities without a traveler link or traveler assignments | Accepted |
-| LLD-021 | Trip privacy | Authentication and active membership are required for all real trip data, even when document binaries are excluded | Accepted |
-| LLD-022 | Offline operating promise | Cached shell, IndexedDB, OPFS/IndexedDB files, local rules, and an outbox provide prepared-trip use; enrollment and remote changes require network, and full readiness remains subject to LLD-044 | Accepted |
-| LLD-023 | Join-code parameters | 16 Crockford Base32 characters, 14-day expiry, and five failed attempts per authenticated account per fifteen minutes | Accepted |
-| LLD-024 | Administrator sign-in | Separate `/admin/sign-in` entry using a dedicated Supabase Auth account plus an `app_admins` allowlist | Accepted |
-| LLD-025 | Administrator privacy | Configuration authority never bypasses trip membership, traveler management, or document visibility | Accepted |
-| LLD-026 | Browser-editable configuration | Airlines, airports, browser-safe travel defaults, catalog assets, and semantic light/dark tokens only; secrets and security policy remain deployment-managed | Accepted |
-| LLD-027 | Configuration lifecycle | Online-only draft, validation, preview, atomic publish, audit, and rollback; traveler clients cache only a complete published version | Accepted |
-| LLD-028 | Appearance resolution | Per-device System/Light/Dark preference, applied before React; bundled and last-published palettes support offline startup | Accepted |
-| LLD-029 | Administrator sign-in hardening | Email authentication initially; add MFA or passkey before sensitive or wider deployment | Proposed |
-| LLD-030 | Visual reference direction | Study Flighty's current-information hierarchy and Tripsy/TripIt's itinerary structure while creating an original Trip Vault visual language | Accepted |
-| LLD-031 | Contextual focus motion | Small discrete zoom/elevation plus explicit text/accent; no continuous scroll-linked zoom, parallax, or motion-only meaning | Accepted |
-| LLD-032 | Demo trip | Bundle a local-only, resettable synthetic trip with a controllable demo clock and small watermarked, non-functional documents | Accepted |
-| LLD-033 | Document size | Accept only files smaller than `5_000_000` bytes, checked before OPFS/outbox work and again authoritatively in Storage | Accepted |
-| LLD-034 | Compression boundary | No automatic document changes in MVP; a user-reviewed, explicitly lossy image-copy optimizer may be considered later, but PDFs remain unchanged | Accepted |
-| LLD-035 | Local document-open check | Current profile context plus a verified file in that profile's OPFS namespace is enough; do not evaluate a cached document authorization record before opening | Accepted |
-| LLD-036 | Itinerary event documents | Use a many-to-many link table so one event can have several ordered documents and one document can appear on several events without file duplication | Accepted |
-| LLD-037 | Document traveler usage | Store Shared, Selected, or Assign later on the document and use `document_travelers` for one-or-many selected travelers; usage never grants access | Accepted |
-| LLD-038 | Document route hierarchy | Make the local-first document itself the primary page; render PDF/image bytes with in-app controls, move facts and management to an Info sheet, and retain device **Open** as the compatibility fallback | Accepted |
-| LLD-039 | Upload classification | Offer travel-language types with contextual defaults: shared stay confirmations, personal boarding/identity documents, and unassigned unnamed admission tickets | Accepted |
-| LLD-040 | Exact duplicate behavior | Compare the current-version SHA-256 within a trip and attach/open the existing Vault record instead of storing duplicate bytes | Accepted |
-| LLD-041 | Online read order | Use Supabase first with IndexedDB collection fallback while online; use IndexedDB directly when offline; TanStack Query has a 30-second freshness window | Accepted |
-| LLD-042 | Trip-open behavior | Open the complete timeline, resolve one current/next/most-recent item, scroll it into view once, and restore scroll after viewing Details | Accepted |
-| LLD-043 | Unified event creation | Use Add Event for travel, stays, meals, activities, preparation, transport, and custom entries with optional linked booking/cost/context | Accepted |
-| LLD-044 | Offline manifest completeness | Add structured entity/version coverage, explicit generic-journey fetch, and non-document stale detection before the readiness badge alone is authoritative | Revisit |
-| LLD-045 | Event upload interaction | Add one fully classified new file at a time; allow multi-select only when attaching existing Vault documents | Accepted |
-| LLD-046 | Catalog picker fallback | Airline, airport, and booking-vendor selectors use one saved-list/Other interaction; explicit Other values create privacy-safe online suggestions for later administrator approval or rejection | Accepted |
-| LLD-047 | Flight airport consistency | Selecting an airport supplies name, code, country, and IANA time zone atomically; derived values are read-only unless Other is selected | Accepted |
-| LLD-048 | Traveler presentation focus | Everyone shows the whole trip; selecting one traveler shows shared plus that person's timeline, bookings, costs, readiness, seats, and documents without changing authorization | Accepted |
-| LLD-049 | Known-account trip offer | Accounts that previously shared an accepted trip may be selected again, but the recipient must accept the new trip from Home before membership is created | Accepted |
-| LLD-050 | Post-creation flight connections | Owners and editors can append a chronological flight leg later; travelers are inherited and booking/timeline end times advance atomically | Accepted |
-| LLD-051 | Flexible event timing | Non-journey events may use exact time, date-only, all-day, before/after a dated event, or an Unscheduled section; relative placement remains independent from optional duration and later explicit start/end, while journey tickets retain exact endpoint times | Accepted |
-| LLD-052 | Timeline state versus archive | Planned, Done, Skipped, and Cancelled remain visible states; Archive is reversible and a booking-backed milestone archives/restores its complete booking group | Accepted |
-| LLD-053 | Trip date boundary | Dated events and their ends must stay within the trip start/end dates; the form constrains input and a database trigger is authoritative | Accepted |
-| LLD-054 | Modal browser history | Device/browser Back closes the top sheet; nested edit/cost/upload returns to the underlying event sheet before navigating away | Accepted |
-| LLD-055 | Trip-scoped expense sharing | Paid costs may name a traveler payer and participants; equal shares use integer minor units, balances are derived, and currencies are never silently combined | Accepted |
-| LLD-056 | Testing deletion | The owner-only permanent-delete action is visibly temporary, requires the exact trip title, atomically queues legacy paths with database deletion, cleans queued and account-inbox objects after commit, retains the correct retry record on failure, and is online-only | Accepted for testing |
-| LLD-057 | Admin redesign | Do not extend the current console until the trip application stabilizes; later rebuild it responsively with plain language and guided draft/publish/review flows | Deferred |
-| LLD-058 | Account document staging | Cache and upload the original under the signed-in account first, then atomically associate it with trip metadata; retain incomplete work in the Profile inbox | Accepted |
-| LLD-059 | Journey structure prompt | Ask Direct or Connecting for Flight, Single or Connecting service for Train/Bus/Ferry, and no route-structure question for Cab; create one or at least two editable legs as appropriate and persist only ordered legs | Accepted |
-| LLD-060 | Visible time-zone boundary | Hide zones for Domestic journeys and local events; derive known flight-airport zones and request strict manual zones only where international metadata is not available | Accepted |
-| LLD-061 | Provider-local schedule math | Require both printed endpoint times for Flight; allow Train/Bus/Ferry/Cab arrival to remain unknown; when both exist, convert endpoint-local times independently and derive elapsed duration from the resulting instants | Accepted |
-| LLD-062 | Journey presentation | Derive a complete ordered route on cards/details, omit generic journey location, and format elapsed time with week/day/hour/minute units | Accepted |
-| LLD-063 | Booking terminology | Airline/operator performs travel, hotel title is the property, and Booked via is the purchase channel; flight/train contact names and hotel clock/time-zone controls are omitted | Accepted |
-| LLD-064 | Booking-vendor fallback | Keep the picker available after Other, reconcile its catalog URL or clear stale website state in create/edit, bundle Airbnb/Trip.com, and publish them through forward migration `202609130005` without rewriting booking snapshots | Accepted |
-| LLD-065 | Expense entry point | Keep Home/trip-header totals compact and make both open the itemized Costs section | Accepted |
-| LLD-066 | Route scroll ownership | Reset scroll for each pathname; preserve TripPage's own Timeline/Details query transition and per-trip active-position handling | Accepted |
-| LLD-067 | Generic event booking enrichment | Permit an owner/editor to add booking details online to an unbooked Activity, Meal, Transport, Preparation, or Custom event; linking preserves the event, existing-booking choice, and nullable booking time until a real start exists | Accepted |
-| LLD-068 | Connected endpoint continuity | Validate every later journey origin against the previous destination; fix a post-creation connection's origin in the UI and re-enforce its endpoint, zone, layover, scope, and Domestic country under database locks | Accepted |
-| LLD-069 | Journey display zones | Render departure in its origin zone and arrival/overall end in its destination zone; hide repeated-clock choices throughout Domestic Flight editing | Accepted |
-| LLD-070 | Account document lifecycle | Limit private-object INSERT to pending unassociated receipts, expose no UPDATE, allow DELETE only while unassociated, require online deletion after any cloud attempt, and use associated cloud receipts to suppress stale local inbox state | Accepted |
-| LLD-071 | Permanent-purge Storage queue | Enqueue legacy paths and delete the trip atomically, acknowledge only successful post-commit object cleanup, retry retained queue rows on later online trip reads, and retain an account receipt when post-association account cleanup fails | Accepted for testing |
-| LLD-072 | Relative schedule precision | Store whether a relative start is real, allow a positive duration without it, derive missing end/duration when possible, and never expose the anchor fallback as current, calendar, or booking time | Accepted |
-| LLD-073 | Card interaction hierarchy | Use one whole-card primary action, show read-first details before editing rich records, send shallow flight/note/airline/readiness cards and the Owner trip overview directly to edit/settings, keep independent/destructive controls separate, and defer only Admin catalog cards | Accepted |
-| LLD-074 | Deferred geographic suggestion source | If adopted later, pin one Countries States Cities Database release, import only the required country/city identifiers, coordinates, and IANA zones behind a local searchable projection, preserve ODbL attribution/provenance, retain Other, and keep airport codes plus Maps links in their existing authoritative paths | Deferred |
-| LLD-075 | Progressive reservation capture | Store Planned, Walk-up/no reservation, or Booked explicitly; hide reservation-only inputs until Booked and allow a planned item to receive booking details later without duplicating the event | Accepted |
-| LLD-076 | Journey traveler allocations | Keep Flight seat + boarding group + ticket number; store Train seat/berth + coach + reference, Bus seat + reference, and Ferry reference with seat/cabin only for assigned seating per included traveler and leg; do not force one shared seat field or add a Cab seat grid | Accepted |
-| LLD-077 | Document preview engine | Bundle the browser-safe PDF.js module and worker with the PWA, render PDFs to canvas with page/zoom/fit controls, zoom images in-app, and keep device **Open** for fallback/unsupported rendering | Accepted |
-| LLD-078 | Document file-selection surface | Use one reusable large centered, touch/keyboard/drop-enabled picker for trip upload and the Profile inbox, with a compact replacement variant and immediate size/type/busy feedback; defer Admin artwork selection to the Admin redesign | Accepted |
-| LLD-079 | Large-trip collection routes | Keep Trip details to three-row previews and counts; expose complete reservation/document collections on stable searchable routes; batch/cache account-traveler and event-document relationships; rank documents by event time before purpose | Accepted |
+| ID      | Question                                       | Current options or decision                                                                                                                                                                                                                                                                                               | Status                |
+| ------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| LLD-001 | May editors invite members?                    | Owner only for MVP                                                                                                                                                                                                                                                                                                        | Accepted              |
+| LLD-002 | How are sensitive documents protected locally? | Browser/OS profile isolation for the personal MVP; clear-local-copy and sign-out controls are provided                                                                                                                                                                                                                    | Accepted              |
+| LLD-003 | What is mandatory in a trip offline pack?      | Product contract: complete structured trip data and all authorized current files; an explicitly reduced document set is `Essentials ready`                                                                                                                                                                                | Accepted              |
+| LLD-004 | How long is recoverable deletion retained?     | Current lists surface soft-deleted records for 30 days; a separately confirmed owner-only irreversible purge exists temporarily for test cleanup                                                                                                                                                                          | Revisit after testing |
+| LLD-005 | Which files may preview inline?                | PDF and common images only                                                                                                                                                                                                                                                                                                | Accepted              |
+| LLD-006 | Does v1 include activity history?              | Retain scoped security/configuration events; defer a general user-visible history screen                                                                                                                                                                                                                                  | Accepted              |
+| LLD-007 | Styling implementation                         | Tailwind plus semantic CSS design tokens                                                                                                                                                                                                                                                                                  | Accepted              |
+| LLD-008 | Authentication method                          | Email-only Supabase authentication; onboarding has no separate confirmation gate for now                                                                                                                                                                                                                                  | Accepted              |
+| LLD-009 | Offline session behavior                       | Previously enrolled, locally signed-in device supports reads and queued edits; reauthentication is required before synchronization                                                                                                                                                                                        | Accepted              |
+| LLD-010 | Conflict resolution depth                      | Record-level keep-local or use-cloud choice with both versions shown                                                                                                                                                                                                                                                      | Accepted              |
+| LLD-011 | Current trip selection                         | One focused trip per user; D-1 through trip end using the hidden captured trip-time-zone fallback; root fresh launch uses saved eligible focus or deterministic overlap fallback, while explicit `/home` remains Home                                                                                                     | Accepted              |
+| LLD-012 | Flight status source                           | Traveler-maintained operational fields with visible actor/freshness and external links; no provider feed                                                                                                                                                                                                                  | Accepted              |
+| LLD-013 | Flight document priority                       | Ticket first until a boarding pass exists; boarding pass first afterward; baggage tags remain leg/traveler attachments                                                                                                                                                                                                    | Accepted              |
+| LLD-014 | Visa assistance                                | Manual requirements, dates, status, document, and official link only; no eligibility automation                                                                                                                                                                                                                           | Accepted              |
+| LLD-015 | Notification boundary                          | Derived Alerts page and unread badge in MVP; Web Push and scheduled delivery later                                                                                                                                                                                                                                        | Accepted              |
+| LLD-016 | Map boundary                                   | Keyless Google Maps URLs; no embedded images, automatic geocoding, route optimization, or offline maps                                                                                                                                                                                                                    | Accepted              |
+| LLD-017 | Airline metadata ownership                     | Bundled starter catalog copied to editable trip-scoped records with safe local asset fallbacks                                                                                                                                                                                                                            | Accepted              |
+| LLD-018 | Invitation mechanism                           | Signed-in recipient redeems a unique 16-character, expiring, revocable, single-use code targeted to one traveler or collaborator                                                                                                                                                                                          | Accepted              |
+| LLD-019 | Traveler and account identity                  | Separate traveler profiles, optional account claim, and a persistent local traveler context for Owner/Editor management without identity impersonation; granular per-traveler delegation is deferred                                                                                                                      | Accepted              |
+| LLD-020 | Non-traveling help                             | Collaborator membership receives Editor or Viewer capabilities without a traveler link or traveler assignments                                                                                                                                                                                                            | Accepted              |
+| LLD-021 | Trip privacy                                   | Authentication and active membership are required for all real trip data, even when document binaries are excluded                                                                                                                                                                                                        | Accepted              |
+| LLD-022 | Offline operating promise                      | Cached shell, IndexedDB, OPFS/IndexedDB files, local rules, and an outbox provide prepared-trip use; enrollment and remote changes require network, and full readiness remains subject to LLD-044                                                                                                                         | Accepted              |
+| LLD-023 | Join-code parameters                           | 16 Crockford Base32 characters, 14-day expiry, and five failed attempts per authenticated account per fifteen minutes                                                                                                                                                                                                     | Accepted              |
+| LLD-024 | Administrator sign-in                          | Separate `/admin/sign-in` entry using a dedicated Supabase Auth account plus an `app_admins` allowlist                                                                                                                                                                                                                    | Accepted              |
+| LLD-025 | Administrator privacy                          | Configuration authority never bypasses trip membership, traveler management, or document visibility                                                                                                                                                                                                                       | Accepted              |
+| LLD-026 | Browser-editable configuration                 | Airlines, airports, browser-safe travel defaults, catalog assets, and semantic light/dark tokens only; secrets and security policy remain deployment-managed                                                                                                                                                              | Accepted              |
+| LLD-027 | Configuration lifecycle                        | Online-only draft, validation, preview, atomic publish, audit, and rollback; traveler clients cache only a complete published version                                                                                                                                                                                     | Accepted              |
+| LLD-028 | Appearance resolution                          | Per-device System/Light/Dark preference, applied before React; bundled and last-published palettes support offline startup                                                                                                                                                                                                | Accepted              |
+| LLD-029 | Administrator sign-in hardening                | Email authentication initially; add MFA or passkey before sensitive or wider deployment                                                                                                                                                                                                                                   | Proposed              |
+| LLD-030 | Visual reference direction                     | Study Flighty's current-information hierarchy and Tripsy/TripIt's itinerary structure while creating an original Trip Vault visual language                                                                                                                                                                               | Accepted              |
+| LLD-031 | Contextual focus motion                        | Small discrete zoom/elevation plus explicit text/accent; no continuous scroll-linked zoom, parallax, or motion-only meaning                                                                                                                                                                                               | Accepted              |
+| LLD-032 | Demo trip                                      | Bundle a local-only, resettable synthetic trip with a controllable demo clock and small watermarked, non-functional documents                                                                                                                                                                                             | Accepted              |
+| LLD-033 | Document size                                  | Accept only files smaller than `5_000_000` bytes, checked before OPFS/outbox work and again authoritatively in Storage                                                                                                                                                                                                    | Accepted              |
+| LLD-034 | Compression boundary                           | No automatic document changes in MVP; a user-reviewed, explicitly lossy image-copy optimizer may be considered later, but PDFs remain unchanged                                                                                                                                                                           | Accepted              |
+| LLD-035 | Local document-open check                      | Current profile context plus a verified file in that profile's OPFS namespace is enough; do not evaluate a cached document authorization record before opening                                                                                                                                                            | Accepted              |
+| LLD-036 | Itinerary event documents                      | Use a many-to-many link table so one event can have several ordered documents and one document can appear on several events without file duplication                                                                                                                                                                      | Accepted              |
+| LLD-037 | Document traveler usage                        | Store Shared, Selected, or Assign later on the document and use `document_travelers` for one-or-many selected travelers; usage never grants access                                                                                                                                                                        | Accepted              |
+| LLD-038 | Document route hierarchy                       | Make the local-first document itself the primary page; render PDF/image bytes with in-app controls, move facts and management to an Info sheet, and retain device **Open** as the compatibility fallback                                                                                                                  | Accepted              |
+| LLD-039 | Upload classification                          | Offer travel-language types with contextual defaults: shared stay confirmations, personal boarding/identity documents, and unassigned unnamed admission tickets                                                                                                                                                           | Accepted              |
+| LLD-040 | Exact duplicate behavior                       | Compare the current-version SHA-256 within a trip and attach/open the existing Vault record instead of storing duplicate bytes                                                                                                                                                                                            | Accepted              |
+| LLD-041 | Online read order                              | Use Supabase first with IndexedDB collection fallback while online; use IndexedDB directly when offline; TanStack Query has a 30-second freshness window                                                                                                                                                                  | Accepted              |
+| LLD-042 | Trip-open behavior                             | Open the complete timeline, resolve one current/next/most-recent item, scroll it into view once, and restore scroll after viewing Details                                                                                                                                                                                 | Accepted              |
+| LLD-043 | Unified event creation                         | Use Add Event for travel, stays, meals, activities, preparation, transport, and custom entries with optional linked booking/cost/context                                                                                                                                                                                  | Accepted              |
+| LLD-044 | Offline manifest completeness                  | Add structured entity/version coverage, explicit generic-journey fetch, and non-document stale detection before the readiness badge alone is authoritative                                                                                                                                                                | Revisit               |
+| LLD-045 | Event upload interaction                       | Add one fully classified new file at a time; allow multi-select only when attaching existing Vault documents                                                                                                                                                                                                              | Accepted              |
+| LLD-046 | Catalog picker fallback                        | Airline, airport, and booking-vendor selectors use one saved-list/Other interaction; explicit Other values create privacy-safe online suggestions for later administrator approval or rejection                                                                                                                           | Accepted              |
+| LLD-047 | Flight airport consistency                     | Selecting an airport supplies name, code, country, and IANA time zone atomically; derived values are read-only unless Other is selected                                                                                                                                                                                   | Accepted              |
+| LLD-048 | Traveler presentation focus                    | Everyone shows the whole trip; selecting one traveler shows shared plus that person's timeline, bookings, costs, readiness, seats, and documents without changing authorization                                                                                                                                           | Accepted              |
+| LLD-049 | Known-account trip offer                       | Accounts that previously shared an accepted trip may be selected again, but the recipient must accept the new trip from Home before membership is created                                                                                                                                                                 | Accepted              |
+| LLD-050 | Post-creation flight connections               | Owners and editors can append a chronological flight leg later; travelers are inherited and booking/timeline end times advance atomically                                                                                                                                                                                 | Accepted              |
+| LLD-051 | Flexible event timing                          | Non-journey events may use exact time, date-only, all-day, before/after a dated event, or an Unscheduled section; relative placement remains independent from optional duration and later explicit start/end, while journey tickets retain exact endpoint times                                                           | Accepted              |
+| LLD-052 | Timeline state versus archive                  | Planned, Done, Skipped, and Cancelled remain visible states; Archive is reversible and a booking-backed milestone archives/restores its complete booking group                                                                                                                                                            | Accepted              |
+| LLD-053 | Trip date boundary                             | Dated events and their ends must stay within the trip start/end dates; the form constrains input and a database trigger is authoritative                                                                                                                                                                                  | Accepted              |
+| LLD-054 | Modal browser history                          | Device/browser Back closes the top sheet; nested edit/cost/upload returns to the underlying event sheet before navigating away                                                                                                                                                                                            | Accepted              |
+| LLD-055 | Trip-scoped expense sharing                    | Paid costs may name a traveler payer and participants; equal shares use integer minor units, balances are derived, and currencies are never silently combined                                                                                                                                                             | Accepted              |
+| LLD-056 | Testing deletion                               | The owner-only permanent-delete action is visibly temporary, requires the exact trip title, atomically queues legacy paths with database deletion, cleans queued and account-inbox objects after commit, retains the correct retry record on failure, and is online-only                                                  | Accepted for testing  |
+| LLD-057 | Admin redesign                                 | Do not extend the current console until the trip application stabilizes; later rebuild it responsively with plain language and guided draft/publish/review flows                                                                                                                                                          | Deferred              |
+| LLD-058 | Account document staging                       | Cache and upload the original under the signed-in account first, then atomically associate it with trip metadata; retain incomplete work in the Profile inbox                                                                                                                                                             | Accepted              |
+| LLD-059 | Journey structure prompt                       | Ask Direct or Connecting for Flight, Single or Connecting service for Train/Bus/Ferry, and no route-structure question for Cab; create one or at least two editable legs as appropriate and persist only ordered legs                                                                                                     | Accepted              |
+| LLD-060 | Visible time-zone boundary                     | Hide zones for Domestic journeys and local events; derive known flight-airport zones and request strict manual zones only where international metadata is not available                                                                                                                                                   | Accepted              |
+| LLD-061 | Provider-local schedule math                   | Require both printed endpoint times for Flight; allow Train/Bus/Ferry/Cab arrival to remain unknown; when both exist, convert endpoint-local times independently and derive elapsed duration from the resulting instants                                                                                                  | Accepted              |
+| LLD-062 | Journey presentation                           | Derive a complete ordered route on cards/details, omit generic journey location, and format elapsed time with week/day/hour/minute units                                                                                                                                                                                  | Accepted              |
+| LLD-063 | Booking terminology                            | Airline/operator performs travel, hotel title is the property, and Booked via is the purchase channel; flight/train contact names and hotel clock/time-zone controls are omitted                                                                                                                                          | Accepted              |
+| LLD-064 | Booking-vendor fallback                        | Keep the picker available after Other, reconcile its catalog URL or clear stale website state in create/edit, bundle Airbnb/Trip.com, and publish them through forward migration `202609130005` without rewriting booking snapshots                                                                                       | Accepted              |
+| LLD-065 | Expense entry point                            | Keep Home/trip-header totals compact and make both open the itemized Costs section                                                                                                                                                                                                                                        | Accepted              |
+| LLD-066 | Route scroll ownership                         | Reset scroll for each pathname; preserve TripPage's own Timeline/Details query transition and per-trip active-position handling                                                                                                                                                                                           | Accepted              |
+| LLD-067 | Generic event booking enrichment               | Permit an owner/editor to add booking details online to an unbooked Activity, Meal, Transport, Preparation, or Custom event; linking preserves the event, existing-booking choice, and nullable booking time until a real start exists                                                                                    | Accepted              |
+| LLD-068 | Connected endpoint continuity                  | Validate every later journey origin against the previous destination; fix a post-creation connection's origin in the UI and re-enforce its endpoint, zone, layover, scope, and Domestic country under database locks                                                                                                      | Accepted              |
+| LLD-069 | Journey display zones                          | Render departure in its origin zone and arrival/overall end in its destination zone; hide repeated-clock choices throughout Domestic Flight editing                                                                                                                                                                       | Accepted              |
+| LLD-070 | Account document lifecycle                     | Limit private-object INSERT to pending unassociated receipts, expose no UPDATE, allow DELETE only while unassociated, require online deletion after any cloud attempt, and use associated cloud receipts to suppress stale local inbox state                                                                              | Accepted              |
+| LLD-071 | Permanent-purge Storage queue                  | Enqueue legacy paths and delete the trip atomically, acknowledge only successful post-commit object cleanup, retry retained queue rows on later online trip reads, and retain an account receipt when post-association account cleanup fails                                                                              | Accepted for testing  |
+| LLD-072 | Relative schedule precision                    | Store whether a relative start is real, allow a positive duration without it, derive missing end/duration when possible, and never expose the anchor fallback as current, calendar, or booking time                                                                                                                       | Accepted              |
+| LLD-073 | Card interaction hierarchy                     | Use one whole-card primary action, show read-first details before editing rich records, send shallow flight/note/airline/readiness cards and the Owner trip overview directly to edit/settings, keep independent/destructive controls separate, and defer only Admin catalog cards                                        | Accepted              |
+| LLD-074 | Deferred geographic suggestion source          | If adopted later, pin one Countries States Cities Database release, import only the required country/city identifiers, coordinates, and IANA zones behind a local searchable projection, preserve ODbL attribution/provenance, retain Other, and keep airport codes plus Maps links in their existing authoritative paths | Deferred              |
+| LLD-075 | Progressive reservation capture                | Store Planned, Walk-up/no reservation, or Booked explicitly; hide reservation-only inputs until Booked and allow a planned item to receive booking details later without duplicating the event                                                                                                                            | Accepted              |
+| LLD-076 | Journey traveler allocations                   | Keep Flight seat + boarding group + ticket number; store Train seat/berth + coach + reference, Bus seat + reference, and Ferry reference with seat/cabin only for assigned seating per included traveler and leg; do not force one shared seat field or add a Cab seat grid                                               | Accepted              |
+| LLD-077 | Document preview engine                        | Bundle the browser-safe PDF.js module and worker with the PWA, render PDFs to canvas with page/zoom/fit controls, zoom images in-app, and keep device **Open** for fallback/unsupported rendering                                                                                                                         | Accepted              |
+| LLD-078 | Document file-selection surface                | Use one reusable large centered, touch/keyboard/drop-enabled picker for trip upload and the Profile inbox, with a compact replacement variant and immediate size/type/busy feedback; defer Admin artwork selection to the Admin redesign                                                                                  | Accepted              |
+| LLD-079 | Large-trip collection routes                   | Keep Trip details to three-row previews and counts; expose complete reservation/document collections on stable searchable routes; batch/cache account-traveler and event-document relationships; rank documents by event time before purpose                                                                              | Accepted              |
+| LLD-080 | Agenda routing                                 | Open the compact agenda as a route-backed sheet, derive groups from the shared timeline projection, and return selection to the common focus path                                                                                                                                                                         | Accepted              |
+| LLD-081 | Flexible date search                           | Normalize weekday, ISO, US/GB day-month, short/full month, and optional-year aliases and focus the first event in a matched local date                                                                                                                                                                                    | Accepted              |
+| LLD-082 | Focus placement and pulse                      | Resolve the adjacent phase/date heading, offset below the measured sticky header, pulse after scroll settlement, and use reduced-motion-safe static behavior                                                                                                                                                              | Accepted              |
+| LLD-083 | Event document grouping                        | Sort Everyone first, selected travelers by trip creation order, and unassigned last; begin groups expanded and omit manual document-order controls                                                                                                                                                                        | Accepted              |
+| LLD-084 | Cab stop persistence                           | Use versioned `cab_stops` rows with active-order uniqueness, same-trip event links, optional stop costs, parent-derived RLS, and offline mutation support                                                                                                                                                                 | Accepted              |
+| LLD-085 | Ferry form boundary                            | Show the minimal common ticket contract and preserve unrendered legacy detail values when saving unrelated edits                                                                                                                                                                                                          | Accepted              |
+| LLD-086 | Airline accent implementation                  | Resolve the saved trip-airline color into one CSS property and restrict it to rails, hero markers, and connection dots on theme-safe surfaces                                                                                                                                                                             | Accepted              |
+| LLD-087 | Readiness detail action                        | Open one shared read-first task sheet from timeline/readiness; reserve the checkbox for direct completion and route offline alerts to the Offline detail section                                                                                                                                                          | Accepted              |
 
 ## Source File Index
 
 These paths are the implemented ownership map. Tests are co-located with their modules; remaining limitations are marked `Revisit` in the decision registers.
 
-| Component | Path | Responsibility |
-|---|---|---|
-| App shell | `src/app/` | Providers, router, and top-level layout |
-| Fresh-launch router | `src/components/RootRoute.tsx` | Waits for trips and saved focus, opens the eligible current trip deterministically, and leaves explicit Home navigation alone |
-| Route scroll ownership | `src/app/RouteScrollManager.tsx` | Pathname reset while preserving TripPage query-string navigation |
-| Product features | `src/features/` | Domain-specific UI and behavior |
-| Administrator console | `src/features/admin/` | Protected online-only metadata, theme, validation, publication, and audit views |
-| Demonstration trip | `src/demo/` | Synthetic fixtures, demo clock, reset behavior, and bundled sample documents |
-| Starter travel catalogs | `src/features/metadata/starter-airlines.json`, `src/features/metadata/starter-airports.json`, `src/features/metadata/starter-vendors.json` | Versioned autocomplete seeds with user-entered fallback and optional suggestions |
-| Journey-operator catalog | `src/features/metadata/starter-journey-operators.json`, `src/features/metadata/JourneyOperatorPicker.tsx` | Transport-specific operator suggestions with an explicit Other/manual fallback |
-| Timeline feature | `src/features/timeline/`, `src/features/workspace/JourneyTravelerDetails.tsx`, `src/pages/TripPage.tsx` | Event creation, progressive reservation state, typed journey fields, per-leg traveler allocation, relative timing precision, active-item scrolling, event details, and trip details switch |
+| Component                                     | Path                                                                                                                                                                                                                                                                                  | Responsibility                                                                                                                                                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| App shell                                     | `src/app/`                                                                                                                                                                                                                                                                            | Providers, router, and top-level layout                                                                                                                                                                                  |
+| Fresh-launch router                           | `src/components/RootRoute.tsx`                                                                                                                                                                                                                                                        | Waits for trips and saved focus, opens the eligible current trip deterministically, and leaves explicit Home navigation alone                                                                                            |
+| Route scroll ownership                        | `src/app/RouteScrollManager.tsx`                                                                                                                                                                                                                                                      | Pathname reset while preserving TripPage query-string navigation                                                                                                                                                         |
+| Product features                              | `src/features/`                                                                                                                                                                                                                                                                       | Domain-specific UI and behavior                                                                                                                                                                                          |
+| Administrator console                         | `src/features/admin/`                                                                                                                                                                                                                                                                 | Protected online-only metadata, theme, validation, publication, and audit views                                                                                                                                          |
+| Demonstration trip                            | `src/demo/`                                                                                                                                                                                                                                                                           | Synthetic fixtures, demo clock, reset behavior, and bundled sample documents                                                                                                                                             |
+| Starter travel catalogs                       | `src/features/metadata/starter-airlines.json`, `src/features/metadata/starter-airports.json`, `src/features/metadata/starter-vendors.json`                                                                                                                                            | Versioned autocomplete seeds with user-entered fallback and optional suggestions                                                                                                                                         |
+| Journey-operator catalog                      | `src/features/metadata/starter-journey-operators.json`, `src/features/metadata/JourneyOperatorPicker.tsx`                                                                                                                                                                             | Transport-specific operator suggestions with an explicit Other/manual fallback                                                                                                                                           |
+| Timeline feature                              | `src/features/timeline/`, `src/features/workspace/JourneyTravelerDetails.tsx`, `src/pages/TripPage.tsx`                                                                                                                                                                               | Event creation, progressive reservation state, typed journey fields, per-leg traveler allocation, relative timing precision, active-item scrolling, event details, and trip details switch                               |
 | Card interaction hierarchy and expense detail | `src/pages/TripPage.tsx`, `src/pages/TripPage.test.tsx`, `src/pages/BookingPage.tsx`, `src/pages/FlightPage.tsx`, `src/pages/FlightPage.test.tsx`, `src/pages/ReadinessPage.tsx`, `src/features/workspace/TripAirlinesPanel.tsx`, `src/features/workspace/TripAirlinesPanel.test.tsx` | Whole-card reservation/event/cost activation, read-first booking and expense fields, opt-in balances, Owner trip-overview settings, readiness direct edit with independent controls, and other direct-edit shallow cards |
-| Large-trip collection views | `src/features/trips/TripDetailsView.tsx`, `src/features/trips/TripDetailsCards.tsx`, `src/features/trips/reservationPresentation.ts`, `src/components/TripDocumentRow.tsx`, `src/pages/TripReservationsPage.tsx`, `src/pages/TripDocumentsPage.tsx` | Three-row previews, category counts, compact rows, complete searchable/filterable collections, and event-first document grouping |
-| Trip relationship batching | `src/features/workspace/tripRelationships.ts`, `src/features/queries/tripQueries.ts`, `src/features/sync/queryRoots.ts` | One cached current-account traveler-link read and one batched event-document reference read per trip, with offline fallback and targeted invalidation |
-| Journey and booking detail | `src/pages/FlightPage.tsx`, `src/pages/BookingPage.tsx` | Endpoint-zone display, Domestic/International update controls, full route, seats, and booking detail |
-| Generic event booking enrichment | `src/features/workspace/AddActivityBookingForm.tsx`, `src/features/trips/TripForms.tsx`, `src/features/trips/api.ts` | Supported event types, nullable untimed booking schedule, existing/new booking choices, versioned event link, and compensating archive |
-| Theme definitions | `src/lib/theme/`, `src/styles/globals.css` | Bundled semantic light/dark fallbacks, local preference, and published-token application |
-| Local database | `src/lib/local-db/` | IndexedDB schema, migrations, and repositories |
-| Offline device context | `src/lib/auth/` | Last enrolled profile, explicit local sign-out, and expired-session airplane-mode fallback without storing new credentials |
-| Offline file storage | `src/lib/storage/` | OPFS operations, manifests, and integrity |
-| Document semantics | `src/features/workspace/documentModel.ts` | Travel-specific type presets, assignment labels/filtering, and exact duplicate detection |
-| Account document inbox | `src/features/workspace/DocumentInboxPanel.tsx`, `src/features/workspace/api.ts`, `src/features/sync/localSync.ts` | Account-first staging, retry/verification, association cache reconciliation, stale-cloud suppression, and safe online/offline deletion boundary |
-| Document selection and preview | `src/components/FileDropzone.tsx`, `src/components/DocumentPreview.tsx`, `src/pages/DocumentPage.tsx`, `public/vendor/pdfjs/` | Large/compact validated file selection, phone-MIME recovery, local PDF/image rendering, Info separation, and device Open fallback |
-| Trip lifecycle | `src/features/trips/api.ts` | Archive, recoverable deletion, restore, and owner-only permanent purge with post-commit queued Storage cleanup |
-| Backend client | `src/lib/supabase/` | Supabase client and typed repositories |
-| Database deltas | `supabase/migrations/` | Post-baseline schema, function, grant, and RLS changes for existing projects |
-| Supabase deployment workflow | `supabase/README.md` | Canonical two-phase fresh install and immutable existing-project upgrade rules |
-| Account-document Storage hardening | `supabase/migrations/202609130004_account_document_storage_state.sql` | Verified completion, append-only Storage policies, association immutability, and unassociated cleanup boundary |
-| Booking-vendor catalog addition | `supabase/migrations/202609130005_booking_vendor_catalog_additions.sql` | Copies the published release and adds Airbnb and Trip.com |
-| Trip Storage cleanup queue | `supabase/migrations/202609130006_trip_storage_cleanup_queue.sql` | Persistent owner cleanup work, guarded legacy-object deletion, permanent-delete RPC, and server-hardened flight connection append |
-| Relative-event timing migration | `supabase/migrations/202609130007_relative_event_timing.sql` | Explicit-start marker, optional planned duration, derivation constraints, anchor fallback propagation, and trip bounds |
-| Event-form data-model migration | `supabase/migrations/202609140001_event_form_data_model.sql` | Reservation state, participant scope, optional non-flight arrival, typed ground details, per-leg traveler allocations, and atomic hotel-stay save |
-| Consolidated database setup | `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` | Canonical two-phase current schema and catalog setup for a fresh project |
-| Co-located automated tests | `src/**/*.test.ts`, `src/**/*.test.tsx` | Domain, local database, sync, alert, presentation, and route behavior |
-| Schema smoke test | `supabase/tests/001_schema_smoke.sql` | Tables, policies, functions, and Storage limit assertions |
-| Redesign checklist | `docs/REDESIGN_CHECKLIST.md` | Implemented timeline redesign scope and retained follow-ups |
-| Manual feature checklist | `docs/FEATURE_TEST_CHECKLIST.md` | Phone, desktop, member, journey, document, offline, and Admin acceptance |
-| High-level design | `docs/HIGH_LEVEL_DESIGN.md` | Architecture and decision gates |
-| Feature catalog | `docs/FEATURES.md` | Product scope and acceptance conditions |
+| Large-trip collection views                   | `src/features/trips/TripDetailsView.tsx`, `src/features/trips/TripDetailsCards.tsx`, `src/features/trips/reservationPresentation.ts`, `src/components/TripDocumentRow.tsx`, `src/pages/TripReservationsPage.tsx`, `src/pages/TripDocumentsPage.tsx`                                   | Three-row previews, category counts, compact rows, complete searchable/filterable collections, and event-first document grouping                                                                                         |
+| Trip relationship batching                    | `src/features/workspace/tripRelationships.ts`, `src/features/queries/tripQueries.ts`, `src/features/sync/queryRoots.ts`                                                                                                                                                               | One cached current-account traveler-link read and one batched event-document reference read per trip, with offline fallback and targeted invalidation                                                                    |
+| Journey and booking detail                    | `src/pages/FlightPage.tsx`, `src/pages/BookingPage.tsx`                                                                                                                                                                                                                               | Endpoint-zone display, Domestic/International update controls, full route, seats, and booking detail                                                                                                                     |
+| Generic event booking enrichment              | `src/features/workspace/AddActivityBookingForm.tsx`, `src/features/trips/TripForms.tsx`, `src/features/trips/api.ts`                                                                                                                                                                  | Supported event types, nullable untimed booking schedule, existing/new booking choices, versioned event link, and compensating archive                                                                                   |
+| Theme definitions                             | `src/lib/theme/`, `src/styles/globals.css`                                                                                                                                                                                                                                            | Bundled semantic light/dark fallbacks, local preference, and published-token application                                                                                                                                 |
+| Local database                                | `src/lib/local-db/`                                                                                                                                                                                                                                                                   | IndexedDB schema, migrations, and repositories                                                                                                                                                                           |
+| Offline device context                        | `src/lib/auth/`                                                                                                                                                                                                                                                                       | Last enrolled profile, explicit local sign-out, and expired-session airplane-mode fallback without storing new credentials                                                                                               |
+| Offline file storage                          | `src/lib/storage/`                                                                                                                                                                                                                                                                    | OPFS operations, manifests, and integrity                                                                                                                                                                                |
+| Document semantics                            | `src/features/workspace/documentModel.ts`                                                                                                                                                                                                                                             | Travel-specific type presets, assignment labels/filtering, and exact duplicate detection                                                                                                                                 |
+| Account document inbox                        | `src/features/workspace/DocumentInboxPanel.tsx`, `src/features/workspace/api.ts`, `src/features/sync/localSync.ts`                                                                                                                                                                    | Account-first staging, retry/verification, association cache reconciliation, stale-cloud suppression, and safe online/offline deletion boundary                                                                          |
+| Document selection and preview                | `src/components/FileDropzone.tsx`, `src/components/DocumentPreview.tsx`, `src/pages/DocumentPage.tsx`, `public/vendor/pdfjs/`                                                                                                                                                         | Large/compact validated file selection, phone-MIME recovery, local PDF/image rendering, Info separation, and device Open fallback                                                                                        |
+| Trip lifecycle                                | `src/features/trips/api.ts`                                                                                                                                                                                                                                                           | Archive, recoverable deletion, restore, and owner-only permanent purge with post-commit queued Storage cleanup                                                                                                           |
+| Backend client                                | `src/lib/supabase/`                                                                                                                                                                                                                                                                   | Supabase client and typed repositories                                                                                                                                                                                   |
+| Database deltas                               | `supabase/migrations/`                                                                                                                                                                                                                                                                | Post-baseline schema, function, grant, and RLS changes for existing projects                                                                                                                                             |
+| Supabase deployment workflow                  | `supabase/README.md`                                                                                                                                                                                                                                                                  | Canonical two-phase fresh install and immutable existing-project upgrade rules                                                                                                                                           |
+| Account-document Storage hardening            | `supabase/migrations/202609130004_account_document_storage_state.sql`                                                                                                                                                                                                                 | Verified completion, append-only Storage policies, association immutability, and unassociated cleanup boundary                                                                                                           |
+| Booking-vendor catalog addition               | `supabase/migrations/202609130005_booking_vendor_catalog_additions.sql`                                                                                                                                                                                                               | Copies the published release and adds Airbnb and Trip.com                                                                                                                                                                |
+| Trip Storage cleanup queue                    | `supabase/migrations/202609130006_trip_storage_cleanup_queue.sql`                                                                                                                                                                                                                     | Persistent owner cleanup work, guarded legacy-object deletion, permanent-delete RPC, and server-hardened flight connection append                                                                                        |
+| Relative-event timing migration               | `supabase/migrations/202609130007_relative_event_timing.sql`                                                                                                                                                                                                                          | Explicit-start marker, optional planned duration, derivation constraints, anchor fallback propagation, and trip bounds                                                                                                   |
+| Event-form data-model migration               | `supabase/migrations/202609140001_event_form_data_model.sql`                                                                                                                                                                                                                          | Reservation state, participant scope, optional non-flight arrival, typed ground details, per-leg traveler allocations, and atomic hotel-stay save                                                                        |
+| Journey placement/timezone migration          | `supabase/migrations/202609170001_journey_timeline_and_timezone.sql`                                                                                                                                                                                                                  | Journey placement editing and Domestic journey/connected-flight timezone updates                                                                                                                                         |
+| Cab-stop migration                            | `supabase/migrations/202609170002_cab_journey_stops.sql`                                                                                                                                                                                                                              | Versioned ordered stops, same-trip event links, optional cost links, indexes, triggers, grants, and RLS                                                                                                                  |
+| Agenda and timeline focus                     | `src/features/trips/TripAgendaSheet.tsx`, `src/features/timeline/model.ts`, `src/features/timeline/scroll.ts`                                                                                                                                                                         | Route-backed compact agenda, local-date aliases, sticky-header focus positioning, and post-scroll pulse                                                                                                                  |
+| Cab stop UI                                   | `src/features/timeline/CabStopsFields.tsx`, `src/features/workspace/CabStopsManager.tsx`, `src/features/workspace/CabTimelineStops.tsx`                                                                                                                                               | Initial stop capture, detail management/reordering, and timeline preview                                                                                                                                                 |
+| Readiness details and event documents         | `src/features/readiness/RequirementDetailsSheet.tsx`, `src/features/workspace/EventDocuments.tsx`                                                                                                                                                                                     | Shared read-first task sheet and traveler-grouped event documents                                                                                                                                                        |
+| Airline accent utility                        | `src/features/workspace/airlineAccent.ts`, `src/features/workspace/TripAirlinesPanel.tsx`, `src/pages/FlightPage.tsx`, `src/pages/TripPage.tsx`                                                                                                                                       | Snapshot resolution and theme-safe accent CSS application                                                                                                                                                                |
+| Consolidated database setup                   | `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`                                                                                                                                                                                                                                              | Canonical two-phase current schema and catalog setup for a fresh project                                                                                                                                                 |
+| Co-located automated tests                    | `src/**/*.test.ts`, `src/**/*.test.tsx`                                                                                                                                                                                                                                               | Domain, local database, sync, alert, presentation, and route behavior                                                                                                                                                    |
+| Schema smoke test                             | `supabase/tests/001_schema_smoke.sql`                                                                                                                                                                                                                                                 | Tables, policies, functions, and Storage limit assertions                                                                                                                                                                |
+| High-level design                             | `docs/HIGH_LEVEL_DESIGN.md`                                                                                                                                                                                                                                                           | Architecture and decision gates                                                                                                                                                                                          |
+| Feature catalog                               | `docs/FEATURES.md`                                                                                                                                                                                                                                                                    | Product scope and acceptance conditions                                                                                                                                                                                  |

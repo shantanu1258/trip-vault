@@ -2,15 +2,15 @@
 
 Trip Vault is a personal, installable travel web app for keeping trips, bookings, travelers, readiness checks, costs, notes, and the documents needed at each moment. It uses React as a PWA, Supabase for identity/database/private files, IndexedDB plus OPFS for local-first use, and Cloudflare Workers Static Assets for eventual hosting.
 
-The application now uses a timeline-first trip experience. The accepted design and database decisions are recorded in [REDESIGN_CHECKLIST.md](docs/REDESIGN_CHECKLIST.md).
+The application uses a timeline-first trip experience. Product scope, architecture, and implementation decisions are maintained in the canonical [feature catalog](docs/FEATURES.md), [high-level design](docs/HIGH_LEVEL_DESIGN.md), and [low-level design](docs/LOW_LEVEL_DESIGN.md).
 
 ## Implemented
 
 - Email sign-up/sign-in with display name, two password fields, and visibility controls
 - Upcoming and D-1/current Home modes, overlap selection, next action, alerts, and per-currency trip totals
 - Trips, date-grouped/reorderable itinerary, calendar export, bookings, manual flight operations, airline actions, travelers, editable readiness, notes, and costs
-- Timeline-first trip opening with one current/next highlight, explicit search focus, per-view return/scroll restoration, sticky Add Event and People controls, whole-card primary actions, and a sectioned Trip details workspace
-- Progressive event forms with Direct/Connecting Flight, Single/Connecting Train/Bus/Ferry, simplified Cab modes, planned/walk-up/booked intent, optional ground-journey arrival, typed ticket details, and strict International endpoint zones without Domestic country/time-zone prompts
+- Timeline-first trip opening with one current/next highlight, a compact date-grouped agenda, weekday/flexible-date search, consistent below-header focus feedback, per-view scroll restoration, whole-card primary actions, and a sectioned Trip details workspace
+- Progressive event forms with Direct/Connecting Flight, Single/Connecting Train/Bus/Ferry, simplified Ferry capture, ordered Cab stops, planned/walk-up/booked intent, optional ground-journey arrival, typed ticket details, and strict International endpoint zones without Domestic country/time-zone prompts
 - Bundled offline operator/company suggestions with reversible Other/manual entry for Train, Bus, Ferry, and Cab; booking sellers remain separate under Booked via
 - Per-traveler, per-leg ticket details where they apply: Flight seat, boarding group and ticket number; Train seat/berth, coach and reference; Bus seat and reference; Ferry reference plus seat/cabin only for assigned seating; and no Cab seat grid
 - Atomic Hotel check-in/checkout milestones, preparation events, per-event documents and costs, booked-via metadata, and Call/WhatsApp contact actions
@@ -22,10 +22,10 @@ The application now uses a timeline-first trip experience. The accepted design a
 - Private, traveler-and-manager, trip-wide, and selected-member document access
 - Strict files smaller than 5,000,000 bytes, immutable versions, archive-with-local-copy, checksum verification, a large touch/keyboard/drop picker, generic phone-MIME recovery, and local-first PDF/image preview
 - In-app multi-page PDF page/zoom/fit controls and image zoom, with document facts behind Info and device Open retained as a fallback
-- Several ordered documents per itinerary event, with travel-specific types, traveler assignment, and exact-duplicate reuse
+- Several documents per itinerary event, grouped by Everyone and traveler usage, with travel-specific types, traveler assignment, and exact-duplicate reuse
 - Prepared offline trip packs, cold-start device enrollment, offline structured edits/uploads, foreground synchronization, and explicit conflict resolution
 - In-app reminders/alerts, unread count, dismiss, restore, and snooze
-- Bundled airline and airport fallbacks, keyless Google Maps hand-off, and external-domain confirmation
+- Bundled airline and airport fallbacks, restrained theme-safe airline accents, keyless Google Maps hand-off, and external-domain confirmation
 - System/Light/Dark device modes plus atomically published administrator palettes and metadata
 - Online-only administrator catalogs with validated airline artwork, drafts, publication history, audit trail, and rollback
 - Profile install action with iPhone/iPad and Android guidance, PWA update prompt, and a fully synthetic `/preview` trip with watermarked sample documents
@@ -54,9 +54,9 @@ npm run build
 .venv/bin/python scripts/verify_demo_pdfs.py
 ```
 
-Use [FEATURE_TEST_CHECKLIST.md](docs/FEATURE_TEST_CHECKLIST.md) for the short three-member phone/desktop acceptance run.
+Use the compact MVP exit matrix in [FEATURES.md](docs/FEATURES.md) for the three-member phone/desktop acceptance run; executable verification details remain in [LOW_LEVEL_DESIGN.md](docs/LOW_LEVEL_DESIGN.md).
 
-Current verified Vitest baseline: 67 files with 358 passing tests. TypeScript type-check and the production PWA build pass. Synthetic-PDF verification, remote SQL, phone/desktop, Storage, and airplane-mode checks remain separate release gates and should be rerun for the integrated release.
+Current documentation-change validation: TypeScript type-check, production PWA build, and Markdown formatting pass. The full test run has 503 passing tests across 85 passing files, with one existing Flight connection-card selector failure and one form timeout that passed when rerun in isolation; the exact record is in the LLD. Synthetic-PDF verification, remote SQL, phone/desktop, Storage, and airplane-mode checks remain separate release gates.
 
 For a real offline cold-start test, build first and use `npm run preview -- --host 127.0.0.1`; Vite's development server is not the service-worker acceptance environment.
 
