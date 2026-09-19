@@ -4,7 +4,6 @@ import {
   enablePush,
   getPushDevice,
   supportsPush,
-  testPush,
   updatePushDevice,
   type PushDevice
 } from "./api";
@@ -85,21 +84,6 @@ export function PushSettings() {
                   {label}
                 </label>
               ))}
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={busy}
-                onClick={() =>
-                  void run(async () => {
-                    await testPush(device.id);
-                    setMessage(
-                      "Test accepted by the push service. Watch for a notification on this device."
-                    );
-                  })
-                }
-              >
-                Send test notification
-              </button>
               <button
                 type="button"
                 className="secondary-button"

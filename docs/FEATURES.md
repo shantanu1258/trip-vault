@@ -9,6 +9,8 @@ last_verified: 2026-09-19
 
 # Trip Vault Feature Catalog
 
+> **September 20 release update:** Manual push delivery to the owner's phone is confirmed; automatic Cron delivery and destination acceptance remain pending. TRP-008A (temporary test-trip purge UI) is retired. NTF-002 retains device opt-in, revocation and category preferences, but no longer exposes a test-send button. Protected backend diagnostics and legacy purge cleanup remain available in the implementation.
+
 > **Current contract:** Reconciled with September 19 enhancements and Web Push support; see [CHANGELOG.md](../CHANGELOG.md). Functions are deployed and reject unauthenticated requests; the owner reports successful migration/smoke SQL. The client flag defaults off; authenticated delivery, device and Cron acceptance remain pending. See [PUSH_SETUP.md](PUSH_SETUP.md).
 
 This catalog is the product-scope source of truth for the personal Trip Vault application. Prototype and MVP items define the implemented release contract unless an item explicitly says it is deferred; Later and Not planned items remain outside this implementation.

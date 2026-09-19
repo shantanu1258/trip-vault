@@ -9,6 +9,8 @@ last_verified: 2026-09-19
 
 # Trip Vault High-Level Design
 
+> **September 20 release update:** Phone push delivery is owner-confirmed after correcting the VAPID contact subject; automatic Cron delivery and destination acceptance remain pending. The temporary test-send button and permanent test-trip deletion UI are retired. Protected backend diagnostics and legacy purge/storage-cleanup infrastructure remain; normal users retain notification preferences and recoverable trip lifecycle actions.
+
 > **Current contract:** This document, the [LLD](LOW_LEVEL_DESIGN.md), and [feature catalog](FEATURES.md) describe the shipped behavior through `7cdd785`. The [changelog](../CHANGELOG.md) records implementation history; earlier review notes are historical, not overriding specifications.
 
 Trip Vault is a personal-use installable web application that keeps travel bookings, itineraries, notes, and documents together for the owner and invited travel companions. It is not intended to become a commercial product. This document records the implemented system boundaries and the few deliberately deferred capabilities.

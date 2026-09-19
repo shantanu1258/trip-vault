@@ -18,7 +18,6 @@ import {
   addItineraryItem,
   addTripCost,
   archiveTrip,
-  deleteTripPermanently,
   deleteTripRecoverably,
   updateItineraryItem,
   updateTrip,
@@ -612,7 +611,6 @@ export function TripSettingsForm({
   const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
-  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const update = useMutation({
     mutationFn: updateTrip,
     onSuccess: async () => {
@@ -635,17 +633,6 @@ export function TripSettingsForm({
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["trips"] });
       onArchived();
-    }
-  });
-  const destroy = useMutation({
-    mutationFn: () => deleteTripPermanently(trip),
-    onSuccess: async () => {
-      const belongsToDeletedTrip = ({ queryKey }: { queryKey: readonly unknown[] }) =>
-        queryKey.includes(trip.id);
-      await queryClient.cancelQueries({ predicate: belongsToDeletedTrip });
-      queryClient.removeQueries({ predicate: belongsToDeletedTrip });
-      onArchived();
-      await queryClient.invalidateQueries({ queryKey: ["trips"], refetchType: "active" });
     }
   });
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -698,10 +685,9 @@ export function TripSettingsForm({
           Journey time zones live on each departure and arrival, so changing general trip details
           cannot shift ticket times.
         </p>
-        {(message || update.error || archive.error || remove.error || destroy.error) && (
+        {(message || update.error || archive.error || remove.error) && (
           <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">
-            {message ||
-              getErrorMessage(update.error || archive.error || remove.error || destroy.error)}
+            {message || getErrorMessage(update.error || archive.error || remove.error)}
           </p>
         )}
         <button className="primary-button w-full" disabled={update.isPending}>
@@ -750,28 +736,6 @@ export function TripSettingsForm({
           >
             <Trash2 className="size-4" /> Move to Recently deleted
           </button>
-          <div className="mt-6 rounded-2xl border border-danger/30 bg-danger/5 p-4">
-            <p className="font-extrabold text-danger">Temporary testing tool</p>
-            <p className="mt-1 text-xs leading-5 text-muted">
-              Permanently removes this trip, its events, costs, and cloud documents. This cannot be
-              restored. Type the exact trip name to enable it.
-            </p>
-            <input
-              className="form-input mt-3"
-              value={deleteConfirmation}
-              onChange={(event) => setDeleteConfirmation(event.target.value)}
-              placeholder={`Type ${trip.title} to confirm`}
-              aria-label="Confirm permanent trip deletion"
-            />
-            <button
-              type="button"
-              className="secondary-button mt-3 w-full text-danger"
-              disabled={!navigator.onLine || destroy.isPending || deleteConfirmation !== trip.title}
-              onClick={() => destroy.mutate()}
-            >
-              <Trash2 className="size-4" /> Permanently delete test trip
-            </button>
-          </div>
         </div>
       </form>
     </ModalSheet>

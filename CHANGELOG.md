@@ -2,6 +2,21 @@
 
 User-visible changes are listed newest first. The HLD, LLD, and feature catalog are the current design contract; this file records history, including superseded experiments. This initial changelog covers the September 19 enhancement batch, not every earlier commit.
 
+## 2026-09-20 — Retire temporary testing controls
+
+- Removed the Profile test-notification button and its unused browser API call; device opt-in, event/expense/reminder preferences, and disabling notifications remain available.
+- Removed the temporary permanent-delete-trip control and confirmation field. Normal Archive, Recently deleted, and restore flows are unchanged; no trip data was deleted by this change. Existing backend purge/storage-cleanup infrastructure is retained.
+- The owner confirmed an actual phone notification after correcting `VAPID_SUBJECT` to a valid contact URI. Automatic Cron delivery and notification destinations still await real-device acceptance.
+- The authenticated, rate-limited backend test endpoint remains available for operator diagnosis, without a normal-app control.
+- Verification: 694 tests across 107 files passed with two workers, and the push-enabled production build passed. The default-concurrency run hit the existing 5-second international-bus form timeout; no test timeout or assertion was relaxed.
+
+## 2026-09-20 — Push test diagnostics
+
+- Distinguish a missing device (404), expired subscription (410), and one-minute test-attempt cooldown (429), including when the previous attempt failed.
+- Return fixed, safe diagnostic codes for test configuration, storage, signing/encryption, network, and provider failures, without forwarding raw provider errors or credentials.
+- Ignore failures to discard a provider response body after delivery; they must not turn an accepted send into a reported failure.
+- These changes identified the reported HTTP 500 as an invalid `VAPID_SUBJECT`; the owner corrected the secret and confirmed delivery. No migration or rate-limit reset was required.
+
 ## Unreleased — Expense traveler scope
 
 - Event costs now default to the event's selected travelers, not every traveler in the trip, with expense splitting either on or off. Explicit custom cost participants remain available when splitting is enabled.

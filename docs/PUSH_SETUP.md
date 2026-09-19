@@ -3,16 +3,18 @@
 Status (2026-09-20): the project owner reports that the migration and SQL smoke test
 both succeeded, and deployment output confirms both functions on project
 `lutcaijkahflcdhazqjt`. Unauthenticated POST checks against both functions returned
-HTTP 401. Authenticated delivery, real-device behavior, and Cron execution are still
-pending verification. Applying the migration does not enable any job; in-app alerts
-remain independent.
+HTTP 401. The owner confirmed an authenticated test notification arriving on their
+phone after correcting `VAPID_SUBJECT`. Automatic Cron delivery and destination
+behavior remain pending verification. The temporary test-send button has been removed;
+the protected backend diagnostic endpoint remains. Applying the migration does not
+enable any job; in-app alerts remain independent.
 
 ## Remaining steps for this deployment
 
 1. Ensure Cloudflare has `VITE_PUSH_ENABLED=true` as a **build** variable and that the
    notification-enabled commit finishes deploying. Update/reload the app, then use
-   Profile → Notifications → Enable → Send test notification. On iOS use the
-   installed Home Screen app. Confirm an actual notification arrives.
+   Profile → Notifications → Enable. On iOS use the installed Home Screen app.
+   The manual phone delivery check already succeeded for this deployment.
 2. In Supabase, enable Integrations → Cron (`pg_cron`) and Database → Extensions →
    `pg_net`. Enabling these alone does not schedule delivery.
 3. In Supabase Vault, add `push_project_url` with value
@@ -106,8 +108,10 @@ is optional for this deployment because the supplied public key is already bundl
 
 Reload and accept the PWA update when no forms are being edited. The existing
 generated Workbox service worker imports `/push-worker.js`; its caching and update
-prompt remain intact. Profile → Notifications → Enable → Send test notification.
-Test returns success when the push service accepts delivery, not proof it was shown.
+prompt remain intact. Profile → Notifications → Enable registers the device and
+exposes category preferences. There is no test-send button in the normal app.
+The authenticated `push-test` endpoint is retained for operator diagnostics; its
+success means the provider accepted delivery, not proof it was shown on a device.
 
 Use HTTPS. On iPhone/iPad, use the installed Home Screen app, then tap Enable.
 Permission denial must be reversed in browser/OS settings. Do not use random online
@@ -127,7 +131,13 @@ one run per minute, not one Cron job per notification. Change notifications can 
 roughly a minute plus delivery delay. Check both Cron run history and Edge Function
 logs: successful HTTP enqueue is not proof that a push was delivered.
 
-## 6. Release acceptance (not yet run locally)
+## 6. Release acceptance (automatic delivery still pending)
+
+With Cron running, create an exact-time event starting 30 minutes from now, wait
+for sync, then background the enabled app. A reminder should arrive on a subsequent
+minute tick (delivery may be delayed); tap it to verify the timeline destination.
+To test changes, use a different active member's account to add/edit an event and
+an expense. Edits never notify their author, including that author's other devices.
 
 - Two accounts/devices: one changes an event/cost; only the authorized other account
   receives a change push. Each device respects its category switches.
@@ -142,6 +152,33 @@ logs: successful HTTP enqueue is not proof that a push was delivered.
   cleanup. Disable this device from Profile to stop deliveries.
 - Real Android and installed iOS PWA checks, including delayed/offline delivery and TTL.
 - Recheck installed-PWA offline shell caching and update prompt after the worker update.
+
+## Troubleshooting test delivery
+
+A device can be registered and ready while sending still fails. The test-attempt
+cooldown starts before contacting the push provider, so a failed attempt can be
+followed by a 429 for one minute. Wait before testing again; do not reset the limiter.
+
+The updated `push-test` returns a safe JSON `code` and message, and logs only a fixed
+stage/code on exceptions. Redeploy the function (including all `_shared` files) to
+receive these diagnostics; an old deployment returns only a generic HTTP 500.
+Share only the response code/message, never copied authorization headers or keys.
+
+- `device_missing` (404) or `device_expired` (410): disable and re-enable notifications
+  on that device. These are not temporary cooldowns.
+- `test_cooldown` (429): wait one minute after the last attempt.
+- `missing_vapid_*` / `invalid_vapid_*`: review the named function secret. Do not
+  regenerate keys casually; browser subscriptions use the existing public key.
+- `push_request_failed`: signing or encryption failed; investigate runtime/library
+  compatibility and subscription data without logging raw errors or credentials.
+- `push_network_failed`: the function could not reach the browser push service.
+- `push_provider_rejected` / `push_provider_unavailable` (502): the provider refused
+  delivery or is temporarily unavailable; a rejected request warrants checking the
+  matching VAPID pair and contact subject, not assuming a device quota issue.
+- `database_failed`: check that the notification migration is applied and accessible.
+
+Keep Cron disabled until an authenticated test actually arrives on a real device.
+Local mocked-handler tests do not verify Supabase's crypto runtime or provider delivery.
 
 ## Security and operational boundaries
 

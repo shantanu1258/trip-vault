@@ -9,6 +9,8 @@ last_verified: 2026-09-19
 
 # Trip Vault Low-Level Design
 
+> **September 20 release update:** Phone push delivery is owner-confirmed after correcting the VAPID contact subject; automatic Cron delivery and destination acceptance remain pending. `PushSettings` no longer exposes test sends, and `TripSettingsForm` no longer exposes permanent test-trip deletion. Protected backend diagnostics and legacy purge/storage-cleanup infrastructure remain; references below to the temporary testing UI describe the retired design.
+
 > **Current contract:** Reconciled with the September 19 enhancements and Web Push implementation; see the [changelog](../CHANGELOG.md). The owner reports successful migration/smoke SQL and function deployment; unauthenticated requests were verified to return 401. The client flag defaults off; authenticated delivery, real-device and Cron acceptance remain pending. See [PUSH_SETUP.md](PUSH_SETUP.md).
 
 This document is the implementation contract for the personal Trip Vault MVP. The timeline-first application, device storage, Supabase schema, PWA behavior, and administrator console exist in the repository. Online reads use Supabase first with an IndexedDB fallback; offline reads use the device copy directly.
@@ -1205,7 +1207,7 @@ Inbox deletion distinguishes local cancellation from cloud cleanup. Offline, the
 
 ### 7.3.1 Permanent trip purge
 
-Permanent purge is an owner-only, online testing action. It is split at the Postgres/Storage transaction boundary:
+The permanent-purge testing UI has been retired. The retained owner-only backend/API infrastructure is split at the Postgres/Storage transaction boundary:
 
 1. The client first records the owner's associated `account-documents` paths and source upload IDs because those records will be removed by the trip cascade. Its PostgREST embed names `document_versions_document_id_fkey` explicitly because `documents.current_version_id` creates a second relationship between the same two tables.
 2. The `delete_trip_permanently` security-definer function locks the trip and its documents, inserts every distinct legacy `trip-documents` path into `trip_storage_cleanup_queue`, and deletes the trip in the same database transaction. Queue rows have no trip foreign key and survive commit.

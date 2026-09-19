@@ -98,12 +98,3 @@ export async function updatePushDevice(device: PushDevice) {
   const { error } = await supabase.from("push_subscriptions").update(preferences).eq("id", id);
   if (error) throw error;
 }
-
-export async function testPush(id: string) {
-  if (!supabase) throw new Error("Sign in first.");
-  const { error } = await supabase.functions.invoke("push-test", { body: { subscriptionId: id } });
-  if (error)
-    throw new Error(
-      "Test could not be sent. Check that the push-test function and secrets are deployed."
-    );
-}

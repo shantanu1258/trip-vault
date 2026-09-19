@@ -12,7 +12,6 @@ const mocks = vi.hoisted(() => ({
   updateItineraryItem: vi.fn(),
   addTripCost: vi.fn(),
   updateTripCost: vi.fn(),
-  deleteTripPermanently: vi.fn(),
   clearDraft: vi.fn()
 }));
 
@@ -43,7 +42,6 @@ vi.mock("./api", () => ({
   addItineraryItem: vi.fn(),
   addTripCost: mocks.addTripCost,
   archiveTrip: vi.fn(),
-  deleteTripPermanently: mocks.deleteTripPermanently,
   deleteTripRecoverably: vi.fn(),
   listItinerary: mocks.listItinerary,
   updateItineraryItem: mocks.updateItineraryItem,
@@ -332,17 +330,12 @@ describe("AddCostForm optional expense splitting", () => {
   });
 });
 
-describe("TripSettingsForm permanent deletion", () => {
-  it("clears queries for the deleted trip and leaves the trip page before refreshing the list", async () => {
-    const user = userEvent.setup();
+describe("TripSettingsForm lifecycle actions", () => {
+  it("keeps recoverable lifecycle actions without the temporary permanent-delete tool", () => {
     const onArchived = vi.fn();
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
     });
-    queryClient.setQueryData(["trip", trip.id], trip);
-    queryClient.setQueryData(["itinerary", trip.id], [item]);
-    queryClient.setQueryData(["trip", "another-trip"], { ...trip, id: "another-trip" });
-    mocks.deleteTripPermanently.mockResolvedValue(undefined);
 
     render(
       <MemoryRouter>
@@ -352,12 +345,11 @@ describe("TripSettingsForm permanent deletion", () => {
       </MemoryRouter>
     );
 
-    await user.type(screen.getByLabelText("Confirm permanent trip deletion"), trip.title);
-    await user.click(screen.getByRole("button", { name: "Permanently delete test trip" }));
-
-    await waitFor(() => expect(onArchived).toHaveBeenCalledOnce());
-    expect(queryClient.getQueryData(["trip", trip.id])).toBeUndefined();
-    expect(queryClient.getQueryData(["itinerary", trip.id])).toBeUndefined();
-    expect(queryClient.getQueryData(["trip", "another-trip"])).toBeDefined();
+    expect(screen.getByRole("button", { name: "Archive trip" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Move to Recently deleted" })).toBeInTheDocument();
+    expect(screen.queryByText("Temporary testing tool")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Permanently delete/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Confirm permanent trip deletion")).not.toBeInTheDocument();
+    expect(onArchived).not.toHaveBeenCalled();
   });
 });
