@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   listItineraryParticipantIds: vi.fn(),
   updateItineraryItem: vi.fn(),
   addTripCost: vi.fn(),
+  updateTripCost: vi.fn(),
   deleteTripPermanently: vi.fn(),
   clearDraft: vi.fn()
 }));
@@ -47,7 +48,7 @@ vi.mock("./api", () => ({
   listItinerary: mocks.listItinerary,
   updateItineraryItem: mocks.updateItineraryItem,
   updateTrip: vi.fn(),
-  updateTripCost: vi.fn()
+  updateTripCost: mocks.updateTripCost
 }));
 
 import { AddCostForm, AddItineraryForm, TripSettingsForm } from "./TripForms";
@@ -256,6 +257,59 @@ describe("AddCostForm optional expense splitting", () => {
         })
       )
     );
+  });
+
+  it("edits existing expense travelers even with trip splitting disabled, and rejects an empty selection", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    mocks.updateTripCost.mockResolvedValue({ id: "cost-1" });
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <AddCostForm
+            trip={{ ...trip, expense_splitting_enabled: false }}
+            travelers={travelers}
+            cost={{
+              id: "cost-1",
+              trip_id: trip.id,
+              title: "Tickets",
+              category: "activity",
+              amount_minor: 300000,
+              currency_code: "INR",
+              payment_status: "paid",
+              created_at: "",
+              booking_id: "booking-1",
+              itinerary_item_id: null,
+              notes: null,
+              version: 2,
+              participants: [{ traveler_id: "asha", share_amount_minor: null }]
+            }}
+            onClose={onClose}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+    expect(screen.getByRole("checkbox", { name: "Asha" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Ravi" })).not.toBeChecked();
+    await user.click(screen.getByRole("checkbox", { name: "Asha" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose at least one traveler");
+    expect(mocks.updateTripCost).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("checkbox", { name: "Ravi" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(mocks.updateTripCost).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "cost-1",
+          bookingId: "booking-1",
+          version: 2,
+          participantTravelerIds: ["ravi"],
+          amountMinor: 300000
+        })
+      )
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   });
 
   it("shows traveler controls when expense splitting is enabled", () => {

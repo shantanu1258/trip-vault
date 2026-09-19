@@ -1620,6 +1620,8 @@ describe("trip expense cards", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Edit expense" }));
     expect(onEdit).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole("button", { name: "Edit travelers" }));
+    expect(onEdit).toHaveBeenCalledTimes(2);
     await userEvent.click(screen.getByRole("button", { name: "Archive" }));
     expect(onArchive).toHaveBeenCalledOnce();
   });
@@ -1653,6 +1655,7 @@ describe("trip expense cards", () => {
     expect(shantanuRow).toHaveTextContent(/50\.01/);
     expect(shubhamRow).toHaveTextContent(/50\.00/);
     expect(screen.queryByText("Equal share")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit travelers" })).not.toBeInTheDocument();
   });
 
   it("excludes refunded expenses from the headline while keeping their detail row", async () => {

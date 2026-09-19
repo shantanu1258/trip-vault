@@ -675,6 +675,9 @@ export function CostFields({ trip, travelers }: { trip: Trip; travelers: Travele
           Optional. Enter an amount to add this cost now, or leave it blank and add the cost from
           the event later.
         </p>
+        <p className="text-xs leading-5 text-muted">
+          By default, this cost includes only the travelers selected for this event.
+        </p>
         <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,12rem)]">
           <label className="form-label">
             Amount (optional)
@@ -731,23 +734,19 @@ export function CostFields({ trip, travelers }: { trip: Trip; travelers: Travele
                 <div className="flex flex-wrap gap-4 text-sm">
                   <label className="flex items-center gap-2">
                     <input type="radio" checked={everyone} onChange={() => setEveryone(true)} />{" "}
-                    Split among everyone
+                    Split among event travelers
                   </label>
                   <label className="flex items-center gap-2">
                     <input type="radio" checked={!everyone} onChange={() => setEveryone(false)} />{" "}
                     Choose people
                   </label>
                 </div>
-                {everyone ? (
-                  travelers.map((traveler) => (
-                    <input
-                      key={traveler.id}
-                      type="hidden"
-                      name="costTravelerIds"
-                      value={traveler.id}
-                    />
-                  ))
-                ) : (
+                <input
+                  type="hidden"
+                  name="costParticipantScope"
+                  value={everyone ? "event" : "selected"}
+                />
+                {!everyone && (
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     {travelers.map((traveler) => (
                       <label

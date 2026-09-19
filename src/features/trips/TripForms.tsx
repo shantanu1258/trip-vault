@@ -404,6 +404,9 @@ export function AddCostForm({
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const draft = useFormDraft(`cost:${cost?.id ?? "new"}:${trip.id}`);
+  const canChooseParticipants = Boolean(
+    trip.expense_splitting_enabled || cost?.participants?.length
+  );
   const mutation = useMutation({
     mutationFn: (input: CreateCostInput) =>
       cost ? updateTripCost({ ...input, id: cost.id, version: cost.version }) : addTripCost(input),
@@ -426,7 +429,7 @@ export function AddCostForm({
       setMessage(firstValidationMessage(parsed.error));
       return;
     }
-    const participantTravelerIds = trip.expense_splitting_enabled
+    const participantTravelerIds = canChooseParticipants
       ? form.getAll("travelerIds").map(String)
       : cost?.participants?.length
         ? cost.participants.map((participant) => participant.traveler_id)
@@ -552,7 +555,7 @@ export function AddCostForm({
                 ))}
               </select>
             </label>
-            {trip.expense_splitting_enabled && (
+            {canChooseParticipants && (
               <>
                 <ParticipantSelector
                   travelers={travelers}

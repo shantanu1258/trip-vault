@@ -2,6 +2,12 @@
 
 User-visible changes are listed newest first. The HLD, LLD, and feature catalog are the current design contract; this file records history, including superseded experiments. This initial changelog covers the September 19 enhancement batch, not every earlier commit.
 
+## Unreleased — Expense traveler scope
+
+- Event costs now default to the event's selected travelers, not every traveler in the trip, with expense splitting either on or off. Explicit custom cost participants remain available when splitting is enabled.
+- Existing expense participants can be edited even when the trip-wide splitting setting is off. Added an editor-only “Edit travelers” shortcut in expense details; an empty selection is rejected and selected travelers share the cost equally on save.
+- Existing saved expenses are not automatically reassigned; review and edit previously incorrect participant lists.
+
 ## 2026-09-19 — Documentation reconciliation
 
 - Reconciled the HLD, LLD, and feature catalog with the implementation through `7cdd785`.

@@ -72,28 +72,6 @@ vi.mock("../metadata/VendorPicker", () => ({
     </>
   )
 }));
-vi.mock("../workspace/ParticipantSelector", () => ({
-  ParticipantSelector: ({
-    travelers,
-    onSelectionChange
-  }: {
-    travelers: Traveler[];
-    onSelectionChange?: (scope: "everyone" | "selected", travelerIds: string[]) => void;
-  }) => (
-    <>
-      <input type="hidden" name="participantScope" value="everyone" />
-      {travelers[0] && (
-        <button
-          type="button"
-          aria-label="Select first traveler for test"
-          onClick={() => onSelectionChange?.("selected", [travelers[0].id])}
-        >
-          Select first traveler
-        </button>
-      )}
-    </>
-  )
-}));
 vi.mock("../trips/api", () => ({
   addItineraryItem: mocks.addItineraryItem,
   addTripCost: mocks.addTripCost,
@@ -895,7 +873,8 @@ describe("event form architecture", () => {
     await user.click(screen.getByRole("radio", { name: /^Reserved/ }));
     const partySize = screen.getByLabelText("Party size (optional)");
     await waitFor(() => expect(partySize).toHaveValue(2));
-    await user.click(screen.getByRole("button", { name: "Select first traveler for test" }));
+    await user.click(screen.getByRole("radio", { name: "Selected travelers" }));
+    await user.click(screen.getByRole("checkbox", { name: "Shantanu" }));
     await waitFor(() => expect(partySize).toHaveValue(1));
     await user.clear(partySize);
     await user.type(partySize, "5");
@@ -991,9 +970,45 @@ describe("event form architecture", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Amount (optional)")).not.toBeRequired();
     await user.click(screen.getByText("Payment and sharing (optional)"));
-    expect(screen.queryByRole("radio", { name: "Split among everyone" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("radio", { name: "Split among event travelers" })
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "Choose people" })).not.toBeInTheDocument();
   });
+
+  it.each([false, true])(
+    "keeps an event cost with its two selected travelers (splitting enabled: %s)",
+    async (enabled) => {
+      const thirdTraveler = { ...secondTraveler, id: "traveler-3", display_name: "Third traveler" };
+      const { user } = renderForm([...travelers, secondTraveler, thirdTraveler], {
+        ...trip,
+        expense_splitting_enabled: enabled
+      });
+      await user.click(
+        screen.getByRole("button", { name: /Activity Visit, tour, ticket, or free time/i })
+      );
+      await user.type(screen.getByLabelText("Activity name"), "Two-person visit");
+      await user.click(screen.getByRole("radio", { name: "Selected travelers" }));
+      await user.click(screen.getByRole("checkbox", { name: "Shantanu" }));
+      await user.click(screen.getByRole("checkbox", { name: "Mira" }));
+      await user.click(screen.getByText("Cost"));
+      await user.type(screen.getByLabelText("Amount (optional)"), "3000");
+      await user.click(screen.getByRole("button", { name: /Save to timeline/i }));
+      await waitFor(() =>
+        expect(mocks.saveOptionalCostForCreatedEvent).toHaveBeenCalledWith(
+          expect.objectContaining({
+            amountMinor: 300000,
+            participantTravelerIds: ["traveler-1", "traveler-2"]
+          })
+        )
+      );
+      expect(mocks.addItineraryItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          travelerIds: ["traveler-1", "traveler-2"]
+        })
+      );
+    }
+  );
 
   it("shows traveler split choices in an event cost only when the trip setting is on", async () => {
     const { user } = renderForm([travelers[0], secondTraveler], {
@@ -1006,7 +1021,7 @@ describe("event form architecture", () => {
     await user.click(screen.getByText("Cost"));
     await user.click(screen.getByText("Payment and sharing (optional)"));
 
-    expect(screen.getByRole("radio", { name: "Split among everyone" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Split among event travelers" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Choose people" })).toBeInTheDocument();
   });
 

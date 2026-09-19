@@ -83,7 +83,18 @@ export function CostDetailsSheet({
         </div>
       </dl>
       <div className="mt-3 rounded-xl bg-elevated p-3">
-        <p className="text-xs font-bold text-muted">Included travelers</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-bold text-muted">Included travelers</p>
+          {editable && participants.length > 0 && (
+            <button
+              type="button"
+              className="inline-flex min-h-11 items-center gap-2 text-sm font-bold text-brand"
+              onClick={onEdit}
+            >
+              <Pencil className="size-4" aria-hidden="true" /> Edit travelers
+            </button>
+          )}
+        </div>
         {participants.length ? (
           <ul className="mt-2 space-y-1.5">
             {participants.map((participant, index) => (

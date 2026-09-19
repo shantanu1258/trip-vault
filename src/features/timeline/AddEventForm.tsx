@@ -144,9 +144,10 @@ function optionalCost(form: FormData, trip: Trip, travelers: Traveler[]) {
   if (!/^\d+(?:\.\d+)?$/.test(raw) || Number(raw) <= 0)
     throw new Error("Enter a cost amount greater than zero.");
   if (!/^[A-Z]{3}$/.test(currency)) throw new Error("Choose a three-letter currency code.");
-  const ids = trip.expense_splitting_enabled
-    ? form.getAll("costTravelerIds").map(String)
-    : travelers.map((traveler) => traveler.id);
+  const ids =
+    trip.expense_splitting_enabled && text(form, "costParticipantScope") === "selected"
+      ? form.getAll("costTravelerIds").map(String)
+      : [...participantSelection(form, travelers).allowedIds];
   if (trip.expense_splitting_enabled && travelers.length && !ids.length)
     throw new Error("Choose at least one traveler to share this cost.");
   return {
