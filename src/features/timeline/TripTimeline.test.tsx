@@ -85,10 +85,97 @@ async function viewOption(name: string) {
 }
 describe("compact trip timeline", () => {
   beforeEach(() => sessionStorage.clear());
+  it("keeps ordinary borders neutral while preserving event-colored icons and the next-event indicator", () => {
+    setup("colored-borders", [
+      entry("Flight", "01", "flight"),
+      entry("Hotel", "01", "hotel_check_in"),
+      entry("Taxi", "01", "cab"),
+      entry("Museum")
+    ]);
+    for (const [title, tone] of [
+      ["Flight", "flight"],
+      ["Hotel", "hotel"],
+      ["Taxi", "cab"],
+      ["Museum", "activity"]
+    ]) {
+      const card = screen
+        .getByRole("button", { name: new RegExp(`^(Expand|Collapse) ${title}$`) })
+        .closest("article");
+      expect(card).toHaveClass("border-line");
+      expect(card).not.toHaveClass("timeline-event-border", `event-type-icon--${tone}`);
+      expect(card?.querySelector(".event-type-icon")).toHaveClass(`event-type-icon--${tone}`);
+    }
+    expect(
+      screen.getByRole("button", { name: /^(Expand|Collapse) Flight$/ }).closest("article")
+    ).toHaveAttribute("aria-current", "step");
+  });
+  it("moves the current-event treatment independently of event type and expanded cards", async () => {
+    const { props, rerender, container } = setup("current-border", [
+      entry("Flight", "01", "flight"),
+      entry("Hotel", "01", "hotel_check_in"),
+      entry("Taxi", "01", "cab")
+    ]);
+    const hotelTrigger = screen.getByRole("button", { name: "Expand Hotel" });
+    await userEvent.click(hotelTrigger);
+    expect(hotelTrigger.closest("article")).not.toHaveAttribute("aria-current");
+    for (const activeId of ["Hotel", "Taxi", "Flight"]) {
+      rerender(<TripTimeline {...props} activeId={activeId} activeCaption="NOW" />);
+      const current = container.querySelectorAll('.timeline-event-card[aria-current="step"]');
+      expect(current).toHaveLength(1);
+      expect(current[0]).toHaveAttribute("id", `timeline-${activeId}`);
+      expect(current[0]).toHaveTextContent("NOW");
+      const badge = within(current[0] as HTMLElement).getByText("NOW");
+      expect(badge.parentElement).toHaveAttribute("data-timeline-trigger");
+      expect(badge).toHaveClass("shrink-0", "whitespace-nowrap", "px-2.5", "py-1.5");
+      expect(current[0].querySelector(".event-type-icon")).not.toBeNull();
+    }
+    rerender(<TripTimeline {...props} activeId={undefined} />);
+    expect(container.querySelector('.timeline-event-card[aria-current="step"]')).toBeNull();
+  });
+  it("uses compact type icons in headers and reveals decorative artwork only in expanded cards", async () => {
+    setup("silhouettes", [
+      entry("Flight", "01", "flight"),
+      entry("Hotel", "01", "hotel_check_in"),
+      entry("Taxi", "01", "cab"),
+      entry("Museum")
+    ]);
+    const hotel = screen.getByRole("button", { name: "Expand Hotel" });
+    expect(hotel.querySelector("[data-silhouette]")).toBeNull();
+    expect(hotel.querySelector('[data-event-tone="hotel"]')).toHaveClass("size-8");
+    expect(hotel.querySelector(".lucide-bed-double")).not.toBeNull();
+    expect(hotel).toHaveTextContent("Check-in");
+    expect(
+      screen
+        .getByRole("button", { name: "Expand Museum" })
+        .querySelector('[data-event-tone="activity"]')
+    ).not.toBeNull();
+    await userEvent.click(hotel);
+    expect(
+      screen.getByRole("button", { name: "Collapse Hotel" }).querySelector("[data-silhouette]")
+    ).toBeNull();
+    expect(
+      hotel
+        .closest("article")
+        ?.querySelector('[data-silhouette="hotel"][data-silhouette-placement="fallback"]')
+    ).toBeVisible();
+    expect(screen.getByText("Hotel details")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Expand Taxi" }).querySelector('[data-event-tone="cab"]')
+    ).not.toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Collapse Hotel" }));
+    expect(
+      screen
+        .getByRole("button", { name: "Expand Hotel" })
+        .closest("article")
+        ?.querySelector("[data-silhouette]")
+    ).toBeNull();
+  });
   it("uses opposite down/up event chevrons, matching the date groups", async () => {
     setup();
     const collapsed = screen.getByRole("button", { name: "Expand Check out" });
     const chevron = collapsed.querySelector(".lucide-chevron-down");
+    expect(chevron).toHaveClass("absolute", "right-3", "top-3");
+    expect(collapsed).toHaveClass("pr-10");
     expect(chevron).not.toHaveClass("-rotate-90", "rotate-180");
     await userEvent.click(collapsed);
     expect(

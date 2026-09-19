@@ -245,7 +245,8 @@ describe("flight edit time-zone controls", () => {
 
     const hero = screen.getByRole("heading", { name: "BLR → DEL" }).closest("section");
     expect(hero?.style.getPropertyValue("--airline-accent")).toBe("#d71920");
-    expect(hero).toHaveClass("airline-accent-hero", "bg-brand");
+    expect(hero).toHaveClass("airline-accent-hero", "event-hero", "event-type-icon--flight");
+    expect(hero?.querySelector('[data-silhouette-placement="hero"]')).not.toBeNull();
     const edit = screen.getByRole("button", { name: "Edit flight" });
     expect(hero?.contains(edit)).toBe(false);
     expect(edit.compareDocumentPosition(hero!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -284,7 +285,7 @@ describe("flight edit time-zone controls", () => {
     expect(current).toHaveClass("after:bg-brand");
     expect(screen.queryByText(/Viewing now|Earlier leg|Next leg/)).not.toBeInTheDocument();
     expect(connection).not.toHaveAttribute("aria-current");
-    expect(connection).toHaveClass("text-surface/80");
+    expect(connection).toHaveClass("text-white/85");
     expect(connection).not.toHaveClass("bg-surface");
     expect(connection).not.toHaveClass("airline-accent-rail");
     expect(connection.style.getPropertyValue("--airline-accent")).toBe("#7c3aed");

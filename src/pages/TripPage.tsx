@@ -35,7 +35,9 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
-import { EventTypeIcon } from "../components/EventTypeIcon";
+import { eventIconTone } from "../components/EventTypeIcon";
+import { EventSilhouette } from "../components/EventSilhouette";
+import { bookingEventType } from "../features/workspace/bookingPresentation";
 import { FocusSurface } from "../components/FocusSurface";
 import { ModalSheet } from "../components/ModalSheet";
 import { useConfirmDialog } from "../components/ConfirmDialogProvider";
@@ -767,10 +769,11 @@ function BookingEventSummary({
   return (
     <div
       style={flightLegs.length ? airlineAccentStyle(firstAirline?.brand_color) : undefined}
-      className={`mt-3 rounded-xl border border-line/80 bg-surface/60 px-3 py-2.5 text-xs ${
+      className={`event-scene event-type-icon--${eventIconTone(bookingEventType(booking.type))} mt-3 rounded-xl border border-line/80 px-3 py-2.5 text-xs ${
         flightLegs.length ? "airline-accent-rail pl-4" : ""
       }`}
     >
+      <EventSilhouette type={bookingEventType(booking.type)} placement="summary" />
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <strong>{booking.provider || booking.title}</strong>
         {booking.reference_code && (
@@ -1148,7 +1151,7 @@ export function EventDetailsSheet({
     >
       <div
         style={firstBookingFlight ? airlineAccentStyle(bookingAirline?.brand_color) : undefined}
-        className={`relative mt-3 flex items-start gap-3 rounded-xl bg-elevated p-3 ${firstBookingFlight ? "airline-accent-rail pl-4" : ""} ${bookingHref ? "pr-9" : ""}`}
+        className={`event-modal-scene event-type-icon--${eventIconTone(item.event_type ?? "custom")} relative mt-3 flex items-start gap-3 rounded-xl p-3 ${firstBookingFlight ? "airline-accent-rail pl-4" : ""} ${bookingHref ? "pr-9" : ""}`}
       >
         {bookingHref && (
           <>
@@ -1163,8 +1166,8 @@ export function EventDetailsSheet({
             <ChevronRight aria-hidden="true" className="absolute right-3 top-3 size-4 text-muted" />
           </>
         )}
-        <EventTypeIcon type={item.event_type ?? "custom"} className="size-9 shrink-0 rounded-lg" />
-        <div className="min-w-0">
+        <EventSilhouette key={item.id} type={item.event_type ?? "custom"} placement="modal" />
+        <div className="relative z-[1] min-w-0">
           <p className="text-sm font-black">
             {timingLabel ?? formatEventTime(item.starts_at, item.timezone)}
           </p>

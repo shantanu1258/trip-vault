@@ -178,6 +178,19 @@ textarea:focus-visible {
     color: rgb(var(--event-icon));
   }
 
+  /* Attention is consistent across event types; the icon keeps its type color.
+     An inset stroke adds emphasis without changing the card's dimensions. */
+  .timeline-event-card[aria-current="step"] {
+    border-color: rgb(var(--color-coral));
+    box-shadow:
+      inset 0 0 0 1px rgb(var(--color-coral)),
+      0 0 0 3px rgb(var(--color-coral) / 0.12);
+    background-image: linear-gradient(
+      rgb(var(--color-coral) / 0.06),
+      rgb(var(--color-coral) / 0.06)
+    );
+  }
+
   .event-type-icon--flight {
     --event-icon: var(--event-flight);
     --event-icon-soft: var(--event-flight-soft);
@@ -231,6 +244,146 @@ textarea:focus-visible {
   .event-type-icon--custom {
     --event-icon: var(--event-custom);
     --event-icon-soft: var(--event-custom-soft);
+  }
+
+  .event-silhouette {
+    position: absolute;
+    display: block;
+    /* Scale with the card, not the viewport; keep the SVG proportions intact. */
+    width: auto;
+    height: 50%;
+    aspect-ratio: 160 / 110;
+    max-width: 50%;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    z-index: 0;
+    opacity: 0.1;
+    color: rgb(var(--event-icon));
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .event-silhouette-art {
+    width: 100%;
+    height: 100%;
+  }
+
+  .event-silhouette[data-silhouette-placement="header"] {
+    right: 0.5rem;
+  }
+
+  .event-silhouette[data-silhouette-placement="header"][data-expanded="true"] {
+    opacity: 0;
+  }
+
+  .event-silhouette[data-silhouette-placement="summary"],
+  .event-silhouette[data-silhouette-placement="fallback"],
+  .event-silhouette[data-silhouette-placement="modal"] {
+    opacity: 0.12;
+  }
+
+  .event-silhouette[data-silhouette-placement="summary"] {
+    height: 80%;
+  }
+
+  .timeline-card-detail:has([data-silhouette-placement="summary"])
+    > [data-silhouette-placement="fallback"] {
+    display: none;
+  }
+
+  .timeline-event-heading {
+    z-index: 2;
+  }
+  .timeline-card-detail > :not(.event-silhouette) {
+    position: relative;
+    z-index: 1;
+  }
+
+  .event-scene,
+  .event-modal-scene {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background: rgb(var(--event-icon-soft) / 0.55);
+  }
+  .event-scene > :not(.event-silhouette) {
+    position: relative;
+    z-index: 1;
+  }
+
+  .event-type-icon--flight {
+    --event-hero: 29 78 216;
+  }
+  .event-type-icon--hotel {
+    --event-hero: 126 34 206;
+  }
+  .event-type-icon--activity {
+    --event-hero: 190 24 93;
+  }
+  .event-type-icon--cab,
+  .event-type-icon--bus {
+    --event-hero: 3 105 161;
+  }
+  .event-type-icon--ferry,
+  .event-type-icon--transport {
+    --event-hero: 14 116 144;
+  }
+  .event-type-icon--train {
+    --event-hero: 67 56 202;
+  }
+  .event-type-icon--meal {
+    --event-hero: 194 65 12;
+  }
+  .event-type-icon--preparation {
+    --event-hero: 21 128 61;
+  }
+  .event-type-icon--custom {
+    --event-hero: 71 85 105;
+  }
+
+  .event-hero {
+    position: relative;
+    isolation: isolate;
+    background: rgb(var(--event-hero));
+    color: white;
+  }
+  .event-hero > :not(.event-silhouette) {
+    position: relative;
+    z-index: 1;
+  }
+  .event-hero--cancelled {
+    background: #9f1239;
+  }
+  .event-hero .hero-action {
+    color: white;
+    background: rgb(255 255 255 / 0.1);
+    border-color: rgb(255 255 255 / 0.25);
+  }
+  .event-hero .hero-action:hover {
+    background: rgb(255 255 255 / 0.2);
+  }
+  .event-silhouette[data-silhouette-placement="hero"] {
+    right: 1rem;
+    bottom: 1rem;
+    color: white;
+    opacity: 0.12;
+  }
+  .event-silhouette:not([data-silhouette-placement="header"]) .silhouette-wheel {
+    transform-origin: 80px 48px;
+    animation: silhouette-wheel-turn 1.1s ease-out both;
+  }
+  .event-silhouette:not([data-silhouette-placement="header"]) .silhouette-sun {
+    animation: silhouette-sunrise 1.2s ease-out both;
+  }
+  .event-silhouette[data-silhouette-placement="header"][data-expanded="true"] .silhouette-sun {
+    animation: silhouette-sunrise 620ms ease-in reverse both;
+  }
+  .event-silhouette[data-silhouette-placement="summary"] .silhouette-sun,
+  .event-silhouette[data-silhouette-placement="fallback"] .silhouette-sun {
+    animation-delay: 350ms;
+  }
+  .event-silhouette:not([data-silhouette-placement="header"]) .silhouette-lid {
+    animation: silhouette-lid-open 1.1s ease-out both;
   }
 
   .surface-card {
@@ -503,7 +656,7 @@ form .grid > *,
    Restrict it to actual hover-capable pointers, avoiding sticky touch hover. */
 @media (hover: hover) and (pointer: fine) {
   .timeline-event-card:not([aria-current="step"]):hover {
-    border-color: rgb(var(--color-brand) / 0.65);
+    border-color: rgb(var(--color-muted) / 0.55);
   }
 }
 
@@ -520,11 +673,46 @@ form .grid > *,
     scroll-behavior: auto;
   }
 
+  .event-silhouette *,
+  .event-silhouette[data-expanded="true"] * {
+    animation: none !important;
+    transition: none !important;
+  }
+
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes silhouette-wheel-turn {
+  0% {
+    transform: rotate(-60deg);
+  }
+  100% {
+    transform: rotate(0);
+  }
+}
+
+@keyframes silhouette-sunrise {
+  0% {
+    transform: translate(-10px, 40px);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes silhouette-lid-open {
+  0% {
+    transform: translateY(10px);
+  }
+  100% {
+    transform: translateY(0);
   }
 }

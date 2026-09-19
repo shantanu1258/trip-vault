@@ -98,6 +98,12 @@ The earlier review's offline/sync/authorization findings remain a separate backl
 
 ## Verification
 
+- Hybrid visual/search release check: **791 tests passed across 101 files**; production build passed with the existing chunk-size/dynamic-import warnings. No dependency or schema changes.
+
+- Final hybrid treatment: compact colored type icons identify timeline events (bed icons for hotels), with top-right disclosure chevrons. Animated silhouettes remain in expanded booking summaries (80% card height), other expanded cards, modals, and detail heroes (50%). Artwork rests bottom-right; planes enter from bottom-left along a 45-degree upward path, vehicles enter from the left, and hotel suns rise. Motion is consistent across device sizes and respects reduced-motion preferences. Ordinary timeline borders remain neutral after trying event-colored borders; only the current event receives the consistent indigo double stroke, soft outline, and faint tint. NEXT/NOW is a trailing badge beside the text, matching the TO DO badge pattern. Trip search includes visible event-type labels, plurals, and common aliases for both timeline events and bookings.
+
+- Revised silhouette treatment (local review): event artwork is a low-opacity background behind full-width timeline text, not a separate icon column. Expansion moves transport artwork from the header toward the lower booking card; other artwork fades/rotates between these locations. Hotels use beach/sun scenery, activities a Ferris wheel, and meals an opening lid. Lower cards and modal summaries use the existing event tint; detail heroes use a matching contrast-safe solid color with white artwork. Airline accents remain separate. Decorative artwork ignores pointer events and is hidden from assistive technology; reduced-motion uses static source/destination states. No new cards, dependencies, or data changes.
+
 - Final booking refinements: existing documents precede smaller upload/attach actions, with prominent actions for empty states. Summary shortcuts are icon-only on phones and show labels at tablet/desktop widths; accessible names and tooltips remain available. Mobile targets measure 44 × 44px.
 - Release check for this refinement batch: **673 tests passed across 100 files**, production build and formatting/diff checks passed, and an offline `npm ci --dry-run --ignore-scripts` confirmed lockfile consistency. No dependency or schema changes. The separately identified booking-reference corner-clipping issue is not changed in this batch.
 

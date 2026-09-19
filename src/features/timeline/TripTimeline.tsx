@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode
 } from "react";
+import { EventSilhouette } from "../../components/EventSilhouette";
 import { EventTypeIcon } from "../../components/EventTypeIcon";
 import { formatEventTime, formatItineraryDate, itineraryDateKey } from "../trips/presentation";
 import { eventTimeLabel, timelineEntryPhase, type TripTimelineEntry } from "./model";
@@ -338,7 +339,7 @@ export const TripTimeline = forwardRef<
                           key={entry.id}
                           id={`timeline-${entry.id}`}
                           data-trip-scroll-anchor="timeline"
-                          className={`timeline-outline-card overflow-hidden border ${task ? (current ? "rounded-lg border-warning bg-warning/10" : "rounded-lg border-dashed border-brand/40 bg-brand-soft/40") : `timeline-event-card rounded-2xl bg-surface ${current ? "border-coral" : "border-line"}`}`}
+                          className={`timeline-outline-card overflow-hidden border ${task ? (current ? "rounded-lg border-warning bg-warning/10" : "rounded-lg border-dashed border-brand/40 bg-brand-soft/40") : "timeline-event-card rounded-2xl border-line bg-surface"}`}
                           data-readiness={task ? "true" : undefined}
                           aria-current={current ? "step" : undefined}
                         >
@@ -392,7 +393,7 @@ export const TripTimeline = forwardRef<
                                 <button
                                   type="button"
                                   data-timeline-trigger
-                                  className="flex min-h-16 w-full items-center gap-3 px-3 py-2.5 text-left"
+                                  className="timeline-event-heading relative flex min-h-16 w-full items-center gap-3 py-2.5 pl-3 pr-10 text-left"
                                   aria-expanded={expanded}
                                   aria-controls={`event-card-${entry.id}`}
                                   aria-label={`${expanded ? "Collapse" : "Expand"} ${title}`}
@@ -403,19 +404,14 @@ export const TripTimeline = forwardRef<
                                 >
                                   <EventTypeIcon
                                     type={type}
-                                    className="size-8 shrink-0 rounded-lg"
+                                    className="size-8 rounded-lg"
                                     iconClassName="size-4"
                                   />
-                                  <span className="min-w-0 flex-1">
+                                  <span className="relative z-10 min-w-0 flex-1">
                                     <span className="flex items-center gap-2">
                                       <span className="truncate text-sm font-extrabold sm:text-base">
                                         {title}
                                       </span>
-                                      {current && (
-                                        <span className="shrink-0 rounded-full bg-coral px-2 py-0.5 text-[10px] font-black uppercase text-surface">
-                                          {caption}
-                                        </span>
-                                      )}
                                     </span>
                                     <span className="block truncate text-xs text-muted sm:text-sm">
                                       <strong>{timing}</strong> ·{" "}
@@ -424,9 +420,14 @@ export const TripTimeline = forwardRef<
                                       {location && ` · ${location}`}
                                     </span>
                                   </span>
+                                  {current && (
+                                    <span className="relative z-10 shrink-0 whitespace-nowrap rounded-full bg-coral px-2.5 py-1.5 text-[10px] font-black uppercase leading-none tracking-wide text-surface">
+                                      {caption}
+                                    </span>
+                                  )}
                                   <ChevronDown
                                     aria-hidden="true"
-                                    className={`size-4 shrink-0 text-muted transition-transform ${expanded ? "rotate-180" : ""}`}
+                                    className={`absolute right-3 top-3 z-10 size-4 text-muted transition-transform ${expanded ? "rotate-180" : ""}`}
                                   />
                                 </button>
                               </h4>
@@ -436,6 +437,7 @@ export const TripTimeline = forwardRef<
                                 className="timeline-card-detail relative isolate border-t border-line p-3 sm:p-5"
                               >
                                 {expanded && renderDetail(entry)}
+                                {expanded && <EventSilhouette type={type} placement="fallback" />}
                               </div>
                             </>
                           )}

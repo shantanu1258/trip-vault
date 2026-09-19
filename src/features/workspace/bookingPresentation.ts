@@ -12,6 +12,17 @@ import {
 } from "lucide-react";
 import { formatDurationMinutes } from "../../lib/formatDuration";
 import type { Booking, BookingType } from "./types";
+import type { TimelineEventType } from "../trips/types";
+
+export function bookingEventType(type: BookingType): TimelineEventType {
+  return type === "hotel"
+    ? "hotel_check_in"
+    : type === "restaurant"
+      ? "meal"
+      : type === "other"
+        ? "custom"
+        : type;
+}
 
 type BookingAppearance = {
   label: string;

@@ -20,8 +20,9 @@ import {
   timelinePhase,
   validateLegOrder
 } from "./model";
-import type { ItineraryItem } from "../trips/types";
-import type { Requirement } from "../workspace/types";
+import { timelineEventTypes, type ItineraryItem } from "../trips/types";
+import type { Booking, Requirement } from "../workspace/types";
+import { eventTypeChoices } from "./eventTypeChoices";
 
 const event = (id: string, start: string, end: string | null = null): ItineraryItem => ({
   id,
@@ -39,6 +40,79 @@ const event = (id: string, start: string, end: string | null = null): ItineraryI
 });
 
 describe("timeline model", () => {
+  const typeSearchInput = {
+    tripId: "trip",
+    itinerary: timelineEventTypes.map((type, index) => ({
+      ...event(`item-${index}`, "2026-10-01T09:00:00Z"),
+      event_type: type
+    })),
+    bookings: [],
+    flights: [],
+    journeys: [],
+    documents: [],
+    travelers: [],
+    requirements: []
+  };
+  it.each(eventTypeChoices)(
+    "finds events by the visible $label type label without needing it in the title",
+    ({ type, label }) => {
+      const matches = searchTrip({ ...typeSearchInput, query: label }).filter(
+        (result) => result.group === "Timeline"
+      );
+      const expected = typeSearchInput.itinerary.filter(
+        (item) =>
+          item.event_type === type ||
+          (type === "hotel_check_in" && item.event_type === "hotel_check_out") ||
+          (type === "custom" && item.event_type === "transport")
+      );
+      expect(matches.map((result) => result.timelineItemId)).toEqual(
+        expected.map((item) => item.id)
+      );
+    }
+  );
+  it.each([
+    ["FLIGHTS", "flight"],
+    ["hotels", "hotel_check_in"],
+    ["check out", "hotel_check_out"],
+    ["activities", "activity"],
+    ["buses", "bus"],
+    ["taxi", "cab"],
+    ["boats", "ferry"],
+    ["ferries", "ferry"],
+    ["trains", "train"],
+    ["meals", "meal"],
+    ["tasks", "preparation"],
+    ["other", "custom"]
+  ] as const)("matches the event-type alias %s", (query, type) => {
+    const target = typeSearchInput.itinerary.find((item) => item.event_type === type)!;
+    expect(searchTrip({ ...typeSearchInput, query })).toEqual(
+      expect.arrayContaining([expect.objectContaining({ timelineItemId: target.id })])
+    );
+  });
+  it.each([
+    ["meal", "restaurant"],
+    ["boat", "ferry"],
+    ["Other", "other"],
+    ["hotels", "hotel"],
+    ["taxi", "cab"]
+  ] as const)("also finds %s bookings", (query, type) => {
+    const booking = { id: "reservation", type, title: "Reservation" } as Booking;
+    expect(searchTrip({ ...typeSearchInput, itinerary: [], bookings: [booking], query })).toEqual([
+      expect.objectContaining({ id: "booking:reservation", group: "Bookings" })
+    ]);
+  });
+  it("finds readiness tasks when searching preparation", () => {
+    expect(
+      searchTrip({
+        ...typeSearchInput,
+        itinerary: [],
+        query: "preparation",
+        requirements: [
+          { id: "visa", title: "Visa", type: "visa", status: "to_check" } as Requirement
+        ]
+      })
+    ).toEqual([expect.objectContaining({ id: "requirement:visa", group: "Readiness" })]);
+  });
   it("uses the traveler's checkout time before a later flight without inferring a new checkout", () => {
     const checkIn = {
       ...event("check-in", "2026-09-09T15:00:00Z"),

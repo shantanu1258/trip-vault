@@ -61,6 +61,7 @@ import { tripChildNavigationState, tripReturnNavigation } from "../features/trip
 import { tripQueries } from "../features/queries/tripQueries";
 import { WhatsAppIcon } from "../components/WhatsAppIcon";
 import { EventTimeZoneField, furthestEventTimezone } from "../features/timeline/TimingFields";
+import { EventSilhouette } from "../components/EventSilhouette";
 
 type FlightEditTarget =
   | "status"
@@ -322,18 +323,19 @@ export function FlightPage() {
           <>
             <section
               style={airlineStyle}
-              className={`airline-accent-hero page-enter mt-3 overflow-hidden rounded-xl border shadow-focus ${flight.status === "cancelled" ? "border-danger bg-danger text-white" : flight.status === "delayed" ? "border-warning bg-brand text-surface" : "border-line bg-brand text-surface"}`}
+              className={`event-hero event-type-icon--flight airline-accent-hero page-enter mt-3 overflow-hidden rounded-xl border text-white shadow-focus ${flight.status === "cancelled" ? "event-hero--cancelled border-danger" : flight.status === "delayed" ? "border-warning" : "border-line"}`}
             >
+              <EventSilhouette key={flight.id} type="flight" placement="hero" />
               <div className="p-4">
                 <div className="flex items-center justify-between">
-                  <span className="rounded-full bg-surface/10 px-3 py-1.5 text-xs font-black uppercase tracking-[.14em]">
+                  <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-black uppercase tracking-[.14em]">
                     {flight.status.replace("_", " ")}
                   </span>
                   <Plane className="size-6" />
                 </div>
                 <div className="mt-3 flex items-end justify-between gap-6">
                   <div>
-                    <p className="flex items-center gap-2 text-sm font-bold text-surface/65">
+                    <p className="flex items-center gap-2 text-sm font-bold text-white/85">
                       <span className="airline-accent-dot" aria-hidden="true" />
                       {flight.airline_name} · {flight.flight_number}
                     </p>
@@ -344,12 +346,12 @@ export function FlightPage() {
                 </div>
                 {connectionLegs.length > 1 && (
                   <div className="mt-3">
-                    <p className="text-[.65rem] font-black uppercase tracking-[.14em] text-surface/55">
+                    <p className="text-[.65rem] font-black uppercase tracking-[.14em] text-white/85">
                       Connected journey
                     </p>
                     <nav
                       aria-label="Flight connections"
-                      className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-surface/10 p-1"
+                      className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-white/10 p-1"
                     >
                       {connectionLegs.map((leg) => {
                         const legAirline = airlineForFlight(leg, airlinesQuery.data ?? []);
@@ -361,14 +363,14 @@ export function FlightPage() {
                             state={locationState}
                             aria-current={selected ? "page" : undefined}
                             style={airlineAccentStyle(legAirline?.brand_color)}
-                            className={`relative min-w-0 rounded-lg px-2 py-2.5 text-center text-xs transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface ${selected ? "bg-surface text-ink shadow-sm after:absolute after:bottom-0 after:left-1/4 after:h-0.5 after:w-1/2 after:rounded-full after:bg-brand" : "text-surface/80 hover:bg-surface/10"}`}
+                            className={`relative min-w-0 rounded-lg px-2 py-2.5 text-center text-xs transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${selected ? "bg-surface text-ink shadow-sm after:absolute after:bottom-0 after:left-1/4 after:h-0.5 after:w-1/2 after:rounded-full after:bg-brand" : "text-white/85 hover:bg-white/10"}`}
                           >
                             <strong className="block break-words text-sm">
                               {leg.departure_airport_code || leg.departure_airport_name} →{" "}
                               {leg.arrival_airport_code || leg.arrival_airport_name}
                             </strong>
                             <span
-                              className={`mt-1 flex items-center justify-center gap-1.5 ${selected ? "text-muted" : "text-surface/80"}`}
+                              className={`mt-1 flex items-center justify-center gap-1.5 ${selected ? "text-muted" : "text-white/85"}`}
                             >
                               <span className="airline-accent-dot shrink-0" aria-hidden="true" />
                               <span className="min-w-0 break-words">{leg.flight_number}</span>
@@ -388,7 +390,7 @@ export function FlightPage() {
                   {flightCountdown(flight)}
                 </p>
                 {delayMinutes(flight) > 0 && (
-                  <p className="mt-2 text-sm text-warning">
+                  <p className="mt-2 text-sm font-semibold text-white/90">
                     Manual estimate: {delayMinutes(flight)} minutes later than scheduled
                   </p>
                 )}

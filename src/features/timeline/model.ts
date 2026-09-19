@@ -9,6 +9,7 @@ import type {
 } from "../workspace/types";
 import { localDateTimeToIso } from "../trips/validation";
 import { formatDurationBetween, formatDurationMinutes } from "../../lib/formatDuration";
+import { eventTypeSearchTerms } from "./eventTypeChoices";
 
 export type TimelineSearchGroup =
   | "Dates"
@@ -479,7 +480,13 @@ export function searchTrip(input: {
   }
   for (const item of input.itinerary)
     if (
-      matches(item.title, item.event_type, item.notes, item.location?.label, item.location?.address)
+      matches(
+        item.title,
+        eventTypeSearchTerms(item.event_type),
+        item.notes,
+        item.location?.label,
+        item.location?.address
+      )
     )
       results.push({
         id: `event:${item.id}`,
@@ -513,6 +520,7 @@ export function searchTrip(input: {
       matches(
         booking.title,
         booking.type,
+        eventTypeSearchTerms(booking.type),
         booking.provider,
         booking.reference_code,
         booking.booked_via_name,
@@ -552,6 +560,7 @@ export function searchTrip(input: {
     if (
       matches(
         requirement.title,
+        eventTypeSearchTerms("preparation"),
         requirement.type,
         requirement.status,
         requirement.destination_country_code,

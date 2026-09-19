@@ -33,7 +33,12 @@ import { WhatsAppIcon } from "../components/WhatsAppIcon";
 import { tripQueries } from "../features/queries/tripQueries";
 import { BookingCosts } from "../features/workspace/BookingCosts";
 import { CabStopsManager } from "../features/workspace/CabStopsManager";
-import { bookingAppearance, bookingCountdown } from "../features/workspace/bookingPresentation";
+import {
+  bookingAppearance,
+  bookingCountdown,
+  bookingEventType
+} from "../features/workspace/bookingPresentation";
+import { EventSilhouette } from "../components/EventSilhouette";
 
 export function BookingPage() {
   const confirm = useConfirmDialog();
@@ -170,16 +175,23 @@ export function BookingPage() {
         {query.error && <ErrorCard error={query.error} />}
         {booking && (
           <section className="page-enter mt-3 min-w-0 space-y-3">
-            <header className="overflow-hidden rounded-xl border border-line bg-brand p-4 text-surface shadow-focus">
+            <header
+              className={`event-hero event-type-icon--${appearance.tone} overflow-hidden rounded-xl border border-line p-4 text-white shadow-focus`}
+            >
+              <EventSilhouette
+                key={booking.id}
+                type={bookingEventType(booking.type)}
+                placement="hero"
+              />
               <div className="mb-3 flex items-center justify-between gap-3">
-                <span className="rounded-full bg-surface/10 px-3 py-1.5 text-xs font-black uppercase tracking-[.14em]">
+                <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-black uppercase tracking-[.14em]">
                   {booking.reservation_state?.replaceAll("_", " ") || appearance.label}
                 </span>
                 <BookingIcon className="size-6 shrink-0" aria-hidden="true" />
               </div>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-xs font-bold capitalize text-surface/70">
+                  <p className="text-xs font-bold capitalize text-white/85">
                     {appearance.label}
                     {booking.journey_scope ? ` · ${booking.journey_scope}` : ""}
                   </p>
@@ -187,7 +199,7 @@ export function BookingPage() {
                     {booking.title}
                   </h1>
                   {booking.provider && booking.provider !== booking.title && (
-                    <p className="mt-1 text-sm text-surface/75">{booking.provider}</p>
+                    <p className="mt-1 text-sm text-white/85">{booking.provider}</p>
                   )}
                 </div>
               </div>

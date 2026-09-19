@@ -213,7 +213,11 @@ describe("generic journey booking times", () => {
     expect(hero?.style.getPropertyValue("--airline-accent")).toBe("");
     expect(reference).not.toHaveClass("airline-accent-rail");
     expect(reference.style.getPropertyValue("--airline-accent")).toBe("");
-    expect(hero).toHaveClass("bg-brand", "border-line");
+    expect(hero).toHaveClass("event-hero", "border-line");
+    expect(hero).toHaveClass(
+      `event-type-icon--${type === "restaurant" ? "meal" : type === "other" ? "custom" : type}`
+    );
+    expect(hero?.querySelector('[data-silhouette-placement="hero"]')).not.toBeNull();
   });
 
   it.each([
