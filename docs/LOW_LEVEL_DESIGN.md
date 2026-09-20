@@ -1318,6 +1318,8 @@ Every local metadata row and OPFS document path is namespaced by `profile_id`. S
 | Opened or prepared file originals                            | OPFS with IndexedDB blob fallback                   | Persist the verified profile-scoped copy until the user removes local data                                                                                                                                   |
 | Authenticated download URLs                                  | Memory only                                         | Never persist signed URLs                                                                                                                                                                                    |
 
+Feature pages are split with `React.lazy` dynamic imports in `App.tsx`; the welcome/sign-in shell and auth guards remain eager. `RouteLoadingBoundary` supplies an accessible loading state and explicit reload/home recovery for failed chunks, reset on pathname changes while preserving query/hash destinations. Workbox precaches all generated JS chunks, so code splitting reduces initial execution rather than removing offline screens or shrinking the total installed cache. No automatic reload or user-data clearing is used for recovery.
+
 ### 8.4 Prepared-trip levels
 
 | Level            | Required local content                                                                                                                       | Meaning                                                                                        |

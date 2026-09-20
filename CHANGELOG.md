@@ -2,6 +2,12 @@
 
 User-visible changes are listed newest first. The HLD, LLD, and feature catalog are the current design contract; this file records history, including superseded experiments. This initial changelog covers the September 19 enhancement batch, not every earlier commit.
 
+## Unreleased — Route bundle optimization
+
+- Feature screens now load through route-level dynamic imports; welcome/sign-in, authentication guards, and startup services remain immediately available. Added an accessible loading state and explicit reload/home recovery for failed screen loads without clearing saved data.
+- Production main JavaScript bundle reduced from 938.88 kB (235.88 kB gzip) to approximately 289.65 kB (72.39 kB gzip); all emitted chunks are below the existing 500 kB warning threshold. These are build sizes, not measured device startup timings.
+- Workbox still precaches all screen chunks for offline navigation. Total installed cache/download size is not reduced by the same percentage; the improvement is less JavaScript needed upfront for a given screen.
+
 ## Unreleased — Personal documents and incoming shares
 
 - Vault now separates trip documents from owner-only personal documents. Add a passport, Aadhaar, insurance, or other PDF/image without a trip, with a name and optional label; preview, download, retry pending uploads, and explicitly delete personal files.
