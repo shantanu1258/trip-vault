@@ -2,7 +2,8 @@ import { ChevronRight, Pencil, Trash2 } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { ModalSheet } from "../../components/ModalSheet";
 import { CostTotals } from "../../components/TripUi";
-import type { Booking, Traveler } from "../workspace/types";
+import type { Booking, Traveler, FlightLeg } from "../workspace/types";
+import { CostDocumentCard, CostEventCard } from "./CostConnectionCard";
 import { splitExpenseEqually, type TravelerBalance } from "./expenses";
 import { formatMoney } from "./presentation";
 import type { ItineraryItem, TripCost } from "./types";
@@ -12,8 +13,12 @@ export function CostDetailsSheet({
   travelers,
   itinerary,
   bookings = [],
+  flights = [],
+  expenseSplittingEnabled = false,
   editable,
   onClose,
+  onNavigate = onClose,
+  onViewLinkedEvent,
   onEdit,
   onArchive
 }: {
@@ -21,8 +26,12 @@ export function CostDetailsSheet({
   travelers: Traveler[];
   itinerary: ItineraryItem[];
   bookings?: Booking[];
+  flights?: FlightLeg[];
+  expenseSplittingEnabled?: boolean;
   editable: boolean;
   onClose: () => void;
+  onNavigate?: () => void;
+  onViewLinkedEvent?: () => void;
   onEdit: () => void;
   onArchive: () => void;
 }) {
@@ -33,12 +42,13 @@ export function CostDetailsSheet({
   const explicitShares =
     sourceParticipants.length > 0 &&
     sourceParticipants.every((participant) => participant.share_amount_minor !== null);
-  const equalShares = explicitShares
-    ? new Map<string, number>()
-    : splitExpenseEqually(
-        cost.amount_minor,
-        sourceParticipants.map((participant) => participant.traveler_id)
-      );
+  const equalShares =
+    explicitShares || !expenseSplittingEnabled
+      ? new Map<string, number>()
+      : splitExpenseEqually(
+          cost.amount_minor,
+          sourceParticipants.map((participant) => participant.traveler_id)
+        );
   const participants = sourceParticipants.map((participant) => ({
     name:
       travelers.find((traveler) => traveler.id === participant.traveler_id)?.display_name ??
@@ -47,12 +57,12 @@ export function CostDetailsSheet({
       ? participant.share_amount_minor
       : (equalShares.get(participant.traveler_id) ?? null)
   }));
-  const linkedEvent = itinerary.find(
-    (item) =>
-      item.id === cost.itinerary_item_id ||
-      Boolean(cost.booking_id && item.booking_id === cost.booking_id)
+  const linkedEvent =
+    itinerary.find((item) => item.id === cost.itinerary_item_id) ??
+    itinerary.find((item) => Boolean(cost.booking_id && item.booking_id === cost.booking_id));
+  const linkedBooking = bookings.find(
+    (booking) => booking.id === (cost.booking_id || linkedEvent?.booking_id)
   );
-  const linkedBooking = bookings.find((booking) => booking.id === cost.booking_id);
 
   return (
     <ModalSheet eyebrow="Trip expense" title={cost.title} onClose={onClose}>
@@ -75,10 +85,31 @@ export function CostDetailsSheet({
           <dt className="text-xs font-bold text-muted">Paid by</dt>
           <dd className="mt-1 font-extrabold">{paidBy ?? "Not recorded yet"}</dd>
         </div>
-        <div className="rounded-xl bg-elevated p-3">
+        <div className="rounded-xl bg-elevated p-3 sm:col-span-2">
           <dt className="text-xs font-bold text-muted">Connected to</dt>
-          <dd className="mt-1 font-extrabold">
-            {linkedEvent?.title ?? linkedBooking?.title ?? "General trip expense"}
+          <dd className="mt-2">
+            {linkedEvent || linkedBooking ? (
+              <CostEventCard
+                tripId={cost.trip_id}
+                booking={linkedBooking}
+                event={linkedEvent}
+                flights={flights}
+                onOpen={onNavigate}
+                onSelect={onViewLinkedEvent}
+              />
+            ) : cost.document_id ? (
+              <CostDocumentCard
+                tripId={cost.trip_id}
+                documentId={cost.document_id}
+                onOpen={onNavigate}
+              />
+            ) : (
+              <span className="font-extrabold">
+                {cost.booking_id || cost.itinerary_item_id
+                  ? "Linked event is unavailable"
+                  : "General trip expense"}
+              </span>
+            )}
           </dd>
         </div>
       </dl>
@@ -99,15 +130,17 @@ export function CostDetailsSheet({
           <ul className="mt-2 space-y-1.5">
             {participants.map((participant, index) => (
               <li
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm"
+                className={`grid items-center gap-3 text-sm ${expenseSplittingEnabled ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-1"}`}
                 key={`${participant.name}:${index}`}
               >
                 <strong className="truncate">{participant.name}</strong>
-                <span className="text-right text-muted">
-                  {participant.share === null
-                    ? "Equal share"
-                    : formatMoney(participant.share, cost.currency_code)}
-                </span>
+                {expenseSplittingEnabled && (
+                  <span className="text-right text-muted">
+                    {participant.share === null
+                      ? "Equal share"
+                      : formatMoney(participant.share, cost.currency_code)}
+                  </span>
+                )}
               </li>
             ))}
           </ul>

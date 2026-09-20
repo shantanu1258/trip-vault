@@ -43,6 +43,29 @@ export default defineConfig({
         background_color: "#f5f7fa",
         display: "standalone",
         start_url: "/",
+        share_target: {
+          action: "/share-target",
+          method: "POST",
+          enctype: "multipart/form-data",
+          params: {
+            files: [
+              {
+                name: "files",
+                accept: [
+                  "application/pdf",
+                  "image/jpeg",
+                  "image/png",
+                  "image/webp",
+                  ".pdf",
+                  ".jpg",
+                  ".jpeg",
+                  ".png",
+                  ".webp"
+                ]
+              }
+            ]
+          }
+        },
         icons: [
           {
             src: "/icons/icon-192.png",
@@ -59,7 +82,7 @@ export default defineConfig({
         ]
       },
       workbox: {
-        importScripts: ["/push-worker.js"],
+        importScripts: ["/push-worker.js", "/share-target-worker.js"],
         globPatterns: ["**/*.{js,mjs,css,html,svg,png,jpg,jpeg,webp,pdf,woff2}"],
         navigateFallback: "/index.html",
         cleanupOutdatedCaches: true

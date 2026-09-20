@@ -31,6 +31,7 @@ import { isValidTimeZone } from "../features/trips/validation";
 import { markDeviceSignedOut } from "../lib/auth/deviceSession";
 import { TimeZoneAutocomplete } from "../components/TimeZoneAutocomplete";
 import { DocumentInboxPanel } from "../features/workspace/DocumentInboxPanel";
+import { clearIncomingShares } from "../lib/pwa/incomingShare";
 import { useConfirmDialog } from "../components/ConfirmDialogProvider";
 import { RequiredMark } from "../components/RequiredMark";
 import { PushSettings } from "../features/notifications/PushSettings";
@@ -97,6 +98,7 @@ export function ProfilePage() {
       setMessage("");
       const id = query.data?.profile.id;
       await disablePush();
+      await clearIncomingShares();
       if (remove && id) await clearProfileOfflineData(id);
       markDeviceSignedOut(remove);
       const { error } = (await supabase?.auth.signOut({ scope: "local" })) ?? { error: null };

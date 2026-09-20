@@ -529,10 +529,16 @@ export function HomePage() {
       {focusedTrip && viewingCost && (
         <CostDetailsSheet
           cost={viewingCost}
+          expenseSplittingEnabled={Boolean(focusedTrip.expense_splitting_enabled)}
+          flights={flightsQuery.data ?? []}
           travelers={travelersQuery.data ?? []}
           itinerary={itineraryQuery.data ?? []}
           bookings={bookingsQuery.data ?? []}
           editable={false}
+          onNavigate={() => {
+            setViewingCost(null);
+            setShowingExpenses(false);
+          }}
           onClose={() => {
             setViewingCost(null);
             setShowingExpenses(true);

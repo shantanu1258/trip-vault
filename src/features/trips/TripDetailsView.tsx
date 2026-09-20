@@ -79,7 +79,7 @@ function CollectionCounts({
   if (!visible.length) return null;
 
   return (
-    <div className="mb-2 flex flex-wrap gap-x-2" aria-label="Section summary">
+    <div className="mb-3 flex flex-wrap gap-1.5" aria-label="Section summary">
       {visible.map((value) =>
         tripId ? (
           <TripChildLink
@@ -87,14 +87,14 @@ function CollectionCounts({
             key={value.label}
             to={`/trips/${tripId}/${collection}?category=${collection === "documents" ? encodeURIComponent(value.label.replaceAll(" ", "_")) : value.label === "Flights" ? "flight" : value.label === "Stays" ? "hotel" : value.label === "Ground & water" ? "journey" : "plan"}`}
             state={navigationState}
-            className="inline-flex min-h-11 items-center gap-1 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-bold text-muted hover:border-brand hover:text-ink"
+            className="inline-flex min-h-9 items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-[.7rem] font-bold text-muted hover:border-brand hover:text-ink"
           >
             {value.label} <strong className="text-ink">{value.count}</strong>
           </TripChildLink>
         ) : (
           <span
             key={value.label}
-            className="rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-bold text-muted"
+            className="inline-flex min-h-9 items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-[.7rem] font-bold text-muted"
           >
             {value.label} <strong className="text-ink">{value.count}</strong>
           </span>

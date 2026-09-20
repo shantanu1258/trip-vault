@@ -177,6 +177,22 @@ textarea:focus-visible {
     color: rgb(var(--event-icon));
   }
 
+  .document-type-icon {
+    color: rgb(var(--color-muted));
+  }
+
+  .document-type-icon__paper {
+    fill: rgb(var(--color-brand) / 0.04);
+  }
+
+  .document-type-icon__symbol {
+    color: rgb(var(--event-icon));
+  }
+
+  .document-type-icon[data-emphasis="strong"] {
+    color: rgb(var(--color-brand));
+  }
+
   /* Attention is consistent across event types; the icon keeps its type color.
      An inset stroke adds emphasis without changing the card's dimensions. */
   .timeline-event-card[aria-current="step"] {

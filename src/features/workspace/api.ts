@@ -4,6 +4,7 @@ import { supabase } from "../../lib/supabase/client";
 import { database } from "../../lib/local-db/database";
 import {
   ensureBlobMimeType,
+  readOfflineFile,
   removeOfflineFile,
   storeOfflineFile
 } from "../../lib/storage/offlineFiles";
@@ -2874,8 +2875,8 @@ export async function updateDocumentDetails(input: {
 
 const documentSelect =
   "id,trip_id,booking_id,flight_leg_id,journey_leg_id,traveler_id,assignment_mode,title,category,purpose,short_label,visibility,uploaded_by,current_version_id,version,updated_at,deleted_at,document_travelers(traveler_id),current_version:document_versions!documents_current_version_id_fkey(id,storage_bucket,storage_path,original_filename,mime_type,byte_size,sha256,version_number,created_at)";
-const accountDocumentUploadSelect =
-  "id,owner_id,storage_path,original_filename,mime_type,byte_size,sha256,associated_document_id,stored_at,created_at,updated_at";
+// Keep older deployments readable while the optional personal-fields migration rolls out.
+const accountDocumentUploadSelect = "*";
 
 type DocumentResponse = VaultDocument & { document_travelers?: { traveler_id: string }[] };
 
@@ -3124,7 +3125,10 @@ export async function listVaultDocuments(tripId?: string): Promise<VaultDocument
   return documents;
 }
 
-export async function getVaultDocument(documentId: string): Promise<VaultDocument> {
+export async function getVaultDocument(
+  documentId: string,
+  options?: { allowCachedOnError?: boolean }
+): Promise<VaultDocument> {
   const local = await readEntityById<VaultDocument>("documents", documentId);
   const uploads = await pendingDocumentOperations([documentId]);
   if (!navigator.onLine) {
@@ -3145,7 +3149,8 @@ export async function getVaultDocument(documentId: string): Promise<VaultDocumen
     .is("deleted_at", null)
     .single();
   if (error) {
-    if (local) return { ...local, sync_state: "queued", sync_error: uploads[0]?.lastErrorCode };
+    if (local && options?.allowCachedOnError !== false)
+      return { ...local, sync_state: "queued", sync_error: uploads[0]?.lastErrorCode };
     throw error;
   }
   return { ...normalizeVaultDocument(data as unknown as DocumentResponse), sync_state: "synced" };
@@ -3196,17 +3201,23 @@ export async function documentStorageUsage() {
     ? await database.localDocuments.where("profileId").equals(profileId).toArray()
     : [];
   const documents = await listVaultDocuments();
+  const personalDocuments = (await listAccountDocumentUploads()).filter(
+    (upload) => upload.personal_title && upload.stored_at
+  );
   return {
     localBytes: localRows.reduce((sum, row) => sum + row.byteSize, 0),
-    cloudBytes: documents.reduce(
-      (sum, document) =>
-        sum + (document.sync_state !== "queued" ? (document.current_version?.byte_size ?? 0) : 0),
-      0
-    ),
+    cloudBytes:
+      personalDocuments.reduce((sum, upload) => sum + upload.byte_size, 0) +
+      documents.reduce(
+        (sum, document) =>
+          sum + (document.sync_state !== "queued" ? (document.current_version?.byte_size ?? 0) : 0),
+        0
+      ),
     localFiles: localRows.length,
-    cloudFiles: documents.filter(
-      (document) => document.sync_state !== "queued" && document.current_version
-    ).length
+    cloudFiles:
+      personalDocuments.length +
+      documents.filter((document) => document.sync_state !== "queued" && document.current_version)
+        .length
   };
 }
 
@@ -3250,9 +3261,21 @@ export class DuplicateDocumentError extends Error {
 
 export async function stageAccountDocument(
   file: File,
-  knownChecksum?: string
+  knownChecksum?: string,
+  personal?: {
+    title: string;
+    kind: NonNullable<AccountDocumentUpload["personal_kind"]>;
+    label?: string;
+  }
 ): Promise<AccountDocumentUpload> {
   validateDocumentFile(file);
+  if (
+    personal &&
+    (!personal.title.trim() ||
+      personal.title.trim().length > 200 ||
+      (personal.label?.length ?? 0) > 200)
+  )
+    throw new Error("Use a document name and label of no more than 200 characters.");
   const actor = await userId();
   const checksum = knownChecksum ?? (await sha256(file));
   const uploadId = crypto.randomUUID();
@@ -3273,6 +3296,12 @@ export async function stageAccountDocument(
     sync_state: "queued",
     can_retry: true
   };
+  if (personal)
+    Object.assign(upload, {
+      personal_title: personal.title.trim(),
+      personal_kind: personal.kind,
+      personal_label: personal.label?.trim() || null
+    });
   const row = {
     id: upload.id,
     owner_id: upload.owner_id,
@@ -3281,7 +3310,14 @@ export async function stageAccountDocument(
     mime_type: upload.mime_type,
     byte_size: upload.byte_size,
     sha256: upload.sha256,
-    associated_document_id: null
+    associated_document_id: null,
+    ...(personal
+      ? {
+          personal_title: upload.personal_title,
+          personal_kind: upload.personal_kind,
+          personal_label: upload.personal_label
+        }
+      : {})
   };
   await storeOfflineFile({
     profileId: actor,
@@ -3341,6 +3377,10 @@ export type AssociateAccountDocumentInput = {
 export async function associateAccountDocument(
   input: AssociateAccountDocumentInput
 ): Promise<VaultDocument> {
+  if (input.upload.personal_title)
+    throw new Error(
+      "Personal Vault files stay private. Upload a separate copy if you want to share one with a trip."
+    );
   const actor = await userId();
   const uploadOperations = await pendingAccountUploadOperations([input.upload.id]);
   if (
@@ -3617,6 +3657,41 @@ export async function uploadDocument(input: {
   if (duplicate) throw new DuplicateDocumentError(duplicate.id, duplicate.title);
   const upload = await stageAccountDocument(input.file, checksum);
   return associateAccountDocument({ ...input, upload });
+}
+
+export async function openPersonalDocument(upload: AccountDocumentUpload): Promise<Blob> {
+  const actor = await userId();
+  if (upload.owner_id !== actor || !upload.personal_title || upload.associated_document_id)
+    throw new Error("This personal document is not available to this account.");
+  // Confirm ownership/existence online before falling back to the local copy.
+  if (navigator.onLine && upload.stored_at) {
+    const { data, error } = await client()
+      .from("account_document_uploads")
+      .select("id")
+      .eq("id", upload.id)
+      .eq("owner_id", actor)
+      .not("personal_title", "is", null)
+      .is("associated_document_id", null)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("This personal document is no longer available.");
+  }
+  const local = await readOfflineFile(actor, upload.id, upload.mime_type);
+  if (local) return local;
+  if (!navigator.onLine) throw new Error("Connect to open this document on this device.");
+  const { data, error } = await client()
+    .storage.from("account-documents")
+    .download(upload.storage_path);
+  if (error) throw error;
+  if ((await sha256(data)) !== upload.sha256)
+    throw new Error("The downloaded file failed its integrity check.");
+  await storeOfflineFile({
+    profileId: actor,
+    versionId: upload.id,
+    blob: data,
+    sha256: upload.sha256
+  });
+  return ensureBlobMimeType(data, upload.mime_type);
 }
 
 export async function downloadDocumentVersion(document: VaultDocument) {

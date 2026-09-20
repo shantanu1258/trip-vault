@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { BookingSummarySurface } from "../components/BookingSummarySurface";
 import {
   ArrowDown,
   ArrowLeft,
@@ -750,7 +751,6 @@ function BookingEventSummary({
   const legs = flightLegs.length ? flightLegs : travelLegs;
   const travelLegIds = new Set(travelLegs.map((leg) => leg.id));
   const bookingCabStops = cabStops.filter((stop) => travelLegIds.has(stop.journey_leg_id));
-  const reservationState = booking.type === "flight" ? "booked" : booking.reservation_state;
   const phone =
     booking.type === "cab" && booking.contact_phone ? phoneActionUrls(booking.contact_phone) : null;
   const firstAirline = flightLegs[0] ? airlineForFlight(flightLegs[0], airlines) : undefined;
@@ -768,91 +768,76 @@ function BookingEventSummary({
     )
   );
   return (
-    <div
-      style={flightLegs.length ? airlineAccentStyle(firstAirline?.brand_color) : undefined}
-      className={`event-scene event-type-icon--${eventIconTone(bookingEventType(booking.type))} mt-3 rounded-xl border border-line/80 px-3 py-2.5 text-xs ${
-        flightLegs.length ? "airline-accent-rail pl-4" : ""
-      }`}
-    >
-      <EventSilhouette type={bookingEventType(booking.type)} placement="summary" />
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <strong>{booking.provider || booking.title}</strong>
-        {booking.reference_code && (
-          <span className="text-muted">
-            {booking.type === "flight" ? "PNR" : "Ref"}{" "}
-            <strong className="text-ink">{booking.reference_code}</strong>
-          </span>
-        )}
-        {reservationState && (
-          <span className="rounded-full bg-brand-soft px-2 py-0.5 font-black capitalize text-brand">
-            {reservationState.replaceAll("_", " ")}
-          </span>
-        )}
-      </div>
-      {route && (
-        <p className="mt-1 font-bold text-brand">
-          {route}
-          {legs.length > 1 ? ` · ${legs.length - 1} connection${legs.length > 2 ? "s" : ""}` : ""}
-        </p>
-      )}
-      {flightLegs.map((leg, index) => {
-        const boarding = resolveBoardingInstant(
-          leg.scheduled_departure_at,
-          leg.boarding_at,
-          leg.boarding_lead_minutes
-        );
-        const operations = [
-          boarding ? `Board ${formatEventTime(boarding, leg.departure_timezone)}` : null,
-          leg.departure_terminal ? `T${leg.departure_terminal}` : null,
-          leg.departure_gate ? `Gate ${leg.departure_gate}` : null
-        ]
-          .filter(Boolean)
-          .join(" · ");
-        return (
-          <div
+    <div className="mt-3">
+      <BookingSummarySurface
+        booking={booking}
+        accentStyle={flightLegs.length ? airlineAccentStyle(firstAirline?.brand_color) : undefined}
+        route={
+          route
+            ? `${route}${legs.length > 1 ? ` · ${legs.length - 1} connection${legs.length > 2 ? "s" : ""}` : ""}`
+            : undefined
+        }
+      >
+        {flightLegs.map((leg, index) => {
+          const boarding = resolveBoardingInstant(
+            leg.scheduled_departure_at,
+            leg.boarding_at,
+            leg.boarding_lead_minutes
+          );
+          const operations = [
+            boarding ? `Board ${formatEventTime(boarding, leg.departure_timezone)}` : null,
+            leg.departure_terminal ? `T${leg.departure_terminal}` : null,
+            leg.departure_gate ? `Gate ${leg.departure_gate}` : null
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          return (
+            <div
+              key={leg.id}
+              style={airlineAccentStyle(airlineForFlight(leg, airlines)?.brand_color)}
+              className={index ? "mt-2 border-t border-line/70 pt-2" : "mt-2"}
+            >
+              {flightLegs.length > 1 && (
+                <p className="flex items-center gap-2 font-black text-ink">
+                  <span className="airline-accent-dot" aria-hidden="true" />
+                  Connection {index + 1} ·{" "}
+                  {leg.departure_airport_code || leg.departure_airport_name} →{" "}
+                  {leg.arrival_airport_code || leg.arrival_airport_name}
+                </p>
+              )}
+              {operations && <p className="mt-1 font-bold text-ink">{operations}</p>}
+              <FlightTravelerSummary
+                flightLegId={leg.id}
+                flightTravelers={flightTravelers}
+                travelers={travelers}
+                focusedTravelerId={focusedTravelerId}
+              />
+            </div>
+          );
+        })}
+        {travelLegs.map((leg, index) => (
+          <JourneyTravelerBadges
             key={leg.id}
-            style={airlineAccentStyle(airlineForFlight(leg, airlines)?.brand_color)}
-            className={index ? "mt-2 border-t border-line/70 pt-2" : "mt-2"}
+            tripId={tripId}
+            leg={leg}
+            travelers={travelers}
+            focusedTravelerId={focusedTravelerId}
+            legIndex={index}
+            legCount={travelLegs.length}
+          />
+        ))}
+        {booking.type === "cab" && (
+          <CabTimelineStops stops={bookingCabStops} eventTimezone={eventTimezone} />
+        )}
+        {phone && (
+          <a
+            className="relative z-20 mt-2 inline-flex min-h-9 items-center gap-1.5 rounded-full bg-brand-soft px-3 font-extrabold text-brand"
+            href={phone.call}
           >
-            {flightLegs.length > 1 && (
-              <p className="flex items-center gap-2 font-black text-ink">
-                <span className="airline-accent-dot" aria-hidden="true" />
-                Connection {index + 1} · {leg.departure_airport_code || leg.departure_airport_name}{" "}
-                → {leg.arrival_airport_code || leg.arrival_airport_name}
-              </p>
-            )}
-            {operations && <p className="mt-1 font-bold text-ink">{operations}</p>}
-            <FlightTravelerSummary
-              flightLegId={leg.id}
-              flightTravelers={flightTravelers}
-              travelers={travelers}
-              focusedTravelerId={focusedTravelerId}
-            />
-          </div>
-        );
-      })}
-      {travelLegs.map((leg, index) => (
-        <JourneyTravelerBadges
-          key={leg.id}
-          tripId={tripId}
-          leg={leg}
-          travelers={travelers}
-          focusedTravelerId={focusedTravelerId}
-          legIndex={index}
-          legCount={travelLegs.length}
-        />
-      ))}
-      {booking.type === "cab" && (
-        <CabTimelineStops stops={bookingCabStops} eventTimezone={eventTimezone} />
-      )}
-      {phone && (
-        <a
-          className="relative z-20 mt-2 inline-flex min-h-9 items-center gap-1.5 rounded-full bg-brand-soft px-3 font-extrabold text-brand"
-          href={phone.call}
-        >
-          <Phone className="size-3.5" /> Call cab contact
-        </a>
-      )}
+            <Phone className="size-3.5" /> Call cab contact
+          </a>
+        )}
+      </BookingSummarySurface>
     </div>
   );
 }
@@ -2893,11 +2878,18 @@ export function TripPage() {
       {viewingCost && (
         <CostDetailsSheet
           cost={viewingCost}
+          expenseSplittingEnabled={Boolean(trip?.expense_splitting_enabled)}
+          flights={flights}
           travelers={travelers}
           itinerary={visibleItinerary}
           bookings={visibleBookings}
           editable={editable}
           onClose={closeCostDetails}
+          onNavigate={() => {
+            setViewingCost(null);
+            setCostReturnEventId(null);
+            setCostReturnsToExpenses(false);
+          }}
           onEdit={() => {
             setViewingCost(null);
             if (pushDestination?.kind === "cost") closeRouteModal(["cost", "notification"]);

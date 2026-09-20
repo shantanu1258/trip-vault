@@ -1546,6 +1546,8 @@ export function UploadDocumentForm({
   members = [],
   privateOnly = false,
   initialFile = null,
+  initialFileContext = "flight",
+  initialVisibility,
   initialKind,
   assignmentPreset
 }: {
@@ -1562,6 +1564,8 @@ export function UploadDocumentForm({
   members?: TripMember[];
   privateOnly?: boolean;
   initialFile?: File | null;
+  initialFileContext?: "flight" | "shared";
+  initialVisibility?: DocumentVisibility;
   initialKind?: DocumentKind;
   assignmentPreset?: DocumentAssignmentPreset;
 }) {
@@ -1590,7 +1594,7 @@ export function UploadDocumentForm({
         : []
   );
   const [visibility, setVisibility] = useState<DocumentVisibility>(
-    privateOnly ? "private" : "trip"
+    privateOnly ? "private" : (initialVisibility ?? "trip")
   );
   const [selectedFile, setSelectedFile] = useState<File | null>(initialFile);
   const [customTitle, setCustomTitle] = useState("");
@@ -1678,16 +1682,28 @@ export function UploadDocumentForm({
   return (
     <ModalSheet
       eyebrow={trip.title}
-      title={initialFile ? "Finish attaching flight document" : "Upload a document"}
+      title={
+        initialFile
+          ? initialFileContext === "flight"
+            ? "Finish attaching flight document"
+            : "Review document"
+          : "Upload a document"
+      }
       onClose={onClose}
     >
       <form ref={draft.formRef} className="mt-6 space-y-4" onSubmit={submit}>
-        {initialFile && (
+        {initialFile && initialFileContext === "flight" && (
           <p className="rounded-2xl bg-success/10 p-4 text-sm leading-6 text-muted">
             <strong className="block text-success">Flight saved safely</strong>The flight is already
             on the timeline. Confirm this file's type and visibility; its travelers are copied from
             the flight. If cloud upload fails, the attempted upload stays in your private document
             inbox on this device.
+          </p>
+        )}
+        {initialFile && initialFileContext === "shared" && (
+          <p className="rounded-xl bg-brand-soft p-3 text-sm">
+            Review the document details before saving. Visibility starts as Only me; change it
+            explicitly if you want to share with this trip.
           </p>
         )}
         <FileDropzone

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -65,6 +66,19 @@ describe("VaultPage document list", () => {
     const row = title.closest("a");
     expect(row).toHaveAttribute("href", "/trips/trip-1/documents/document-long");
     expect(row).toHaveAccessibleName(new RegExp(longTitle));
+    expect(row?.querySelector('[data-document-type="flight"]')).toHaveAttribute(
+      "data-emphasis",
+      "strong"
+    );
     expect(screen.getByLabelText("Visible to all signed-in trip members")).toBeInTheDocument();
+    const archived = screen.getByRole("button", { name: "Recently deleted" });
+    expect(archived.textContent).toBe("");
+    expect(archived).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(archived);
+    expect(screen.getByRole("button", { name: "Current documents" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    expect(await screen.findByText("No recently deleted documents.")).toBeInTheDocument();
   });
 });

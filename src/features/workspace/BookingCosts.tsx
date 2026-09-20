@@ -129,6 +129,7 @@ export function BookingCosts({
       </BookingDisclosure>
       {viewing && (
         <CostDetailsSheet
+          expenseSplittingEnabled={Boolean(trip.expense_splitting_enabled)}
           cost={viewing}
           travelers={travelers}
           itinerary={itineraryQuery.data ?? []}

@@ -9,6 +9,7 @@ import type { Traveler } from "../workspace/types";
 const mocks = vi.hoisted(() => ({
   listItinerary: vi.fn(),
   listItineraryParticipantIds: vi.fn(),
+  listVaultDocuments: vi.fn(),
   updateItineraryItem: vi.fn(),
   addTripCost: vi.fn(),
   updateTripCost: vi.fn(),
@@ -36,7 +37,22 @@ vi.mock("../timeline/TimingFields", () => ({
   })
 }));
 vi.mock("../workspace/api", () => ({
-  listItineraryParticipantIds: mocks.listItineraryParticipantIds
+  listItineraryParticipantIds: mocks.listItineraryParticipantIds,
+  listVaultDocuments: mocks.listVaultDocuments
+}));
+vi.mock("../workspace/WorkspaceForms", () => ({
+  UploadDocumentForm: ({
+    onClose,
+    onUploaded
+  }: {
+    onClose: () => void;
+    onUploaded: (id: string) => void;
+  }) => (
+    <section aria-label="Receipt upload">
+      <button onClick={onClose}>Cancel upload</button>
+      <button onClick={() => onUploaded("receipt-1")}>Finish upload</button>
+    </section>
+  )
 }));
 vi.mock("./api", () => ({
   addItineraryItem: vi.fn(),
@@ -223,6 +239,110 @@ describe("AddCostForm optional expense splitting", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.addTripCost.mockResolvedValue({ id: "cost-1" });
+    mocks.listItinerary.mockResolvedValue([item]);
+    mocks.listItineraryParticipantIds.mockResolvedValue(["asha"]);
+    mocks.listVaultDocuments.mockResolvedValue([
+      { id: "receipt-1", trip_id: trip.id, title: "Dinner receipt" }
+    ]);
+  });
+
+  function renderCost(cost?: import("./types").TripCost) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <AddCostForm trip={trip} travelers={travelers} cost={cost} onClose={vi.fn()} />
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+  }
+
+  it("links a new cost to an event and uses only that event's selected travelers", async () => {
+    const user = userEvent.setup();
+    renderCost();
+    await user.type(screen.getByLabelText(/What was it for/), "Dinner bill");
+    await user.type(screen.getByLabelText("Amount"), "1200");
+    await user.selectOptions(screen.getByLabelText("Connect cost to"), "event");
+    await user.click(screen.getByRole("button", { name: "Save cost" }));
+    expect(mocks.addTripCost).not.toHaveBeenCalled();
+    await screen.findByRole("option", { name: "Dinner" });
+    await user.selectOptions(screen.getByLabelText("Event", { exact: true }), item.id);
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Asha" })).toBeChecked());
+    expect(screen.getByRole("checkbox", { name: "Ravi" })).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Save cost" }));
+    await waitFor(() =>
+      expect(mocks.addTripCost).toHaveBeenCalledWith(
+        expect.objectContaining({ itineraryItemId: item.id, participantTravelerIds: ["asha"] })
+      )
+    );
+    expect(mocks.addTripCost.mock.calls[0][0].documentId).toBeUndefined();
+    const status = screen.getByLabelText("Payment status");
+    expect(status.closest(".grid")).toBe(screen.getByLabelText("Paid by").closest(".grid"));
+    expect(status.closest(".grid")).toHaveClass("grid-cols-2");
+  });
+
+  it("allows an unlinked existing expense to choose a document instead of an event", async () => {
+    const user = userEvent.setup();
+    mocks.updateTripCost.mockResolvedValue({ id: "cost-1" });
+    renderCost({
+      id: "cost-1",
+      trip_id: trip.id,
+      title: "Dinner",
+      category: "food",
+      amount_minor: 120000,
+      currency_code: "INR",
+      payment_status: "paid",
+      itinerary_item_id: null,
+      notes: null,
+      created_at: "",
+      participants: [{ traveler_id: "ravi", share_amount_minor: null }]
+    });
+    await user.selectOptions(screen.getByLabelText("Connect cost to"), "event");
+    await screen.findByRole("option", { name: "Dinner" });
+    await user.selectOptions(screen.getByLabelText("Event", { exact: true }), item.id);
+    await user.selectOptions(screen.getByLabelText("Connect cost to"), "document");
+    await screen.findByRole("option", { name: "Dinner receipt" });
+    await user.selectOptions(screen.getByLabelText("Document", { exact: true }), "receipt-1");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(mocks.updateTripCost).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "cost-1",
+          documentId: "receipt-1",
+          itineraryItemId: undefined,
+          bookingId: undefined,
+          participantTravelerIds: ["ravi"]
+        })
+      )
+    );
+  });
+
+  it("retains cost fields when cancelling an upload and selects a completed upload", async () => {
+    const user = userEvent.setup();
+    renderCost();
+    await user.type(screen.getByLabelText(/What was it for/), "Receipt expense");
+    await user.type(screen.getByLabelText("Amount"), "50");
+    await user.selectOptions(screen.getByLabelText("Connect cost to"), "document");
+    await user.click(screen.getByRole("button", { name: "Upload a document" }));
+    await user.click(screen.getByRole("button", { name: "Cancel upload" }));
+    expect(screen.getByLabelText(/What was it for/)).toHaveValue("Receipt expense");
+    expect(screen.getByLabelText("Amount")).toHaveValue("50");
+    await user.click(screen.getByRole("button", { name: "Upload a document" }));
+    await user.click(screen.getByRole("button", { name: "Finish upload" }));
+    expect(screen.getByLabelText("Document", { exact: true })).toHaveValue("receipt-1");
+    await user.click(screen.getByRole("button", { name: "Save cost" }));
+    await waitFor(() =>
+      expect(mocks.addTripCost).toHaveBeenCalledWith(
+        expect.objectContaining({
+          documentId: "receipt-1",
+          itineraryItemId: undefined,
+          title: "Receipt expense",
+          amountMinor: 5000
+        })
+      )
+    );
   });
 
   it("hides traveler splitting and applies a new cost to everyone when disabled", async () => {

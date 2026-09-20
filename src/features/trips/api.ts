@@ -38,8 +38,8 @@ import type { Booking } from "../workspace/types";
 
 const itinerarySelect =
   "id,trip_id,booking_id,title,event_type,starts_at,ends_at,timezone,location,notes,applies_to_all_travelers,is_all_day,completed_at,timing_mode,scheduled_date,anchor_itinerary_item_id,relative_position,has_explicit_start_time,duration_minutes,event_status,sort_key,version,created_at,updated_at,deleted_at";
-const costSelect =
-  "id,trip_id,booking_id,itinerary_item_id,cab_stop_id,title,category,amount_minor,currency_code,payment_status,paid_by_traveler_id,notes,version,created_at,updated_at,deleted_at,trip_cost_participants(traveler_id,share_amount_minor)";
+// Existing reads also work before the optional document-link migration is applied.
+const costSelect = "*,trip_cost_participants(traveler_id,share_amount_minor)";
 const tripSelect =
   "id,title,destination_summary,start_date,end_date,primary_timezone,base_currency,expense_splitting_enabled,status,version,created_at,updated_at,deleted_at";
 
@@ -1195,6 +1195,7 @@ export async function listCosts(tripId: string): Promise<TripCost[]> {
 }
 
 export async function addTripCost(input: CreateCostInput): Promise<TripCost> {
+  assertCostAssociation(input);
   const userId = await currentUserId();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -1208,6 +1209,7 @@ export async function addTripCost(input: CreateCostInput): Promise<TripCost> {
     booking_id: input.bookingId || null,
     itinerary_item_id: input.itineraryItemId || null,
     cab_stop_id: input.cabStopId || null,
+    ...(input.documentId ? { document_id: input.documentId } : {}),
     title: input.title,
     category: input.category,
     amount_minor: input.amountMinor,
@@ -1225,6 +1227,7 @@ export async function addTripCost(input: CreateCostInput): Promise<TripCost> {
     created_by: userId,
     paid_by: input.paymentStatus === "paid" ? userId : null
   };
+  const documentDependencies = await costDocumentDependencies(input.documentId);
   if (!navigator.onLine) {
     const { database } = await import("../../lib/local-db/database");
     const cabStopOperation = input.cabStopId
@@ -1242,9 +1245,11 @@ export async function addTripCost(input: CreateCostInput): Promise<TripCost> {
       entityType: `costs:${input.tripId}`,
       table: "trip_costs",
       row,
-      dependsOn: [cabStopOperation?.operationId, ...(input.dependsOn ?? [])].filter(
-        (id): id is string => Boolean(id)
-      )
+      dependsOn: [
+        cabStopOperation?.operationId,
+        ...documentDependencies,
+        ...(input.dependsOn ?? [])
+      ].filter((id): id is string => Boolean(id))
     });
     for (const participant of participants)
       await queueCreate({
@@ -1264,6 +1269,7 @@ export async function addTripCost(input: CreateCostInput): Promise<TripCost> {
       booking_id: input.bookingId || null,
       itinerary_item_id: input.itineraryItemId || null,
       cab_stop_id: input.cabStopId || null,
+      ...(input.documentId ? { document_id: input.documentId } : {}),
       title: input.title,
       category: input.category,
       amount_minor: input.amountMinor,
@@ -1293,10 +1299,17 @@ export async function updateTripCost(input: UpdateCostInput): Promise<TripCost> 
     (cost) => cost.id === input.id
   );
   if (!existing) throw new Error("Refresh the cost list before editing this item.");
+  assertCostAssociation({
+    bookingId: input.bookingId || existing.booking_id || undefined,
+    itineraryItemId: input.itineraryItemId || existing.itinerary_item_id || undefined,
+    cabStopId: input.cabStopId || existing.cab_stop_id || undefined,
+    documentId: input.documentId === undefined ? existing.document_id : input.documentId
+  });
   const patch = {
     booking_id: input.bookingId || existing.booking_id || null,
     itinerary_item_id: input.itineraryItemId || existing.itinerary_item_id || null,
     cab_stop_id: input.cabStopId || existing.cab_stop_id || null,
+    ...(input.documentId !== undefined ? { document_id: input.documentId || null } : {}),
     title: input.title,
     category: input.category,
     amount_minor: input.amountMinor,
@@ -1305,6 +1318,7 @@ export async function updateTripCost(input: UpdateCostInput): Promise<TripCost> 
     paid_by_traveler_id: input.paidByTravelerId || null,
     notes: input.notes || null
   };
+  const documentDependencies = await costDocumentDependencies(input.documentId);
   if (!navigator.onLine) {
     const participants = [...new Set(input.participantTravelerIds ?? [])].map((traveler_id) => ({
       traveler_id,
@@ -1322,6 +1336,7 @@ export async function updateTripCost(input: UpdateCostInput): Promise<TripCost> 
       table: "trip_costs",
       row: updated,
       patch,
+      dependsOn: documentDependencies,
       baseVersion: existing.version
     });
     const removals = await Promise.all(
@@ -1369,6 +1384,29 @@ export async function updateTripCost(input: UpdateCostInput): Promise<TripCost> 
   const updated = { ...normalizeCost(data as unknown as CostResponse), participants };
   await cacheEntity(`costs:${input.tripId}`, updated);
   return updated;
+}
+
+function assertCostAssociation(
+  input: Pick<CreateCostInput, "bookingId" | "itineraryItemId" | "cabStopId" | "documentId">
+) {
+  if (input.documentId && (input.bookingId || input.itineraryItemId || input.cabStopId)) {
+    throw new Error("Choose an event or a document, not both.");
+  }
+}
+
+async function costDocumentDependencies(documentId?: string | null): Promise<string[]> {
+  if (!documentId) return [];
+  const { database } = await import("../../lib/local-db/database");
+  const profileId = await currentUserId();
+  const dependencies = (await database.outbox.where("entityId").equals(documentId).toArray())
+    .filter((operation) => operation.profileId === profileId)
+    .map((operation) => operation.operationId);
+  if (navigator.onLine && dependencies.length) {
+    throw new Error(
+      "This document is still waiting to sync. Retry its upload in your private inbox, then save this cost again. Your cost fields have been kept."
+    );
+  }
+  return dependencies;
 }
 
 export async function archiveTripCost(cost: TripCost) {

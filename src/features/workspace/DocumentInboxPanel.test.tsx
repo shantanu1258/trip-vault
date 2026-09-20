@@ -124,6 +124,15 @@ describe("private document inbox", () => {
     expect(await screen.findByText(/file saved to your private inbox/i)).toBeInTheDocument();
   });
 
+  it("does not offer personal Vault files for trip association", async () => {
+    mocks.listAccountDocumentUploads.mockResolvedValue([
+      { ...upload, personal_title: "My passport", personal_kind: "passport" }
+    ]);
+    renderPanel();
+    await screen.findByText("No unfinished uploads.");
+    expect(screen.queryByRole("button", { name: /attach to trip/i })).not.toBeInTheDocument();
+  });
+
   it("defaults an associated inbox file to signed-in trip members", async () => {
     mocks.listAccountDocumentUploads.mockResolvedValue([upload]);
     const user = userEvent.setup();

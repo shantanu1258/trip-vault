@@ -43,7 +43,8 @@ import {
 } from "./validation";
 import type { Booking, Traveler } from "../workspace/types";
 import { ParticipantSelector } from "../workspace/ParticipantSelector";
-import { listItineraryParticipantIds } from "../workspace/api";
+import { listItineraryParticipantIds, listVaultDocuments } from "../workspace/api";
+import { UploadDocumentForm } from "../workspace/WorkspaceForms";
 import { listItinerary } from "./api";
 import { useFormDraft } from "../../lib/forms/useFormDraft";
 import { furthestEventTimezone, readEventTiming, TimingFields } from "../timeline/TimingFields";
@@ -402,9 +403,42 @@ export function AddCostForm({
 }) {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
+  const lockedAssociation = Boolean(
+    bookingId || itineraryItemId || cost?.booking_id || cost?.itinerary_item_id || cost?.cab_stop_id
+  );
+  const [association, setAssociation] = useState(cost?.document_id ? "document" : "none");
+  const [selectedEventId, setSelectedEventId] = useState("");
+  const [documentId, setDocumentId] = useState(cost?.document_id ?? "");
+  const [uploading, setUploading] = useState(false);
+  const eventsQuery = useQuery({
+    queryKey: ["itinerary", trip.id],
+    queryFn: () => listItinerary(trip.id),
+    enabled: !lockedAssociation && association === "event"
+  });
+  const documentsQuery = useQuery({
+    queryKey: ["documents", trip.id],
+    queryFn: () => listVaultDocuments(trip.id),
+    enabled: !lockedAssociation && association === "document"
+  });
+  const selectedEvent =
+    association === "event"
+      ? eventsQuery.data?.find((item) => item.id === selectedEventId && !item.deleted_at)
+      : undefined;
+  const eventParticipants = useQuery({
+    queryKey: ["itinerary-participant-ids", selectedEventId, trip.id],
+    queryFn: () => listItineraryParticipantIds(selectedEventId, trip.id),
+    enabled: !cost && Boolean(selectedEvent && !selectedEvent.applies_to_all_travelers)
+  });
+  const needsEventParticipants = !cost && selectedEvent && !selectedEvent.applies_to_all_travelers;
+  const associationLoading = Boolean(needsEventParticipants && !eventParticipants.isSuccess);
+  const initialParticipantIds = cost?.participants?.length
+    ? cost.participants.map((participant) => participant.traveler_id)
+    : needsEventParticipants
+      ? eventParticipants.data
+      : undefined;
   const draft = useFormDraft(`cost:${cost?.id ?? "new"}:${trip.id}`);
   const canChooseParticipants = Boolean(
-    trip.expense_splitting_enabled || cost?.participants?.length
+    trip.expense_splitting_enabled || cost?.participants?.length || selectedEvent
   );
   const mutation = useMutation({
     mutationFn: (input: CreateCostInput) =>
@@ -428,6 +462,14 @@ export function AddCostForm({
       setMessage(firstValidationMessage(parsed.error));
       return;
     }
+    if (!lockedAssociation && association === "event" && (!selectedEvent || associationLoading)) {
+      setMessage("Choose an available event and wait for its travelers to load.");
+      return;
+    }
+    if (!lockedAssociation && association === "document" && !documentId) {
+      setMessage("Choose or upload a document, or select No link.");
+      return;
+    }
     const participantTravelerIds = canChooseParticipants
       ? form.getAll("travelerIds").map(String)
       : cost?.participants?.length
@@ -439,8 +481,11 @@ export function AddCostForm({
     }
     mutation.mutate({
       tripId: trip.id,
-      bookingId: bookingId ?? cost?.booking_id ?? undefined,
-      itineraryItemId: itineraryItemId ?? cost?.itinerary_item_id ?? undefined,
+      bookingId: bookingId ?? cost?.booking_id ?? selectedEvent?.booking_id ?? undefined,
+      itineraryItemId: itineraryItemId ?? cost?.itinerary_item_id ?? selectedEvent?.id,
+      ...(!lockedAssociation && (association === "document" || cost?.document_id)
+        ? { documentId: association === "document" ? documentId : null }
+        : {}),
       title: parsed.data.title,
       category: parsed.data.category,
       amountMinor: amountStringToMinor(parsed.data.amount, parsed.data.currencyCode),
@@ -453,149 +498,268 @@ export function AddCostForm({
   };
 
   return (
-    <ModalSheet
-      eyebrow={trip.title}
-      title={cost ? "Edit trip cost" : "Add a trip cost"}
-      onClose={onClose}
-    >
-      <form ref={draft.formRef} className="mt-6 space-y-4" onSubmit={submit}>
-        <label className="form-label">
-          What was it for?
-          <RequiredMark />
-          <input
-            className="form-input"
-            name="title"
-            placeholder="Name the expense so travelers can recognize it"
-            defaultValue={cost?.title ?? sourceTitle}
-            autoFocus
-          />
-          <span className="mt-1 block text-xs font-normal text-muted">
-            {sourceTitle && !cost
-              ? `This cost stays attached to the ${itineraryItemId ? "timeline event" : "booking"}; you may adjust its label.`
-              : "Use a short name such as Airport cab or Museum tickets."}
-          </span>
-        </label>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="form-label">
-            Category
-            <select
-              className="form-input capitalize"
-              name="category"
-              defaultValue={cost?.category ?? "other"}
-            >
-              {[
-                "flight",
-                "hotel",
-                "transport",
-                "activity",
-                "food",
-                "visa",
-                "insurance",
-                "other"
-              ].map((item) => (
-                <option key={item}>{item}</option>
-              ))}
-            </select>
-          </label>
-          <label className="form-label">
-            Status
-            <select
-              className="form-input"
-              name="paymentStatus"
-              defaultValue={cost?.payment_status ?? "planned"}
-            >
-              <option value="planned">Planned</option>
-              <option value="paid">Paid</option>
-              <option value="refunded">Refunded</option>
-            </select>
-          </label>
-        </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(9rem,12rem)] gap-4">
-          <label className="form-label">
-            Amount
-            <RequiredMark />
-            <input
-              className="form-input"
-              name="amount"
-              inputMode="decimal"
-              placeholder="Enter 0 if this item was free"
-              defaultValue={
-                cost
-                  ? (cost.amount_minor / 10 ** currencyFractionDigits(cost.currency_code)).toFixed(
-                      currencyFractionDigits(cost.currency_code)
-                    )
-                  : ""
-              }
-            />
-          </label>
-          <label className="form-label">
-            Currency
-            <RequiredMark />
-            <CurrencySelect
-              name="currencyCode"
-              defaultValue={cost?.currency_code ?? trip.base_currency}
-            />
-          </label>
-        </div>
-        {travelers.length > 0 && (
-          <>
+    <>
+      <div hidden={uploading}>
+        <ModalSheet
+          eyebrow={trip.title}
+          title={cost ? "Edit trip cost" : "Add a trip cost"}
+          onClose={() => {
+            if (!uploading && !mutation.isPending) onClose();
+          }}
+        >
+          <form ref={draft.formRef} className="mt-6 space-y-4" onSubmit={submit}>
             <label className="form-label">
-              Paid by
-              <select
+              What was it for?
+              <RequiredMark />
+              <input
                 className="form-input"
-                name="paidByTravelerId"
-                defaultValue={cost?.paid_by_traveler_id ?? ""}
-              >
-                <option value="">Not recorded yet</option>
-                {travelers.map((traveler) => (
-                  <option key={traveler.id} value={traveler.id}>
-                    {traveler.display_name}
-                  </option>
-                ))}
-              </select>
+                name="title"
+                placeholder="Name the expense so travelers can recognize it"
+                defaultValue={cost?.title ?? sourceTitle}
+                autoFocus
+              />
+              <span className="mt-1 block text-xs font-normal text-muted">
+                {sourceTitle && !cost
+                  ? `This cost stays attached to the ${itineraryItemId ? "timeline event" : "booking"}; you may adjust its label.`
+                  : "Use a short name such as Airport cab or Museum tickets."}
+              </span>
             </label>
-            {canChooseParticipants && (
-              <>
-                <ParticipantSelector
-                  travelers={travelers}
-                  explicitAll
-                  selectedTravelerIds={
-                    cost?.participants?.length
-                      ? cost.participants.map((participant) => participant.traveler_id)
-                      : undefined
+            <div>
+              <label className="form-label">
+                Category
+                <select
+                  className="form-input capitalize"
+                  name="category"
+                  defaultValue={cost?.category ?? "other"}
+                >
+                  {[
+                    "flight",
+                    "hotel",
+                    "transport",
+                    "activity",
+                    "food",
+                    "visa",
+                    "insurance",
+                    "other"
+                  ].map((item) => (
+                    <option key={item}>{item}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(9rem,12rem)] gap-4">
+              <label className="form-label">
+                Amount
+                <RequiredMark />
+                <input
+                  className="form-input"
+                  name="amount"
+                  inputMode="decimal"
+                  placeholder="Enter 0 if this item was free"
+                  defaultValue={
+                    cost
+                      ? (
+                          cost.amount_minor /
+                          10 ** currencyFractionDigits(cost.currency_code)
+                        ).toFixed(currencyFractionDigits(cost.currency_code))
+                      : ""
                   }
                 />
-                <p className="-mt-2 text-xs leading-5 text-muted">
-                  The amount is split equally among the selected travelers. Balances are calculated
-                  separately for each currency.
-                </p>
+              </label>
+              <label className="form-label">
+                Currency
+                <RequiredMark />
+                <CurrencySelect
+                  name="currencyCode"
+                  defaultValue={cost?.currency_code ?? trip.base_currency}
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="form-label min-w-0">
+                Payment status
+                <select
+                  className="form-input"
+                  name="paymentStatus"
+                  defaultValue={cost?.payment_status ?? "planned"}
+                >
+                  <option value="planned">Planned</option>
+                  <option value="paid">Paid</option>
+                  <option value="refunded">Refunded</option>
+                </select>
+              </label>
+              <label className="form-label min-w-0">
+                Paid by
+                <select
+                  className="form-input"
+                  name="paidByTravelerId"
+                  defaultValue={cost?.paid_by_traveler_id ?? ""}
+                >
+                  <option value="">Not recorded yet</option>
+                  {travelers.map((traveler) => (
+                    <option key={traveler.id} value={traveler.id}>
+                      {traveler.display_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {!lockedAssociation && (
+              <fieldset
+                disabled={mutation.isPending}
+                className="space-y-3 rounded-xl border border-line p-3"
+              >
+                <legend className="px-1 text-sm font-bold">Connection (optional)</legend>
+                <label className="form-label">
+                  Connect cost to
+                  <select
+                    className="form-input"
+                    value={association}
+                    onChange={(event) => setAssociation(event.target.value)}
+                  >
+                    <option value="none">No link</option>
+                    <option value="event">Event</option>
+                    <option value="document">Document</option>
+                  </select>
+                </label>
+                {association === "event" && (
+                  <>
+                    <label className="form-label">
+                      Event
+                      <select
+                        className="form-input"
+                        value={selectedEventId}
+                        onChange={(event) => setSelectedEventId(event.target.value)}
+                      >
+                        <option value="">Select an event</option>
+                        {(eventsQuery.data ?? [])
+                          .filter((item) => !item.deleted_at)
+                          .map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.title}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    {eventsQuery.isLoading && <p className="text-xs text-muted">Loading events…</p>}
+                    {(eventsQuery.isError || eventParticipants.isError) && (
+                      <p role="alert" className="text-sm text-danger">
+                        Could not load the event or its travelers. Please reopen this form to retry.
+                      </p>
+                    )}
+                    {!cost && selectedEvent && (
+                      <p className="text-xs text-muted">
+                        Included travelers start with this event’s travelers. You can adjust the
+                        cost split below.
+                      </p>
+                    )}
+                  </>
+                )}
+                {association === "document" && (
+                  <>
+                    <label className="form-label">
+                      Document
+                      <select
+                        className="form-input"
+                        value={documentId}
+                        onChange={(event) => setDocumentId(event.target.value)}
+                      >
+                        <option value="">Select a document</option>
+                        {documentId &&
+                          !(documentsQuery.data ?? []).some(
+                            (document) => document.id === documentId
+                          ) && <option value={documentId}>Linked document (unavailable)</option>}
+                        {(documentsQuery.data ?? [])
+                          .filter((document) => !document.deleted_at)
+                          .map((document) => (
+                            <option key={document.id} value={document.id}>
+                              {document.title}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="secondary-button w-full"
+                      onClick={() => setUploading(true)}
+                    >
+                      Upload a document
+                    </button>
+                    {documentsQuery.isError && (
+                      <p role="alert" className="text-sm text-danger">
+                        Could not load documents. Please reopen this form to retry.
+                      </p>
+                    )}
+                    <p className="text-xs leading-5 text-muted">
+                      Uploads are saved to your Vault, even if you cancel this cost. Their
+                      visibility settings stay unchanged.
+                    </p>
+                  </>
+                )}
+                <p className="text-xs text-muted">Choose an event or a document—not both.</p>
+              </fieldset>
+            )}
+            {travelers.length > 0 && (
+              <>
+                {canChooseParticipants && (
+                  <>
+                    {!associationLoading && (
+                      <ParticipantSelector
+                        key={cost?.id ?? selectedEvent?.id ?? "standalone"}
+                        travelers={travelers}
+                        explicitAll
+                        selectedTravelerIds={initialParticipantIds}
+                      />
+                    )}
+                    <p className="-mt-2 text-xs leading-5 text-muted">
+                      The amount is split equally among the selected travelers. Balances are
+                      calculated separately for each currency.
+                    </p>
+                  </>
+                )}
               </>
             )}
-          </>
-        )}
-        <label className="form-label">
-          Notes (optional)
-          <textarea
-            className="form-input min-h-20 resize-y"
-            name="notes"
-            defaultValue={cost?.notes ?? ""}
-          />
-        </label>
-        {(message || mutation.error) && (
-          <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">
-            {message || getErrorMessage(mutation.error)}
-          </p>
-        )}
-        <button disabled={mutation.isPending} className="primary-button w-full" type="submit">
-          {mutation.isPending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <ReceiptIndianRupee className="size-4" />
-          )}{" "}
-          {cost ? "Save changes" : "Save cost"}
-        </button>
-      </form>
-    </ModalSheet>
+            <label className="form-label">
+              Notes (optional)
+              <textarea
+                className="form-input min-h-20 resize-y"
+                name="notes"
+                defaultValue={cost?.notes ?? ""}
+              />
+            </label>
+            {(message || mutation.error) && (
+              <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-bold text-danger">
+                {message || getErrorMessage(mutation.error)}
+              </p>
+            )}
+            <button
+              disabled={mutation.isPending || associationLoading}
+              className="primary-button w-full"
+              type="submit"
+            >
+              {mutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ReceiptIndianRupee className="size-4" />
+              )}{" "}
+              {cost ? "Save changes" : "Save cost"}
+            </button>
+          </form>
+        </ModalSheet>
+      </div>
+      {uploading && (
+        <UploadDocumentForm
+          trip={trip}
+          travelers={travelers}
+          initialKind="receipt"
+          onClose={() => setUploading(false)}
+          onUploaded={(id) => {
+            setDocumentId(id);
+            setUploading(false);
+          }}
+        />
+      )}
+    </>
   );
 }
 

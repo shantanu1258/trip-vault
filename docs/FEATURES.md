@@ -48,6 +48,8 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 - Classify uploaded files in travel language, assign them to everyone, selected travelers, or later, and keep that assignment separate from signed-in access.
 - Open a document directly in a local-first in-app viewer with PDF page/zoom/fit and image zoom controls, retain device **Open** as a fallback, and move metadata/management behind an Info action.
 - Select documents through a large centered touch/keyboard/drop target on trip upload and Profile, with immediate size/type feedback and a compact replacement variant.
+- Keep private personal documents (passport, Aadhaar, insurance, or other PDF/image) in Vault without a trip; name/label, preview/download, queued upload retry, and confirmed permanent deletion use owner-only account storage.
+- Receive one supported file from the installed Android PWA's system share target, then explicitly review/save to Personal documents or a trip. Trip imports begin as Only me; iPhone keeps manual upload. Requires the personal-document migration and deployed manifest/service worker; real-device acceptance remains pending.
 - Use Everyone or one traveler as a trip-wide presentation filter so timeline, reservations, costs, readiness, seats, and documents stay relevant without changing access rights.
 - Reuse accounts from previously shared trips through a consent-required Home offer, while retaining private code/QR sharing for first-time recipients.
 - Add an omitted connecting flight later from Flight details and keep the grouped journey, travelers, and timeline end in sync.

@@ -985,6 +985,14 @@ export function DemoTripPage() {
       {selectedCost && (
         <CostDetailsSheet
           cost={selectedCost}
+          expenseSplittingEnabled
+          onViewLinkedEvent={() => {
+            const event = demoEvents.find((event) => event.id === selectedCost.booking_id);
+            if (!event) return;
+            setSelectedCost(null);
+            setSheet(null);
+            setSelectedEvent(event);
+          }}
           travelers={demoTravelersAsTravelers}
           itinerary={[]}
           bookings={demoBookings}

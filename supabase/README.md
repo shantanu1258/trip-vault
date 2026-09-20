@@ -21,6 +21,8 @@ Released migrations are immutable because existing deployments may have applied 
 
 ## Verification and diagnostics
 
+Personal Vault documents require `migrations/202609200003_personal_documents.sql` after the core rollup, including for new projects. Expense-document links similarly require `202609200002_cost_document_association.sql`; neither is included in the core rollup yet. See [PERSONAL_DOCUMENTS_SETUP.md](../docs/PERSONAL_DOCUMENTS_SETUP.md) for deployment and Android share-target acceptance checks. The optional `tests/003_personal_documents_smoke.sql` probes owner-only reads/deletes and the personal/trip association boundary on an isolated test project.
+
 - `tests/001_schema_smoke.sql` is separate so it can verify either installation path after deployment and roll back its probes without becoming part of the schema.
 - `tests/002_push_smoke.sql` checks optional push privileges, RLS, recipients, and reminder lifecycle on an isolated test project. It rolls back its fixtures and sends no HTTP; it has not been run against PostgreSQL locally.
 - Files under `diagnostics/` are opt-in, read-only investigations. They may expose account or trip details in query results and must never run as part of setup or migration deployment.

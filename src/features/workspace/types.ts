@@ -491,6 +491,9 @@ export type AccountDocumentUpload = {
   association_pending?: boolean;
   can_retry?: boolean;
   can_verify?: boolean;
+  personal_title?: string | null;
+  personal_kind?: "passport" | "aadhaar" | "identity" | "insurance" | "other" | null;
+  personal_label?: string | null;
 };
 
 export type VaultDocument = {

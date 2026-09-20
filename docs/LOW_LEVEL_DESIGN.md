@@ -836,6 +836,7 @@ Primary key: `(requirement_id, traveler_id)`.
 | `trip_id`                                | UUID              | Parent trip                                                                   |
 | `booking_id`                             | UUID, nullable    | Optional booking relationship                                                 |
 | `itinerary_item_id`                      | UUID, nullable    | Optional event relationship                                                   |
+| `document_id`                            | UUID, nullable    | Optional Vault receipt/document; mutually exclusive with event/booking/stop links (migration 202609200002) |
 | `title`                                  | Text              | User-facing description                                                       |
 | `category`                               | `cost_category`   | Flight, stay, transport, activity, food, visa, insurance, or other            |
 | `amount_minor`                           | Big integer       | Non-negative amount in minor currency units                                   |
@@ -849,6 +850,8 @@ Primary key: `(requirement_id, traveler_id)`.
 | `created_at`, `updated_at`, `deleted_at` | Timestamps        | Audit, synchronization, and soft deletion                                     |
 
 Trip totals group non-refunded costs by currency. Every Add Event path may create an optional linked cost; if none exists, the event details explicitly show that cost is missing and offer a completion action. A cost may be archived and restored without archiving its event.
+
+Standalone Add Cost and unlinked Edit Cost offer No link, Event, or Document. Event-linked expenses keep their source association; a new event-associated expense starts with that event's travelers, while edits retain their saved split. Document uploads reuse `UploadDocumentForm` with the receipt preset and unchanged visibility controls. Cancelling the cost leaves an uploaded document in Vault. Payment status and Paid by share a two-column row on all screen sizes. `202609200002_cost_document_association.sql` enforces same-trip, document-access, and exclusive-association checks; apply it before document-linked saves. Offline receipt-linked costs depend on the document association outbox operation; online saves reject unfinished document synchronization rather than creating a dangling link.
 
 #### `trip_cost_participants`
 
@@ -1218,6 +1221,10 @@ The permanent-purge testing UI has been retired. The retained owner-only backend
 
 ### 7.4 Validation
 
+Personal Vault documents reuse account uploads with optional `personal_title`, `personal_kind`, and `personal_label` columns (`202609200003_personal_documents.sql`). These fields are written in the same queued upload operation as the receipt. A non-null personal title requires no `associated_document_id`; the existing owner-only RLS remains unchanged. `can_read_shared_account_file` inspects receipt/version linkage under a fixed-search-path definer function and permits the trip-member Storage read branch only for non-personal files whose document the caller can read. Personal preview checks the account and online existence before using cached bytes. Files remain local-first and are not end-to-end encrypted. Personal deletion is explicit/permanent, not trip archival.
+
+`/vault/add` and `/receive-share` use `AddDocumentPage` for Personal documents or trip selection. Android `share_target` POSTs to `/share-target`; `share-target-worker.js` accepts one non-empty PDF/JPEG/PNG/WebP under 5 MB and stores it in `trip-vault-incoming-shares-v1` under a random UUID. The handoff is limited to five entries and 15 minutes; expired entries are pruned on activation/new receipt/read, with explicit Save/Cancel/sign-out cleanup. Authentication precedes review, and no cloud writes happen until Save. Incoming trip forms start with private visibility, preserving the existing role restrictions and traveler controls. Multiple incoming files are rejected as a group. Native iOS incoming sharing is out of scope.
+
 - New trip uploads and the Profile inbox use the reusable large `FileDropzone`; replacement uses its compact variant.
 - The visible button is a full-width touch/keyboard target, accepts a desktop drop, shows guidance before selection and filename/measured size afterward, and is disabled while the selected file is being saved.
 - Reject empty content and multiple/unsupported inputs immediately. A file whose browser MIME is empty or `application/octet-stream` may be retyped only when its `.pdf`, `.jpg`, `.jpeg`, `.png`, or `.webp` extension is approved.
@@ -1571,6 +1578,8 @@ Cards are primary interaction targets. Their primary activation depends on wheth
 | Admin catalog card                                          | No card-wide convention yet                                   | Admin catalog cards retain their explicit named controls until the Admin responsive redesign instead of receiving a competing card target.                                                                                                                                |
 
 `CostDetailsSheet` presents amount, payment status, category, payer, linked event or booking, included travelers with equal or explicit shares, and optional notes before any mutation controls. **Balances by currency** is not rendered on initial expense-section load. A member explicitly enables **Show balances** to calculate and reveal it; hiding it again leaves the underlying costs unchanged. The toggle is available to Viewers because it is a local presentation choice, not a mutation.
+
+The expense's Connected to section uses a compact event-colored, keyboard-accessible card containing the event name, date/time, and a small navigation chevron—no repeated reference or status. A faint decorative event silhouette reuses the summary entrance animation and reduced-motion support, inset from the right to avoid the chevron. It opens flight/booking details or the exact unbooked event; an explicit itinerary link takes precedence over another milestone of the same booking. Receipt links open the authorized document, with an unavailable state instead of falling back to cached metadata after an online access error. Demo connections stay within demo event sheets.
 
 Card-wide targets use native links or buttons with visible focus. A link activates with Enter; a button activates with Enter or Space. Phone taps anywhere on the primary card area produce the same destination, while nested independent actions occupy their own hit area and must neither bubble into nor be obscured by the card target. Destructive actions always retain an explicit label and confirmation path instead of becoming the implicit card activation.
 

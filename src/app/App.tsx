@@ -16,6 +16,7 @@ import { TripDocumentsPage } from "../pages/TripDocumentsPage";
 import { TripReservationsPage } from "../pages/TripReservationsPage";
 import { TripsPage } from "../pages/TripsPage";
 import { VaultPage } from "../pages/VaultPage";
+import { AddDocumentPage } from "../pages/AddDocumentPage";
 import { WelcomePage } from "../pages/WelcomePage";
 import { RootRoute } from "../components/RootRoute";
 import { SignedOutOnlyRoute } from "../components/SignedOutOnlyRoute";
@@ -55,6 +56,8 @@ export function App() {
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/vault" element={<VaultPage />} />
+        <Route path="/vault/add" element={<AddDocumentPage />} />
+        <Route path="/receive-share" element={<AddDocumentPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

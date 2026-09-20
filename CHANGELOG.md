@@ -2,6 +2,32 @@
 
 User-visible changes are listed newest first. The HLD, LLD, and feature catalog are the current design contract; this file records history, including superseded experiments. This initial changelog covers the September 19 enhancement batch, not every earlier commit.
 
+## Unreleased — Personal documents and incoming shares
+
+- Vault now separates trip documents from owner-only personal documents. Add a passport, Aadhaar, insurance, or other PDF/image without a trip, with a name and optional label; preview, download, retry pending uploads, and explicitly delete personal files.
+- Personal metadata travels with the existing account-owned upload/outbox operation. Personal originals cannot be associated with a trip; sharing requires an intentional separate upload. Storage reads enforce the same boundary.
+- Installed Android PWAs can receive one PDF/JPEG/PNG/WebP under 5 MB via the system share sheet. The app opens a review screen with Personal documents or a selected trip; trip imports start as Only me. No cloud upload happens until Save.
+- Incoming shares use a bounded local handoff cache, expire after 15 minutes, and are removed on Save, Cancel, or sign-out. Unsupported platforms retain manual upload.
+- Apply `202609200003_personal_documents.sql` before personal-document cloud saves. SQL smoke checks and real Android share-sheet delivery still need deployment verification.
+- Vault document rows use smaller icons, tighter padding, and smaller full-wrapping titles without removing metadata.
+- Trip and Vault document lists use muted slate/teal folded-page outlines with small event-colored type symbols inside; personal files keep their document-type symbol. Compact category count chips wrap with consistent gaps, and trip document rows retain full titles and visibility badges with tighter spacing.
+
+## Unreleased — Expense connections
+
+- Expense details show a compact, clickable event-colored card in “Connected to”: event name and date, with a small chevron and a faint animated event silhouette. It links to flight/booking details or the exact timeline event, without repeating references or status.
+- Standalone new expenses and previously unlinked expenses can optionally select an event or a Vault document, never both. Receipt uploads reuse the Vault document form and retain its visibility controls; cancelling an expense does not delete an uploaded document.
+- Selecting an event for a new expense starts its split with that event’s travelers. Editing an expense preserves its existing traveler selection.
+- Payment status and Paid by share one row at phone, tablet, and desktop widths.
+- Cost details show included travelers without per-person amounts when the trip's expense splitting is off. Turning splitting on restores the amounts; stored shares and the overall expense total are unchanged.
+- Migration `202609200002_cost_document_association.sql` adds the receipt link, same-trip/access checks, and the mutually exclusive association constraint. Apply it before testing document-linked expense saves.
+- Daily overdue/readiness push rules remain a proposal, not an implemented feature.
+
+## Unreleased — Update prompt recovery
+
+- The explicit “Reload and update” action now handles waiting/installing service workers and stale prompts whose update already activated, then reloads after activation.
+- Added an “Updating…” state, duplicate-click protection, and a bounded wait with an actionable retry message. No site data, caches, registrations, or push subscriptions are cleared; no automatic reload timer was added.
+- Automatic overdue/daily-summary push notifications remain a proposal, not an implemented feature.
+
 ## 2026-09-20 — Retire temporary testing controls
 
 - Removed the Profile test-notification button and its unused browser API call; device opt-in, event/expense/reminder preferences, and disabling notifications remain available.

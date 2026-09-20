@@ -1,12 +1,34 @@
 import { RefreshCw, X } from "lucide-react";
+import { useRef, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
+import { reloadWithServiceWorkerUpdate } from "../lib/pwa/update";
 
 export function PwaUpdatePrompt() {
   const {
     needRefresh: [needRefresh, setNeedRefresh],
-    offlineReady: [offlineReady, setOfflineReady],
-    updateServiceWorker
+    offlineReady: [offlineReady, setOfflineReady]
   } = useRegisterSW({ immediate: true });
+  const [updating, setUpdating] = useState(false);
+  const [error, setError] = useState("");
+  const inFlight = useRef(false);
+
+  const applyUpdate = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setUpdating(true);
+    setError("");
+    try {
+      await reloadWithServiceWorkerUpdate({
+        getRegistration: () => navigator.serviceWorker.getRegistration(),
+        reload: () => window.location.reload()
+      });
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Update failed. Please try again.");
+    } finally {
+      inFlight.current = false;
+      setUpdating(false);
+    }
+  };
 
   if (!needRefresh && !offlineReady) return null;
 
@@ -30,15 +52,22 @@ export function PwaUpdatePrompt() {
             <button
               type="button"
               className="primary-button mt-3"
-              onClick={() => updateServiceWorker(true)}
+              disabled={updating}
+              onClick={() => void applyUpdate()}
             >
-              Reload and update
+              {updating ? "Updating…" : error ? "Retry update" : "Reload and update"}
             </button>
+          )}
+          {error && (
+            <p role="alert" className="mt-2 text-sm text-danger">
+              {error}
+            </p>
           )}
         </div>
         <button
           type="button"
           aria-label="Dismiss update message"
+          disabled={updating}
           className="tap-target grid size-10 place-items-center rounded-xl text-muted"
           onClick={() => (needRefresh ? setNeedRefresh(false) : setOfflineReady(false))}
         >

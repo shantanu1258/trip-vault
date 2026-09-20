@@ -123,94 +123,96 @@ export function DocumentInboxPanel() {
       <div className="mt-5 border-t border-line pt-4">
         <p className="eyebrow">Waiting for association</p>
         <div className="mt-3 space-y-2">
-          {uploads.data?.map((upload) => {
-            const needsOriginalFile = !upload.stored_at && !upload.can_retry;
-            const canCheckCloud = !upload.stored_at && !upload.can_retry && upload.can_verify;
-            const cloudStatus = upload.stored_at
-              ? "stored privately"
-              : upload.sync_error === "storage_missing"
-                ? "cloud file missing"
-                : canCheckCloud
-                  ? "cloud verification needed"
-                  : upload.sync_error
-                    ? "cloud action required"
-                    : "cloud upload pending";
-            return (
-              <div className="rounded-2xl bg-elevated p-4" key={upload.id}>
-                <div className="flex items-start gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-extrabold">{upload.original_filename}</p>
-                    <p className="mt-1 text-xs text-muted">
-                      {(upload.byte_size / 1_000_000).toFixed(2)} MB · {cloudStatus}
-                    </p>
-                    {needsOriginalFile && (
-                      <p className="mt-2 text-xs font-bold leading-5 text-warning">
-                        This device does not have the original file. Delete this unfinished entry
-                        and select the file again here, or retry on the device where it was added.
+          {uploads.data
+            ?.filter((upload) => !upload.personal_title)
+            .map((upload) => {
+              const needsOriginalFile = !upload.stored_at && !upload.can_retry;
+              const canCheckCloud = !upload.stored_at && !upload.can_retry && upload.can_verify;
+              const cloudStatus = upload.stored_at
+                ? "stored privately"
+                : upload.sync_error === "storage_missing"
+                  ? "cloud file missing"
+                  : canCheckCloud
+                    ? "cloud verification needed"
+                    : upload.sync_error
+                      ? "cloud action required"
+                      : "cloud upload pending";
+              return (
+                <div className="rounded-2xl bg-elevated p-4" key={upload.id}>
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-extrabold">{upload.original_filename}</p>
+                      <p className="mt-1 text-xs text-muted">
+                        {(upload.byte_size / 1_000_000).toFixed(2)} MB · {cloudStatus}
                       </p>
-                    )}
+                      {needsOriginalFile && (
+                        <p className="mt-2 text-xs font-bold leading-5 text-warning">
+                          This device does not have the original file. Delete this unfinished entry
+                          and select the file again here, or retry on the device where it was added.
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="tap-target grid size-9 place-items-center text-danger"
+                      disabled={remove.isPending}
+                      onClick={async () => {
+                        if (
+                          await confirm({
+                            title: "Delete unfinished upload?",
+                            message: `Delete ${upload.original_filename} permanently?`,
+                            confirmLabel: "Delete",
+                            tone: "danger"
+                          })
+                        )
+                          remove.mutate(upload);
+                      }}
+                      aria-label={`Delete ${upload.original_filename}`}
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className="tap-target grid size-9 place-items-center text-danger"
-                    disabled={remove.isPending}
-                    onClick={async () => {
-                      if (
-                        await confirm({
-                          title: "Delete unfinished upload?",
-                          message: `Delete ${upload.original_filename} permanently?`,
-                          confirmLabel: "Delete",
-                          tone: "danger"
-                        })
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {upload.association_pending ? (
+                      <span className="rounded-full bg-brand-soft px-3 py-2 text-xs font-bold text-brand">
+                        Trip details saved
+                      </span>
+                    ) : (
+                      upload.stored_at && (
+                        <button
+                          type="button"
+                          className="secondary-button min-h-9 px-3 py-2 text-xs"
+                          onClick={() => openAssociation(upload)}
+                        >
+                          Attach to trip
+                        </button>
                       )
-                        remove.mutate(upload);
-                    }}
-                    aria-label={`Delete ${upload.original_filename}`}
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {upload.association_pending ? (
-                    <span className="rounded-full bg-brand-soft px-3 py-2 text-xs font-bold text-brand">
-                      Trip details saved
-                    </span>
-                  ) : (
-                    upload.stored_at && (
+                    )}
+                    {upload.sync_state === "queued" && (upload.can_retry || canCheckCloud) && (
                       <button
                         type="button"
                         className="secondary-button min-h-9 px-3 py-2 text-xs"
-                        onClick={() => openAssociation(upload)}
+                        disabled={retry.isPending || !navigator.onLine}
+                        onClick={() => retry.mutate(upload.id)}
                       >
-                        Attach to trip
+                        <RefreshCw className="size-3.5" />{" "}
+                        {upload.association_pending
+                          ? "Finish association"
+                          : upload.can_retry
+                            ? "Retry cloud"
+                            : "Check cloud"}
                       </button>
-                    )
-                  )}
-                  {upload.sync_state === "queued" && (upload.can_retry || canCheckCloud) && (
-                    <button
-                      type="button"
-                      className="secondary-button min-h-9 px-3 py-2 text-xs"
-                      disabled={retry.isPending || !navigator.onLine}
-                      onClick={() => retry.mutate(upload.id)}
-                    >
-                      <RefreshCw className="size-3.5" />{" "}
-                      {upload.association_pending
-                        ? "Finish association"
-                        : upload.can_retry
-                          ? "Retry cloud"
-                          : "Check cloud"}
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
           {uploads.isLoading && (
             <p className="flex items-center gap-2 text-sm text-muted">
               <Loader2 className="size-4 animate-spin" /> Opening inbox
             </p>
           )}
-          {uploads.data?.length === 0 && (
+          {uploads.data?.filter((upload) => !upload.personal_title).length === 0 && (
             <p className="text-sm text-muted">No unfinished uploads.</p>
           )}
         </div>

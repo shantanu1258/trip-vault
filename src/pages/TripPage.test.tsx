@@ -1634,20 +1634,42 @@ describe("trip expense cards", () => {
     const onEdit = vi.fn();
     const onArchive = vi.fn();
     render(
-      <CostDetailsSheet
-        cost={expense}
-        travelers={expenseTravelers}
-        itinerary={[activity]}
-        editable
-        onClose={vi.fn()}
-        onEdit={onEdit}
-        onArchive={onArchive}
-      />
+      <MemoryRouter>
+        <CostDetailsSheet
+          cost={{ ...expense, booking_id: "same-booking" }}
+          expenseSplittingEnabled
+          travelers={expenseTravelers}
+          itinerary={[
+            {
+              ...activity,
+              id: "other-milestone",
+              booking_id: "same-booking",
+              title: "Other milestone"
+            },
+            { ...activity, booking_id: "same-booking" }
+          ]}
+          editable
+          onClose={vi.fn()}
+          onEdit={onEdit}
+          onArchive={onArchive}
+        />
+      </MemoryRouter>
     );
 
     expect(screen.getByRole("region", { name: "Museum tickets" })).toBeInTheDocument();
     expect(screen.getByText("Paid by").nextSibling).toHaveTextContent("Shantanu");
     expect(screen.getByText("Connected to").nextSibling).toHaveTextContent("Museum visit");
+    expect(screen.getByRole("link", { name: "View event details: Museum visit" })).toHaveAttribute(
+      "href",
+      `/trips/${expense.trip_id}?view=timeline&event=${activity.id}`
+    );
+    const connectionCard = screen.getByRole("link", { name: "View event details: Museum visit" });
+    expect(connectionCard).toHaveTextContent(/Sep/);
+    expect(connectionCard).not.toHaveTextContent("View details");
+    expect(connectionCard.querySelector('[data-silhouette-placement="summary"]')).toHaveAttribute(
+      "data-silhouette",
+      "activity"
+    );
     expect(screen.getAllByText(/6,000/)).toHaveLength(2);
     expect(screen.getByText("Booked at the museum website")).toBeInTheDocument();
 
@@ -1659,7 +1681,7 @@ describe("trip expense cards", () => {
     expect(onArchive).toHaveBeenCalledOnce();
   });
 
-  it("resolves equal null shares deterministically without losing a minor unit", () => {
+  it("shows split amounts only when enabled, preserving travelers and the total when disabled", () => {
     const equalSplitExpense: TripCost = {
       ...expense,
       id: "cost-equal-split",
@@ -1670,16 +1692,19 @@ describe("trip expense cards", () => {
       ]
     };
 
-    render(
-      <CostDetailsSheet
-        cost={equalSplitExpense}
-        travelers={expenseTravelers}
-        itinerary={[activity]}
-        editable={false}
-        onClose={vi.fn()}
-        onEdit={vi.fn()}
-        onArchive={vi.fn()}
-      />
+    const view = render(
+      <MemoryRouter>
+        <CostDetailsSheet
+          cost={equalSplitExpense}
+          expenseSplittingEnabled
+          travelers={expenseTravelers}
+          itinerary={[activity]}
+          editable={false}
+          onClose={vi.fn()}
+          onEdit={vi.fn()}
+          onArchive={vi.fn()}
+        />
+      </MemoryRouter>
     );
 
     const participantRows = screen.getAllByRole("listitem");
@@ -1689,6 +1714,29 @@ describe("trip expense cards", () => {
     expect(shubhamRow).toHaveTextContent(/50\.00/);
     expect(screen.queryByText("Equal share")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit travelers" })).not.toBeInTheDocument();
+    for (const cost of [equalSplitExpense, expense]) {
+      view.rerender(
+        <MemoryRouter>
+          <CostDetailsSheet
+            cost={cost}
+            expenseSplittingEnabled={false}
+            travelers={expenseTravelers}
+            itinerary={[activity]}
+            editable={false}
+            onClose={vi.fn()}
+            onEdit={vi.fn()}
+            onArchive={vi.fn()}
+          />
+        </MemoryRouter>
+      );
+      const rows = screen.getAllByRole("listitem");
+      expect(rows).toHaveLength(2);
+      expect(rows.map((row) => row.textContent).sort()).toEqual(["Shantanu", "Shubham"]);
+      expect(screen.getByText("Amount").nextSibling).toHaveTextContent(
+        cost === equalSplitExpense ? /100\.01/ : /12,000/
+      );
+      expect(screen.queryByText("Equal share")).not.toBeInTheDocument();
+    }
   });
 
   it("excludes refunded expenses from the headline while keeping their detail row", async () => {
