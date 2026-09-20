@@ -1,8 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, FilePlus2, FileText, Loader2, Paperclip, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  FilePlus2,
+  FileText,
+  Loader2,
+  Paperclip,
+  Trash2
+} from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { DocumentVisibilityBadge } from "../../components/DocumentVisibilityBadge";
+import { TripChildLink } from "../../components/TripChildLink";
 import { useConfirmDialog } from "../../components/ConfirmDialogProvider";
 import { ModalSheet } from "../../components/ModalSheet";
 import type { ItineraryItem } from "../trips/types";
@@ -187,30 +196,36 @@ export function EventDocuments({
   return (
     <div className="mt-4 border-t border-line pt-4">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="mr-auto flex items-center gap-2 text-xs font-bold text-muted">
-          <Paperclip className="size-4" /> {visibleLinks.length} document
-          {visibleLinks.length === 1 ? "" : "s"}
-        </p>
+        <h3 className="mr-auto flex items-center gap-2 text-sm font-extrabold text-ink">
+          <Paperclip className="size-4 text-muted" aria-hidden="true" /> Documents
+          <span
+            className="rounded-full bg-elevated px-2 py-0.5 text-xs font-bold text-muted"
+            aria-label={`${visibleLinks.length} attached document${visibleLinks.length === 1 ? "" : "s"}`}
+          >
+            {visibleLinks.length}
+          </span>
+        </h3>
       </div>
       {visibleLinks.length > 0 && (
-        <div className="mt-3 space-y-3">
+        <div className="mt-1 space-y-1">
           {documentGroups.map((group) => (
             <section key={group.key} aria-label={group.label ?? undefined}>
               {group.label && (
                 <button
                   type="button"
                   onClick={() => toggleGroup(group.key)}
-                  className="mb-1.5 flex min-h-11 w-full items-center gap-2 text-left"
+                  className="flex min-h-11 w-full items-center gap-2 text-left"
                   aria-expanded={!isCollapsed(group.key)}
                   aria-label={`${isCollapsed(group.key) ? "Expand" : "Collapse"} documents for ${group.label}`}
                 >
-                  <strong className="shrink-0 text-base font-extrabold text-ink">
-                    {group.label}
+                  <strong className="min-w-0 break-words text-xs font-bold text-muted">
+                    {group.key === "unassigned" ? "Unassigned documents" : `For ${group.label}`}
                   </strong>
-                  <span className="h-px flex-1 bg-line" aria-hidden="true" />
-                  <span className="text-[.65rem] font-bold text-muted">{group.links.length}</span>
+                  <span className="shrink-0 rounded-full bg-elevated px-1.5 py-0.5 text-[.65rem] font-bold text-muted">
+                    {group.links.length}
+                  </span>
                   <ChevronDown
-                    className={`size-4 shrink-0 text-muted transition-transform ${isCollapsed(group.key) ? "-rotate-90" : ""}`}
+                    className={`ml-auto size-3.5 shrink-0 text-muted transition-transform ${isCollapsed(group.key) ? "-rotate-90" : ""}`}
                   />
                 </button>
               )}
@@ -221,50 +236,63 @@ export function EventDocuments({
                     return (
                       <div
                         key={link.document_id}
-                        className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface/70 sm:flex-row sm:items-stretch"
+                        className="relative min-w-0 overflow-hidden rounded-xl border border-line bg-surface/70"
                       >
-                        <Link
-                          className="tap-target flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-xs font-bold sm:items-center"
+                        <TripChildLink
+                          tripId={item.trip_id}
+                          id={`event-document-${item.id}-${link.document_id}`}
+                          scrollAnchorId={`timeline-${item.id}`}
+                          aria-label={documentTitle}
+                          className="tap-target group grid min-w-0 grid-cols-[.875rem_minmax(0,1fr)_1rem] items-start gap-x-2 px-3 py-2 text-xs font-bold transition hover:bg-brand-soft/40 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
                           to={`/trips/${item.trip_id}/documents/${link.document_id}`}
                           state={navigationState}
                         >
-                          <FileText className="mt-0.5 size-3.5 shrink-0 text-brand sm:mt-0" />
-                          <span className="min-w-0 flex-1 break-words leading-5 [overflow-wrap:anywhere]">
-                            {documentTitle}
-                          </span>
-                        </Link>
-                        <div className="flex min-w-0 items-stretch border-t border-line sm:border-l sm:border-t-0">
-                          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 px-3 py-1 sm:flex-none sm:flex-nowrap sm:px-2">
-                            <span className="text-[.65rem] font-medium text-muted">
-                              {documentPurposeLabel(link.document.purpose)}
-                              {link.inherited ? " · booking document" : ""}
-                              {link.document.sync_state === "queued"
-                                ? " · saved on device, cloud pending"
-                                : ""}
+                          <FileText
+                            className="mt-0.5 size-3.5 shrink-0 text-brand"
+                            aria-hidden="true"
+                          />
+                          <span className="min-w-0">
+                            <span className="block break-words leading-5 [overflow-wrap:anywhere]">
+                              {documentTitle}
                             </span>
-                            <DocumentVisibilityBadge visibility={link.document.visibility} />
-                          </div>
-                          {canEdit && !link.inherited && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                if (
-                                  await confirm({
-                                    title: "Unlink document?",
-                                    message: `Unlink ${link.document.title} from this event? The Vault document will remain.`,
-                                    confirmLabel: "Unlink",
-                                    tone: "danger"
-                                  })
-                                )
-                                  unlinkMutation.mutate(link.document_id);
-                              }}
-                              className="tap-target grid size-11 shrink-0 place-items-center border-l border-line text-muted hover:text-danger sm:h-auto sm:self-stretch"
-                              aria-label={`Unlink ${documentTitle}`}
+                            <span
+                              className={`mt-1 flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1 ${canEdit && !link.inherited ? "pr-3" : ""}`}
                             >
-                              <Trash2 className="size-3.5" />
-                            </button>
-                          )}
-                        </div>
+                              <span className="text-[.65rem] font-medium text-muted">
+                                {documentPurposeLabel(link.document.purpose)}
+                                {link.inherited ? " · booking document" : ""}
+                                {link.document.sync_state === "queued"
+                                  ? " · saved on device, cloud pending"
+                                  : ""}
+                              </span>
+                              <DocumentVisibilityBadge visibility={link.document.visibility} />
+                            </span>
+                          </span>
+                          <ChevronRight
+                            className="mt-0.5 size-4 text-muted transition-transform group-hover:translate-x-0.5"
+                            aria-hidden="true"
+                          />
+                        </TripChildLink>
+                        {canEdit && !link.inherited && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (
+                                await confirm({
+                                  title: "Unlink document?",
+                                  message: `Unlink ${link.document.title} from this event? The Vault document will remain.`,
+                                  confirmLabel: "Unlink",
+                                  tone: "danger"
+                                })
+                              )
+                                unlinkMutation.mutate(link.document_id);
+                            }}
+                            className="tap-target absolute bottom-0 right-0 grid size-11 place-items-center rounded-lg text-muted hover:bg-danger/5 hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
+                            aria-label={`Unlink ${documentTitle}`}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        )}
                       </div>
                     );
                   })}

@@ -15,7 +15,9 @@ User-visible changes are listed newest first. The HLD, LLD, and feature catalog 
 
 ## Unreleased — Document download and device sharing
 
+- Event attachments now have a clear Documents heading and compact traveler groups with adjacent counts. Tighter card padding and a bottom-right unlink action give full titles more room without the old full-height action column. The full document card, including its purpose and visibility badge, opens the file; unlink remains a separate confirmed action with a 44 px target.
 - Trip-document viewers and personal-document previews now expose Download and Share actions: accessible icons on phones, with text labels on tablet/desktop. Trip viewer Open and Details actions use the same compact treatment.
+- Open keeps its text label on phones too, making the device viewer easier to find when a document needs closer inspection or zooming.
 - Share passes the already-loaded file and its original filename to the device share sheet, never a private route or signed storage URL. Unsupported browsers/file types show a Download/Files fallback; cancellation is silent and failures are retryable. Sharing a copy does not change Vault visibility. Native recipient delivery still needs device acceptance testing.
 
 ## Unreleased — Route bundle optimization

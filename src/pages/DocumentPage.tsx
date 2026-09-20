@@ -313,7 +313,7 @@ export function DocumentPage() {
                     title="Open with device viewer"
                   >
                     <ExternalLink className="size-4" />
-                    <span className="hidden sm:inline">Open</span>
+                    <span>Open</span>
                   </a>
                 )}
                 {url && blob && document.current_version && (

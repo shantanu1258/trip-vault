@@ -165,6 +165,7 @@ describe("DocumentPage", () => {
       "href",
       "blob:ticket"
     );
+    expect(screen.getByText("Open", { exact: true })).not.toHaveClass("hidden");
     expect(screen.getByRole("link", { name: "Download document" })).toHaveAttribute(
       "download",
       "visa.pdf"

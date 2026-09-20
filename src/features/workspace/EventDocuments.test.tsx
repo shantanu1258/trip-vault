@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { ConfirmDialogProvider } from "../../components/ConfirmDialogProvider";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ItineraryItem } from "../trips/types";
 import type { EventDocumentLink, Traveler, VaultDocument } from "./types";
@@ -95,6 +96,16 @@ function traveler(id: string, displayName: string): Traveler {
   };
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <output data-testid="location">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
+}
+
 function renderDocuments(
   travelers: Traveler[] = [],
   compact = false,
@@ -104,15 +115,18 @@ function renderDocuments(
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <EventDocuments
-          item={item}
-          canEdit
-          travelers={travelers}
-          compact={compact}
-          travelerId={travelerId}
-          onUpload={onUpload}
-        />
+      <MemoryRouter initialEntries={["/trips/trip-1?view=details"]}>
+        <LocationProbe />
+        <ConfirmDialogProvider>
+          <EventDocuments
+            item={item}
+            canEdit
+            travelers={travelers}
+            compact={compact}
+            travelerId={travelerId}
+            onUpload={onUpload}
+          />
+        </ConfirmDialogProvider>
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -247,7 +261,7 @@ describe("event document cards", () => {
     expect(screen.getByRole("link", { name: "Shared ticket" })).toBeVisible();
   });
 
-  it("keeps a complete document link separate from its visibility and unlink action", async () => {
+  it("opens the whole document card including visibility, keeping unlink separate and confirmed", async () => {
     const longTitle =
       "Universal Studios and Oceanarium family activity booking confirmation for everyone";
     mocks.listEventDocumentLinks.mockResolvedValue([
@@ -262,14 +276,27 @@ describe("event document cards", () => {
     expect(documentLink).toHaveAttribute("href", "/trips/trip-1/documents/long-document");
 
     const visibility = screen.getByLabelText("Visible to all signed-in trip members");
-    const detailsAndActions = visibility.parentElement?.parentElement;
-    expect(detailsAndActions).toHaveTextContent("Ticket");
-    expect(detailsAndActions).toHaveTextContent("Trip members");
+    expect(documentLink).toContainElement(visibility);
+    expect(documentLink).toHaveTextContent("Ticket");
+    expect(documentLink).toHaveTextContent("Trip members");
+    expect(screen.getByRole("heading", { name: /Documents/ })).toBeVisible();
+    expect(screen.getByLabelText("1 attached document")).toBeVisible();
+    expect(screen.getByText("For Everyone")).toBeVisible();
 
     const unlink = screen.getByRole("button", { name: `Unlink ${longTitle}` });
     expect(documentLink).not.toContainElement(unlink);
     expect(screen.queryByRole("button", { name: /Move .* earlier/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Move .* later/ })).not.toBeInTheDocument();
+    await userEvent.click(unlink);
+    expect(await screen.findByRole("dialog", { name: "Unlink document?" })).toBeVisible();
+    expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1?view=details");
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(mocks.unlinkDocumentFromEvent).not.toHaveBeenCalled();
+    await userEvent.click(visibility);
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/trips/trip-1/documents/long-document"
+    );
+    expect(mocks.unlinkDocumentFromEvent).not.toHaveBeenCalled();
   });
 
   it("groups associated documents by traveler while keeping shared documents together", async () => {
@@ -311,7 +338,7 @@ describe("event document cards", () => {
 
     const ashaToggle = screen.getByRole("button", { name: "Collapse documents for Asha Singh" });
     expect(ashaToggle).toHaveAttribute("aria-expanded", "true");
-    expect(within(ashaToggle).getByText("Asha Singh")).toHaveClass("text-base");
+    expect(within(ashaToggle).getByText("For Asha Singh")).toBeVisible();
     await userEvent.click(ashaToggle);
     expect(screen.queryByText("Asha ferry ticket")).not.toBeInTheDocument();
     expect(screen.getByText("Shared ferry confirmation")).toBeInTheDocument();
