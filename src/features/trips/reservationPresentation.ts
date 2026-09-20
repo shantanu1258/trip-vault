@@ -48,21 +48,41 @@ export function reservationHref(tripId: string, booking: Booking, flights: Fligh
     : `/trips/${tripId}/bookings/${booking.id}`;
 }
 
+export type ReservationFilter =
+  | "all"
+  | "flight"
+  | "hotel"
+  | "train"
+  | "bus"
+  | "ferry"
+  | "cab"
+  | "transport"
+  | "journey"
+  | "plan";
+
+export function matchesReservationFilter(type: string, filter: ReservationFilter) {
+  if (filter === "all") return true;
+  // Keep old shared links functional, but expose individual modes in new filters.
+  if (filter === "journey") return ["train", "bus", "ferry", "cab", "transport"].includes(type);
+  if (filter === "plan") return ["activity", "restaurant", "other"].includes(type);
+  return type === filter;
+}
+
 export function bookingCategoryCounts(bookings: Booking[]) {
   return [
-    { label: "Flights", count: bookings.filter((booking) => booking.type === "flight").length },
-    { label: "Stays", count: bookings.filter((booking) => booking.type === "hotel").length },
-    {
-      label: "Ground & water",
-      count: bookings.filter((booking) =>
-        ["train", "bus", "ferry", "cab", "transport"].includes(booking.type)
-      ).length
-    },
-    {
-      label: "Plans",
-      count: bookings.filter((booking) =>
-        ["activity", "restaurant", "other"].includes(booking.type)
-      ).length
-    }
-  ];
+    { key: "flight", label: "Flights" },
+    { key: "hotel", label: "Stays" },
+    { key: "train", label: "Trains" },
+    { key: "bus", label: "Buses" },
+    { key: "ferry", label: "Ferries" },
+    { key: "cab", label: "Cabs" },
+    { key: "transport", label: "Other transport" },
+    { key: "plan", label: "Plans" }
+  ].map(({ key, label }) => ({
+    key: key as ReservationFilter,
+    label,
+    count: bookings.filter((booking) =>
+      matchesReservationFilter(booking.type, key as ReservationFilter)
+    ).length
+  }));
 }

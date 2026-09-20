@@ -15,6 +15,7 @@ import { TripDetailsSection } from "./TripDetailsSection";
 import { TripReadinessSection } from "./TripReadinessSummary";
 import { readinessSummary } from "../timeline/model";
 import { TripAirlinesPanel } from "../workspace/TripAirlinesPanel";
+import { documentCategoryCounts } from "../workspace/documentFilters";
 import {
   bookingCategoryCounts,
   groupByBookingId,
@@ -70,7 +71,7 @@ function CollectionCounts({
   collection = "reservations",
   navigationState
 }: {
-  values: Array<{ label: string; count: number }>;
+  values: Array<{ key: string; label: string; count: number }>;
   tripId?: string;
   collection?: "reservations" | "documents";
   navigationState?: unknown;
@@ -85,7 +86,7 @@ function CollectionCounts({
           <TripChildLink
             tripId={tripId}
             key={value.label}
-            to={`/trips/${tripId}/${collection}?category=${collection === "documents" ? encodeURIComponent(value.label.replaceAll(" ", "_")) : value.label === "Flights" ? "flight" : value.label === "Stays" ? "hotel" : value.label === "Ground & water" ? "journey" : "plan"}`}
+            to={`/trips/${tripId}/${collection}?category=${encodeURIComponent(value.key)}`}
             state={navigationState}
             className="inline-flex min-h-9 items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-[.7rem] font-bold text-muted hover:border-brand hover:text-ink"
           >
@@ -102,18 +103,6 @@ function CollectionCounts({
       )}
     </div>
   );
-}
-
-function documentCategoryCounts(documents: VaultDocument[]) {
-  const counts = new Map<string, number>();
-  for (const document of documents) {
-    const label = document.category.replaceAll("_", " ");
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-  return [...counts]
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-    .slice(0, 6)
-    .map(([label, count]) => ({ label, count }));
 }
 
 export function TripDetailsView(props: TripDetailsViewProps) {
@@ -139,7 +128,10 @@ export function TripDetailsView(props: TripDetailsViewProps) {
   const readiness = readinessSummary(props.requirements ?? []);
   const journeysByBooking = useMemo(() => groupByBookingId(journeys), [journeys]);
   const reservationCounts = useMemo(() => bookingCategoryCounts(bookings), [bookings]);
-  const documentCounts = useMemo(() => documentCategoryCounts(documents), [documents]);
+  const documentCounts = useMemo(
+    () => documentCategoryCounts(documents, bookings),
+    [documents, bookings]
+  );
   const documentCountByBooking = useMemo(() => {
     const counts = new Map<string, number>();
     for (const document of documents) {

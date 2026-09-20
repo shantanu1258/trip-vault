@@ -129,6 +129,30 @@ function renderRoute(element: React.ReactNode, path: string) {
 }
 
 describe("large trip collection pages", () => {
+  it("separates all transport modes and preserves legacy journey filters", async () => {
+    mocks.getTrip.mockResolvedValue(trip);
+    const modes = ["train", "bus", "ferry", "cab", "transport"] as const;
+    mocks.listBookings.mockResolvedValue(
+      modes.map((type, index) => ({ ...booking(index + 1), type, title: `${type} booking` }))
+    );
+    renderRoute(<TripReservationsPage />, "/trips/trip-1/reservations?category=journey");
+    expect(await screen.findByText("bus booking")).toBeVisible();
+    for (const [index, label] of [
+      "Trains",
+      "Buses",
+      "Ferries",
+      "Cabs",
+      "Other transport"
+    ].entries()) {
+      await userEvent.click(screen.getByRole("button", { name: `${label} 1` }));
+      expect(screen.getByText(`${modes[index]} booking`)).toBeVisible();
+      expect(
+        screen.queryByText(`${modes[(index + 1) % modes.length]} booking`)
+      ).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText(/Ground & water/)).not.toBeInTheDocument();
+  });
+
   it("shows every reservation in the focused list and filters it by category", async () => {
     mocks.getTrip.mockResolvedValue(trip);
     mocks.listBookings.mockResolvedValue(
@@ -172,9 +196,11 @@ describe("large trip collection pages", () => {
     mocks.getTrip.mockResolvedValue(trip);
     mocks.listItinerary.mockResolvedValue([]);
     mocks.listTravelers.mockResolvedValue(travelers);
+    mocks.listBookings.mockResolvedValue([{ ...booking(1), type: "bus" }]);
     mocks.listVaultDocuments.mockResolvedValue([
       { ...document("flight", "Flight ticket", []), category: "flight" },
-      { ...document("hotel", "Hotel confirmation", []), category: "hotel" }
+      { ...document("hotel", "Hotel confirmation", []), category: "hotel" },
+      { ...document("bus", "Bus ticket", []), category: "transport", booking_id: "booking-1" }
     ]);
     renderRoute(<TripDocumentsPage />, "/trips/trip-1/documents?category=flight");
     expect(await screen.findByText("Flight ticket")).toBeVisible();
@@ -187,5 +213,11 @@ describe("large trip collection pages", () => {
       "all"
     );
     expect(screen.getByText("Hotel confirmation")).toBeVisible();
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Filter documents by category" }),
+      "bus"
+    );
+    expect(screen.getByText("Bus ticket")).toBeVisible();
+    expect(screen.queryByText("Hotel confirmation")).not.toBeInTheDocument();
   });
 });

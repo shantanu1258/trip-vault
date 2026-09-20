@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArchiveRestore, CloudUpload, FileSearch, LockKeyhole, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -11,7 +11,12 @@ import {
   listVaultDocuments,
   restoreDocument
 } from "../features/workspace/api";
-import { documentPurposeLabel } from "../features/workspace/documentModel";
+import { documentMatchesTraveler, documentPurposeLabel } from "../features/workspace/documentModel";
+import {
+  documentCategoryCounts,
+  documentFilterCategory
+} from "../features/workspace/documentFilters";
+import { tripQueries } from "../features/queries/tripQueries";
 import { PersonalDocuments } from "../features/workspace/PersonalDocuments";
 
 export function VaultPage() {
@@ -20,6 +25,7 @@ export function VaultPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
+  const [travelerKey, setTravelerKey] = useState("all");
   const [showArchived, setShowArchived] = useState(false);
   const query = useQuery({ queryKey: ["documents"], queryFn: () => listVaultDocuments() });
   const archivedQuery = useQuery({
@@ -37,18 +43,63 @@ export function VaultPage() {
     }
   });
   const source = showArchived ? (archivedQuery.data ?? []) : (query.data ?? []);
+  const tripIds = [...new Set(source.map((document) => document.trip_id))].sort();
+  const tripsQuery = useQuery({ ...tripQueries.trips(), enabled: !personal && tripIds.length > 0 });
+  const travelersQueries = useQueries({
+    queries: tripIds.map((tripId) => ({
+      ...tripQueries.travelers(tripId),
+      enabled: !personal
+    }))
+  });
+  const bookingQueries = useQueries({
+    queries: tripIds.map((tripId) => ({
+      ...tripQueries.bookings(tripId),
+      enabled:
+        !personal &&
+        source.some((document) => document.trip_id === tripId && document.category === "transport")
+    }))
+  });
+  const bookings = bookingQueries.flatMap((query) => query.data ?? []);
+  const travelerGroups = tripIds.map((tripId, index) => ({
+    tripId,
+    title:
+      tripsQuery.data?.find((trip) => trip.id === tripId)?.title ?? `Trip ${tripId.slice(0, 8)}`,
+    travelers: travelersQueries[index].data ?? []
+  }));
+  const selectedTraveler = travelerGroups
+    .flatMap((group) => group.travelers)
+    .find((traveler) => `${traveler.trip_id}:${traveler.id}` === travelerKey);
+  const travelerDocuments = source.filter(
+    (document) =>
+      travelerKey === "all" ||
+      (selectedTraveler &&
+        document.trip_id === selectedTraveler.trip_id &&
+        documentMatchesTraveler(document, selectedTraveler.id))
+  );
   const documents = useMemo(
     () =>
-      source.filter(
+      travelerDocuments.filter(
         (document) =>
-          (category === "all" || document.category === category) &&
+          (category === "all" || documentFilterCategory(document, bookings) === category) &&
           `${document.title} ${document.purpose} ${document.short_label ?? ""}`
             .toLowerCase()
             .includes(search.toLowerCase())
       ),
-    [source, search, category]
+    [travelerDocuments, bookings, search, category]
   );
-  const categories = Array.from(new Set((query.data ?? []).map((document) => document.category)));
+  const categories = documentCategoryCounts(travelerDocuments, bookings);
+  const activeCategory =
+    category === "all"
+      ? undefined
+      : (documentCategoryCounts(source, bookings).find((item) => item.key === category) ?? {
+          key: category,
+          label: category.replaceAll("_", " "),
+          count: 0
+        });
+  const categoryOptions =
+    activeCategory && !categories.some((item) => item.key === category)
+      ? [...categories, { ...activeCategory, count: 0 }]
+      : categories;
   return (
     <AppShell>
       <div className="mx-auto min-w-0 max-w-5xl">
@@ -79,7 +130,9 @@ export function VaultPage() {
             type="button"
             className={`min-h-11 whitespace-nowrap border-b-2 px-1 py-2 text-xs font-bold transition-colors min-[360px]:px-2 sm:px-3 sm:text-sm ${personal ? "border-brand text-brand" : "border-transparent text-muted hover:text-ink"}`}
             aria-pressed={personal}
-            onClick={() => setParams({ section: "personal" })}
+            onClick={() => {
+              setParams({ section: "personal" });
+            }}
           >
             Personal documents
           </button>
@@ -87,7 +140,11 @@ export function VaultPage() {
             <button
               type="button"
               disabled={!navigator.onLine && !showArchived}
-              onClick={() => setShowArchived((value) => !value)}
+              onClick={() => {
+                setShowArchived((value) => !value);
+                setCategory("all");
+                setTravelerKey("all");
+              }}
               aria-label={showArchived ? "Current documents" : "Recently deleted"}
               title={showArchived ? "Current documents" : "Recently deleted"}
               aria-pressed={showArchived}
@@ -117,38 +174,82 @@ export function VaultPage() {
             )}
             {(showArchived || (query.data && query.data.length > 0)) && (
               <>
-                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                  <label className="relative flex-1">
+                <div className="mt-2 grid grid-cols-2 items-stretch gap-2">
+                  <label className="relative min-w-0">
                     <span className="sr-only">Search documents</span>
                     <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
                     <input
-                      className="form-input pl-10"
+                      className="form-input mt-0 min-w-0 pl-10"
                       value={search}
                       onChange={(event) => setSearch(event.target.value)}
-                      placeholder="Search title, purpose, or label"
+                      placeholder="Search files"
                     />
                   </label>
                   <select
-                    aria-label="Filter by category"
-                    className="form-input sm:w-44"
-                    value={category}
-                    onChange={(event) => setCategory(event.target.value)}
+                    aria-label="Filter Vault documents by traveler"
+                    className="form-input mt-0 min-w-0 truncate"
+                    value={travelerKey}
+                    onChange={(event) => setTravelerKey(event.target.value)}
                   >
-                    <option value="all">All categories</option>
-                    {categories.map((item) => (
-                      <option className="capitalize" key={item}>
-                        {item}
-                      </option>
-                    ))}
+                    <option value="all">All travelers</option>
+                    {travelerKey !== "all" && !selectedTraveler && (
+                      <option value={travelerKey}>Traveler unavailable</option>
+                    )}
+                    {travelerGroups
+                      .filter((group) => group.travelers.length > 0)
+                      .map((group) => (
+                        <optgroup key={group.tripId} label={group.title}>
+                          {group.travelers.map((traveler) => (
+                            <option key={traveler.id} value={`${group.tripId}:${traveler.id}`}>
+                              {traveler.display_name} · {group.title}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
                   </select>
                 </div>
+                <div
+                  className="mt-2 flex min-w-0 gap-2 overflow-x-auto rounded-2xl border border-line bg-surface p-2"
+                  role="group"
+                  aria-label="Document types"
+                >
+                  {[
+                    { key: "all", label: "All", count: travelerDocuments.length },
+                    ...categoryOptions
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      aria-pressed={category === item.key}
+                      onClick={() => setCategory(item.key)}
+                      className={`inline-flex min-h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-bold focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand ${category === item.key ? "bg-brand text-surface" : "bg-elevated text-brand hover:bg-brand-soft"}`}
+                    >
+                      {item.label} · {item.count}
+                    </button>
+                  ))}
+                </div>
+                {travelersQueries.some((query) => query.isLoading) && (
+                  <p className="mt-2 text-xs text-muted">Loading travelers…</p>
+                )}
+                {(tripsQuery.isError || travelersQueries.some((query) => query.isError)) && (
+                  <p className="mt-2 text-xs text-muted">
+                    Some trip or traveler names could not be loaded. All available documents are
+                    still accessible with All travelers.
+                  </p>
+                )}
+                {bookingQueries.some((query) => query.isError) && (
+                  <p className="mt-2 text-xs text-muted">
+                    Some transport types could not be loaded; those files appear under Other
+                    transport.
+                  </p>
+                )}
                 {showArchived && (
                   <p className="mt-4 text-sm text-muted">
                     Documents remain recoverable here for 30 days. Restoration requires a
                     connection.
                   </p>
                 )}
-                <div className="mt-4 grid min-w-0 gap-2 md:grid-cols-2">
+                <div className="mt-2 grid min-w-0 gap-2 md:grid-cols-2">
                   {documents.map((document) => {
                     const assignment =
                       document.assignment_mode === "selected"

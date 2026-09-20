@@ -10,6 +10,10 @@ import { tripQueries } from "../features/queries/tripQueries";
 import { tripChildNavigationState, tripReturnNavigation } from "../features/trips/navigation";
 import { useTripReturnScroll } from "../features/trips/returnScroll";
 import { documentMatchesTraveler } from "../features/workspace/documentModel";
+import {
+  documentCategoryCounts,
+  documentFilterCategory
+} from "../features/workspace/documentFilters";
 import { readTravelerFocus } from "../features/workspace/travelerFocus";
 
 export function TripDocumentsPage() {
@@ -55,14 +59,14 @@ export function TripDocumentsPage() {
     const normalized = search.trim().toLowerCase();
     return (documentsQuery.data ?? []).filter(
       (document) =>
-        (category === "all" || document.category === category) &&
+        (category === "all" || documentFilterCategory(document, bookingsQuery.data) === category) &&
         (travelerId === "all" || documentMatchesTraveler(document, travelerId)) &&
         (!normalized ||
           `${document.title} ${document.purpose} ${document.short_label ?? ""}`
             .toLowerCase()
             .includes(normalized))
     );
-  }, [category, documentsQuery.data, search, travelerId]);
+  }, [category, documentsQuery.data, bookingsQuery.data, search, travelerId]);
   const ranked = useMemo(
     () =>
       rankDocumentsForUpcomingEvents({
@@ -77,7 +81,7 @@ export function TripDocumentsPage() {
   const neededNext = ranked.filter((item) => Number.isFinite(item.occursAt)).slice(0, 3);
   const neededIds = new Set(neededNext.map((item) => item.document.id));
   const remaining = ranked.filter((item) => !neededIds.has(item.document.id));
-  const categories = [...new Set((documentsQuery.data ?? []).map((document) => document.category))];
+  const categories = documentCategoryCounts(documentsQuery.data ?? [], bookingsQuery.data);
   const returnNavigation = tripReturnNavigation(location.state, tripId);
   const childState = tripChildNavigationState(location.state, tripId, "details");
   useTripReturnScroll(
@@ -141,8 +145,8 @@ export function TripDocumentsPage() {
               >
                 <option value="all">All types</option>
                 {categories.map((item) => (
-                  <option key={item} value={item}>
-                    {item.replaceAll("_", " ")}
+                  <option key={item.key} value={item.key}>
+                    {item.label}
                   </option>
                 ))}
               </select>

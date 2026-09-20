@@ -2,6 +2,12 @@
 
 User-visible changes are listed newest first. The HLD, LLD, and feature catalog are the current design contract; this file records history, including superseded experiments. This initial changelog covers the September 19 enhancement batch, not every earlier commit.
 
+## Unreleased — Vault and transport filters
+
+- Common Vault trip documents use a 50/50 search-and-traveler row, followed by a rounded, horizontally scrollable type strip matching the trip-section shortcuts. Every type shows its count, with a distinct selected state; no Filters panel or overflow menu is needed. Category and traveler filters combine without silently clearing each other. Same-named travelers in different trips remain separate, and shared files match only within the focused traveler's trip. Personal documents remain separate and unchanged.
+- Reservations and trip-detail summaries separate Trains, Buses, Ferries, and Cabs instead of Ground & water. Existing journey-filter links still work. Document categories use the linked reservation's mode when available, consistently across Vault, trip summaries, and trip-document filters; unlinked or unknown transport remains Other transport rather than guessing from filenames.
+- Uses existing cached trip, traveler, and booking data; no migration or database changes required. Category counts reflect the traveler scope and current/deleted collection, before text search.
+
 ## Unreleased — Android share handoff
 
 - Follow-up: accept attachments across multipart field names, including the old installed manifest, and distinguish absent attachments, link-only shares, and multiple files. Register PDF and image share fields separately with generic image MIME support; normalize supported image signatures. Native multipart regression tests cover these paths. Android installation/manifest refresh and real-device retesting are still required; this is not yet a confirmed device fix.

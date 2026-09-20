@@ -7,6 +7,8 @@ import { EmptyState, ErrorCard, LoadingCard } from "../components/TripUi";
 import { tripQueries } from "../features/queries/tripQueries";
 import {
   bookingCategoryCounts,
+  matchesReservationFilter,
+  type ReservationFilter,
   groupByBookingId,
   reservationHref,
   reservationRoute
@@ -16,15 +18,6 @@ import { ReservationRow } from "../features/trips/TripDetailsCards";
 import { listTripBookingTravelers } from "../features/workspace/api";
 import { readTravelerFocus } from "../features/workspace/travelerFocus";
 import { useTripReturnScroll } from "../features/trips/returnScroll";
-
-type ReservationFilter = "all" | "flight" | "hotel" | "journey" | "plan";
-
-function matchesFilter(type: string, filter: ReservationFilter) {
-  if (filter === "all") return true;
-  if (filter === "flight" || filter === "hotel") return type === filter;
-  if (filter === "journey") return ["train", "bus", "ferry", "cab", "transport"].includes(type);
-  return ["activity", "restaurant", "other"].includes(type);
-}
 
 export function TripReservationsPage() {
   const { tripId = "" } = useParams();
@@ -44,8 +37,11 @@ export function TripReservationsPage() {
   const setSearch = (value: string) => setListParam("search", value);
   const category = searchParams.get("category");
   const filter: ReservationFilter =
-    category === "flight" || category === "hotel" || category === "journey" || category === "plan"
-      ? category
+    category &&
+    ["flight", "hotel", "journey", "plan", "bus", "ferry", "cab", "train", "transport"].includes(
+      category
+    )
+      ? (category as ReservationFilter)
       : "all";
   const setFilter = (value: ReservationFilter) =>
     setSearchParams(
@@ -115,7 +111,7 @@ export function TripReservationsPage() {
     return bookings
       .filter(
         (booking) =>
-          matchesFilter(booking.type, filter) &&
+          matchesReservationFilter(booking.type, filter) &&
           (!normalized ||
             `${booking.title} ${booking.provider ?? ""} ${booking.reference_code ?? ""} ${reservationRoute(booking, flightsByBooking, journeysByBooking)}`
               .toLowerCase()
@@ -223,27 +219,25 @@ export function TripReservationsPage() {
               >
                 All {bookings.length}
               </button>
-              {counts.map((count) => {
-                const value: ReservationFilter =
-                  count.label === "Flights"
-                    ? "flight"
-                    : count.label === "Stays"
-                      ? "hotel"
-                      : count.label === "Ground & water"
-                        ? "journey"
-                        : "plan";
-                return (
-                  <button
-                    type="button"
-                    key={count.label}
-                    className={`rounded-full border px-3 py-2 text-xs font-black ${filter === value ? "border-brand bg-brand text-surface" : "border-line bg-surface text-muted"}`}
-                    onClick={() => setFilter(value)}
-                    aria-pressed={filter === value}
-                  >
-                    {count.label} {count.count}
-                  </button>
-                );
-              })}
+              {filter === "journey" && (
+                <span className="self-center text-xs text-muted">All transport (saved filter)</span>
+              )}
+              {counts
+                .filter((count) => count.count > 0 || count.key === filter)
+                .map((count) => {
+                  const value = count.key;
+                  return (
+                    <button
+                      type="button"
+                      key={count.label}
+                      className={`rounded-full border px-3 py-2 text-xs font-black ${filter === value ? "border-brand bg-brand text-surface" : "border-line bg-surface text-muted"}`}
+                      onClick={() => setFilter(value)}
+                      aria-pressed={filter === value}
+                    >
+                      {count.label} {count.count}
+                    </button>
+                  );
+                })}
             </div>
             <div className="mt-3 space-y-2">
               {visibleBookings.map((booking) => (
