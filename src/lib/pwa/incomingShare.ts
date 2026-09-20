@@ -13,9 +13,13 @@ export async function readIncomingShare(id: string): Promise<File> {
       "This shared file has expired. Please share it again or select the file below."
     );
   }
-  const blob = await response.blob();
+  const bytes = await response.arrayBuffer();
   const name = decodeURIComponent(response.headers.get("X-Share-Name") || "document");
-  return prepareDocumentFile(new File([blob], name, { type: blob.type }));
+  return prepareDocumentFile(
+    new File([bytes], name, {
+      type: response.headers.get("Content-Type") || ""
+    })
+  );
 }
 
 export async function discardIncomingShare(id: string) {

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { FileDropzone } from "../components/FileDropzone";
 import { PageHeader } from "../components/TripUi";
@@ -24,6 +24,8 @@ const shareErrors: Record<string, string> = {
 export function AddDocumentPage() {
   const [params] = useSearchParams();
   const shareId = params.get("id");
+  const isShareRoute = useLocation().pathname === "/receive-share";
+  const shareError = params.get("error");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
@@ -33,8 +35,9 @@ export function AddDocumentPage() {
   const [destination, setDestination] = useState("personal");
   const [tripId, setTripId] = useState("");
   const [reviewTrip, setReviewTrip] = useState(false);
-  const [message, setMessage] = useState(shareErrors[params.get("error") ?? ""] ?? "");
-  const [loadingShare, setLoadingShare] = useState(Boolean(shareId));
+  const [message, setMessage] = useState("");
+  const [receiveError, setReceiveError] = useState("");
+  const [loadingShare, setLoadingShare] = useState(Boolean(isShareRoute && shareId));
   const trips = useQuery({
     queryKey: ["trips"],
     queryFn: () => listTrips(),
@@ -54,7 +57,19 @@ export function AddDocumentPage() {
   const role = members.data?.find((member) => member.user_id === profile.data)?.role;
   const selectedTrip = trips.data?.find((trip) => trip.id === tripId);
   useEffect(() => {
-    if (!shareId) return;
+    if (!isShareRoute) return;
+    setFile(null);
+    setTitle("");
+    setReviewTrip(false);
+    setReceiveError("");
+    if (!shareId) {
+      setLoadingShare(false);
+      setReceiveError(
+        shareErrors[shareError ?? ""] ??
+          "The app opened without an attached file. Share the PDF itself from Files, not a link, or choose it below."
+      );
+      return;
+    }
     let active = true;
     setLoadingShare(true);
     void readIncomingShare(shareId)
@@ -65,7 +80,7 @@ export function AddDocumentPage() {
         }
       })
       .catch((error) => {
-        if (active) setMessage(getErrorMessage(error));
+        if (active) setReceiveError(getErrorMessage(error));
       })
       .finally(() => {
         if (active) setLoadingShare(false);
@@ -73,7 +88,7 @@ export function AddDocumentPage() {
     return () => {
       active = false;
     };
-  }, [shareId]);
+  }, [isShareRoute, shareId, shareError]);
   const finish = async (personal: boolean) => {
     if (shareId) await discardIncomingShare(shareId);
     await queryClient.invalidateQueries({ queryKey: ["account-document-uploads"] });
@@ -106,7 +121,7 @@ export function AddDocumentPage() {
       <div className="mx-auto max-w-2xl">
         <PageHeader
           eyebrow="Document Vault"
-          title={shareId ? "Save shared document" : "Add document"}
+          title={isShareRoute ? "Save shared document" : "Add document"}
         />
         <p className="mt-3 text-sm text-muted">
           Keep a personal file private, or choose a trip and review its document fields. Nothing is
@@ -114,12 +129,18 @@ export function AddDocumentPage() {
         </p>
         <form className="surface-card mt-4 space-y-4 p-4" onSubmit={submit}>
           {loadingShare && <p role="status">Opening shared file…</p>}
+          {receiveError && (
+            <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm text-danger">
+              {receiveError}
+            </p>
+          )}
           <FileDropzone
             name="document"
             label="PDF or image under 5 MB"
             file={file}
             onFileChange={(next) => {
               setFile(next);
+              if (next) setReceiveError("");
               if (!title) setTitle(next?.name ?? "");
             }}
             busy={save.isPending || loadingShare}

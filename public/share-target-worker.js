@@ -30,10 +30,23 @@ async function receiveSharedDocument(request) {
       png: "image/png",
       webp: "image/webp"
     };
-    const type =
-      !file.type || file.type === "application/octet-stream"
-        ? inferred[file.name.toLowerCase().split(".").pop()]
-        : file.type;
+    // Snapshot bytes while Android's temporary content-provider grant is alive.
+    // The cache must hold our own bytes, not a File backed by the sending app.
+    const bytes = await file.arrayBuffer();
+    if (!bytes.byteLength || bytes.byteLength >= 5_000_000) return redirect("error=size");
+    const suppliedType = (file.type || "").split(";")[0].trim().toLowerCase();
+    let type = suppliedType === "application/x-pdf" ? "application/pdf" : suppliedType;
+    if (!type || type === "application/octet-stream" || type === "application/pdf") {
+      const isPdf =
+        new Uint8Array(bytes, 0, Math.min(5, bytes.byteLength)).every(
+          (byte, index) => byte === [37, 80, 68, 70, 45][index]
+        ) && bytes.byteLength >= 5;
+      type = isPdf
+        ? "application/pdf"
+        : type === "application/pdf"
+          ? type
+          : inferred[(file.name || "").toLowerCase().split(".").pop()];
+    }
     if (!["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(type))
       return redirect("error=type");
     const cache = await cleanIncomingShares();
@@ -41,10 +54,14 @@ async function receiveSharedDocument(request) {
     const id = crypto.randomUUID();
     await cache.put(
       new URL(`/receive-share/${id}`, self.location.origin).href,
-      new Response(file, {
+      new Response(bytes, {
         headers: {
           "Content-Type": type,
-          "X-Share-Name": encodeURIComponent(file.name.slice(0, 250)),
+          "X-Share-Name": encodeURIComponent(
+            (
+              file.name || (type === "application/pdf" ? "Shared document.pdf" : "Shared image")
+            ).slice(0, 250)
+          ),
           "X-Share-Expires": String(Date.now() + incomingShareLifetime),
           "Cache-Control": "no-store"
         }

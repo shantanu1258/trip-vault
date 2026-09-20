@@ -2,6 +2,10 @@
 
 User-visible changes are listed newest first. The HLD, LLD, and feature catalog are the current design contract; this file records history, including superseded experiments. This initial changelog covers the September 19 enhancement batch, not every earlier commit.
 
+## Unreleased — Android share handoff
+
+- Hardened incoming Android PDF shares by copying source bytes before redirect, normalizing PDF MIME aliases/parameters, and recognizing PDF bytes when the sender omits the filename/type. Failed or missing handoffs now show an explanation above the picker; a later failed share cannot retain an earlier attachment. An 800 kB synthetic file is covered end-to-end in handoff tests; real Android acceptance remains pending.
+
 ## Unreleased — Route bundle optimization
 
 - Feature screens now load through route-level dynamic imports; welcome/sign-in, authentication guards, and startup services remain immediately available. Added an accessible loading state and explicit reload/home recovery for failed screen loads without clearing saved data.

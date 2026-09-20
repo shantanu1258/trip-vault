@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   stage: vi.fn(),
@@ -38,6 +38,7 @@ function setup(path = "/vault/add") {
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
       <MemoryRouter initialEntries={[path]}>
+        <Link to="/receive-share?error=unavailable">Another failed share</Link>
         <Routes>
           <Route path="/vault" element={<p>Saved in Vault</p>} />
           <Route path="*" element={<AddDocumentPage />} />
@@ -71,6 +72,7 @@ it("reviews received files using existing trip fields with private visibility, a
   mocks.receive.mockResolvedValue(file);
   setup("/receive-share?id=shared-id");
   await waitFor(() => expect(screen.getByLabelText("Document name")).toHaveValue("ticket.pdf"));
+  expect(screen.getByRole("button", { name: /ticket\.pdf/ })).toBeInTheDocument();
   expect(mocks.stage).not.toHaveBeenCalled();
   await userEvent.selectOptions(screen.getByLabelText("Save to"), "trip");
   await screen.findByRole("option", { name: "Holiday" });
@@ -90,5 +92,29 @@ it("reviews received files using existing trip fields with private visibility, a
   await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
   await screen.findByText("Saved in Vault");
   expect(mocks.discard).toHaveBeenCalledWith("shared-id");
+  expect(mocks.stage).not.toHaveBeenCalled();
+});
+
+it("explains a missing handoff beside the picker instead of silently showing an empty upload form", async () => {
+  setup("/receive-share");
+  expect(await screen.findByRole("alert")).toHaveTextContent("opened without an attached file");
+  expect(screen.getByRole("heading", { name: "Save shared document" })).toBeInTheDocument();
+  expect(mocks.receive).not.toHaveBeenCalled();
+  const file = new File(["%PDF-test"], "chosen.pdf", { type: "application/pdf" });
+  await userEvent.upload(screen.getByLabelText("PDF or image under 5 MB"), file);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /chosen\.pdf/ })).toBeInTheDocument();
+});
+
+it("does not keep a previous attachment when a later share fails in the same screen", async () => {
+  mocks.receive.mockResolvedValue(
+    new File(["%PDF-test"], "first.pdf", { type: "application/pdf" })
+  );
+  setup("/receive-share?id=first-id");
+  await screen.findByRole("button", { name: /first\.pdf/ });
+  await userEvent.click(screen.getByRole("link", { name: "Another failed share" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("shared file could not be received");
+  expect(screen.queryByRole("button", { name: /first\.pdf/ })).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Document name")).toHaveValue("");
   expect(mocks.stage).not.toHaveBeenCalled();
 });
