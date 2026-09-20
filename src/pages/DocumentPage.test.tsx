@@ -165,6 +165,11 @@ describe("DocumentPage", () => {
       "href",
       "blob:ticket"
     );
+    expect(screen.getByRole("link", { name: "Download document" })).toHaveAttribute(
+      "download",
+      "visa.pdf"
+    );
+    expect(screen.getByRole("button", { name: "Share document" })).toBeEnabled();
     const info = screen.getByRole("button", { name: "Document information and actions" });
     expect(info).toHaveTextContent("Details");
     expect(screen.getByText("Available offline")).toBeInTheDocument();

@@ -82,6 +82,9 @@ export function ModalHistoryProvider({ children }: { children: ReactNode }) {
           .slice(Math.max(0, registrations.current.length - (previous - next)))
           .reverse()
           .forEach((registration) => registration.close());
+        // A close handler can keep a dirty form mounted while asking for
+        // confirmation. Re-arm its history entry if that close was cancelled.
+        scheduleReconcile();
         return;
       }
       scheduleReconcile();

@@ -16,6 +16,10 @@ import { discardIncomingShare, readIncomingShare } from "../lib/pwa/incomingShar
 const shareErrors: Record<string, string> = {
   size: "Choose a non-empty PDF or image smaller than 5 MB.",
   count: "Share one document at a time. No files were saved.",
+  no_file:
+    "Android opened Trip Vault without sending an attachment. In Files, select the downloaded PDF or image and use Share, or choose the file below.",
+  text_only:
+    "The sending app shared text or a link, not the file itself. Download the PDF or image first, then share it from Files, or choose it below.",
   type: "Use a PDF, JPEG, PNG, or WebP file.",
   busy: "There are several unfinished shares. Finish one or try again in 15 minutes.",
   unavailable: "The shared file could not be received. Choose it below or try sharing again."

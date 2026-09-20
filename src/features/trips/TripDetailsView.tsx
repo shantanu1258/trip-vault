@@ -387,13 +387,15 @@ export function TripDetailsView(props: TripDetailsViewProps) {
           </div>
           {!documents.length && <p className="text-sm text-muted">No relevant documents yet.</p>}
           {documents.length > 0 && (
-            <Link
+            <TripChildLink
+              tripId={trip.id}
+              scrollAnchorId="documents"
               to={`/trips/${trip.id}/documents`}
               state={navigationState}
               className="mt-4 flex items-center justify-end gap-1 text-sm font-extrabold text-brand"
             >
               View all {documents.length} documents <ChevronRight className="size-4" />
-            </Link>
+            </TripChildLink>
           )}
         </div>
       </TripDetailsSection>

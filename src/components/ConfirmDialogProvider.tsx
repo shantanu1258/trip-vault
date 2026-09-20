@@ -7,6 +7,7 @@ type ConfirmDialogOptions = {
   confirmLabel?: string;
   cancelLabel?: string;
   tone?: "default" | "danger";
+  manageHistory?: boolean;
 };
 
 type PendingConfirmation = ConfirmDialogOptions & { resolve: (confirmed: boolean) => void };
@@ -41,7 +42,12 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
     <ConfirmDialogContext.Provider value={confirm}>
       {children}
       {pending && (
-        <ModalSheet eyebrow="Please confirm" title={pending.title} onClose={() => finish(false)}>
+        <ModalSheet
+          eyebrow="Please confirm"
+          title={pending.title}
+          onClose={() => finish(false)}
+          manageHistory={pending.manageHistory}
+        >
           <p className="mt-5 text-sm leading-6 text-muted">{pending.message}</p>
           <div className="mt-6 grid gap-2 sm:grid-cols-2">
             <button

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useConfirmDialog } from "../../components/ConfirmDialogProvider";
 import { DocumentPreview } from "../../components/DocumentPreview";
+import { DocumentFileActions } from "../../components/DocumentFileActions";
 import { DocumentVisibilityBadge } from "../../components/DocumentVisibilityBadge";
 import { DocumentTypeIcon } from "../../components/DocumentTypeIcon";
 import { ModalSheet } from "../../components/ModalSheet";
@@ -177,9 +178,14 @@ function PersonalDocumentPreview({
       )}
       {query.data && url && (
         <div className="mt-4">
-          <a href={url} download={upload.original_filename} className="secondary-button mb-3">
-            Download
-          </a>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <DocumentFileActions
+              blob={query.data}
+              url={url}
+              filename={upload.original_filename}
+              mimeType={upload.mime_type}
+            />
+          </div>
           <DocumentPreview
             blob={query.data}
             url={url}

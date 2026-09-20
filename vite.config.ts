@@ -48,20 +48,19 @@ export default defineConfig({
           method: "POST",
           enctype: "multipart/form-data",
           params: {
+            title: "title",
+            text: "text",
+            url: "url",
             files: [
               {
-                name: "files",
-                accept: [
-                  "application/pdf",
-                  "image/jpeg",
-                  "image/png",
-                  "image/webp",
-                  ".pdf",
-                  ".jpg",
-                  ".jpeg",
-                  ".png",
-                  ".webp"
-                ]
+                name: "documents",
+                accept: ["application/pdf", "application/x-pdf", ".pdf"]
+              },
+              {
+                name: "images",
+                // Gallery apps may advertise image/* rather than a precise type.
+                // The receiver still validates JPEG/PNG/WebP and the 5 MB limit.
+                accept: ["image/*", ".jpg", ".jpeg", ".png", ".webp"]
               }
             ]
           }

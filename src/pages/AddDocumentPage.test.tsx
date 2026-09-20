@@ -118,3 +118,14 @@ it("does not keep a previous attachment when a later share fails in the same scr
   expect(screen.getByLabelText("Document name")).toHaveValue("");
   expect(mocks.stage).not.toHaveBeenCalled();
 });
+
+it.each([
+  ["no_file", "without sending an attachment"],
+  ["text_only", "shared text or a link"],
+  ["count", "Share one document at a time"]
+])("explains the %s share failure without uploading anything", async (code, explanation) => {
+  setup(`/receive-share?error=${code}`);
+  expect(await screen.findByRole("alert")).toHaveTextContent(explanation);
+  expect(mocks.receive).not.toHaveBeenCalled();
+  expect(mocks.stage).not.toHaveBeenCalled();
+});

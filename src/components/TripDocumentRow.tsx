@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { Link } from "react-router-dom";
+import { TripChildLink } from "./TripChildLink";
 import { documentAudienceSummary } from "../features/home/needNow";
 import { documentPurposeLabel } from "../features/workspace/documentModel";
 import type { Traveler, VaultDocument } from "../features/workspace/types";
@@ -58,9 +58,15 @@ export function TripDocumentRow({
 
   if (to) {
     return (
-      <Link to={to} state={state} className={className}>
+      <TripChildLink
+        id={`document-${document.id}`}
+        tripId={document.trip_id}
+        to={to}
+        state={state}
+        className={className}
+      >
         {content}
-      </Link>
+      </TripChildLink>
     );
   }
 

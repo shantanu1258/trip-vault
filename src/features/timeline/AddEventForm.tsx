@@ -5,6 +5,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import { EventTypeIcon } from "../../components/EventTypeIcon";
 import { FileDropzone } from "../../components/FileDropzone";
 import { ModalSheet } from "../../components/ModalSheet";
+import {
+  UnsavedEventNavigationGuard,
+  useUnsavedEventGuard
+} from "../../components/useUnsavedEventGuard";
 import { suppressRealtimeRefresh } from "../sync/RealtimeRefresh";
 import { addItineraryItem, listItinerary, setItineraryItemStatus } from "../trips/api";
 import { getErrorMessage } from "../trips/presentation";
@@ -1159,6 +1163,10 @@ export function AddEventForm({
     event.preventDefault();
     mutation.mutate(new FormData(event.currentTarget));
   };
+  const guard = useUnsavedEventGuard(!saved, mutation.isPending);
+  const requestClose = () => {
+    void guard.leave(onClose);
+  };
   const selectType = (next: TimelineEventType) => {
     setType(next);
     onTypeChange?.(next);
@@ -1275,9 +1283,10 @@ export function AddEventForm({
       title={
         type ? `Add ${choices.find((choice) => choice.type === type)?.label}` : "Add to timeline"
       }
-      onClose={onClose}
+      onClose={requestClose}
       manageHistory={!routeBacked}
     >
+      <UnsavedEventNavigationGuard guard={guard} />
       {!type ? (
         <>
           {documentToAttach && (
@@ -1308,12 +1317,24 @@ export function AddEventForm({
           </div>
         </>
       ) : (
-        <form className="mt-5 space-y-5" onSubmit={submit}>
+        <form
+          className="mt-5 space-y-5"
+          onSubmit={submit}
+          onChangeCapture={guard.markDirty}
+          onInputCapture={(event) => {
+            // Custom pickers dispatch input on a hidden field; React does not
+            // synthesize onChange for those. Native selects use onChange above.
+            if (event.target instanceof HTMLInputElement && event.target.type === "hidden")
+              guard.markDirty();
+          }}
+        >
           <button
             type="button"
             onClick={() => {
-              setType(null);
-              onTypeChange?.(null);
+              void guard.leave(() => {
+                setType(null);
+                onTypeChange?.(null);
+              });
             }}
             className="inline-flex items-center gap-1 text-sm font-extrabold text-brand"
           >
@@ -1383,13 +1404,19 @@ export function AddEventForm({
                         : { ...current, [key]: value };
                     })
                   }
-                  onRemove={() => setLegKeys((keys) => keys.filter((item) => item !== key))}
+                  onRemove={() => {
+                    guard.markDirty();
+                    setLegKeys((keys) => keys.filter((item) => item !== key));
+                  }}
                 />
               ))}
               {journeyStructure === "connecting" && (
                 <AddConnectionButton
                   mode="flight"
-                  onClick={() => setLegKeys((keys) => [...keys, crypto.randomUUID()])}
+                  onClick={() => {
+                    guard.markDirty();
+                    setLegKeys((keys) => [...keys, crypto.randomUUID()]);
+                  }}
                 />
               )}
             </>
@@ -1431,13 +1458,19 @@ export function AddEventForm({
                         : { ...current, [key]: value };
                     })
                   }
-                  onRemove={() => setLegKeys((keys) => keys.filter((item) => item !== key))}
+                  onRemove={() => {
+                    guard.markDirty();
+                    setLegKeys((keys) => keys.filter((item) => item !== key));
+                  }}
                 />
               ))}
               {journeyStructure === "connecting" && (
                 <AddConnectionButton
                   mode={groundMode}
-                  onClick={() => setLegKeys((keys) => [...keys, crypto.randomUUID()])}
+                  onClick={() => {
+                    guard.markDirty();
+                    setLegKeys((keys) => [...keys, crypto.randomUUID()]);
+                  }}
                 />
               )}
             </>
@@ -1464,10 +1497,14 @@ export function AddEventForm({
                 stopKeys={cabStopKeys}
                 itinerary={itineraryQuery.data ?? []}
                 currencyCode={trip.base_currency}
-                onAdd={() => setCabStopKeys((keys) => [...keys, crypto.randomUUID()])}
-                onRemove={(key) =>
-                  setCabStopKeys((keys) => keys.filter((candidate) => candidate !== key))
-                }
+                onAdd={() => {
+                  guard.markDirty();
+                  setCabStopKeys((keys) => [...keys, crypto.randomUUID()]);
+                }}
+                onRemove={(key) => {
+                  guard.markDirty();
+                  setCabStopKeys((keys) => keys.filter((candidate) => candidate !== key));
+                }}
               />
             </>
           )}
@@ -1535,7 +1572,10 @@ export function AddEventForm({
                   label="Official document"
                   prompt={`Choose ${documentKind(officialDocumentKind).label.toLowerCase()}`}
                   file={officialDocumentFile}
-                  onFileChange={setOfficialDocumentFile}
+                  onFileChange={(file) => {
+                    guard.markDirty();
+                    setOfficialDocumentFile(file);
+                  }}
                 />
               </div>
               <p className="mt-2 text-xs text-muted">You can also attach documents after saving.</p>

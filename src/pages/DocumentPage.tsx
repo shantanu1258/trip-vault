@@ -20,6 +20,7 @@ import {
   documentVisibilityPresentation
 } from "../components/DocumentVisibilityBadge";
 import { DocumentPreview } from "../components/DocumentPreview";
+import { DocumentFileActions } from "../components/DocumentFileActions";
 import { FileDropzone } from "../components/FileDropzone";
 import { ModalSheet } from "../components/ModalSheet";
 import { useConfirmDialog } from "../components/ConfirmDialogProvider";
@@ -307,22 +308,31 @@ export function DocumentPage() {
                     href={url}
                     target="_blank"
                     rel="noreferrer"
-                    className="secondary-button min-h-11 px-3 py-2 text-xs"
+                    className="secondary-button min-h-11 min-w-11 px-3 py-2 text-xs"
                     aria-label="Open with device viewer"
+                    title="Open with device viewer"
                   >
                     <ExternalLink className="size-4" />
-                    <span>Open</span>
+                    <span className="hidden sm:inline">Open</span>
                   </a>
+                )}
+                {url && blob && document.current_version && (
+                  <DocumentFileActions
+                    blob={blob}
+                    url={url}
+                    filename={document.current_version.original_filename}
+                    mimeType={document.current_version.mime_type}
+                  />
                 )}
                 <button
                   type="button"
-                  className="secondary-button min-h-11 gap-1.5 px-3 py-2 text-xs"
+                  className="secondary-button min-h-11 min-w-11 gap-1.5 px-3 py-2 text-xs"
                   onClick={() => setShowInfo(true)}
                   aria-label="Document information and actions"
                   title="Document information and actions"
                 >
                   <Info className="size-4" aria-hidden="true" />
-                  <span>Details</span>
+                  <span className="hidden sm:inline">Details</span>
                 </button>
                 {source && <span className="ml-auto text-xs text-muted">Available offline</span>}
               </div>

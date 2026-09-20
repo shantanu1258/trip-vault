@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { readFileSync } from "node:fs";
 import { Blob as NativeBlob, Buffer } from "node:buffer";
 import { runInNewContext } from "node:vm";
@@ -6,6 +7,9 @@ import { clearIncomingShares, discardIncomingShare, readIncomingShare } from "./
 
 const id = "11223344-5566-4788-8899-aabbccddeeff";
 function worker() {
+  // Native Request/FormData keep multipart parsing in the same realm as the
+  // service worker; jsdom's DOM classes are incompatible with Node's parser.
+  vi.stubGlobal("window", { location: { origin: "https://trip-vault.test" } });
   const records = new Map<string, Response>();
   const cache = {
     match: vi.fn(async (key: string) => records.get(key)?.clone()),
@@ -37,22 +41,48 @@ function worker() {
   };
   runInNewContext(readFileSync("public/share-target-worker.js", "utf8"), context);
   vi.stubGlobal("caches", caches);
-  const post = async (files: object[], path = "/share-target") => {
+  Object.assign(window, { caches });
+  const postEntries = async (
+    entries: Array<[string, string | NativeBlob]>,
+    path = "/share-target"
+  ) => {
+    // Send a real multipart body through Request.formData(), not a getAll mock
+    // that ignores field names (which hid the original single-field assumption).
+    const boundary = "trip-vault-test-boundary";
+    const parts: Array<string | NativeBlob> = [];
+    for (const [name, value] of entries) {
+      parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"`);
+      if (typeof value === "string") parts.push(`\r\n\r\n${value}\r\n`);
+      else {
+        const filename = "name" in value ? String(value.name) : "document";
+        parts.push(
+          `; filename="${filename}"\r\nContent-Type: ${value.type || "application/octet-stream"}\r\n\r\n`,
+          value,
+          "\r\n"
+        );
+      }
+    }
+    parts.push(`--${boundary}--\r\n`);
     let result: Promise<Response> | undefined;
+    const request = new Request(new URL(path, window.location.origin), {
+      method: "POST",
+      headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
+      body: await new NativeBlob(parts).arrayBuffer()
+    });
     handlers.get("fetch")!({
-      request: {
-        url: new URL(path, window.location.origin).href,
-        method: "POST",
-        headers: new Headers(),
-        formData: async () => ({ getAll: () => files })
-      },
+      request,
       respondWith: (work: Promise<Response>) => {
         result = work;
       }
     });
     return result;
   };
-  return { records, cache, caches, post };
+  const post = (files: NativeBlob[], path = "/share-target") =>
+    postEntries(
+      files.map((file) => ["files", file]),
+      path
+    );
+  return { records, cache, caches, post, postEntries };
 }
 afterEach(() => vi.unstubAllGlobals());
 
@@ -85,8 +115,15 @@ it("rejects unsupported, oversized, and multiple files without storing them; ign
       [Object.assign(new NativeBlob(["<svg/>"], { type: "image/svg+xml" }), { name: "bad.svg" })],
       "type"
     ],
-    [[{ name: "large.pdf", type: "application/pdf", size: 5_000_000 }], "size"],
-    [[{ size: 12 }, { size: 12 }], "count"]
+    [
+      [
+        Object.assign(new NativeBlob([new Uint8Array(5_000_000)], { type: "application/pdf" }), {
+          name: "large.pdf"
+        })
+      ],
+      "size"
+    ],
+    [[new NativeBlob(["one"]), new NativeBlob(["two"])], "count"]
   ] as const) {
     expect((await post([...files]))?.headers.get("location")).toContain(`error=${reason}`);
   }
@@ -98,6 +135,64 @@ it("rejects unsupported, oversized, and multiple files without storing them; ign
   await expect(discardIncomingShare(id)).resolves.toBeUndefined();
   caches.delete.mockRejectedValueOnce(new Error("Storage disabled"));
   await expect(clearIncomingShares()).resolves.toBeUndefined();
+});
+
+it("reads file parts across current, legacy, and alternative multipart fields, ignoring text metadata", async () => {
+  const { postEntries } = worker();
+  for (const field of ["files", "documents", "images", "file", "attachment"]) {
+    const file = Object.assign(new NativeBlob(["%PDF-1.7"], { type: "application/pdf" }), {
+      name: "ticket.pdf"
+    });
+    const response = await postEntries([
+      ["title", "Trip ticket"],
+      ["text", "Some accompanying text"],
+      [field, file]
+    ]);
+    expect(response?.headers.get("location")).toContain(`id=${id}`);
+    expect(await readIncomingShare(id)).toMatchObject({ name: "ticket.pdf", size: 8 });
+    await discardIncomingShare(id);
+  }
+});
+
+it("distinguishes no attachment, text/link-only sharing, and multiple actual files without fetching links", async () => {
+  const { postEntries, cache } = worker();
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  expect((await postEntries([]))?.headers.get("location")).toContain("error=no_file");
+  expect(
+    (await postEntries([["text", "https://example.com/private.pdf"]]))?.headers.get("location")
+  ).toContain("error=text_only");
+  expect(
+    (
+      await postEntries([
+        ["documents", new NativeBlob(["%PDF-one"])],
+        ["images", new NativeBlob(["image"])]
+      ])
+    )?.headers.get("location")
+  ).toContain("error=count");
+  expect(cache.put).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it("recognizes supported gallery image bytes with generic image MIME types and rejects unsupported ones", async () => {
+  const { postEntries } = worker();
+  for (const [signature, expectedType] of [
+    [[255, 216, 255, 224], "image/jpeg"],
+    [[137, 80, 78, 71, 13, 10, 26, 10], "image/png"],
+    [[82, 73, 70, 70, 0, 0, 0, 0, 87, 69, 66, 80], "image/webp"]
+  ] as const) {
+    const response = await postEntries([
+      ["images", new NativeBlob([new Uint8Array(signature)], { type: "image/*" })]
+    ]);
+    expect(response?.headers.get("location")).toContain(`id=${id}`);
+    expect((await readIncomingShare(id)).type).toBe(expectedType);
+    await discardIncomingShare(id);
+  }
+  expect(
+    (
+      await postEntries([["images", new NativeBlob(["GIF89a"], { type: "image/gif" })]])
+    )?.headers.get("location")
+  ).toContain("error=type");
 });
 
 it("retains all 800 KB from Android files with a generic MIME type and no filename extension", async () => {

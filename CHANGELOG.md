@@ -4,7 +4,19 @@ User-visible changes are listed newest first. The HLD, LLD, and feature catalog 
 
 ## Unreleased — Android share handoff
 
+- Follow-up: accept attachments across multipart field names, including the old installed manifest, and distinguish absent attachments, link-only shares, and multiple files. Register PDF and image share fields separately with generic image MIME support; normalize supported image signatures. Native multipart regression tests cover these paths. Android installation/manifest refresh and real-device retesting are still required; this is not yet a confirmed device fix.
 - Hardened incoming Android PDF shares by copying source bytes before redirect, normalizing PDF MIME aliases/parameters, and recognizing PDF bytes when the sender omits the filename/type. Failed or missing handoffs now show an explanation above the picker; a later failed share cannot retain an earlier attachment. An 800 kB synthetic file is covered end-to-end in handoff tests; real Android acceptance remains pending.
+
+## Unreleased — Navigation and unsaved events
+
+- Document cards in Trip details and the full trip-document list capture their scroll position before opening a file. Back restores the clicked card; the document list retains search/category/traveler filters in its URL. “View all documents” also preserves the originating section.
+- Add event warns before discarding entered fields, picker changes, route connections/stops, or a selected attachment. Keep editing preserves the in-memory form; Discard and leave confirms loss. This covers form Back, changing type, backdrop/Escape, and routed browser Back. Pristine forms and successful event saves do not prompt. Browser-supported reload/tab-close warnings protect unsaved forms; there is no draft/autosave persistence yet.
+- The app now uses React Router's data-router host for supported navigation blocking while keeping its existing lazy routes. A pending save cannot be dismissed before its result is known.
+
+## Unreleased — Document download and device sharing
+
+- Trip-document viewers and personal-document previews now expose Download and Share actions: accessible icons on phones, with text labels on tablet/desktop. Trip viewer Open and Details actions use the same compact treatment.
+- Share passes the already-loaded file and its original filename to the device share sheet, never a private route or signed storage URL. Unsupported browsers/file types show a Download/Files fallback; cancellation is silent and failures are retryable. Sharing a copy does not change Vault visibility. Native recipient delivery still needs device acceptance testing.
 
 ## Unreleased — Route bundle optimization
 

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ItineraryItem, Trip } from "../trips/types";
 import type { FlightLeg, Traveler } from "../workspace/types";
 import type { DocumentKind } from "../workspace/documentModel";
+import { ConfirmDialogProvider } from "../../components/ConfirmDialogProvider";
 
 const mocks = vi.hoisted(() => ({
   addBookedTimelineEvent: vi.fn(),
@@ -21,8 +22,19 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../components/ModalSheet", () => ({
-  ModalSheet: ({ children, title }: { children: React.ReactNode; title: string }) => (
-    <section aria-label={title}>{children}</section>
+  ModalSheet: ({
+    children,
+    title,
+    onClose
+  }: {
+    children: React.ReactNode;
+    title: string;
+    onClose: () => void;
+  }) => (
+    <section aria-label={title}>
+      <button onClick={onClose}>Back</button>
+      {children}
+    </section>
   )
 }));
 vi.mock("../metadata/AirlinePicker", () => ({
@@ -166,15 +178,17 @@ function renderForm(
   const user = userEvent.setup();
   render(
     <QueryClientProvider client={client}>
-      <AddEventForm
-        trip={tripValue}
-        travelers={withTravelers}
-        documentToAttach={documentToAttach}
-        initialType={initialType}
-        onClose={onClose}
-        onTypeChange={onTypeChange}
-        onAddDocument={onAddDocument}
-      />
+      <ConfirmDialogProvider>
+        <AddEventForm
+          trip={tripValue}
+          travelers={withTravelers}
+          documentToAttach={documentToAttach}
+          initialType={initialType}
+          onClose={onClose}
+          onTypeChange={onTypeChange}
+          onAddDocument={onAddDocument}
+        />
+      </ConfirmDialogProvider>
     </QueryClientProvider>
   );
   return { user, onClose, onTypeChange, onAddDocument };
@@ -219,6 +233,7 @@ describe("event form architecture", () => {
     expect(
       screen
         .getAllByRole("button")
+        .filter((button) => button.textContent !== "Back")
         .slice(0, 8)
         .map((button) => button.textContent?.replace(/\s+/g, " ").trim())
     ).toEqual([
@@ -240,6 +255,45 @@ describe("event form architecture", () => {
     expect(screen.queryByText("Direct or connected flights")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Change event type" }));
     expect(onTypeChange).toHaveBeenCalledWith(null);
+  });
+
+  it("keeps entered event details on cancelled Back and confirms changing the event type", async () => {
+    const { user, onClose, onTypeChange } = renderForm([], trip, undefined, "activity");
+    await user.type(screen.getByLabelText("Activity name"), "Museum visit");
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    await user.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Activity name")).toHaveValue("Museum visit");
+    await user.click(screen.getByRole("button", { name: "Change event type" }));
+    expect(onTypeChange).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Discard and leave" }));
+    expect(onTypeChange).toHaveBeenCalledWith(null);
+  });
+
+  it("protects a selected attachment even with the other event fields empty", async () => {
+    const { user, onClose } = renderForm([], trip, undefined, "activity");
+    await user.upload(
+      screen.getByLabelText("Official document"),
+      new File(["%PDF-test"], "ticket.pdf", { type: "application/pdf" })
+    );
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    await user.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /ticket.pdf/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    await user.click(screen.getByRole("button", { name: "Discard and leave" }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("protects picker changes even when no text field was edited", async () => {
+    const { user, onClose } = renderForm([], trip, undefined, "activity");
+    const timezone = document.querySelector<HTMLInputElement>('input[name="timezone"]')!;
+    expect(timezone).not.toBeNull();
+    timezone.value = "Asia/Dubai";
+    fireEvent.input(timezone);
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("button", { name: "Keep editing" })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("links a previously uploaded document after its new event is saved", async () => {

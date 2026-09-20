@@ -19,8 +19,15 @@ async function receiveSharedDocument(request) {
     // Bound ordinary multipart requests before parsing; actual file size is checked below too.
     if (Number(request.headers.get("content-length")) > 5_100_000) return redirect("error=size");
     const form = await request.formData();
-    const files = form.getAll("files").filter((value) => typeof value !== "string");
-    if (files.length !== 1) return redirect("error=count");
+    // Read actual attachments, independently of the installed manifest's field
+    // names. Keep accepting the old "files" field during WebAPK updates.
+    const values = [...form.values()];
+    const files = values.filter((value) => typeof value !== "string");
+    if (!files.length) {
+      const hasText = values.some((value) => typeof value === "string" && value.trim());
+      return redirect(hasText ? "error=text_only" : "error=no_file");
+    }
+    if (files.length > 1) return redirect("error=count");
     const file = files[0];
     if (!file.size || file.size >= 5_000_000) return redirect("error=size");
     const inferred = {
@@ -35,17 +42,26 @@ async function receiveSharedDocument(request) {
     const bytes = await file.arrayBuffer();
     if (!bytes.byteLength || bytes.byteLength >= 5_000_000) return redirect("error=size");
     const suppliedType = (file.type || "").split(";")[0].trim().toLowerCase();
-    let type = suppliedType === "application/x-pdf" ? "application/pdf" : suppliedType;
-    if (!type || type === "application/octet-stream" || type === "application/pdf") {
-      const isPdf =
-        new Uint8Array(bytes, 0, Math.min(5, bytes.byteLength)).every(
-          (byte, index) => byte === [37, 80, 68, 70, 45][index]
-        ) && bytes.byteLength >= 5;
-      type = isPdf
+    let type =
+      suppliedType === "application/x-pdf"
         ? "application/pdf"
-        : type === "application/pdf"
-          ? type
-          : inferred[(file.name || "").toLowerCase().split(".").pop()];
+        : suppliedType === "image/jpg"
+          ? "image/jpeg"
+          : suppliedType;
+    if (!type || type === "application/octet-stream" || type === "image/*") {
+      const header = new Uint8Array(bytes, 0, Math.min(12, bytes.byteLength));
+      const startsWith = (signature, offset = 0) =>
+        header.length >= offset + signature.length &&
+        signature.every((byte, index) => header[offset + index] === byte);
+      type = startsWith([37, 80, 68, 70, 45])
+        ? "application/pdf"
+        : startsWith([255, 216, 255])
+          ? "image/jpeg"
+          : startsWith([137, 80, 78, 71, 13, 10, 26, 10])
+            ? "image/png"
+            : startsWith([82, 73, 70, 70]) && startsWith([87, 69, 66, 80], 8)
+              ? "image/webp"
+              : inferred[(file.name || "").toLowerCase().split(".").pop()];
     }
     if (!["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(type))
       return redirect("error=type");

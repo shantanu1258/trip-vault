@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, FileSearch, Plus, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { TripDocumentRow } from "../components/TripDocumentRow";
@@ -8,14 +8,21 @@ import { EmptyState, ErrorCard, LoadingCard } from "../components/TripUi";
 import { rankDocumentsForUpcomingEvents } from "../features/home/needNow";
 import { tripQueries } from "../features/queries/tripQueries";
 import { tripChildNavigationState, tripReturnNavigation } from "../features/trips/navigation";
+import { useTripReturnScroll } from "../features/trips/returnScroll";
 import { documentMatchesTraveler } from "../features/workspace/documentModel";
 import { readTravelerFocus } from "../features/workspace/travelerFocus";
 
 export function TripDocumentsPage() {
   const { tripId = "" } = useParams();
   const location = useLocation();
-  const [search, setSearch] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
+  const search = searchParams.get("search") ?? "";
+  const setSearch = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set("search", value);
+    else next.delete("search");
+    setSearchParams(next, { replace: true, state: location.state });
+  };
   const category = searchParams.get("category") ?? "all";
   const setCategory = (value: string) => {
     const next = new URLSearchParams(searchParams);
@@ -23,7 +30,12 @@ export function TripDocumentsPage() {
     else next.set("category", value);
     setSearchParams(next, { replace: true, state: location.state });
   };
-  const [travelerId, setTravelerId] = useState(() => readTravelerFocus(tripId) ?? "all");
+  const travelerId = searchParams.get("traveler") ?? readTravelerFocus(tripId) ?? "all";
+  const setTravelerId = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("traveler", value);
+    setSearchParams(next, { replace: true, state: location.state });
+  };
   const tripQuery = useQuery({ ...tripQueries.trip(tripId), enabled: Boolean(tripId) });
   const itineraryQuery = useQuery({ ...tripQueries.itinerary(tripId), enabled: Boolean(tripId) });
   const bookingsQuery = useQuery({ ...tripQueries.bookings(tripId), enabled: Boolean(tripId) });
@@ -68,6 +80,15 @@ export function TripDocumentsPage() {
   const categories = [...new Set((documentsQuery.data ?? []).map((document) => document.category))];
   const returnNavigation = tripReturnNavigation(location.state, tripId);
   const childState = tripChildNavigationState(location.state, tripId, "details");
+  useTripReturnScroll(
+    tripId,
+    documentsQuery.isSuccess &&
+      !itineraryQuery.isLoading &&
+      !bookingsQuery.isLoading &&
+      !flightsQuery.isLoading &&
+      !travelersQuery.isLoading &&
+      !referencesQuery.isLoading
+  );
 
   return (
     <AppShell compactTop>
