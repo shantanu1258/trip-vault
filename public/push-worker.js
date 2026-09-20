@@ -28,7 +28,7 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification("Trip Vault", {
       body: bodies[payload?.kind] || "You have a trip update. Open Trip Vault for details.",
-      icon: "/icons/icon-192.png",
+      icon: "/icons/wallet-v1-192.png",
       tag: typeof payload?.tag === "string" ? payload.tag.slice(0, 180) : "trip-vault-update",
       data: { url: destination },
       // Replacement retries should not repeatedly make sound or vibrate.

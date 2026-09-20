@@ -2,6 +2,15 @@
 
 User-visible changes are listed newest first. The HLD, LLD, and feature catalog are the current design contract; this file records history, including superseded experiments. This initial changelog covers the September 19 enhancement batch, not every earlier commit.
 
+## Unreleased — Trip archive recovery
+
+- The app brand, installed-app icons, browser favicon, Apple touch icon, and push notifications now use the cleaned wallet/keyhole mark with a partial plane and muted brass clasp. Versioned icon URLs and offline precaching carry the update; existing home-screen icons remain subject to platform refresh/reinstallation behavior.
+- Archive rows keep the title/type and actions together with tighter spacing. Recover and Delete use accessible, 44 px icon buttons on phones, adding labels on tablet/desktop; permanent deletion still requires confirmation.
+- Timeline landing highlights now blink twice over 2.3 seconds instead of three times over 3.5 seconds, retaining the existing focus colours and reduced-motion behavior.
+- Archived tasks and notes now appear alongside archived events, bookings, and costs. Trip details shows an Open archive entry instead of exposing archived cards directly.
+- Restore preserves a task's completion status. Permanent deletion is online-only, explicitly confirmed, and checked on the server for edit permission, trip ownership of the item, and archived state. Linked documents and costs survive event/booking deletion; scheduled dependents block deletion until unlinked. Vault retains its separate document trash.
+- Requires `supabase/migrations/202609210001_archived_trip_items.sql` for permanent deletion. Applying this migration does not delete data. Records already physically absent from the database cannot be recovered by the archive UI.
+
 ## Unreleased — Vault and transport filters
 
 - Common Vault trip documents use a 50/50 search-and-traveler row, followed by a rounded, horizontally scrollable type strip matching the trip-section shortcuts. Every type shows its count, with a distinct selected state; no Filters panel or overflow menu is needed. Category and traveler filters combine without silently clearing each other. Same-named travelers in different trips remain separate, and shared files match only within the focused traveler's trip. Personal documents remain separate and unchanged.

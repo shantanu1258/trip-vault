@@ -1044,7 +1044,7 @@ export async function restoreItineraryItem(itemId: string) {
 
 export async function listArchivedTripItems(tripId: string): Promise<ArchivedTripItem[]> {
   if (!navigator.onLine) return [];
-  const [{ data: events, error: eventError }, { data: costs, error: costError }] =
+  const [{ data: events, error: eventError }, { data: costs, error: costError }, tasks, notes] =
     await Promise.all([
       client()
         .from("itinerary_items")
@@ -1057,10 +1057,22 @@ export async function listArchivedTripItems(tripId: string): Promise<ArchivedTri
         .select("id,title,deleted_at")
         .eq("trip_id", tripId)
         .not("deleted_at", "is", null)
-        .order("deleted_at", { ascending: false })
+        .order("deleted_at", { ascending: false }),
+      client()
+        .from("trip_requirements")
+        .select("id,title,deleted_at")
+        .eq("trip_id", tripId)
+        .not("deleted_at", "is", null),
+      client()
+        .from("notes")
+        .select("id,title,deleted_at")
+        .eq("trip_id", tripId)
+        .not("deleted_at", "is", null)
     ]);
   if (eventError) throw eventError;
   if (costError) throw costError;
+  if (tasks.error) throw tasks.error;
+  if (notes.error) throw notes.error;
   const seenBookings = new Set<string>();
   const eventItems = (events ?? []).flatMap((event) => {
     const bookingId = event.booking_id ? String(event.booking_id) : null;
@@ -1082,8 +1094,54 @@ export async function listArchivedTripItems(tripId: string): Promise<ArchivedTri
       kind: "cost" as const,
       title: String(cost.title),
       archived_at: String(cost.deleted_at)
+    })),
+    ...(tasks.data ?? []).map((task) => ({
+      id: String(task.id),
+      kind: "task" as const,
+      title: String(task.title),
+      archived_at: String(task.deleted_at)
+    })),
+    ...(notes.data ?? []).map((note) => ({
+      id: String(note.id),
+      kind: "note" as const,
+      title: note.title ? String(note.title) : "Untitled note",
+      archived_at: String(note.deleted_at)
     }))
   ].sort((left, right) => right.archived_at.localeCompare(left.archived_at));
+}
+
+export async function restoreArchivedTripItem(item: ArchivedTripItem, tripId: string) {
+  if (!navigator.onLine) throw new Error("Connect to restore archived items.");
+  if (item.kind === "cost") return restoreTripCost(item.id);
+  if (item.kind === "event" || item.kind === "booking") return restoreItineraryItem(item.id);
+  const table = item.kind === "task" ? "trip_requirements" : "notes";
+  const { data, error } = await client()
+    .from(table)
+    .update({ deleted_at: null })
+    .eq("id", item.id)
+    .eq("trip_id", tripId)
+    .not("deleted_at", "is", null)
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data)
+    throw new Error(
+      "This item is no longer archived or you cannot restore it. Refresh the archive."
+    );
+}
+
+export async function deleteArchivedTripItem(item: ArchivedTripItem, tripId: string) {
+  if (!navigator.onLine) throw new Error("Connect to permanently delete archived items.");
+  const { error } = await client().rpc("delete_archived_trip_item", {
+    requested_trip_id: tripId,
+    requested_item_id: item.id,
+    requested_kind: item.kind
+  });
+  if (error) {
+    if (error.code === "PGRST202")
+      throw new Error("Archive deletion needs the latest database migration. Nothing was deleted.");
+    throw error;
+  }
 }
 
 export async function setItineraryItemStatus(item: ItineraryItem, status: EventStatus) {

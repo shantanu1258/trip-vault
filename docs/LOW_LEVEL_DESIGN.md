@@ -2282,6 +2282,12 @@ Phase 2 is safe to retry because both catalog releases have stable change-note g
 
 ## Source File Index
 
+### Trip archive lifecycle
+
+`listArchivedTripItems` reads soft-deleted itinerary, cost, requirement, and note rows, deduplicating booking groups. `TripArchive` keeps the rows hidden behind Open archive and exposes role-gated restore and confirmed permanent-delete controls, with pending/error states. Readiness archiving invalidates both the active requirements and archive queries. Restore clears `deleted_at`, leaving completion status unchanged.
+
+Migration `202609210001_archived_trip_items.sql` adds `delete_archived_trip_item(trip_id, item_id, kind)`. The RPC checks authenticated trip edit permission, a same-trip archived record, and an allowlisted kind. Booking deletion locks/checks its grouped events; any relative scheduling dependency blocks the transaction. Linked cost and document associations are detached before deleting events/bookings, retaining their records and file bytes. This mutation is never queued offline. Archive mutation success invalidates relevant trip collections and alerts. Apply only this migration to an existing project; it does not delete rows when installed.
+
 These paths are the implemented ownership map. Tests are co-located with their modules; remaining limitations are marked `Revisit` in the decision registers.
 
 | Component                                     | Path                                                                                                                                                                                                                                                                                  | Responsibility                                                                                                                                                                                                           |

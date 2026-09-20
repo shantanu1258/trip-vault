@@ -1,4 +1,4 @@
-import { ChevronRight, Plus, RotateCcw, UsersRound } from "lucide-react";
+import { ChevronRight, Plus, UsersRound } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { TripChildLink } from "../../components/TripChildLink";
@@ -12,6 +12,7 @@ import { formatEventTime } from "./presentation";
 import { tripIntentNavigationState } from "./navigation";
 import { NoteCard, ReservationRow } from "./TripDetailsCards";
 import { TripDetailsSection } from "./TripDetailsSection";
+import { TripArchive } from "./TripArchive";
 import { TripReadinessSection } from "./TripReadinessSummary";
 import { readinessSummary } from "../timeline/model";
 import { TripAirlinesPanel } from "../workspace/TripAirlinesPanel";
@@ -51,7 +52,8 @@ type TripDetailsViewProps = {
   archivedItems?: ArchivedTripItem[];
   notes?: TripNote[];
   editable: boolean;
-  restorePending: boolean;
+  archiveLoading?: boolean;
+  archiveError?: boolean;
   navigationState?: unknown;
   online: boolean;
   onAddEvent: () => void;
@@ -59,7 +61,8 @@ type TripDetailsViewProps = {
   onAddCost: () => void;
   onOpenPeople: (trigger: HTMLButtonElement) => void;
   onUploadDocument: () => void;
-  onRestoreArchived: (item: ArchivedTripItem) => void;
+  onRestoreArchived: (item: ArchivedTripItem) => Promise<unknown>;
+  onDeleteArchived: (item: ArchivedTripItem) => Promise<unknown>;
   onAddNote: () => void;
   onEditNote: (note: TripNote) => void;
   onArchiveNote: (note: TripNote) => void;
@@ -119,7 +122,6 @@ export function TripDetailsView(props: TripDetailsViewProps) {
     archivedItems = [],
     notes = [],
     editable,
-    restorePending,
     navigationState,
     online
   } = props;
@@ -398,46 +400,15 @@ export function TripDetailsView(props: TripDetailsViewProps) {
         title="Archived trip items"
         count={archivedItems.length}
       >
-        {archivedItems.length > 0 && (
-          <p className="mb-2 text-xs text-muted">
-            Restore items to your trip. Documents and costs are kept.
-          </p>
-        )}
-        <div>
-          <ProgressiveList
-            items={archivedItems}
-            initialCount={5}
-            itemLabel="archived items"
-            getKey={(item) => `${item.kind}:${item.id}`}
-            empty={
-              online ? (
-                <p className="text-sm text-muted">Nothing is archived.</p>
-              ) : (
-                <p className="rounded-xl bg-warning/10 p-3 text-sm text-warning">
-                  Connect to view and restore archived items.
-                </p>
-              )
-            }
-            renderItem={(item) => (
-              <div className="flex items-center gap-3 rounded-xl bg-elevated p-3 text-sm">
-                <span className="min-w-0 flex-1">
-                  <strong className="block">{item.title}</strong>
-                  <span className="text-xs capitalize text-muted">{item.kind}</span>
-                </span>
-                {editable && (
-                  <button
-                    type="button"
-                    className="secondary-button min-h-9 px-3 py-2 text-xs"
-                    disabled={restorePending}
-                    onClick={() => props.onRestoreArchived(item)}
-                  >
-                    <RotateCcw className="size-3.5" /> Restore
-                  </button>
-                )}
-              </div>
-            )}
-          />
-        </div>
+        <TripArchive
+          items={archivedItems}
+          editable={editable}
+          online={online}
+          loading={props.archiveLoading}
+          error={props.archiveError}
+          onRestore={props.onRestoreArchived}
+          onDelete={props.onDeleteArchived}
+        />
       </TripDetailsSection>
 
       <TripDetailsSection id="offline" eyebrow="On this device" title="Offline pack">

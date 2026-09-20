@@ -119,10 +119,11 @@ export function ReadinessPage() {
     mutationFn: archiveRequirement,
     onSuccess: async (_data, item) => {
       setStatusMessage(
-        `${item.title} archived. It has been removed from timeline highlights and alerts.`
+        `${item.title} archived. Restore it from Trip details → Archived trip items.`
       );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["requirements", tripId] }),
+        queryClient.invalidateQueries({ queryKey: ["archived-trip-items", tripId] }),
         queryClient.invalidateQueries({ queryKey: ["alerts"] })
       ]);
     }

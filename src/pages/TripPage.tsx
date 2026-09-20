@@ -72,8 +72,8 @@ import {
   listArchivedTripItems,
   listItinerary,
   reorderItineraryItems,
-  restoreItineraryItem,
-  restoreTripCost,
+  restoreArchivedTripItem,
+  deleteArchivedTripItem,
   setItineraryItemStatus,
   updateTripExpenseSplitting
 } from "../features/trips/api";
@@ -2259,17 +2259,27 @@ export function TripPage() {
       );
     }
   });
+  const refreshArchive = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["archived-trip-items", tripId] }),
+      queryClient.invalidateQueries({ queryKey: ["itinerary", tripId] }),
+      queryClient.invalidateQueries({ queryKey: ["bookings", tripId] }),
+      queryClient.invalidateQueries({ queryKey: ["costs", tripId] }),
+      queryClient.invalidateQueries({ queryKey: ["requirements", tripId] }),
+      queryClient.invalidateQueries({ queryKey: ["notes", tripId] }),
+      queryClient.invalidateQueries({ queryKey: ["documents", tripId] }),
+      queryClient.invalidateQueries({ queryKey: ["alerts"] })
+    ]);
+  };
   const restoreArchivedItem = useMutation({
-    mutationFn: async ({ id, kind }: { id: string; kind: "event" | "booking" | "cost" }) =>
-      kind === "cost" ? restoreTripCost(id) : restoreItineraryItem(id),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["archived-trip-items", tripId] }),
-        queryClient.invalidateQueries({ queryKey: ["itinerary", tripId] }),
-        queryClient.invalidateQueries({ queryKey: ["bookings", tripId] }),
-        queryClient.invalidateQueries({ queryKey: ["costs", tripId] })
-      ]);
-    }
+    mutationFn: (item: Parameters<typeof restoreArchivedTripItem>[0]) =>
+      restoreArchivedTripItem(item, tripId),
+    onSuccess: refreshArchive
+  });
+  const deleteArchivedItem = useMutation({
+    mutationFn: (item: Parameters<typeof deleteArchivedTripItem>[0]) =>
+      deleteArchivedTripItem(item, tripId),
+    onSuccess: refreshArchive
   });
   const removeTravelerMutation = useMutation({
     mutationFn: removeTraveler,
@@ -2277,7 +2287,7 @@ export function TripPage() {
   });
   const archiveNoteMutation = useMutation({
     mutationFn: archiveNote,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes", tripId] })
+    onSuccess: refreshArchive
   });
 
   useEffect(() => {
@@ -2645,7 +2655,8 @@ export function TripPage() {
                 archivedItems={archivedItemsQuery.data}
                 notes={notesQuery.data}
                 editable={editable}
-                restorePending={restoreArchivedItem.isPending}
+                archiveLoading={archivedItemsQuery.isLoading}
+                archiveError={archivedItemsQuery.isError}
                 navigationState={childNavigationState}
                 online={navigator.onLine}
                 onAddEvent={openAddEvent}
@@ -2656,9 +2667,8 @@ export function TripPage() {
                 }}
                 onOpenPeople={openPeople}
                 onUploadDocument={() => setOpenForm("document")}
-                onRestoreArchived={(item) =>
-                  restoreArchivedItem.mutate({ id: item.id, kind: item.kind })
-                }
+                onRestoreArchived={(item) => restoreArchivedItem.mutateAsync(item)}
+                onDeleteArchived={(item) => deleteArchivedItem.mutateAsync(item)}
                 onAddNote={() => setOpenForm("note")}
                 onEditNote={setEditingNote}
                 onArchiveNote={async (note) => {

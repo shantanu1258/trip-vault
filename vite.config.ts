@@ -30,10 +30,10 @@ export default defineConfig({
     VitePWA({
       registerType: "prompt",
       includeAssets: [
-        "icons/icon.svg",
-        "icons/icon-192.png",
-        "icons/icon-512.png",
-        "icons/apple-touch-icon.png"
+        "icons/wallet-v1-32.png",
+        "icons/wallet-v1-192.png",
+        "icons/wallet-v1-512.png",
+        "icons/wallet-v1-apple-touch.png"
       ],
       manifest: {
         name: "Trip Vault",
@@ -67,13 +67,13 @@ export default defineConfig({
         },
         icons: [
           {
-            src: "/icons/icon-192.png",
+            src: "/icons/wallet-v1-192.png",
             sizes: "192x192",
             type: "image/png",
             purpose: "any"
           },
           {
-            src: "/icons/icon-512.png",
+            src: "/icons/wallet-v1-512.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "any maskable"

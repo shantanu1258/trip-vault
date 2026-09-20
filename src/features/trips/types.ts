@@ -114,7 +114,7 @@ export type CostParticipant = {
 
 export type ArchivedTripItem = {
   id: string;
-  kind: "event" | "booking" | "cost";
+  kind: "event" | "booking" | "cost" | "task" | "note";
   title: string;
   archived_at: string;
 };
