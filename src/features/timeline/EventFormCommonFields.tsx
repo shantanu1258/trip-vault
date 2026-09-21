@@ -72,7 +72,7 @@ export function EventTitleField({ type }: { type: TimelineEventType }) {
     bus: "Timeline title",
     ferry: "Timeline title",
     cab: "Timeline title",
-    preparation: "Task name",
+    preparation: "Plan or task",
     transport: "Timeline title",
     custom: "Timeline title"
   };

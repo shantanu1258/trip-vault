@@ -1267,6 +1267,7 @@ export async function addTripCost(input: CreateCostInput): Promise<TripCost> {
     booking_id: input.bookingId || null,
     itinerary_item_id: input.itineraryItemId || null,
     cab_stop_id: input.cabStopId || null,
+    activity_moment_id: input.activityMomentId || null,
     ...(input.documentId ? { document_id: input.documentId } : {}),
     title: input.title,
     category: input.category,
@@ -1299,12 +1300,24 @@ export async function addTripCost(input: CreateCostInput): Promise<TripCost> {
           )
           .first()
       : undefined;
+    const activityMomentOperation = input.activityMomentId
+      ? await database.outbox
+          .where("entityId")
+          .equals(input.activityMomentId)
+          .filter(
+            (operation) =>
+              operation.operation === "create" &&
+              (operation.payload as { table?: string } | undefined)?.table === "activity_moments"
+          )
+          .first()
+      : undefined;
     const parent = await queueCreate({
       entityType: `costs:${input.tripId}`,
       table: "trip_costs",
       row,
       dependsOn: [
         cabStopOperation?.operationId,
+        activityMomentOperation?.operationId,
         ...documentDependencies,
         ...(input.dependsOn ?? [])
       ].filter((id): id is string => Boolean(id))
@@ -1327,6 +1340,7 @@ export async function addTripCost(input: CreateCostInput): Promise<TripCost> {
       booking_id: input.bookingId || null,
       itinerary_item_id: input.itineraryItemId || null,
       cab_stop_id: input.cabStopId || null,
+      activity_moment_id: input.activityMomentId || null,
       ...(input.documentId ? { document_id: input.documentId } : {}),
       title: input.title,
       category: input.category,
@@ -1361,12 +1375,14 @@ export async function updateTripCost(input: UpdateCostInput): Promise<TripCost> 
     bookingId: input.bookingId || existing.booking_id || undefined,
     itineraryItemId: input.itineraryItemId || existing.itinerary_item_id || undefined,
     cabStopId: input.cabStopId || existing.cab_stop_id || undefined,
+    activityMomentId: input.activityMomentId || existing.activity_moment_id || undefined,
     documentId: input.documentId === undefined ? existing.document_id : input.documentId
   });
   const patch = {
     booking_id: input.bookingId || existing.booking_id || null,
     itinerary_item_id: input.itineraryItemId || existing.itinerary_item_id || null,
     cab_stop_id: input.cabStopId || existing.cab_stop_id || null,
+    activity_moment_id: input.activityMomentId || existing.activity_moment_id || null,
     ...(input.documentId !== undefined ? { document_id: input.documentId || null } : {}),
     title: input.title,
     category: input.category,
@@ -1445,9 +1461,15 @@ export async function updateTripCost(input: UpdateCostInput): Promise<TripCost> 
 }
 
 function assertCostAssociation(
-  input: Pick<CreateCostInput, "bookingId" | "itineraryItemId" | "cabStopId" | "documentId">
+  input: Pick<
+    CreateCostInput,
+    "bookingId" | "itineraryItemId" | "cabStopId" | "activityMomentId" | "documentId"
+  >
 ) {
-  if (input.documentId && (input.bookingId || input.itineraryItemId || input.cabStopId)) {
+  if (
+    input.documentId &&
+    (input.bookingId || input.itineraryItemId || input.cabStopId || input.activityMomentId)
+  ) {
     throw new Error("Choose an event or a document, not both.");
   }
 }

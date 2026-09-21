@@ -949,10 +949,10 @@ describe("event form architecture", () => {
   it("persists optional preparation place, navigation, provider, and manage link in supported structured fields", async () => {
     const { user } = renderForm();
     await user.click(
-      screen.getByRole("button", { name: /Preparation A dated or flexible pre-trip task/i })
+      screen.getByRole("button", { name: /Planning Plan the day, tasks, or things to arrange/i })
     );
     expectOfficialDocumentPicker("other");
-    await user.type(screen.getByLabelText("Task name"), "Collect visas");
+    await user.type(screen.getByLabelText("Plan or task"), "Collect visas");
     await user.click(screen.getByText("More details"));
     await user.type(screen.getByLabelText("Place (optional)"), "Visa centre");
     await user.type(
@@ -986,9 +986,9 @@ describe("event form architecture", () => {
     );
     const { user } = renderForm();
     await user.click(
-      screen.getByRole("button", { name: /Preparation A dated or flexible pre-trip task/i })
+      screen.getByRole("button", { name: /Planning Plan the day, tasks, or things to arrange/i })
     );
-    await user.type(screen.getByLabelText("Task name"), "Visa appointment");
+    await user.type(screen.getByLabelText("Plan or task"), "Visa appointment");
     await user.click(screen.getByText("More details"));
     await user.type(screen.getByLabelText("Provider or organization (optional)"), "VFS Global");
     await user.click(screen.getByText("Cost"));

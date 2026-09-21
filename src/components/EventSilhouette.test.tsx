@@ -84,6 +84,16 @@ describe("event background silhouettes", () => {
     expect(animate).not.toHaveBeenCalled();
   });
 
+  it("uses planning artwork with the existing preparation tone", () => {
+    const { container } = render(<EventSilhouette type="preparation" />);
+    expect(container.firstChild).toHaveClass("event-type-icon--preparation");
+    expect(container.querySelector('[data-silhouette-art="planning"]')).toBeInTheDocument();
+    expect(container.querySelector(".silhouette-planning-route")).toHaveAttribute(
+      "pathLength",
+      "1"
+    );
+  });
+
   it.each(motionCases)(
     "opens $type artwork once in $placement and cancels on unmount",
     ({ type, placement, arrival }) => {

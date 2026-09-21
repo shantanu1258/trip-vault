@@ -228,10 +228,29 @@ export function EventSilhouette({
           </g>
         )}
         {tone === "preparation" && (
-          <path
-            fillRule="evenodd"
-            d="m80 7 47 17v28c0 25-20 43-47 54-27-11-47-29-47-54V24Zm-9 56L56 48l-7 7 22 22 38-39-7-7Z"
-          />
+          <g data-silhouette-art="planning">
+            <path fillRule="evenodd" d="M28 24h104v82H28Zm12 24v46h80V48Z" />
+            <path
+              d="M51 14v22m58-22v22M39 43h82"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="8"
+              strokeLinecap="round"
+            />
+            <path
+              className="silhouette-planning-route"
+              d="M53 62h17l10 11h27M53 84h29l9-10"
+              fill="none"
+              pathLength="1"
+              stroke="currentColor"
+              strokeWidth="6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <circle cx="51" cy="62" r="6" />
+            <circle cx="109" cy="73" r="6" />
+            <circle cx="51" cy="84" r="6" />
+          </g>
         )}
         {tone === "custom" && (
           <g>

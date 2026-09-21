@@ -45,6 +45,11 @@ import { useConfirmDialog } from "../components/ConfirmDialogProvider";
 import { WhatsAppIcon } from "../components/WhatsAppIcon";
 import { CompactCostTotal, ErrorCard, LoadingCard } from "../components/TripUi";
 import { notificationDestination } from "../features/notifications/destination";
+import { ActivityMomentsManager } from "../features/activity-moments/ActivityMomentsManager";
+import {
+  PlanningItemsCompactEditor,
+  PlanningItemsSummary
+} from "../features/planning/PlanningItems";
 import { AddEventForm } from "../features/timeline/AddEventForm";
 import {
   buildTripTimelineEntries,
@@ -722,6 +727,7 @@ function EventTravelers({
 function BookingEventSummary({
   tripId,
   booking,
+  eventType,
   flights,
   airlines,
   flightTravelers,
@@ -733,6 +739,7 @@ function BookingEventSummary({
 }: {
   tripId: string;
   booking: Booking;
+  eventType?: TimelineEventType;
   flights: FlightLeg[];
   airlines: TripAirline[];
   flightTravelers: FlightTraveler[];
@@ -771,6 +778,7 @@ function BookingEventSummary({
     <div className="mt-3">
       <BookingSummarySurface
         booking={booking}
+        eventType={eventType}
         accentStyle={flightLegs.length ? airlineAccentStyle(firstAirline?.brand_color) : undefined}
         route={
           route
@@ -1073,6 +1081,7 @@ export function EventDetailsSheet({
   pendingStatus = null,
   onMoveUp,
   onMoveDown,
+  onOpenEvent,
   routeBacked = false
 }: {
   item: ItineraryItem;
@@ -1103,6 +1112,7 @@ export function EventDetailsSheet({
   pendingStatus?: EventStatus | null;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  onOpenEvent?: (eventId: string) => void;
   routeBacked?: boolean;
 }) {
   const [localSavingStatus, setSavingStatus] = useState<EventStatus | null>(null);
@@ -1150,7 +1160,11 @@ export function EventDetailsSheet({
     : undefined;
   return (
     <ModalSheet
-      eyebrow={(item.event_type ?? "event").replaceAll("_", " ")}
+      eyebrow={
+        item.event_type === "preparation"
+          ? "planning"
+          : (item.event_type ?? "event").replaceAll("_", " ")
+      }
       title={item.title}
       onClose={onClose}
       manageHistory={!routeBacked}
@@ -1210,6 +1224,17 @@ export function EventDetailsSheet({
         </div>
       </div>
       <EventTravelers item={item} travelerIds={travelerIds} travelers={travelers} />
+      {item.event_type === "preparation" && (
+        <PlanningItemsCompactEditor
+          planningEvent={item}
+          itinerary={itinerary}
+          tripId={tripId}
+          detailsHref={`/trips/${tripId}/planning/${item.id}`}
+          navigationState={navigationState}
+          editable={editable}
+          onOpenEvent={onOpenEvent}
+        />
+      )}
       {item.location?.label && (
         <p className="mt-4 flex items-start gap-2 text-sm text-muted">
           <MapPin className="mt-0.5 size-4 shrink-0" />
@@ -1267,6 +1292,18 @@ export function EventDetailsSheet({
               editable={editable}
             />
           ))}
+      {item.event_type === "activity" && (
+        <ActivityMomentsManager
+          tripId={tripId}
+          item={item}
+          costs={costs}
+          currencyCode={tripCurrency ?? "USD"}
+          participantTravelerIds={
+            item.applies_to_all_travelers ? travelers.map((row) => row.id) : travelerIds
+          }
+          editable={editable}
+        />
+      )}
       <EventDocuments
         compact
         item={item}
@@ -1291,7 +1328,7 @@ export function EventDetailsSheet({
           />
         </EventDetailSection>
       )}
-      {editable && canAddEventBooking(item) && (
+      {editable && item.event_type !== "preparation" && canAddEventBooking(item) && (
         <button type="button" className="secondary-button mt-3 w-full" onClick={onAddBooking}>
           <TicketCheck className="size-4" /> Add booking details
         </button>
@@ -2592,6 +2629,15 @@ export function TripPage() {
                               travelerIds={travelerIds}
                               travelers={travelers}
                             />
+                            {item.event_type === "preparation" && (
+                              <PlanningItemsSummary
+                                planningEventId={item.id}
+                                itinerary={visibleItinerary}
+                                tripId={trip.id}
+                                detailsHref={`/trips/${trip.id}/planning/${item.id}`}
+                                navigationState={childNavigationState}
+                              />
+                            )}
                             <div className="mt-3 flex flex-wrap items-center gap-3 [&>a]:relative [&>a]:z-20 [&>button]:relative [&>button]:z-20">
                               {map ? (
                                 <a
@@ -2621,6 +2667,7 @@ export function TripPage() {
                               <BookingEventSummary
                                 tripId={trip.id}
                                 booking={booking}
+                                eventType={item.event_type}
                                 flights={flights}
                                 airlines={airlinesQuery.data ?? []}
                                 flightTravelers={flightTravelers}
@@ -2910,6 +2957,7 @@ export function TripPage() {
             onMoveDown={() =>
               reorderItinerary.mutate({ itemId: viewingItinerary.id, direction: "down" })
             }
+            onOpenEvent={openEvent}
             routeBacked
           />
         )}

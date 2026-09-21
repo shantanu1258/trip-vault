@@ -404,7 +404,12 @@ export function AddCostForm({
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const lockedAssociation = Boolean(
-    bookingId || itineraryItemId || cost?.booking_id || cost?.itinerary_item_id || cost?.cab_stop_id
+    bookingId ||
+    itineraryItemId ||
+    cost?.booking_id ||
+    cost?.itinerary_item_id ||
+    cost?.cab_stop_id ||
+    cost?.activity_moment_id
   );
   const [association, setAssociation] = useState(cost?.document_id ? "document" : "none");
   const [selectedEventId, setSelectedEventId] = useState("");

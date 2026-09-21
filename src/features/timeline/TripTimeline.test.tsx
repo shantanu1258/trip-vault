@@ -168,6 +168,18 @@ describe("compact trip timeline", () => {
         ?.querySelector("[data-silhouette]")
     ).toBeNull();
   });
+  it("does not place the planning artwork outside its nested day-plan card", async () => {
+    setup("planning-silhouette", [entry("Day plan", "01", "preparation")]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Expand Day plan" }));
+
+    expect(
+      screen
+        .getByRole("button", { name: "Collapse Day plan" })
+        .closest("article")
+        ?.querySelector('[data-silhouette-placement="fallback"]')
+    ).toBeNull();
+  });
   it("uses the Add event type list and combines the selected type with the date", async () => {
     setup("types", [
       entry("Flight", "01", "flight"),
@@ -207,7 +219,7 @@ describe("compact trip timeline", () => {
       expected: ["Hotel arrival", "Hotel departure"]
     },
     {
-      label: "Preparation",
+      label: "Planning",
       data: [taskEntry, entry("Pack bags", "01", "preparation")],
       expected: ["Bali eVisa", "Pack bags"]
     }

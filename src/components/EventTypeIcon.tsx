@@ -7,7 +7,6 @@ import {
   CookingPot,
   MapPinned,
   Plane,
-  ShieldCheck,
   Ship,
   TrainFront,
   type LucideIcon
@@ -36,7 +35,7 @@ const eventIconDefinitions: Record<TimelineEventType, EventIconDefinition> = {
   meal: { icon: CookingPot, tone: "meal", toneClassName: "event-type-icon--meal" },
   activity: { icon: MapPinned, tone: "activity", toneClassName: "event-type-icon--activity" },
   preparation: {
-    icon: ShieldCheck,
+    icon: CalendarClock,
     tone: "preparation",
     toneClassName: "event-type-icon--preparation"
   },

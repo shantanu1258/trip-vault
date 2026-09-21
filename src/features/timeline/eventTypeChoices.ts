@@ -11,7 +11,7 @@ export const eventTypeChoices: { type: TimelineEventType; label: string; hint: s
   { type: "ferry", label: "Ferry / boat", hint: "Passenger or vehicle sailing" },
   { type: "train", label: "Train", hint: "Rail plan, ticket, or connection" },
   { type: "meal", label: "Meal", hint: "Lunch, dinner, or reservation" },
-  { type: "preparation", label: "Preparation", hint: "A dated or flexible pre-trip task" },
+  { type: "preparation", label: "Planning", hint: "Plan the day, tasks, or things to arrange" },
   { type: "transport", label: "Other transport", hint: "Metro, rental, transfer, or walk" },
   { type: "custom", label: "Other", hint: "Anything else on the timeline" }
 ];
@@ -30,7 +30,8 @@ const eventTypeSearchAliases: Record<TimelineEventType, string> = {
   ferry: "ferries boat boats sailing sailings",
   train: "trains rail railway",
   meal: "meals restaurant restaurants breakfast lunch dinner",
-  preparation: "preparations task tasks prep",
+  preparation:
+    "planning plan plans agenda checklist todo to-do preparation preparations task tasks prep",
   transport: "transportation transfer transfers metro rental walk",
   custom: "other custom"
 };

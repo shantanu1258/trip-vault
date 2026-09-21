@@ -437,7 +437,9 @@ export const TripTimeline = forwardRef<
                                 className="timeline-card-detail relative isolate border-t border-line p-3 sm:p-5"
                               >
                                 {expanded && renderDetail(entry)}
-                                {expanded && <EventSilhouette type={type} placement="fallback" />}
+                                {expanded && type !== "preparation" && (
+                                  <EventSilhouette type={type} placement="fallback" />
+                                )}
                               </div>
                             </>
                           )}

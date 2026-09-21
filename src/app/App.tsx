@@ -32,6 +32,9 @@ const JoinPage = lazy(() => import("../pages/JoinPage").then((m) => ({ default: 
 const ProfilePage = lazy(() =>
   import("../pages/ProfilePage").then((m) => ({ default: m.ProfilePage }))
 );
+const PlanningPage = lazy(() =>
+  import("../pages/PlanningPage").then((m) => ({ default: m.PlanningPage }))
+);
 const ReadinessPage = lazy(() =>
   import("../pages/ReadinessPage").then((m) => ({ default: m.ReadinessPage }))
 );
@@ -77,6 +80,7 @@ export function App() {
           <Route path="/trips" element={<TripsPage />} />
           <Route path="/trips/new" element={<CreateTripPage />} />
           <Route path="/trips/:tripId" element={<TripPage />} />
+          <Route path="/trips/:tripId/planning/:planningEventId" element={<PlanningPage />} />
           <Route path="/trips/:tripId/reservations" element={<TripReservationsPage />} />
           <Route path="/trips/:tripId/documents" element={<TripDocumentsPage />} />
           <Route path="/trips/:tripId/bookings/:bookingId" element={<BookingPage />} />

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { readFileSync } from "node:fs";
-import { Blob as NativeBlob, Buffer } from "node:buffer";
+import { Blob as NativeBlob, Buffer, File as NativeFile } from "node:buffer";
 import { runInNewContext } from "node:vm";
 import { afterEach, expect, it, vi } from "vitest";
 import { clearIncomingShares, discardIncomingShare, readIncomingShare } from "./incomingShare";
@@ -10,6 +10,7 @@ function worker() {
   // Native Request/FormData keep multipart parsing in the same realm as the
   // service worker; jsdom's DOM classes are incompatible with Node's parser.
   vi.stubGlobal("window", { location: { origin: "https://trip-vault.test" } });
+  vi.stubGlobal("File", NativeFile);
   const records = new Map<string, Response>();
   const cache = {
     match: vi.fn(async (key: string) => records.get(key)?.clone()),

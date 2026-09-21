@@ -37,4 +37,10 @@ describe("EventTypeIcon", () => {
     expect(eventIconTone("preparation")).toBe("preparation");
     expect(eventIconTone("custom")).toBe("custom");
   });
+
+  it("uses the planning icon while retaining the readiness tone", () => {
+    const { container } = render(<EventTypeIcon type="preparation" />);
+    expect(container.firstChild).toHaveClass("event-type-icon--preparation");
+    expect(container.querySelector(".lucide-calendar-clock")).toBeInTheDocument();
+  });
 });

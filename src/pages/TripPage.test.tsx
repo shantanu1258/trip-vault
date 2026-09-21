@@ -66,6 +66,9 @@ vi.mock("../components/ModalSheet", () => ({
   )
 }));
 vi.mock("../features/readiness/OfflinePackControl", () => ({ OfflinePackControl: () => null }));
+vi.mock("../features/activity-moments/ActivityMomentsManager", () => ({
+  ActivityMomentsManager: () => <section aria-label="Activity moments">Moments</section>
+}));
 vi.mock("../features/timeline/AddEventForm", () => ({
   AddEventForm: ({
     initialType,
