@@ -219,19 +219,29 @@ export async function archiveActivityMoment(moment: ActivityMoment) {
   if (profileId) await database.entities.delete([profileId, entityType, moment.id]);
 }
 
-async function setMomentOrder(moment: ActivityMoment, order: number) {
+async function setMomentOrder(moment: ActivityMoment, order: number, afterOperation?: string) {
   const entityType = activityMomentEntityType(moment.itinerary_item_id);
   if (!navigator.onLine) {
     const dependency = await latestMomentMutation(moment.id);
-    const updated = { ...moment, moment_order: order, updated_at: new Date().toISOString() };
-    await queueUpdate({
+    const current =
+      (await readEntityList<ActivityMoment>(entityType)).find((row) => row.id === moment.id) ??
+      moment;
+    const updated = {
+      ...current,
+      moment_order: order,
+      version: (current.version ?? 1) + 1,
+      updated_at: new Date().toISOString()
+    };
+    return queueUpdate({
       entityType,
       table: "activity_moments",
       row: updated,
       patch: { moment_order: order },
-      dependsOn: dependency ? [dependency] : []
+      baseVersion: current.version,
+      dependsOn: [
+        ...new Set([dependency, afterOperation].filter((id): id is string => Boolean(id)))
+      ]
     });
-    return;
   }
   const { error } = await client()
     .from("activity_moments")
@@ -253,20 +263,27 @@ export async function reorderActivityMoments(
   if (from < 0 || to < 0 || to >= ordered.length) return ordered;
   const moving = ordered[from];
   const adjacent = ordered[to];
+  if (navigator.onLine) {
+    const { error } = await client().rpc("reorder_agenda_items", {
+      requested_table: "activity_moments",
+      requested_parent_id: moving.itinerary_item_id,
+      first_item_id: moving.id,
+      second_item_id: adjacent.id,
+      first_version: moving.version ?? null,
+      second_version: adjacent.version ?? null
+    });
+    if (error) {
+      if (error.code === "PGRST202")
+        throw new Error("Apply the latest agenda database migration before reordering.");
+      throw error;
+    }
+    return listActivityMoments(moving.itinerary_item_id);
+  }
   const temporary = Math.max(...ordered.map((moment) => moment.moment_order), 0) + 1000;
-  await setMomentOrder(moving, temporary);
-  await setMomentOrder(adjacent, moving.moment_order);
-  await setMomentOrder(moving, adjacent.moment_order);
-  if (navigator.onLine) return listActivityMoments(moving.itinerary_item_id);
-  const swapped = ordered.map((moment) =>
-    moment.id === moving.id
-      ? { ...moment, moment_order: adjacent.moment_order }
-      : moment.id === adjacent.id
-        ? { ...moment, moment_order: moving.moment_order }
-        : moment
-  );
-  await Promise.all(
-    swapped.map((moment) => cacheEntity(activityMomentEntityType(moment.itinerary_item_id), moment))
-  );
-  return swapped.sort((left, right) => left.moment_order - right.moment_order);
+  const first = await setMomentOrder(moving, temporary);
+  const second = await setMomentOrder(adjacent, moving.moment_order, first);
+  await setMomentOrder(moving, adjacent.moment_order, second);
+  // Keep the incremented versions from each queued write, so subsequent edits
+  // use the version that will exist after the ordered mutations reach the server.
+  return listActivityMoments(moving.itinerary_item_id);
 }

@@ -66,6 +66,7 @@ vi.mock("../components/ModalSheet", () => ({
   )
 }));
 vi.mock("../features/readiness/OfflinePackControl", () => ({ OfflinePackControl: () => null }));
+vi.mock("../features/planning/api", () => ({ listPlanningItems: async () => [] }));
 vi.mock("../features/activity-moments/ActivityMomentsManager", () => ({
   ActivityMomentsManager: () => <section aria-label="Activity moments">Moments</section>
 }));
@@ -1343,6 +1344,44 @@ describe("route-backed add event", () => {
 });
 
 describe("timeline booking-at-a-glance details", () => {
+  it("makes the day-plan location optional while retaining navigation for a provided location", async () => {
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listItinerary.mockResolvedValue([
+      { ...activity, id: "plan-empty", title: "Unlocated day plan", event_type: "preparation" },
+      {
+        ...activity,
+        id: "plan-place",
+        title: "Located day plan",
+        event_type: "preparation",
+        location: { label: "Museum", map_url: "https://maps.example/museum" }
+      }
+    ]);
+    mocks.listBookings.mockResolvedValue([]);
+    mocks.listCosts.mockResolvedValue([]);
+    mocks.listRequirements.mockResolvedValue([]);
+    mocks.listMembers.mockResolvedValue([{ user_id: "owner-user", role: "owner" }]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/trips/trip-1"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    await screen.findByText("Unlocated day plan");
+    for (const title of ["Unlocated day plan", "Located day plan"]) {
+      const card = screen.getByText(title).closest("article")!;
+      const toggle = within(card).queryByRole("button", { expanded: false });
+      if (toggle) await userEvent.click(toggle);
+      expect(within(card).queryByRole("button", { name: "Add location" })).not.toBeInTheDocument();
+    }
+    expect(screen.getByRole("link", { name: "Navigation" })).toHaveAttribute(
+      "href",
+      "https://maps.example/museum"
+    );
+  });
   it("shows flight booking state, boarding, gate, and focused seat details on the timeline card", async () => {
     const flightBooking: Booking = {
       id: "flight-booking",

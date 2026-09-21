@@ -233,19 +233,28 @@ export async function archivePlanningItem(item: PlanningItem) {
   if (profileId) await database.entities.delete([profileId, entityType, item.id]);
 }
 
-async function setPlanningItemOrder(item: PlanningItem, order: number) {
+async function setPlanningItemOrder(item: PlanningItem, order: number, afterOperation?: string) {
   const entityType = planningItemEntityType(item.planning_event_id);
   if (!navigator.onLine) {
     const dependency = await latestPlanningItemMutation(item.id);
-    const updated = { ...item, item_order: order, updated_at: new Date().toISOString() };
-    await queueUpdate({
+    const current =
+      (await readEntityList<PlanningItem>(entityType)).find((row) => row.id === item.id) ?? item;
+    const updated = {
+      ...current,
+      item_order: order,
+      version: (current.version ?? 1) + 1,
+      updated_at: new Date().toISOString()
+    };
+    return queueUpdate({
       entityType,
       table: "planning_items",
       row: updated,
       patch: { item_order: order },
-      dependsOn: dependency ? [dependency] : []
+      baseVersion: current.version,
+      dependsOn: [
+        ...new Set([dependency, afterOperation].filter((id): id is string => Boolean(id)))
+      ]
     });
-    return;
   }
   const { error } = await client()
     .from("planning_items")
@@ -267,22 +276,29 @@ export async function reorderPlanningItems(
   if (from < 0 || to < 0 || to >= ordered.length) return ordered;
   const moving = ordered[from];
   const adjacent = ordered[to];
+  if (navigator.onLine) {
+    const { error } = await client().rpc("reorder_agenda_items", {
+      requested_table: "planning_items",
+      requested_parent_id: moving.planning_event_id,
+      first_item_id: moving.id,
+      second_item_id: adjacent.id,
+      first_version: moving.version ?? null,
+      second_version: adjacent.version ?? null
+    });
+    if (error) {
+      if (error.code === "PGRST202")
+        throw new Error("Apply the latest agenda database migration before reordering.");
+      throw error;
+    }
+    return listPlanningItems(moving.planning_event_id);
+  }
   const temporary = Math.max(...ordered.map((item) => item.item_order), 0) + 1000;
-  await setPlanningItemOrder(moving, temporary);
-  await setPlanningItemOrder(adjacent, moving.item_order);
-  await setPlanningItemOrder(moving, adjacent.item_order);
-  if (navigator.onLine) return listPlanningItems(moving.planning_event_id);
-  const swapped = ordered.map((item) =>
-    item.id === moving.id
-      ? { ...item, item_order: adjacent.item_order }
-      : item.id === adjacent.id
-        ? { ...item, item_order: moving.item_order }
-        : item
-  );
-  await Promise.all(
-    swapped.map((item) => cacheEntity(planningItemEntityType(item.planning_event_id), item))
-  );
-  return swapped.sort((left, right) => left.item_order - right.item_order);
+  const first = await setPlanningItemOrder(moving, temporary);
+  const second = await setPlanningItemOrder(adjacent, moving.item_order, first);
+  await setPlanningItemOrder(moving, adjacent.item_order, second);
+  // Keep the incremented versions from each queued write, so subsequent edits
+  // use the version that will exist after the ordered mutations reach the server.
+  return listPlanningItems(moving.planning_event_id);
 }
 
 async function linkPlanningItem(item: PlanningItem, itineraryItemId: string | null) {

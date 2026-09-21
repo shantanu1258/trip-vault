@@ -95,6 +95,23 @@ it("reviews received files using existing trip fields with private visibility, a
   expect(mocks.stage).not.toHaveBeenCalled();
 });
 
+it("defaults a Vault trip upload to everyone without changing personal upload privacy", async () => {
+  setup();
+  const file = new File(["%PDF-file"], "trip-ticket.pdf", { type: "application/pdf" });
+  await userEvent.upload(screen.getByLabelText("PDF or image under 5 MB"), file);
+  await userEvent.selectOptions(screen.getByLabelText("Save to"), "trip");
+  await screen.findByRole("option", { name: "Holiday" });
+  await userEvent.selectOptions(screen.getByLabelText("Trip"), "trip-1");
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Review trip document" })).toBeEnabled()
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Review trip document" }));
+  expect(mocks.form).toHaveBeenCalledWith(
+    expect.objectContaining({ initialVisibility: "trip", privateOnly: false })
+  );
+  expect(mocks.stage).not.toHaveBeenCalled();
+});
+
 it("explains a missing handoff beside the picker instead of silently showing an empty upload form", async () => {
   setup("/receive-share");
   expect(await screen.findByRole("alert")).toHaveTextContent("opened without an attached file");

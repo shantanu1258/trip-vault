@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -28,6 +28,62 @@ vi.mock("../features/trips/api", () => ({ listTrips: mocks.listTrips }));
 import { VaultPage } from "./VaultPage";
 
 describe("VaultPage document list", () => {
+  it("keeps the selected type, traveler, and search after document navigation and browser Back", async () => {
+    mocks.listVaultDocuments.mockResolvedValue([
+      {
+        id: "doc",
+        trip_id: "trip-1",
+        title: "Sam visa",
+        category: "visa",
+        purpose: "visa",
+        visibility: "trip",
+        assignment_mode: "shared"
+      },
+      {
+        id: "flight",
+        trip_id: "trip-1",
+        title: "Flight ticket",
+        category: "flight",
+        purpose: "ticket",
+        visibility: "trip",
+        assignment_mode: "shared"
+      }
+    ]);
+    mocks.listTravelers.mockResolvedValue([{ id: "sam", trip_id: "trip-1", display_name: "Sam" }]);
+    function Document() {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate(-1)}>Browser Back</button>;
+    }
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <MemoryRouter initialEntries={["/vault"]}>
+          <Routes>
+            <Route path="/vault" element={<VaultPage />} />
+            <Route path="/trips/:tripId/documents/:documentId" element={<Document />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    await screen.findByRole("option", { name: "Sam · Bali" });
+    await userEvent.selectOptions(
+      screen.getByLabelText("Filter Vault documents by traveler"),
+      "trip-1:sam"
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Visas · 1" }));
+    await userEvent.type(screen.getByLabelText("Search documents"), "Sam");
+    await userEvent.click(screen.getByRole("link", { name: /Sam visa/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Browser Back" }));
+    expect(await screen.findByRole("button", { name: "Visas · 1" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    expect(screen.getByLabelText("Filter Vault documents by traveler")).toHaveValue("trip-1:sam");
+    expect(screen.getByLabelText("Search documents")).toHaveValue("Sam");
+    expect(screen.getByRole("heading", { name: "Sam visa" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Flight ticket" })).not.toBeInTheDocument();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     Object.defineProperty(navigator, "onLine", { configurable: true, value: true });

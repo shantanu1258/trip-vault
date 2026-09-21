@@ -7,6 +7,8 @@ import {
 } from "../../lib/storage/offlineFiles";
 import { listAlertStates, listCosts, listItinerary, listReminders } from "../trips/api";
 import { localProfileId } from "../sync/localSync";
+import { listPlanningItems } from "../planning/api";
+import { listActivityMoments } from "../activity-moments/api";
 import {
   cacheTripRelationships,
   downloadDocumentVersion,
@@ -95,6 +97,12 @@ export async function prepareTripOffline(
     ]);
     await Promise.all([
       ...itinerary.map((item) => listEventDocumentLinks(item.id)),
+      ...itinerary
+        .filter((item) => item.event_type === "preparation")
+        .map((item) => listPlanningItems(item.id)),
+      ...itinerary
+        .filter((item) => item.event_type === "activity")
+        .map((item) => listActivityMoments(item.id)),
       ...flights.map((flight) => listFlightTravelers(flight.id)),
       listJourneyLegTravelersForTrip(
         tripId,

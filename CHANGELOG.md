@@ -2,6 +2,15 @@
 
 User-visible changes are listed newest first. The HLD, LLD, and feature catalog are the current design contract; this file records history, including superseded experiments. This initial changelog covers the September 19 enhancement batch, not every earlier commit.
 
+## Unreleased — Vault navigation and planning review
+
+- Vault search, document type, traveler, and archived collection are URL-backed and survive opening a document and browser Back. Trip-document Back to trip is retained; personal previews stay within the personal Vault.
+- Manual Vault uploads into a trip default to everyone signed into the trip for owners/editors. Personal files, incoming device shares, and users restricted to private uploads retain their private defaults.
+- Day-plan timeline cards no longer prompt for a missing location; a supplied location and navigation link are still shown.
+- Reviewed the pulled cab refinements and day-planning/activity-Moment additions. Moment costs are validated before saving to prevent accidental duplicate Moments on correction; offline packs include plan items and Moments, and planning-page query errors block editing incomplete data.
+- Agenda reordering uses one permission-checked database transaction online, with stale-version checks; offline swaps chain dependencies and preserve incremented versions for subsequent edits.
+- Follow-up migration `202609220001_planning_archive_integrity.sql` fixes optional planning links blocking permanent archive deletion, retains Moment costs during parent-event deletion, and validates cost/Moment parent consistency. It requires the two September 21 planning/Moment migrations first. Complete setup now includes all three for fresh projects. Installation does not delete any data.
+
 ## Unreleased — Trip archive recovery
 
 - Brightened the wallet icon to the dark-mode mint brand colour for stronger app-list visibility, retaining the keyhole, partial plane, and brass clasp. All active icon references use new versioned URLs.

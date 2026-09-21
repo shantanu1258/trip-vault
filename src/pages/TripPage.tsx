@@ -2648,7 +2648,9 @@ export function TripPage() {
                                 >
                                   <LocateFixed className="size-4" /> Navigation
                                 </a>
-                              ) : editable && !isJourneyEventType(item.event_type) ? (
+                              ) : editable &&
+                                item.event_type !== "preparation" &&
+                                !isJourneyEventType(item.event_type) ? (
                                 <button
                                   type="button"
                                   onClick={() => editTimelineItem(item)}

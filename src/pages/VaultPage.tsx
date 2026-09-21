@@ -1,7 +1,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArchiveRestore, CloudUpload, FileSearch, LockKeyhole, Search } from "lucide-react";
-import { useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useMemo } from "react";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { DocumentVisibilityBadge } from "../components/DocumentVisibilityBadge";
 import { DocumentTypeIcon } from "../components/DocumentTypeIcon";
@@ -21,12 +21,21 @@ import { PersonalDocuments } from "../features/workspace/PersonalDocuments";
 
 export function VaultPage() {
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
   const personal = params.get("section") === "personal";
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("all");
-  const [travelerKey, setTravelerKey] = useState("all");
-  const [showArchived, setShowArchived] = useState(false);
+  const search = params.get("search") ?? "";
+  const category = params.get("category") ?? "all";
+  const travelerKey = params.get("traveler") ?? "all";
+  const showArchived = params.get("archived") === "true";
+  const updateFilters = (values: Record<string, string | null>) => {
+    const next = new URLSearchParams(params);
+    for (const [key, value] of Object.entries(values)) {
+      if (value && value !== "all") next.set(key, value);
+      else next.delete(key);
+    }
+    setParams(next, { replace: true, state: location.state });
+  };
   const query = useQuery({ queryKey: ["documents"], queryFn: () => listVaultDocuments() });
   const archivedQuery = useQuery({
     queryKey: ["documents", "archived"],
@@ -122,7 +131,7 @@ export function VaultPage() {
             type="button"
             className={`min-h-11 whitespace-nowrap border-b-2 px-1 py-2 text-xs font-bold transition-colors min-[360px]:px-2 sm:px-3 sm:text-sm ${personal ? "border-transparent text-muted hover:text-ink" : "border-brand text-brand"}`}
             aria-pressed={!personal}
-            onClick={() => setParams({})}
+            onClick={() => updateFilters({ section: null })}
           >
             Trip documents
           </button>
@@ -131,7 +140,7 @@ export function VaultPage() {
             className={`min-h-11 whitespace-nowrap border-b-2 px-1 py-2 text-xs font-bold transition-colors min-[360px]:px-2 sm:px-3 sm:text-sm ${personal ? "border-brand text-brand" : "border-transparent text-muted hover:text-ink"}`}
             aria-pressed={personal}
             onClick={() => {
-              setParams({ section: "personal" });
+              updateFilters({ section: "personal" });
             }}
           >
             Personal documents
@@ -141,9 +150,11 @@ export function VaultPage() {
               type="button"
               disabled={!navigator.onLine && !showArchived}
               onClick={() => {
-                setShowArchived((value) => !value);
-                setCategory("all");
-                setTravelerKey("all");
+                updateFilters({
+                  archived: showArchived ? null : "true",
+                  category: null,
+                  traveler: null
+                });
               }}
               aria-label={showArchived ? "Current documents" : "Recently deleted"}
               title={showArchived ? "Current documents" : "Recently deleted"}
@@ -181,7 +192,7 @@ export function VaultPage() {
                     <input
                       className="form-input mt-0 min-w-0 pl-10"
                       value={search}
-                      onChange={(event) => setSearch(event.target.value)}
+                      onChange={(event) => updateFilters({ search: event.target.value })}
                       placeholder="Search files"
                     />
                   </label>
@@ -189,7 +200,7 @@ export function VaultPage() {
                     aria-label="Filter Vault documents by traveler"
                     className="form-input mt-0 min-w-0 truncate"
                     value={travelerKey}
-                    onChange={(event) => setTravelerKey(event.target.value)}
+                    onChange={(event) => updateFilters({ traveler: event.target.value })}
                   >
                     <option value="all">All travelers</option>
                     {travelerKey !== "all" && !selectedTraveler && (
@@ -221,7 +232,7 @@ export function VaultPage() {
                       key={item.key}
                       type="button"
                       aria-pressed={category === item.key}
-                      onClick={() => setCategory(item.key)}
+                      onClick={() => updateFilters({ category: item.key })}
                       className={`inline-flex min-h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-bold focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand ${category === item.key ? "bg-brand text-surface" : "bg-elevated text-brand hover:bg-brand-soft"}`}
                     >
                       {item.label} · {item.count}

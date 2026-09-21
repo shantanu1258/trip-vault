@@ -166,4 +166,22 @@ describe("ActivityMomentsManager", () => {
       participantTravelerIds: ["traveler-1"]
     });
   });
+
+  it("does not save a Moment when its optional cost is invalid, then saves once after correction", async () => {
+    const user = renderManager();
+    await screen.findByText(/No Moments yet/i);
+    await user.click(screen.getByRole("button", { name: "Add Moment" }));
+    await user.type(screen.getByLabelText(/Moment name/), "Spice market");
+    const amount = screen.getByRole("textbox", { name: "Moment cost (optional)" });
+    await user.type(amount, "invalid");
+    await user.click(screen.getByRole("button", { name: "Add Moment" }));
+    expect(await screen.findByText("Enter a Moment cost greater than zero.")).toBeVisible();
+    expect(mocks.addActivityMoment).not.toHaveBeenCalled();
+    expect(mocks.addTripCost).not.toHaveBeenCalled();
+    await user.clear(amount);
+    await user.type(amount, "850");
+    await user.click(screen.getByRole("button", { name: "Add Moment" }));
+    await waitFor(() => expect(mocks.addTripCost).toHaveBeenCalledOnce());
+    expect(mocks.addActivityMoment).toHaveBeenCalledOnce();
+  });
 });

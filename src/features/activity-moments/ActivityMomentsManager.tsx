@@ -129,6 +129,17 @@ export function ActivityMomentsManager({
       const endsAt = next.endsLocal ? localDateTimeToIso(next.endsLocal, item.timezone) : undefined;
       if (startsAt && endsAt && endsAt < startsAt)
         throw new Error("A Moment cannot end before it starts.");
+      // Validate the whole form before saving: a rejected cost must not leave
+      // a saved Moment behind that would be duplicated on retry.
+      let amountMinor: number | undefined;
+      if (next.costAmount.trim()) {
+        if (next.id && costs.some((cost) => cost.activity_moment_id === next.id))
+          throw new Error("This Moment already has a cost. Edit it from Trip expenses.");
+        if (!/^\d+(?:\.\d+)?$/.test(next.costAmount) || Number(next.costAmount) <= 0)
+          throw new Error("Enter a Moment cost greater than zero.");
+        amountMinor = amountStringToMinor(next.costAmount, currencyCode);
+        if (amountMinor <= 0) throw new Error("Enter a Moment cost greater than zero.");
+      }
       const common = {
         tripId,
         itineraryItemId: item.id,
@@ -144,11 +155,7 @@ export function ActivityMomentsManager({
         ? await updateActivityMoment({ ...common, id: next.id, version: next.version })
         : await addActivityMoment(common);
       let costWarning = "";
-      if (next.costAmount.trim()) {
-        if (next.id && costs.some((cost) => cost.activity_moment_id === next.id))
-          throw new Error("This Moment already has a cost. Edit it from Trip expenses.");
-        if (!/^\d+(?:\.\d+)?$/.test(next.costAmount) || Number(next.costAmount) <= 0)
-          throw new Error("Enter a Moment cost greater than zero.");
+      if (amountMinor !== undefined) {
         try {
           await addTripCost({
             tripId,
@@ -156,7 +163,7 @@ export function ActivityMomentsManager({
             activityMomentId: moment.id,
             title: `${next.title.trim()} cost`,
             category: "activity",
-            amountMinor: amountStringToMinor(next.costAmount, currencyCode),
+            amountMinor,
             currencyCode,
             paymentStatus: next.paymentStatus,
             participantTravelerIds

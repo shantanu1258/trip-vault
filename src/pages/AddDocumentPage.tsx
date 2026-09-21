@@ -280,7 +280,7 @@ export function AddDocumentPage() {
             privateOnly={role !== "owner" && role !== "editor"}
             initialFile={file}
             initialFileContext="shared"
-            initialVisibility="private"
+            initialVisibility={isShareRoute ? "private" : "trip"}
             onClose={() => setReviewTrip(false)}
             onUploaded={() => finish(false)}
           />

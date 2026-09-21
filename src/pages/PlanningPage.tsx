@@ -74,7 +74,7 @@ export function PlanningPage() {
         {!loading && !error && !planningEvent && (
           <ErrorCard error={new Error("This day plan is no longer available.")} />
         )}
-        {!loading && planningEvent && (
+        {!loading && !error && planningEvent && (
           <div className="page-enter space-y-3">
             <header className="event-hero event-type-icon--preparation relative isolate overflow-hidden rounded-2xl border border-line p-4 pr-24 text-white shadow-focus sm:p-5 sm:pr-32">
               <EventSilhouette type="preparation" placement="hero" />
