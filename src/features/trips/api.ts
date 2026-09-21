@@ -35,6 +35,7 @@ import {
   syncBookingParticipants
 } from "./participantSync";
 import type { Booking } from "../workspace/types";
+import { activityBookingTiming, applyActivityTiming } from "../workspace/activityTiming";
 
 const itinerarySelect =
   "id,trip_id,booking_id,title,event_type,starts_at,ends_at,timezone,location,notes,applies_to_all_travelers,is_all_day,completed_at,timing_mode,scheduled_date,anchor_itinerary_item_id,relative_position,has_explicit_start_time,duration_minutes,event_status,sort_key,version,created_at,updated_at,deleted_at";
@@ -796,9 +797,13 @@ export async function updateItineraryItem(input: UpdateItineraryInput): Promise<
       const linkedItems = (await readEntityList<ItineraryItem>(`itinerary:${input.tripId}`)).filter(
         (item) => item.booking_id === targetBookingId && item.id !== input.id
       );
-      const cachedBooking = (await readEntityList<Booking>(`bookings:${input.tripId}`)).find(
+      const originalBooking = (await readEntityList<Booking>(`bookings:${input.tripId}`)).find(
         (booking) => booking.id === targetBookingId
       );
+      const cachedBooking =
+        originalBooking && originalBooking.type === "activity" && updated.event_type === "activity"
+          ? applyActivityTiming(originalBooking, activityBookingTiming(updated))
+          : originalBooking;
       await Promise.all([
         ...linkedItems.map((item) =>
           cacheEntity(

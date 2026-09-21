@@ -1288,6 +1288,52 @@ describe("Upload document flow", () => {
     );
   });
 
+  it("defaults activity booking timing to the linked event and allows a different time zone", async () => {
+    const user = userEvent.setup();
+    mocks.listItinerary.mockResolvedValue([
+      hotelMilestone("hotel_check_in", {
+        booking_id: "booking-activity",
+        event_type: "activity",
+        timezone: "Asia/Singapore",
+        starts_at: "2026-09-26T02:00:00.000Z",
+        ends_at: "2026-09-26T03:00:00.000Z"
+      })
+    ]);
+    render(
+      <MemoryRouter>
+        <QueryClientProvider
+          client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        >
+          <EditBookingForm
+            trip={trip}
+            booking={booking("activity")}
+            travelers={travelers}
+            selectedTravelerIds={[]}
+            onClose={vi.fn()}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Activity time zone" })).toHaveTextContent(
+        "Singapore"
+      )
+    );
+    expect(screen.getByLabelText("Starts")).toHaveValue("2026-09-26T10:00");
+    await user.click(screen.getByRole("button", { name: "Activity time zone" }));
+    await user.click(screen.getByRole("option", { name: /Dubai.*Asia\/Dubai/i }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(mocks.updateBooking).toHaveBeenCalledWith(
+        expect.objectContaining({
+          timezone: "Asia/Dubai",
+          startsAt: "2026-09-26T06:00:00.000Z",
+          endsAt: "2026-09-26T07:00:00.000Z"
+        })
+      )
+    );
+  });
+
   it("can enrich a planned ground journey into a booked ticket", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { mutations: { retry: false }, queries: { retry: false } }

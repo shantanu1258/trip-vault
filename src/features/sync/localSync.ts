@@ -209,6 +209,7 @@ export async function queueUpdate<T extends { id: string }>(input: {
   table: string;
   row: T;
   patch: Record<string, unknown>;
+  match?: Record<string, string>;
   baseVersion?: number;
   dependsOn?: string[];
 }) {
@@ -222,7 +223,11 @@ export async function queueUpdate<T extends { id: string }>(input: {
     entityType: input.entityType,
     entityId: input.row.id,
     operation: "update",
-    payload: { table: input.table, patch: input.patch },
+    payload: {
+      table: input.table,
+      patch: input.patch,
+      ...(input.match ? { match: input.match } : {})
+    },
     baseVersion: input.baseVersion,
     dependsOn: input.dependsOn ?? [],
     attemptCount: 0,
@@ -1047,13 +1052,12 @@ async function executeSyncOutbox(): Promise<InternalSyncResult> {
           if (error) throw error;
         }
         if (operation.operation === "update" && payload.patch) {
-          let request = supabase
-            .from(payload.table)
-            .update(payload.patch)
-            .eq("id", operation.entityId);
+          let request = supabase.from(payload.table).update(payload.patch);
+          const match = payload.match ?? { id: operation.entityId };
+          for (const [column, value] of Object.entries(match)) request = request.eq(column, value);
           if (operation.baseVersion !== undefined)
             request = request.eq("version", operation.baseVersion);
-          const { data, error } = await request.select("id");
+          const { data, error } = await request.select(Object.keys(match).join(","));
           if (error) throw error;
           if (operation.baseVersion !== undefined && !data?.length)
             throw new Error("version_conflict");

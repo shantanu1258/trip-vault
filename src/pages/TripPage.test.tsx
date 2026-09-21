@@ -828,7 +828,7 @@ describe("trip summary interactions", () => {
     );
     await waitFor(() => expect(peopleTarget).toHaveFocus());
     expect(screen.getByRole("status")).toHaveTextContent("Showing Shubham");
-    await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ top: 420, behavior: "auto" }));
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ top: 420, behavior: "instant" }));
     await userEvent.click(peopleTarget);
     expect(
       within(screen.getByRole("region", { name: "People & sharing" })).getByRole("button", {

@@ -72,6 +72,7 @@ import { suppressRealtimeRefresh } from "../sync/RealtimeRefresh";
 import { upsertById } from "../queries/cache";
 import type { VaultDocument } from "./types";
 import { EventTimeZoneField, furthestEventTimezone } from "../timeline/TimingFields";
+import { activityBookingTiming } from "./activityTiming";
 
 const requiredText = (message: string, max = 160) => z.string().trim().min(1, message).max(max);
 
@@ -343,10 +344,11 @@ export function EditBookingForm({
   const [message, setMessage] = useState("");
   const [bookedViaUrl, setBookedViaUrl] = useState(booking.booked_via_url ?? "");
   const isHotel = booking.type === "hotel";
+  const isActivity = booking.type === "activity";
   const itinerary = useQuery({
     queryKey: ["itinerary", trip.id],
     queryFn: () => listItinerary(trip.id),
-    enabled: isHotel
+    enabled: isHotel || isActivity
   });
   const hotelMilestones = (itinerary.data ?? []).filter(
     (item) =>
@@ -371,7 +373,13 @@ export function EditBookingForm({
       onClose();
     }
   });
-  const timezone = booking.source_timezone ?? trip.primary_timezone;
+  const activityEvent = isActivity
+    ? itinerary.data?.find(
+        (item) => item.booking_id === booking.id && item.event_type === "activity"
+      )
+    : undefined;
+  const timezone = activityEvent?.timezone ?? booking.source_timezone ?? trip.primary_timezone;
+  const activitySchedule = activityEvent ? activityBookingTiming(activityEvent) : undefined;
   const isJourney = ["flight", "train", "bus", "ferry", "cab"].includes(booking.type);
   const providerIsDerived = isJourney || isHotel;
   const showContactName = booking.type !== "flight" && booking.type !== "train";
@@ -444,7 +452,16 @@ export function EditBookingForm({
     <ModalSheet eyebrow={trip.title} title="Edit booking" onClose={onClose}>
       <form className="mt-6 space-y-4" onSubmit={submit}>
         <input type="hidden" name="type" value={booking.type} />
-        {!isHotel && <input type="hidden" name="timezone" value={timezone} />}
+        {!isHotel && !isActivity && <input type="hidden" name="timezone" value={timezone} />}
+        {isActivity && (
+          <EventTimeZoneField
+            key={timezone}
+            value={timezone}
+            localDefaultValue={trip.primary_timezone}
+            label="Activity time zone"
+            hint="Uses the linked activity's time zone. Changes here also update the activity event; entered times use the selected local clock."
+          />
+        )}
         {booking.type === "flight" ? (
           <input type="hidden" name="reservationState" value="booked" />
         ) : (
@@ -619,7 +636,15 @@ export function EditBookingForm({
                   className="form-input"
                   name="startsAt"
                   type="datetime-local"
-                  defaultValue={isoToLocalDateTime(booking.start_at, timezone)}
+                  key={`start-${timezone}`}
+                  required={
+                    isActivity &&
+                    Boolean(activitySchedule ? activitySchedule.start_at : booking.start_at)
+                  }
+                  defaultValue={isoToLocalDateTime(
+                    activitySchedule ? activitySchedule.start_at : booking.start_at,
+                    timezone
+                  )}
                 />
               </label>
               <label className="form-label">
@@ -628,7 +653,11 @@ export function EditBookingForm({
                   className="form-input"
                   name="endsAt"
                   type="datetime-local"
-                  defaultValue={isoToLocalDateTime(booking.end_at, timezone)}
+                  key={`end-${timezone}`}
+                  defaultValue={isoToLocalDateTime(
+                    activitySchedule ? activitySchedule.end_at : booking.end_at,
+                    timezone
+                  )}
                 />
               </label>
             </div>

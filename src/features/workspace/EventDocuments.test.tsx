@@ -6,11 +6,13 @@ import { ConfirmDialogProvider } from "../../components/ConfirmDialogProvider";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ItineraryItem } from "../trips/types";
 import type { EventDocumentLink, Traveler, VaultDocument } from "./types";
+import { readTripReturnContext, tripChildNavigationState } from "../trips/navigation";
 
 const mocks = vi.hoisted(() => ({
   attachDocumentsToEvent: vi.fn(),
   listEventDocumentLinks: vi.fn(),
   listVaultDocuments: vi.fn(),
+  reorderEventDocuments: vi.fn(),
   unlinkDocumentFromEvent: vi.fn()
 }));
 
@@ -18,6 +20,7 @@ vi.mock("./api", () => ({
   attachDocumentsToEvent: mocks.attachDocumentsToEvent,
   listEventDocumentLinks: mocks.listEventDocumentLinks,
   listVaultDocuments: mocks.listVaultDocuments,
+  reorderEventDocuments: mocks.reorderEventDocuments,
   unlinkDocumentFromEvent: mocks.unlinkDocumentFromEvent
 }));
 
@@ -75,11 +78,17 @@ function renderShortcut(travelerId?: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={["/trips/trip-1"]}>
+        <LocationProbe />
         <EventDocumentShortcut
           item={item}
           travelerId={travelerId}
-          navigationState={{ returnTo: "timeline" }}
+          navigationState={tripChildNavigationState(
+            null,
+            item.trip_id,
+            "timeline",
+            "/trips/trip-1"
+          )}
         />
       </MemoryRouter>
     </QueryClientProvider>
@@ -96,8 +105,10 @@ function traveler(id: string, displayName: string): Traveler {
   };
 }
 
+let currentLocationState: unknown;
 function LocationProbe() {
   const location = useLocation();
+  currentLocationState = location.state;
   return (
     <output data-testid="location">
       {location.pathname}
@@ -136,6 +147,28 @@ describe("timeline primary document shortcut", () => {
   beforeEach(() => {
     mocks.listEventDocumentLinks.mockReset().mockResolvedValue([]);
     mocks.listVaultDocuments.mockReset().mockResolvedValue([]);
+  });
+
+  it("captures the timeline position at click time for both Back and browser Back", async () => {
+    mocks.listEventDocumentLinks.mockResolvedValue([link(document({}), 0)]);
+    renderShortcut();
+    const shortcut = await screen.findByRole("link", { name: "Open Ticket: Bus ticket" });
+    const scroll = vi.spyOn(window, "scrollY", "get").mockReturnValue(1400);
+    const bounds = vi
+      .spyOn(shortcut, "getBoundingClientRect")
+      .mockReturnValue({ top: 170 } as DOMRect);
+    await userEvent.click(shortcut);
+    expect(readTripReturnContext(currentLocationState, item.trip_id)).toMatchObject({
+      view: "timeline",
+      path: "/trips/trip-1",
+      scroll: { y: 1400, anchorOffset: 170 }
+    });
+    expect(JSON.parse(sessionStorage.getItem("trip-vault:scroll:trip-1:timeline")!)).toMatchObject({
+      y: 1400,
+      anchorOffset: 170
+    });
+    scroll.mockRestore();
+    bounds.mockRestore();
   });
 
   it("labels and opens the first explicitly related document visible to the focused traveler", async () => {
@@ -193,8 +226,52 @@ describe("timeline primary document shortcut", () => {
 
 describe("event document cards", () => {
   beforeEach(() => {
+    sessionStorage.clear();
+    mocks.reorderEventDocuments.mockReset().mockResolvedValue(undefined);
     mocks.listEventDocumentLinks.mockReset().mockResolvedValue([]);
     mocks.listVaultDocuments.mockReset().mockResolvedValue([]);
+  });
+
+  it("moves documents within their traveler section without moving other sections", async () => {
+    const first = document({ id: "first", title: "First ticket" });
+    const second = document({ id: "second", title: "Second ticket" });
+    const personal = document({
+      id: "personal",
+      title: "Asha visa",
+      assignment_mode: "selected",
+      traveler_ids: ["asha"]
+    });
+    mocks.listEventDocumentLinks.mockResolvedValue([
+      link(first, 0),
+      link(personal, 1),
+      link(second, 2)
+    ]);
+    renderDocuments([traveler("asha", "Asha")]);
+    const earlier = await screen.findByRole("button", { name: "Move First ticket earlier" });
+    expect(earlier).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Move Second ticket later" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Move Asha visa later" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Move Second ticket earlier" }));
+    expect(mocks.reorderEventDocuments).toHaveBeenCalledWith(item.id, [
+      "second",
+      "personal",
+      "first"
+    ]);
+    expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1?view=details");
+  });
+
+  it("persists ordering for documents inherited from the booking", async () => {
+    mocks.attachDocumentsToEvent.mockReset().mockResolvedValue([]);
+    mocks.listVaultDocuments.mockResolvedValue([
+      document({ id: "first", title: "First ticket" }),
+      document({ id: "second", title: "Second ticket" })
+    ]);
+    renderDocuments();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Move Second ticket earlier" })
+    );
+    expect(mocks.attachDocumentsToEvent).toHaveBeenCalledWith(item, ["first", "second"]);
+    expect(mocks.reorderEventDocuments).toHaveBeenCalledWith(item.id, ["second", "first"]);
   });
 
   it("puts existing documents before secondary upload and attach actions", async () => {

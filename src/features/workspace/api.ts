@@ -32,6 +32,7 @@ import type {
   TimelineEventType
 } from "../trips/types";
 import { addItineraryItem, addTripCost } from "../trips/api";
+import { activityEventTiming, applyActivityTiming } from "./activityTiming";
 import { normalizeParticipantSelection } from "../trips/participantScope";
 import {
   cacheParticipantAssignments,
@@ -721,8 +722,9 @@ export async function updateBooking(input: UpdateBookingInput): Promise<Booking>
     );
     const appliesToAll = participants.participantScope === "everyone";
     await Promise.all(
-      linkedItems.map((item) =>
-        cacheEntity(
+      linkedItems.map((original) => {
+        const item = applyActivityTiming(original, activityEventTiming(original, updated));
+        return cacheEntity(
           `itinerary:${input.tripId}`,
           item.applies_to_all_travelers === appliesToAll
             ? item
@@ -732,8 +734,8 @@ export async function updateBooking(input: UpdateBookingInput): Promise<Booking>
                 version: (item.version ?? 1) + 1,
                 updated_at: new Date().toISOString()
               }
-        )
-      )
+        );
+      })
     );
     await cacheParticipantAssignments({
       tripId: input.tripId,
@@ -3923,18 +3925,28 @@ export async function reorderEventDocuments(itineraryItemId: string, orderedDocu
     const existing = await readEntityList<EventDocumentLink & { id: string }>(
       `event-documents:${itineraryItemId}`
     );
+    const profileId = await localProfileId();
+    const pending = profileId
+      ? await database.outbox.where("profileId").equals(profileId).toArray()
+      : [];
     for (const [sortOrder, documentId] of orderedDocumentIds.entries()) {
       const link = existing.find((item) => item.document_id === documentId);
       if (!link) continue;
-      await queueCreate({
+      await queueUpdate({
         entityType: `event-documents:${itineraryItemId}`,
         table: "itinerary_item_documents",
         row: { ...link, sort_order: sortOrder },
-        serverRow: {
+        match: {
           itinerary_item_id: itineraryItemId,
-          document_id: documentId,
-          sort_order: sortOrder
-        }
+          document_id: documentId
+        },
+        patch: { sort_order: sortOrder },
+        dependsOn: pending
+          .filter(
+            (op) =>
+              op.entityType === `event-documents:${itineraryItemId}` && op.entityId === link.id
+          )
+          .map((op) => op.operationId)
       });
     }
     return;

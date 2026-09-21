@@ -203,7 +203,7 @@ describe("Add booking details to an existing event", () => {
           provider: "Marina Kitchen",
           startsAt: undefined,
           endsAt: undefined,
-          timezone: undefined,
+          timezone: relativeMeal.timezone,
           bookingDetails: { party_size: 1, dietary_notes: "Window table" },
           reservationState: "booked",
           participantScope: "selected",

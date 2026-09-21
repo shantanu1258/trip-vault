@@ -85,6 +85,31 @@ describe("offline upload MIME restoration", () => {
     mocks.eq.mockResolvedValue({ error: null });
   });
 
+  it("replays a document reorder using both link keys instead of inserting or matching a nonexistent id", async () => {
+    mocks.toArray.mockResolvedValue([
+      operation("update", {
+        table: "itinerary_item_documents",
+        patch: { sort_order: 2 },
+        match: { itinerary_item_id: "event-1", document_id: "document-1" }
+      })
+    ]);
+    const select = vi
+      .fn()
+      .mockResolvedValue({
+        data: [{ itinerary_item_id: "event-1", document_id: "document-1" }],
+        error: null
+      });
+    const request = { eq: mocks.eq, select };
+    mocks.eq.mockImplementation(() => request as never);
+    await expect(syncOutbox()).resolves.toEqual({ synced: 1, failed: 0 });
+    expect(mocks.update).toHaveBeenCalledWith({ sort_order: 2 });
+    expect(mocks.eq).toHaveBeenCalledWith("itinerary_item_id", "event-1");
+    expect(mocks.eq).toHaveBeenCalledWith("document_id", "document-1");
+    expect(mocks.eq).not.toHaveBeenCalledWith("id", expect.anything());
+    expect(mocks.upsert).not.toHaveBeenCalled();
+    expect(select).toHaveBeenCalledWith("itinerary_item_id,document_id");
+  });
+
   it("restores the private-inbox MIME before Supabase wraps the Blob in multipart form data", async () => {
     const upload = { id: "upload-1", mime_type: "application/pdf" };
     mocks.toArray.mockResolvedValue([

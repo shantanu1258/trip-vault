@@ -39,14 +39,23 @@ export function TripChildLink({
         );
         const anchor =
           (scrollAnchorId ? document.getElementById(scrollAnchorId) : null) ?? event.currentTarget;
+        const scroll = {
+          y: window.scrollY,
+          anchorId: anchor.id || undefined,
+          anchorOffset: anchor.getBoundingClientRect().top
+        };
+        if (location.pathname === `/trips/${tripId}`) {
+          const view = readTripReturnContext(origin, tripId)?.view ?? "timeline";
+          try {
+            sessionStorage.setItem(`trip-vault:scroll:${tripId}:${view}`, JSON.stringify(scroll));
+          } catch {
+            /* Scroll memory is optional. */
+          }
+        }
         event.preventDefault();
         navigate(props.to, {
           replace: props.replace,
-          state: tripChildScrollState(origin, tripId, {
-            y: window.scrollY,
-            anchorId: anchor.id || undefined,
-            anchorOffset: anchor.getBoundingClientRect().top
-          })
+          state: tripChildScrollState(origin, tripId, scroll)
         });
       }}
     />

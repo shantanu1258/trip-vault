@@ -157,7 +157,7 @@ export function AddActivityBookingForm({
       referenceCode: String(form.get("referenceCode") ?? "").trim() || undefined,
       startsAt: hasExplicitStart ? item.starts_at : undefined,
       endsAt: hasExplicitStart ? (item.ends_at ?? undefined) : undefined,
-      timezone: hasExplicitStart ? item.timezone : undefined,
+      timezone: item.timezone,
       location: item.location?.label ?? item.location?.address,
       notes: String(form.get("notes") ?? "").trim() || undefined,
       bookingDetails,

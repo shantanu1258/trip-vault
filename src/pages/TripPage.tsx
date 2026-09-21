@@ -269,7 +269,7 @@ function restoreScroll(tripId: string, view: TripView) {
     anchor && typeof saved.anchorOffset === "number"
       ? Math.max(0, window.scrollY + anchor.getBoundingClientRect().top - saved.anchorOffset)
       : Math.max(0, saved.y);
-  window.scrollTo({ top, behavior: "auto" });
+  window.scrollTo({ top, behavior: "instant" });
   return true;
 }
 
@@ -2070,7 +2070,8 @@ export function TripPage() {
     return () => {
       window.removeEventListener("scroll", record);
       window.cancelAnimationFrame(frame);
-      if (positioned.current) saveScroll(tripId, view);
+      // The destination may already have reset window scroll before passive
+      // cleanup. Keep the last scroll snapshot instead of capturing its top.
     };
   }, [tripId, view]);
   useEffect(() => {

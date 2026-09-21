@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Document ordering and activity booking timing
+
+- Added compact up/down controls beside document unlink actions, scoped to each traveller section; booking-inherited documents can also be ordered.
+- Corrected offline document ordering to queue updates against the link's composite key, with pending-link dependencies.
+- Timeline document shortcuts now capture scroll at click time. Returning restores instantly, preserves document section expansion, and no longer overwrites the saved position during route cleanup.
+- Activity bookings inherit their event time zone, including untimed activities. The booking editor exposes the zone and starts from the linked event's timing.
+- Added `202609220002_activity_booking_timing.sql` for atomic two-way activity/event timing synchronization. Existing unambiguous activity bookings are aligned to their active event; archived and non-activity records are excluded. Apply this migration before using the new activity editing flow.
+- Offline activity timing caches mirror server synchronization. Complete setup includes the new migration for fresh projects.
+
 User-visible changes are listed newest first. The HLD, LLD, and feature catalog are the current design contract; this file records history, including superseded experiments. This initial changelog covers the September 19 enhancement batch, not every earlier commit.
 
 ## Unreleased — Vault navigation and planning review

@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowDown,
+  ArrowUp,
   ChevronDown,
   ChevronRight,
   FilePlus2,
@@ -8,8 +10,7 @@ import {
   Paperclip,
   Trash2
 } from "lucide-react";
-import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState, type FormEvent } from "react";
 import { DocumentVisibilityBadge } from "../../components/DocumentVisibilityBadge";
 import { TripChildLink } from "../../components/TripChildLink";
 import { useConfirmDialog } from "../../components/ConfirmDialogProvider";
@@ -19,6 +20,7 @@ import {
   attachDocumentsToEvent,
   listEventDocumentLinks,
   listVaultDocuments,
+  reorderEventDocuments,
   unlinkDocumentFromEvent
 } from "./api";
 import { documentMatchesTraveler, documentPurposeLabel } from "./documentModel";
@@ -86,7 +88,9 @@ export function EventDocumentShortcut({
   if (!primary) return null;
   const purpose = documentPurposeLabel(primary.purpose);
   return (
-    <Link
+    <TripChildLink
+      tripId={item.trip_id}
+      scrollAnchorId={`timeline-${item.id}`}
       className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-brand-soft px-3 text-xs font-extrabold text-brand"
       to={`/trips/${item.trip_id}/documents/${primary.id}`}
       state={navigationState}
@@ -95,7 +99,7 @@ export function EventDocumentShortcut({
       <FileText className="size-4" /> Open {purpose}
       {primary.short_label ? ` · ${primary.short_label}` : ""}
       <DocumentVisibilityBadge className="bg-surface/80" visibility={primary.visibility} />
-    </Link>
+    </TripChildLink>
   );
 }
 
@@ -119,7 +123,26 @@ export function EventDocuments({
   const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const [picking, setPicking] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const groupStorageKey = `trip-vault:document-groups:${item.id}:${travelerId ?? "all"}`;
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved: unknown = JSON.parse(sessionStorage.getItem(groupStorageKey) ?? "{}");
+      return saved && typeof saved === "object" && !Array.isArray(saved)
+        ? Object.fromEntries(
+            Object.entries(saved).filter(([, value]) => typeof value === "boolean")
+          )
+        : {};
+    } catch {
+      return {};
+    }
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(groupStorageKey, JSON.stringify(collapsedGroups));
+    } catch {
+      /* Optional UI memory. */
+    }
+  }, [collapsedGroups, groupStorageKey]);
   const linksQuery = useQuery({
     queryKey: ["event-documents", item.id],
     queryFn: () => listEventDocumentLinks(item.id)
@@ -143,6 +166,28 @@ export function EventDocuments({
   });
   const unlinkMutation = useMutation({
     mutationFn: (documentId: string) => unlinkDocumentFromEvent(item.id, documentId),
+    onSuccess: refreshDocumentLinks
+  });
+  const reorderMutation = useMutation({
+    mutationFn: async ({ documentId, adjacentId }: { documentId: string; adjacentId: string }) => {
+      // Keep documents outside this traveler section in their existing slots.
+      const allLinks = linksQuery.data ?? [];
+      const inheritedIds = (documentsQuery.data ?? [])
+        .filter(
+          (doc) =>
+            item.booking_id &&
+            doc.booking_id === item.booking_id &&
+            !allLinks.some((link) => link.document_id === doc.id)
+        )
+        .map((doc) => doc.id);
+      const ids = [...allLinks.map((link) => link.document_id), ...inheritedIds];
+      const from = ids.indexOf(documentId);
+      const to = ids.indexOf(adjacentId);
+      if (from < 0 || to < 0) throw new Error("Refresh the documents before reordering.");
+      if (inheritedIds.length) await attachDocumentsToEvent(item, inheritedIds);
+      [ids[from], ids[to]] = [ids[to], ids[from]];
+      await reorderEventDocuments(item.id, ids);
+    },
     onSuccess: refreshDocumentLinks
   });
   const matchesFocus = (document: NonNullable<typeof documentsQuery.data>[number]) =>
@@ -231,7 +276,7 @@ export function EventDocuments({
               )}
               {(!group.label || !isCollapsed(group.key)) && (
                 <div className="grid gap-2">
-                  {group.links.map((link) => {
+                  {group.links.map((link, index) => {
                     const documentTitle = link.label || link.document.title;
                     return (
                       <div
@@ -256,7 +301,7 @@ export function EventDocuments({
                               {documentTitle}
                             </span>
                             <span
-                              className={`mt-1 flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1 ${canEdit && !link.inherited ? "pr-3" : ""}`}
+                              className={`mt-1 flex min-h-9 flex-wrap items-center gap-x-2 gap-y-1 ${canEdit ? (group.links.length > 1 ? "pr-24" : !link.inherited ? "pr-7" : "") : ""}`}
                             >
                               <span className="text-[.65rem] font-medium text-muted">
                                 {documentPurposeLabel(link.document.purpose)}
@@ -273,25 +318,57 @@ export function EventDocuments({
                             aria-hidden="true"
                           />
                         </TripChildLink>
-                        {canEdit && !link.inherited && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (
-                                await confirm({
-                                  title: "Unlink document?",
-                                  message: `Unlink ${link.document.title} from this event? The Vault document will remain.`,
-                                  confirmLabel: "Unlink",
-                                  tone: "danger"
-                                })
-                              )
-                                unlinkMutation.mutate(link.document_id);
-                            }}
-                            className="tap-target absolute bottom-0 right-0 grid size-11 place-items-center rounded-lg text-muted hover:bg-danger/5 hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
-                            aria-label={`Unlink ${documentTitle}`}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </button>
+                        {canEdit && (
+                          <div className="absolute bottom-1 right-1 flex items-center">
+                            {group.links.length > 1 &&
+                              (["up", "down"] as const).map((direction) => {
+                                const adjacent = group.links[index + (direction === "up" ? -1 : 1)];
+                                const Icon = direction === "up" ? ArrowUp : ArrowDown;
+                                return (
+                                  <button
+                                    key={direction}
+                                    type="button"
+                                    disabled={
+                                      !adjacent ||
+                                      reorderMutation.isPending ||
+                                      unlinkMutation.isPending
+                                    }
+                                    aria-label={`Move ${documentTitle} ${direction === "up" ? "earlier" : "later"}`}
+                                    onClick={() =>
+                                      adjacent &&
+                                      reorderMutation.mutate({
+                                        documentId: link.document_id,
+                                        adjacentId: adjacent.document_id
+                                      })
+                                    }
+                                    className="grid min-h-11 w-9 place-items-center rounded-lg text-muted hover:bg-brand-soft disabled:opacity-30"
+                                  >
+                                    <Icon className="size-3.5" />
+                                  </button>
+                                );
+                              })}
+                            {!link.inherited && (
+                              <button
+                                type="button"
+                                disabled={reorderMutation.isPending || unlinkMutation.isPending}
+                                onClick={async () => {
+                                  if (
+                                    await confirm({
+                                      title: "Unlink document?",
+                                      message: `Unlink ${link.document.title} from this event? The Vault document will remain.`,
+                                      confirmLabel: "Unlink",
+                                      tone: "danger"
+                                    })
+                                  )
+                                    unlinkMutation.mutate(link.document_id);
+                                }}
+                                className="grid min-h-11 w-9 place-items-center rounded-lg text-muted hover:bg-danger/5 hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
+                                aria-label={`Unlink ${documentTitle}`}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     );
@@ -304,6 +381,11 @@ export function EventDocuments({
       )}
       {!visibleLinks.length && !linksQuery.isLoading && (
         <p className="mt-3 text-sm text-muted">No documents attached yet.</p>
+      )}
+      {(reorderMutation.error || unlinkMutation.error) && (
+        <p role="alert" className="mt-2 text-xs font-bold text-danger">
+          Could not update document order or links. Please refresh and retry.
+        </p>
       )}
       {canEdit && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
