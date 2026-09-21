@@ -893,7 +893,7 @@ function EventContactRow({
     <div
       role="group"
       aria-label={label}
-      className="mt-3 flex flex-wrap items-center gap-2 border-t border-line/70 pt-2"
+      className="relative z-20 mt-3 flex flex-wrap items-center gap-2 border-t border-line/70 pt-2"
     >
       <div className="min-w-0 flex-1 text-xs">
         <p className="font-bold text-muted">{label}</p>
@@ -929,13 +929,21 @@ function EventContactRow({
 }
 
 function EventBookingEssentials({
+  tripId,
+  itemId,
   booking,
   flights,
-  journeys
+  journeys,
+  detailsHref,
+  navigationState
 }: {
+  tripId: string;
+  itemId: string;
   booking: Booking;
   flights: FlightLeg[];
   journeys: JourneyLeg[];
+  detailsHref: string;
+  navigationState?: unknown;
 }) {
   const flightLegs = flights
     .filter((leg) => leg.booking_id === booking.id)
@@ -945,8 +953,20 @@ function EventBookingEssentials({
     .sort((a, b) => a.segment_order - b.segment_order);
   const legs = flightLegs.length ? flightLegs : travelLegs;
   return (
-    <div className="mt-3 rounded-xl border border-brand/25 bg-brand-soft/40 px-3 py-2.5">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs">
+    <div className="group relative mt-3 rounded-xl border border-brand/25 bg-brand-soft/40 px-3 py-2.5 pr-9 transition hover:border-brand/50 hover:shadow-soft">
+      <TripChildLink
+        tripId={tripId}
+        scrollAnchorId={`timeline-${itemId}`}
+        to={detailsHref}
+        state={navigationState}
+        aria-label={`Open booking details from summary for ${booking.title}`}
+        className="absolute inset-0 z-10 rounded-[inherit] focus-visible:ring-2 focus-visible:ring-brand"
+      />
+      <ChevronRight
+        aria-hidden="true"
+        className="absolute right-3 top-3 size-4 text-muted transition-transform group-hover:translate-x-0.5"
+      />
+      <div className="relative z-[1] flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs">
         <span className="text-muted">{booking.provider || booking.title}</span>
         {booking.reference_code && (
           <span className="text-muted">
@@ -1219,7 +1239,15 @@ export function EventDetailsSheet({
           </p>
         ))}
       {booking && (
-        <EventBookingEssentials booking={booking} flights={flights} journeys={journeys} />
+        <EventBookingEssentials
+          tripId={tripId}
+          itemId={item.id}
+          booking={booking}
+          flights={flights}
+          journeys={journeys}
+          detailsHref={bookingHref!}
+          navigationState={navigationState}
+        />
       )}
       {booking?.type === "cab" &&
         journeys

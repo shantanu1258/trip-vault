@@ -108,6 +108,8 @@ describe("type-specific booking essentials", () => {
           details: {
             kind: "cab",
             ride_type: "airport_transfer",
+            luggage_count: 2,
+            pickup_buffer_minutes: 30,
             driver_name: "Driver",
             driver_phone: "+919876543210",
             vehicle_registration: "AB123",
@@ -122,5 +124,8 @@ describe("type-specific booking essentials", () => {
     );
     expect(screen.getByText("AB123")).toBeInTheDocument();
     expect(screen.getByText("Exit 2")).toBeInTheDocument();
+    expect(screen.getByText("Airport transfer")).toBeInTheDocument();
+    expect(screen.getByText("2 bag(s)")).toBeInTheDocument();
+    expect(screen.getByText("30 min after landing")).toBeInTheDocument();
   });
 });

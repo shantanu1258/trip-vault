@@ -354,6 +354,12 @@ describe("journey leg enrichment", () => {
     const { user } = renderForm(cabBooking, cabLeg);
 
     expect(screen.queryByText("Boarding and platform")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Pickup code")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Drop-off code")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Return date and time")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Vehicle, driver, and pickup details").closest("details")
+    ).not.toHaveAttribute("open");
     expect(screen.getByLabelText("Pickup instructions")).toHaveValue("Door 3");
     expect(screen.queryByText("Departure time zone")).not.toBeInTheDocument();
     expect(screen.getByText("Journey time zone")).toBeInTheDocument();
@@ -365,6 +371,51 @@ describe("journey leg enrichment", () => {
     expect(screen.getByText("Departure time zone")).toBeInTheDocument();
     expect(screen.getByLabelText("originTimezone")).toHaveValue("Asia/Singapore");
     expect(screen.getByText("Destination time zone")).toBeInTheDocument();
+  });
+
+  it("does not force duplicate route details for an hourly or day hire", async () => {
+    const cabLeg: JourneyLeg = {
+      ...leg,
+      mode: "cab",
+      operator_name: "Local driver",
+      origin_code: "OLD-PICKUP-CODE",
+      origin_name: "Hotel",
+      destination_code: "OLD-DROPOFF-CODE",
+      destination_name: "Hotel",
+      boarding_lead_minutes: null,
+      departure_platform: null,
+      details: { kind: "cab", ride_type: "hourly", return_at: "2026-09-28T12:00:00.000Z" }
+    };
+    const cabBooking: Booking = {
+      ...booking,
+      type: "cab",
+      title: "Car and driver",
+      journey_scope: null
+    };
+    const { user } = renderForm(cabBooking, cabLeg);
+
+    expect(screen.getByLabelText("Final drop-off (optional)")).toHaveValue("");
+    expect(screen.getByLabelText("Final drop-off (optional)")).not.toBeRequired();
+    expect(screen.getByLabelText("Hire starts (local time)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Hire ends (local time, optional)")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Pickup code")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Drop-off code")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Return date and time")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Save journey changes" }));
+
+    await waitFor(() =>
+      expect(mocks.updateJourneyLeg).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originName: "Hotel",
+          originCode: undefined,
+          destinationName: "Hotel",
+          destinationCode: undefined,
+          details: expect.objectContaining({ kind: "cab", ride_type: "hourly" })
+        })
+      )
+    );
+    expect(mocks.updateJourneyLeg.mock.calls[0][0].details).not.toHaveProperty("return_at");
   });
 
   it("explains why route editing waits for a connection", () => {

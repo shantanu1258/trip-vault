@@ -65,13 +65,33 @@ export function JourneyEssentials({
     );
   if (details?.kind === "cab")
     rows.push(
+      [
+        "Ride type",
+        {
+          local: "Local ride",
+          airport_transfer: "Airport transfer",
+          outstation: "Long-distance / outstation",
+          hourly: "Hire by hour or day"
+        }[details.ride_type]
+      ],
+      [
+        "Trip type",
+        details.trip_shape === "round_trip"
+          ? "Round trip"
+          : details.trip_shape === "one_way"
+            ? "One-way"
+            : null
+      ],
+      ["Luggage", details.luggage_count != null ? `${details.luggage_count} bag(s)` : null],
+      [
+        "Pickup buffer",
+        details.pickup_buffer_minutes != null
+          ? `${details.pickup_buffer_minutes} min after landing`
+          : null
+      ],
       ["Pickup instructions", details.pickup_instructions],
       ["Driver", details.driver_name],
-      [
-        "Vehicle",
-        [details.vehicle_class, details.vehicle_registration].filter(Boolean).join(" · ")
-      ],
-      ["Final drop-off", details.final_dropoff]
+      ["Vehicle", [details.vehicle_class, details.vehicle_registration].filter(Boolean).join(" · ")]
     );
   const populated = rows.filter((row): row is [string, string] => Boolean(row[1]));
   // Pair short facts, but keep long instructions full-width without empty grid cells.

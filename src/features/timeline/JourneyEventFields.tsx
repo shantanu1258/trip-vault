@@ -1217,18 +1217,6 @@ export function CabFields({
                 />{" "}
                 Round trip
               </label>
-              {roundTrip && (
-                <label className="form-label">
-                  Return date and time
-                  <input
-                    className="form-input"
-                    type="datetime-local"
-                    min={`${trip.start_date}T00:00`}
-                    max={`${trip.end_date}T23:59`}
-                    name="cab.returnAt"
-                  />
-                </label>
-              )}
             </>
           )}
           <label className="flex items-center gap-2 text-sm font-extrabold sm:col-span-2">

@@ -102,24 +102,25 @@ function detailsForForm(form: FormData, leg: JourneyLeg): JourneyLegDetails {
     return leg.details?.kind === "ferry" ? leg.details : { kind: "ferry" };
   }
   const current = leg.details?.kind === "cab" ? leg.details : undefined;
+  const rideType = (text(form, "rideType") || "local") as CabJourneyDetails["ride_type"];
   return compact<CabJourneyDetails>({
     kind: "cab",
-    ride_type: (text(form, "rideType") || "local") as CabJourneyDetails["ride_type"],
+    ride_type: rideType,
     cross_border: form.get("crossBorder") === "on" || undefined,
     linked_flight_leg_id: current?.linked_flight_leg_id,
-    pickup_buffer_minutes: optionalNumber(form, "pickupBufferMinutes"),
-    luggage_count: optionalNumber(form, "luggageCount"),
+    pickup_buffer_minutes:
+      rideType === "airport_transfer" ? optionalNumber(form, "pickupBufferMinutes") : undefined,
+    luggage_count:
+      rideType === "airport_transfer" ? optionalNumber(form, "luggageCount") : undefined,
     pickup_instructions: text(form, "pickupInstructions") || undefined,
     vehicle_class: text(form, "vehicleClass") || undefined,
     driver_name: text(form, "driverName") || undefined,
     driver_phone: text(form, "driverPhone") || undefined,
     vehicle_registration: text(form, "vehicleRegistration") || undefined,
-    trip_shape: text(form, "tripShape") as CabJourneyDetails["trip_shape"],
-    return_at: text(form, "returnAt")
-      ? localDateTimeToIso(text(form, "returnAt"), text(form, "destinationTimezone"))
-      : undefined,
-    package_duration_minutes: optionalNumber(form, "packageDurationMinutes"),
-    final_dropoff: text(form, "finalDropoff") || undefined
+    trip_shape:
+      rideType === "outstation"
+        ? (text(form, "tripShape") as CabJourneyDetails["trip_shape"])
+        : undefined
   });
 }
 
@@ -300,148 +301,139 @@ function BusDetailsFields({ details }: { details: JourneyLeg["details"] }) {
 
 function CabDetailsFields({
   details,
-  destinationTimezone,
+  rideType,
+  onRideType,
   crossBorder,
   onCrossBorder
 }: {
   details: JourneyLeg["details"];
-  destinationTimezone: string;
+  rideType: CabJourneyDetails["ride_type"];
+  onRideType: (value: CabJourneyDetails["ride_type"]) => void;
   crossBorder: boolean;
   onCrossBorder: (value: boolean) => void;
 }) {
   const cab = details?.kind === "cab" ? details : undefined;
   return (
-    <fieldset className="rounded-2xl border border-line p-4">
-      <legend className="px-1 text-sm font-extrabold">Ride details</legend>
-      <div className="mt-2 grid gap-4 sm:grid-cols-2">
-        <label className="form-label">
-          Ride type
-          <select className="form-input" name="rideType" defaultValue={cab?.ride_type ?? "local"}>
-            <option value="local">Local ride</option>
-            <option value="airport_transfer">Airport transfer</option>
-            <option value="outstation">Long-distance / outstation</option>
-            <option value="hourly">Hire by hour or day</option>
-          </select>
-        </label>
-        <label className="form-label">
-          Vehicle or service class
-          <input
-            className="form-input"
-            name="vehicleClass"
-            defaultValue={cab?.vehicle_class ?? ""}
-            placeholder="Enter the booked vehicle or service class"
-          />
-        </label>
-        <label className="form-label sm:col-span-2">
-          Pickup instructions
-          <textarea
-            className="form-input min-h-20"
-            name="pickupInstructions"
-            defaultValue={cab?.pickup_instructions ?? ""}
-            placeholder="Add the pickup zone, door, landmark, or meet-and-greet note"
-          />
-        </label>
-        <label className="form-label">
-          Driver name
-          <input
-            className="form-input"
-            name="driverName"
-            defaultValue={cab?.driver_name ?? ""}
-            placeholder="Add it when a driver is assigned"
-          />
-        </label>
-        <label className="form-label">
-          Driver phone
-          <input
-            className="form-input"
-            type="tel"
-            name="driverPhone"
-            defaultValue={cab?.driver_phone ?? ""}
-            placeholder="Include the country code for calling"
-          />
-        </label>
-        <label className="form-label">
-          Vehicle registration
-          <input
-            className="form-input uppercase"
-            name="vehicleRegistration"
-            defaultValue={cab?.vehicle_registration ?? ""}
-            placeholder="Add it when the vehicle is assigned"
-          />
-        </label>
-        <label className="form-label">
-          Luggage count
-          <input
-            className="form-input"
-            type="number"
-            min="0"
-            name="luggageCount"
-            defaultValue={cab?.luggage_count ?? ""}
-            placeholder="Enter the number of bags"
-          />
-        </label>
-        <label className="form-label">
-          Pickup buffer (minutes)
-          <input
-            className="form-input"
-            type="number"
-            min="0"
-            name="pickupBufferMinutes"
-            defaultValue={cab?.pickup_buffer_minutes ?? ""}
-            placeholder="For example, minutes after flight arrival"
-          />
-        </label>
-        <label className="form-label">
-          Trip shape
-          <select
-            className="form-input"
-            name="tripShape"
-            defaultValue={cab?.trip_shape ?? "one_way"}
-          >
-            <option value="one_way">One-way</option>
-            <option value="round_trip">Round trip</option>
-          </select>
-        </label>
-        <label className="form-label">
-          Return date and time
-          <input
-            className="form-input"
-            type="datetime-local"
-            name="returnAt"
-            defaultValue={isoToLocalDateTime(cab?.return_at, destinationTimezone)}
-          />
-        </label>
-        <label className="form-label">
-          Package duration (minutes)
-          <input
-            className="form-input"
-            type="number"
-            min="0"
-            name="packageDurationMinutes"
-            defaultValue={cab?.package_duration_minutes ?? ""}
-            placeholder="For an hourly or day hire"
-          />
-        </label>
-        <label className="form-label">
-          Final drop-off
-          <input
-            className="form-input"
-            name="finalDropoff"
-            defaultValue={cab?.final_dropoff ?? ""}
-            placeholder="Add when an hourly ride has a known final stop"
-          />
-        </label>
-        <label className="flex items-center gap-3 rounded-xl bg-elevated p-3 text-sm font-extrabold sm:col-span-2">
-          <input
-            type="checkbox"
-            name="crossBorder"
-            checked={crossBorder}
-            onChange={(event) => onCrossBorder(event.target.checked)}
-          />{" "}
-          Cross-border ride
-        </label>
-      </div>
-    </fieldset>
+    <>
+      <fieldset className="rounded-2xl border border-line p-4">
+        <legend className="px-1 text-sm font-extrabold">Ride</legend>
+        <div className="mt-2 grid gap-4 sm:grid-cols-2">
+          <label className="form-label">
+            Ride type
+            <select
+              className="form-input"
+              name="rideType"
+              value={rideType}
+              onChange={(event) => onRideType(event.target.value as CabJourneyDetails["ride_type"])}
+            >
+              <option value="local">Local ride</option>
+              <option value="airport_transfer">Airport transfer</option>
+              <option value="outstation">Long-distance / outstation</option>
+              <option value="hourly">Hire by hour or day</option>
+            </select>
+          </label>
+          {rideType === "outstation" && (
+            <label className="form-label">
+              Trip type
+              <select
+                className="form-input"
+                name="tripShape"
+                defaultValue={cab?.trip_shape ?? "one_way"}
+              >
+                <option value="one_way">One-way</option>
+                <option value="round_trip">Round trip</option>
+              </select>
+            </label>
+          )}
+          <label className="flex items-center gap-3 rounded-xl bg-elevated p-3 text-sm font-extrabold sm:col-span-2">
+            <input
+              type="checkbox"
+              name="crossBorder"
+              checked={crossBorder}
+              onChange={(event) => onCrossBorder(event.target.checked)}
+            />{" "}
+            Cross-border ride
+          </label>
+        </div>
+      </fieldset>
+      <details className="form-disclosure">
+        <summary className="form-disclosure-summary">Vehicle, driver, and pickup details</summary>
+        <div className="grid sm:grid-cols-2">
+          <label className="form-label">
+            Vehicle or service class
+            <input
+              className="form-input"
+              name="vehicleClass"
+              defaultValue={cab?.vehicle_class ?? ""}
+              placeholder="Enter the booked vehicle or service class"
+            />
+          </label>
+          <label className="form-label sm:col-span-2">
+            Pickup instructions
+            <textarea
+              className="form-input min-h-20"
+              name="pickupInstructions"
+              defaultValue={cab?.pickup_instructions ?? ""}
+              placeholder="Add the pickup zone, door, landmark, or meet-and-greet note"
+            />
+          </label>
+          <label className="form-label">
+            Driver name
+            <input
+              className="form-input"
+              name="driverName"
+              defaultValue={cab?.driver_name ?? ""}
+              placeholder="Add it when a driver is assigned"
+            />
+          </label>
+          <label className="form-label">
+            Driver phone
+            <input
+              className="form-input"
+              type="tel"
+              name="driverPhone"
+              defaultValue={cab?.driver_phone ?? ""}
+              placeholder="Include the country code for calling"
+            />
+          </label>
+          <label className="form-label">
+            Vehicle registration
+            <input
+              className="form-input uppercase"
+              name="vehicleRegistration"
+              defaultValue={cab?.vehicle_registration ?? ""}
+              placeholder="Add it when the vehicle is assigned"
+            />
+          </label>
+          {rideType === "airport_transfer" && (
+            <>
+              <label className="form-label">
+                Luggage count
+                <input
+                  className="form-input"
+                  type="number"
+                  min="0"
+                  name="luggageCount"
+                  defaultValue={cab?.luggage_count ?? ""}
+                  placeholder="Enter the number of bags"
+                />
+              </label>
+              <label className="form-label">
+                Pickup buffer (minutes)
+                <input
+                  className="form-input"
+                  type="number"
+                  min="0"
+                  name="pickupBufferMinutes"
+                  defaultValue={cab?.pickup_buffer_minutes ?? ""}
+                  placeholder="For example, minutes after flight arrival"
+                />
+              </label>
+            </>
+          )}
+        </div>
+      </details>
+    </>
   );
 }
 
@@ -482,6 +474,9 @@ export function EditJourneyLegForm({
   const queryClient = useQueryClient();
   const cabDetails = leg.details?.kind === "cab" ? leg.details : undefined;
   const [crossBorder, setCrossBorder] = useState(Boolean(cabDetails?.cross_border));
+  const [cabRideType, setCabRideType] = useState<CabJourneyDetails["ride_type"]>(
+    cabDetails?.ride_type ?? "local"
+  );
   const [message, setMessage] = useState("");
   const international =
     booking.journey_scope === "international" || (leg.mode === "cab" && crossBorder);
@@ -509,6 +504,8 @@ export function EditJourneyLegForm({
       return;
     }
     const form = new FormData(event.currentTarget);
+    if (leg.mode === "cab" && cabRideType === "hourly" && !text(form, "destinationName"))
+      form.set("destinationName", text(form, "originName"));
     const eventTimezone =
       !international && leg.segment_order === 0
         ? text(form, "eventTimezone") || leg.origin_timezone || trip.primary_timezone
@@ -672,34 +669,50 @@ export function EditJourneyLegForm({
                 required
               />
             </label>
+            {leg.mode !== "cab" && (
+              <label className="form-label">
+                {labels.origin} code
+                <input
+                  className="form-input uppercase"
+                  name="originCode"
+                  defaultValue={leg.origin_code ?? ""}
+                  placeholder="Add a station or terminal code when used"
+                />
+              </label>
+            )}
             <label className="form-label">
-              {labels.origin} code
-              <input
-                className="form-input uppercase"
-                name="originCode"
-                defaultValue={leg.origin_code ?? ""}
-                placeholder="Add a station or terminal code when used"
-              />
-            </label>
-            <label className="form-label">
-              {labels.destination}
+              {leg.mode === "cab" && cabRideType === "hourly"
+                ? "Final drop-off (optional)"
+                : labels.destination}
               <input
                 className="form-input"
                 name="destinationName"
-                defaultValue={leg.destination_name}
-                placeholder={`Enter the ${labels.destination.toLocaleLowerCase()} shown on the ticket`}
-                required
+                defaultValue={
+                  leg.mode === "cab" &&
+                  cabRideType === "hourly" &&
+                  leg.destination_name === leg.origin_name
+                    ? ""
+                    : leg.destination_name
+                }
+                placeholder={
+                  leg.mode === "cab" && cabRideType === "hourly"
+                    ? "Add only when the final drop-off is known"
+                    : `Enter the ${labels.destination.toLocaleLowerCase()} shown on the ticket`
+                }
+                required={leg.mode !== "cab" || cabRideType !== "hourly"}
               />
             </label>
-            <label className="form-label">
-              {labels.destination} code
-              <input
-                className="form-input uppercase"
-                name="destinationCode"
-                defaultValue={leg.destination_code ?? ""}
-                placeholder="Add a station or terminal code when used"
-              />
-            </label>
+            {leg.mode !== "cab" && (
+              <label className="form-label">
+                {labels.destination} code
+                <input
+                  className="form-input uppercase"
+                  name="destinationCode"
+                  defaultValue={leg.destination_code ?? ""}
+                  placeholder="Add a station or terminal code when used"
+                />
+              </label>
+            )}
             {international ? (
               <>
                 <label className="form-label">
@@ -764,7 +777,9 @@ export function EditJourneyLegForm({
               </>
             )}
             <label className="form-label">
-              Departure (local time)
+              {leg.mode === "cab" && cabRideType === "hourly"
+                ? "Hire starts (local time)"
+                : "Departure (local time)"}
               <input
                 className="form-input"
                 type="datetime-local"
@@ -776,7 +791,9 @@ export function EditJourneyLegForm({
               />
             </label>
             <label className="form-label">
-              Arrival (local time, optional)
+              {leg.mode === "cab" && cabRideType === "hourly"
+                ? "Hire ends (local time, optional)"
+                : "Arrival (local time, optional)"}
               <input
                 className="form-input"
                 type="datetime-local"
@@ -890,7 +907,8 @@ export function EditJourneyLegForm({
         {leg.mode === "cab" && (
           <CabDetailsFields
             details={leg.details}
-            destinationTimezone={leg.destination_timezone}
+            rideType={cabRideType}
+            onRideType={setCabRideType}
             crossBorder={crossBorder}
             onCrossBorder={setCrossBorder}
           />

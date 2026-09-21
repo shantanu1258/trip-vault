@@ -478,6 +478,34 @@ textarea:focus-visible {
   }
 }
 
+/* iOS Safari zooms the viewport when a focused form control renders below
+   16px. Keep compact desktop fields while preventing that disruptive mobile
+   zoom across add, edit, search, and document forms. */
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    /* The important flag is intentional: Tailwind's text-sm utility is
+       emitted on .form-input with higher selector specificity. */
+    font-size: 16px !important;
+  }
+}
+
+/* WebKit on iOS currently adds date/time padding outside a 100%-wide input,
+   despite border-box sizing. Removing only the horizontal padding prevents
+   native temporal controls from widening the form and shifting the viewport. */
+@supports (-webkit-touch-callout: none) {
+  .form-input:is(
+    input[type="date"],
+    input[type="time"],
+    input[type="datetime-local"],
+    input[type="month"],
+    input[type="week"]
+  ) {
+    padding-inline: 0;
+  }
+}
+
 @keyframes page-enter {
   from {
     opacity: 0;
