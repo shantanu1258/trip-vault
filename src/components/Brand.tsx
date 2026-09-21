@@ -17,7 +17,7 @@ export function Brand({
         className={`grid shrink-0 place-items-center overflow-hidden rounded-[0.9rem] shadow-soft transition-transform duration-200 ease-settle group-hover:-rotate-2 group-hover:scale-[1.03] motion-reduce:transition-none ${mobileHeader ? "size-8 sm:size-10" : "size-10"}`}
       >
         <img
-          src="/icons/wallet-v1-192.png"
+          src="/icons/wallet-v2-192.png"
           alt=""
           aria-hidden="true"
           width="192"

@@ -4,6 +4,7 @@ User-visible changes are listed newest first. The HLD, LLD, and feature catalog 
 
 ## Unreleased — Trip archive recovery
 
+- Brightened the wallet icon to the dark-mode mint brand colour for stronger app-list visibility, retaining the keyhole, partial plane, and brass clasp. All active icon references use new versioned URLs.
 - The app brand, installed-app icons, browser favicon, Apple touch icon, and push notifications now use the cleaned wallet/keyhole mark with a partial plane and muted brass clasp. Versioned icon URLs and offline precaching carry the update; existing home-screen icons remain subject to platform refresh/reinstallation behavior.
 - Archive rows keep the title/type and actions together with tighter spacing. Recover and Delete use accessible, 44 px icon buttons on phones, adding labels on tablet/desktop; permanent deletion still requires confirmation.
 - Timeline landing highlights now blink twice over 2.3 seconds instead of three times over 3.5 seconds, retaining the existing focus colours and reduced-motion behavior.

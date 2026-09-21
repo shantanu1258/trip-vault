@@ -11,7 +11,7 @@ it("uses the wallet mark without duplicating the home link's accessible name", (
   );
   const home = screen.getByRole("link", { name: "Trip Vault home" });
   const image = home.querySelector("img");
-  expect(image).toHaveAttribute("src", "/icons/wallet-v1-192.png");
+  expect(image).toHaveAttribute("src", "/icons/wallet-v2-192.png");
   expect(image).toHaveAttribute("alt", "");
   expect(image).toHaveAttribute("aria-hidden", "true");
   expect(home).toHaveTextContent("Trip Vault");
