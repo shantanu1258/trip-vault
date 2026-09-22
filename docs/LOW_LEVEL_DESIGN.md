@@ -17,7 +17,7 @@ This document is the implementation contract for the personal Trip Vault MVP. Th
 
 **Document status:** Implemented personal MVP 1.0
 
-**Implementation status:** September 22 includes shared document/demo surfaces, compact admin presentation, release comparisons and protected draft discard. Fresh projects use only `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`; standalone migrations/down scripts are retired. Existing projects back up and apply only reviewed missing sections, never the full installer. Local tests, production build, browser reads and isolated SQL smoke checks pass; hosted SQL application, destructive-operation acceptance and device/offline checks remain separate gates.
+**Implementation status:** September 22 includes shared document/demo surfaces, compact admin presentation, release comparisons and protected draft discard. Fresh projects use only `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`; historical migrations/down scripts were retired at consolidation. New changes ship incremental migrations for existing projects, which back up and apply outstanding migrations, never the full installer. Local tests, production build, browser reads and isolated SQL smoke checks pass; hosted SQL application, destructive-operation acceptance and device/offline checks remain separate gates.
 
 ## 1. Technology Set
 
@@ -1741,7 +1741,7 @@ All administrator mutations require a live connection. The console may display l
 
 `ReleaseChangesPanel` fetches snapshots only when expanded. `getReleaseSnapshot` pages through raw airlines, airports, booking vendors, defaults and palette rows in batches of 500; a failed section fails the whole comparison rather than masquerading as an empty section. `diffReleaseSnapshots` matches catalogue stable keys and default namespace/key pairs, compares nested JSON deterministically, and excludes database row IDs, release IDs, updater IDs and timestamps. Palette changes are grouped as Light/Dark and retain field-level before/after values. The first 12 changed records are shown with an explicit Show all control. Comparisons use the live version for drafts and the previous version number for history, not `based_on_release_id`; this handles stale drafts and rollback publications correctly. Counts describe release records, not file deletions or necessarily the app's built-in fallback entries.
 
-`discardConfigDraft` invokes `discard_config_draft`, never a direct table deletion. The RPC checks the active admin role, locks release writes, rejects anything except a draft with a null version, marks it retired, and records `safe_summary.discarded_draft`. `listConfigReleases` excludes retired/null-version rows; audit reads retain them as Draft deleted. `publish_config_release` shares the locking boundary and rechecks draft state. Missing-RPC errors identify the `ADMIN RELEASE MANAGEMENT` block to apply on existing databases. No full installer rerun, storage purge or live database mutation occurs from the frontend update itself.
+`discardConfigDraft` invokes `discard_config_draft`, never a direct table deletion. The RPC checks the active admin role, locks release writes, rejects anything except a draft with a null version, marks it retired, and records `safe_summary.discarded_draft`. `listConfigReleases` excludes retired/null-version rows; audit reads retain them as Draft deleted. `publish_config_release` shares the locking boundary and rechecks draft state. Missing-RPC errors identify `supabase/migrations/202609220004_admin_release_management.sql` to apply on existing databases. No full installer rerun, storage purge or live database mutation occurs from the frontend update itself.
 
 Selecting published airline or airport metadata for a trip copies its stable catalog key, source version, and display values into trip-scoped records. A later global publication can offer an **Update available** comparison, but it never silently changes an existing or historical trip.
 
@@ -2159,7 +2159,7 @@ The third pass reduced the baseline from 689 to 674. Exact schedule labels and c
 
 ### 16.6 Supabase rollout order
 
-`supabase/TRIP_VAULT_COMPLETE_SETUP.sql` is the sole new-project installer, including all current features and a dated changelog. Standalone migrations/down scripts are retired. Existing databases must be backed up and upgraded using only reviewed missing sections, never the full installer. See `supabase/README.md` for the current workflow and SQL smoke tests.
+`supabase/TRIP_VAULT_COMPLETE_SETUP.sql` is the sole new-project installer, including all current features and a dated changelog. Historical migrations/down scripts were retired at consolidation. New changes ship standalone incremental migrations and update the baseline. Existing databases must be backed up and upgraded using the outstanding migrations and their prerequisites, never the full installer. See `supabase/README.md` for the current workflow and SQL smoke tests.
 
 Phase 2 catalogue publication requires an active `app_admins` row and records that administrator in the audit trail. Establish that prerequisite rather than bypassing the guard.
 

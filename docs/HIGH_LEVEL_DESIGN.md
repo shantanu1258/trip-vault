@@ -17,7 +17,7 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 
 **Document status:** Implemented personal MVP 1.0
 
-**Implementation status:** Shared document icons/cards, booking-wide document detach, refreshed demo surfaces, concise admin screens, release field comparisons and draft discard are implemented and locally verified on September 22. Fresh projects use the single SQL installer; existing projects apply only reviewed missing sections after backup. The latest database functions have not been applied to the hosted database during this work. See the LLD verification table and `docs/PUSH_SETUP.md` for precise local and deployment acceptance boundaries.
+**Implementation status:** Shared document icons/cards, booking-wide document detach, refreshed demo surfaces, concise admin screens, release field comparisons and draft discard are implemented and locally verified on September 22. Fresh projects use the single SQL installer; existing projects apply outstanding incremental migrations after backup. The latest database functions have not been applied to the hosted database during this work. See the LLD verification table and `docs/PUSH_SETUP.md` for precise local and deployment acceptance boundaries.
 
 **Default decision state:** Accepted unless explicitly marked as deferred or revisit
 
@@ -27,7 +27,7 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Application               | Trips / Vault / Profile shell; unified timeline, type/date search and filters, contextual return paths, event-colored details, and in-app document preview                                                                                           |
 | Automated verification    | The current automated baseline is recorded in the LLD verification table; remote SQL, Storage, and device acceptance remain separate release gates                                                                                                   |
-| Existing Supabase project | Do not use the complete setup as an upgrade script. Back up first, compare installed definitions with the canonical SQL, and apply only reviewed missing sections; then run all schema smoke tests                                                   |
+| Existing Supabase project | Do not use the complete setup as an upgrade script. Back up first and apply outstanding incremental migrations with their prerequisites; then run all schema smoke tests                                                                             |
 | Fresh Supabase project    | Run the canonical complete setup. Phase 1 installs the current schema; Phase 2 publishes the regional catalog after an active administrator is available. If publication is deferred, rerun only the marked Phase 2 section, then run the smoke test |
 | Cloudflare                | Workers Static Assets configuration exists; the post-push live deployment is not verified here                                                                                                                                                       |
 | Acceptance                | Phone, desktop, multi-member, upload, and airplane-mode tests remain manual release gates                                                                                                                                                            |
@@ -373,7 +373,7 @@ Administrator configuration is an online-only workflow. The Admin console never 
 
 **View changes** shows added, removed and edited release-owned records, with expandable before/after fields. Drafts compare with the currently live version, not merely their original copied source; historical versions compare with the previous published version, including rollback publications. Built-in catalogue fallbacks are not silently merged into this comparison. A removed override may still have a built-in fallback in the traveler app.
 
-**Delete draft** requires confirmation and administrator authorization. It discards only an unpublished draft, hides it from active release lists, and retains its rows/assets and audit history. Live and previously published versions cannot be deleted this way. Publication and discard use a shared database lock boundary so a discarded draft cannot become live through a competing publish. Existing databases must apply the canonical installer's `ADMIN RELEASE MANAGEMENT` section before draft deletion works.
+**Delete draft** requires confirmation and administrator authorization. It discards only an unpublished draft, hides it from active release lists, and retains its rows/assets and audit history. Live and previously published versions cannot be deleted this way. Publication and discard use a shared database lock boundary so a discarded draft cannot become live through a competing publish. Existing databases must apply `supabase/migrations/202609220004_admin_release_management.sql` before draft deletion works.
 
 ### 8.9 Review the safe demo
 
@@ -407,7 +407,7 @@ The SQL smoke test verifies bucket, policy, function, and schema presence. A rea
 
 The client always bundles starter airport, airline, and booking-vendor data so Add Event is usable before a published configuration is downloaded. Database-backed catalog publication is separate because it needs a trusted administrator audit actor.
 
-Existing projects must not rerun the complete installer. Back up and review only missing SQL sections, following `supabase/README.md`. Standalone migrations and down scripts are retired; Git retains their history. Catalogue publication remains admin-gated.
+Existing projects must not rerun the complete installer. Back up and apply outstanding incremental migrations, following `supabase/README.md`. Historical migrations and down scripts were retired at consolidation; Git retains their history. New database changes ship a migration for existing projects and update the complete installer for fresh setups. Catalogue publication remains admin-gated.
 
 For a fresh project:
 
@@ -572,7 +572,7 @@ Web Push is implemented locally: owner-scoped subscriptions and a protected job 
 
 ## 15. Post-Implementation Validation Order
 
-1. Complete the single-file setup for a new project, or apply reviewed targeted updates to an existing project after backup, then run the SQL smoke tests. See `supabase/README.md`.
+1. Complete the single-file setup for a new project, or apply outstanding incremental migrations to an existing project after backup, then run the SQL smoke tests. See `supabase/README.md`.
 2. Create a fresh three-member trip and verify owner, editor, viewer, managed traveler, and collaborator behavior.
 3. Exercise Flight Direct/Connecting and Train/Bus/Ferry Single/Connecting domestic/international journeys, including endpoint-continuity rejection, hidden/derived zones, International Other fallbacks, optional non-flight arrival, per-traveler leg allocations, Cab modes, domestic Flight edit controls, complete route summaries, destination-zone arrival/end display, and elapsed time across different endpoint zones.
 4. Exercise fresh-launch current-trip routing, deterministic overlap fallback, explicit Home navigation, and the complete timeline on phone and desktop, including current-event scrolling, unrelated-route scroll isolation, stable named before/after groups, relation-only/duration-only/later-timed entries, generic booking enrichment without fabricated times, and the card interaction hierarchy with mouse, keyboard, and touch. Use a large synthetic trip to verify the three-item Next up/reservation/document previews, complete reservation/document routes, search/category/traveler filters, full document names, event-first document ranking, reservation whole-card navigation, independent phone/map actions, event and expense detail sheets for Viewers and Editors, direct-edit flight/note/airline/readiness cards, the Owner-only Trip information route to settings, and opt-in balances.

@@ -195,7 +195,7 @@ export async function discardConfigDraft(id: string) {
   const { error } = await client().rpc("discard_config_draft", { requested_release_id: id });
   if (error?.code === "PGRST202" || error?.code === "42883")
     throw new Error(
-      "Draft deletion needs the ADMIN RELEASE MANAGEMENT section of TRIP_VAULT_COMPLETE_SETUP.sql. Apply only that section on an existing database."
+      "Draft deletion needs supabase/migrations/202609220004_admin_release_management.sql. Apply that migration on an existing database, not the complete setup."
     );
   if (error) throw error;
 }

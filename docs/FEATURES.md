@@ -19,7 +19,7 @@ This catalog is the product-scope source of truth for the personal Trip Vault ap
 
 **Catalog status:** Personal MVP 1.0
 
-**Implementation status:** Implemented locally; fresh projects use `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`; existing projects need a backup and a reviewed selection of missing sections, followed by remote smoke and manual acceptance runs
+**Implementation status:** Implemented locally; fresh projects use `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`; existing projects need a backup and the outstanding incremental migrations, followed by remote smoke and manual acceptance runs
 
 ### Timeline-first release additions
 
@@ -352,7 +352,7 @@ Feature IDs and acceptance conditions are authoritative; mutable count totals ar
 ## 12. Notifications and Automation
 
 | ID      | Feature                      | Priority | Release     | Acceptance condition                                                                                                                                                                                                                         |
-| ------- | ---------------------------- | -------: | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ------- | ---------------------------- | -------: | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | NTF-001 | In-app action required       |       P1 | MVP         | Sync conflicts and incomplete offline packs appear in Alerts and detailed sync failures remain reviewable in Profile                                                                                                                         |
 | NTF-002 | Web push opt-in | P1 | Release pending | Implemented locally: device consent, test, revocation, and event/cost/reminder preferences. Disabled until backend deployment and device checks pass. |
 | NTF-003 | Departure reminder           |       P1 | Later       | Uses the trip timezone and links to the relevant trip                                                                                                                                                                                        |
@@ -529,7 +529,7 @@ The MVP therefore treats the stored flight record as user-maintained information
 | ADM-011 | Administrator access to user trips              |  Explore | Not planned | Configuration authority never grants access to private trip data or documents                                                                                                      |
 | ADM-012 | Browser editing of secrets or security policies |  Explore | Not planned | API secrets, RLS rules, MIME security policy, and other deployment controls remain code or environment configuration                                                               |
 
-Admin Releases includes on-demand added/removed/edited field comparisons across release-owned catalogues, stored defaults and both palettes. Drafts compare against the current live version; historical releases compare against the previous published version. Delete draft is confirmed, online-only and administrator-checked: it hides an unpublished draft while retaining its audit trail and cannot delete live or historical published versions. Existing installations require the `ADMIN RELEASE MANAGEMENT` section of the canonical SQL for draft deletion.
+Admin Releases includes on-demand added/removed/edited field comparisons across release-owned catalogues, stored defaults and both palettes. Drafts compare against the current live version; historical releases compare against the previous published version. Delete draft is confirmed, online-only and administrator-checked: it hides an unpublished draft while retaining its audit trail and cannot delete live or historical published versions. Existing installations require `supabase/migrations/202609220004_admin_release_management.sql` for draft deletion; the complete SQL is reserved for fresh setups.
 
 ## 19. Explicit MVP Exclusions
 

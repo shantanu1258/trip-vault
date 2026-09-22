@@ -11,8 +11,8 @@
 -- active app_admins row through trusted SQL, select and run only the statements
 -- between the PHASE 2 BEGIN/END markers below. Do not rerun Phase 1: this is a
 -- one-time new-project installer, not an existing-database upgrade script.
--- Existing databases: do not rerun this installer. Compare this changelog with
--- the deployed version and apply only reviewed missing sections after backup.
+-- Existing databases: do not rerun this installer. Back up and apply only
+-- outstanding incremental migrations; see supabase/README.md for prerequisites.
 -- Historical migrations and down scripts are retired; Git retains their history.
 -- Push database support is included; delivery still requires Edge Functions,
 -- server secrets and optional Cron deployment (docs/PUSH_SETUP.md).
@@ -31,6 +31,7 @@
 --
 -- 2026-09-22  ADMIN RELEASE MANAGEMENT: protected draft discard with retained
 --              audit records; serialize discard/publication against release writes.
+--              Existing projects use migrations/202609220004_admin_release_management.sql.
 -- 2026-09-22  Single-file baseline: includes all retired migration history.
 --              Adds atomic booking-document detachment; folds personal Vault,
 --              expense-document links and Web Push tables/RPCs/policies.
@@ -6266,7 +6267,7 @@ grant execute on function public.detach_booking_document(uuid, uuid) to authenti
 
 
 -- SECTION: ADMIN RELEASE MANAGEMENT
--- Existing projects: apply ONLY this BEGIN/COMMIT block, not the full installer.
+-- Existing projects: use migrations/202609220004_admin_release_management.sql.
 begin;
 create or replace function public.discard_config_draft(requested_release_id uuid)
 returns void language plpgsql security definer set search_path = public, pg_catalog as $$

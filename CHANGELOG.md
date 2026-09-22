@@ -2,13 +2,13 @@
 
 ## Unreleased — Unified setup, current demo, and admin UI
 
-- Admin Releases now exposes confirmed draft deletion (audit-retained discard) and on-demand field-level changes for catalogues, defaults and both palettes. Drafts compare against the currently published version; historical releases compare against the prior published version, including rollback releases. Existing databases need only the `ADMIN RELEASE MANAGEMENT` section for draft deletion.
+- Admin Releases now exposes confirmed draft deletion (audit-retained discard) and on-demand field-level changes for catalogues, defaults and both palettes. Drafts compare against the currently published version; historical releases compare against the prior published version, including rollback releases. Existing databases use `supabase/migrations/202609220004_admin_release_management.sql` for draft deletion; the complete installer is for fresh setups.
 
 - Simplified Admin copy: single page headings, compact release status, accessible search labels without visual repetition, and secondary overview guidance under About admin. Field-specific help and destructive-action warnings remain.
 
 - Consolidated the application schema, policies, functions, triggers, and admin-gated starter catalogue into `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`. Added the missing push, personal-document, cost-document, and booking-document detachment sections.
-- Removed standalone migration and rollback SQL files after local PostgreSQL-engine verification. Historical filenames below are retained as release history, not current deployment instructions. Git retains committed history; the complete installer contains the current definitions.
-- The installer refuses to run over an existing application schema. Existing installations require a backup and review of the specific missing sections, not a full rerun. Auth, Storage, Edge Function deployment, secrets, and push scheduling remain Supabase platform setup tasks.
+- Removed historical migration and rollback SQL files after local PostgreSQL-engine verification. New database changes ship incremental migrations for existing deployments alongside updates to the fresh-setup baseline. Historical filenames below are retained as release history, not current deployment instructions. Git retains committed history; the complete installer contains the current definitions.
+- The installer refuses to run over an existing application schema. Existing installations require a backup and the relevant incremental migration, not a full rerun. Auth, Storage, Edge Function deployment, secrets, and push scheduling remain Supabase platform setup tasks.
 - Updated demo bookings, grouped document cards, filters, costs, and in-app document previews using shared production components and synthetic local assets.
 - Refreshed the admin experience with real-component light/dark previews, compact responsive catalogue actions, clearer live/read-only/deployment-managed boundaries, and matching administrator sign-in presentation. Stored defaults without runtime consumers are explicitly read-only.
 - Local SQL verification covers a fresh installation, refusal to overwrite an existing installation, deferred/retried admin catalogue publication, and six transactional smoke scripts. No live database has been changed.

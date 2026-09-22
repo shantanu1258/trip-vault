@@ -26,7 +26,7 @@ it("discards only through the protected RPC and explains a missing server upgrad
   });
   expect(mocks.from).not.toHaveBeenCalled();
   mocks.rpc.mockResolvedValue({ error: { code: "PGRST202" } });
-  await expect(discardConfigDraft("draft-id")).rejects.toThrow("ADMIN RELEASE MANAGEMENT");
+  await expect(discardConfigDraft("draft-id")).rejects.toThrow("202609220004_admin_release_management.sql");
 });
 
 it("paginates raw snapshots without silently replacing missing palettes or merging built-ins", async () => {

@@ -48,7 +48,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. Follow the [Supabase database workflow](supabase/README.md): new projects use the single `TRIP_VAULT_COMPLETE_SETUP.sql` installer, then the SQL smoke tests. Never rerun it on an existing database; apply only reviewed missing sections after backup. Real signed-in flows also require the two browser-safe values in `.env.local`.
+Open `http://127.0.0.1:5173`. Follow the [Supabase database workflow](supabase/README.md): new projects use the single `TRIP_VAULT_COMPLETE_SETUP.sql` installer, then the SQL smoke tests. Never rerun it on an existing database; apply outstanding incremental migrations after backup. Real signed-in flows also require the two browser-safe values in `.env.local`.
 
 ## Verify
 
