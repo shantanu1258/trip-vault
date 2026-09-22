@@ -1,5 +1,5 @@
 -- Run in Supabase SQL Editor after both phases of the canonical setup, or after
--- applying every pending migration to an existing project.
+-- reviewed targeted upgrades to an existing project.
 -- It leaves no changes behind: trigger probes run inside a rolled-back transaction.
 -- A missing essential LLD invariant raises a clear error.
 
@@ -15,7 +15,8 @@ declare
     'trip_requirements', 'requirement_assignees', 'trip_costs', 'trip_cost_participants', 'reminders', 'alert_states',
     'activity_events', 'config_releases', 'airline_catalog_entries', 'airport_catalog_entries',
     'booking_vendor_catalog_entries', 'catalog_suggestions', 'journey_legs', 'journey_leg_travelers',
-    'cab_stops', 'trip_membership_offers',
+    'cab_stops', 'trip_membership_offers', 'planning_items', 'activity_moments',
+    'push_subscriptions', 'push_jobs',
     'metadata_defaults', 'theme_palettes', 'config_audit_events'
   ];
   expected_table_name text;
@@ -214,7 +215,7 @@ begin
   if to_regprocedure('public.canonicalize_parent_participant_scope()') is null then
     raise exception 'Parent-side participant scope canonicalization is missing';
   end if;
-  parent_scope_definition := lower(pg_get_functiondef('public.canonicalize_parent_participant_scope()'::regprocedure));
+  parent_scope_definition := regexp_replace(lower(pg_get_functiondef('public.canonicalize_parent_participant_scope()'::regprocedure)), '--[^\n]*', '', 'g');
   if strpos(parent_scope_definition, 'delete from public.booking_travelers') = 0
     or strpos(parent_scope_definition, 'delete from public.flight_leg_travelers') > 0
     or strpos(parent_scope_definition, 'delete from public.journey_leg_travelers') > 0

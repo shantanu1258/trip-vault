@@ -1,4 +1,5 @@
-import { CheckCircle2, ExternalLink, FileText } from "lucide-react";
+import { CheckCircle2, ExternalLink } from "lucide-react";
+import { DocumentTypeIcon } from "./DocumentTypeIcon";
 import type { DemoDocument } from "../demo/types";
 
 export function DocumentChip({
@@ -15,9 +16,7 @@ export function DocumentChip({
       rel="noreferrer"
       className={`tap-target group flex items-center gap-3 rounded-2xl border border-line bg-elevated text-left transition-[transform,border-color] duration-150 ease-settle hover:-translate-y-0.5 hover:border-brand/40 motion-reduce:transform-none ${compact ? "px-3 py-2" : "p-3.5"}`}
     >
-      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
-        <FileText className="size-5" aria-hidden="true" />
-      </span>
+      <DocumentTypeIcon type={document.category} emphasis="strong" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-extrabold text-ink">{document.title}</span>
         <span className="mt-0.5 flex items-center gap-1 text-xs text-muted">

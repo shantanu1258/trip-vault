@@ -1,8 +1,9 @@
-import { ChevronDown, FileText, Plus } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
+import { DocumentTypeIcon } from "../../components/DocumentTypeIcon";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { DocumentVisibilityBadge } from "../../components/DocumentVisibilityBadge";
-import { travelerGroup } from "./EventDocuments";
+import { DocumentVisibilityIcon } from "../../components/DocumentVisibilityIcon";
+import { travelerGroup } from "./documentModel";
 import type { Traveler, VaultDocument } from "./types";
 
 export function primaryBookingDocument(documents: VaultDocument[]) {
@@ -36,12 +37,14 @@ export function BookingDisclosure({
   title,
   hint,
   children,
-  open = false
+  open = false,
+  compact = false
 }: {
   title: string;
   hint?: string;
   children: ReactNode;
   open?: boolean;
+  compact?: boolean;
 }) {
   return (
     <details
@@ -49,7 +52,9 @@ export function BookingDisclosure({
       open={open || undefined}
     >
       <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 p-3 [&::-webkit-details-marker]:hidden">
-        <span className="min-w-0 flex-1">
+        <span
+          className={`min-w-0 flex-1 ${compact ? "flex flex-wrap items-baseline gap-x-3 gap-y-0.5" : ""}`}
+        >
           <strong className="block break-words text-sm [overflow-wrap:anywhere]">{title}</strong>
           {hint && <span className="block text-xs text-muted">{hint}</span>}
         </span>
@@ -58,7 +63,7 @@ export function BookingDisclosure({
           className="size-4 shrink-0 transition group-open/booking:rotate-180"
         />
       </summary>
-      <div className="border-t border-line p-3">{children}</div>
+      <div className={`border-t border-line ${compact ? "px-3 py-1" : "p-3"}`}>{children}</div>
     </details>
   );
 }
@@ -94,20 +99,26 @@ export function BookingDocuments({
     [...items]
       .sort((a, b) => (priority(a) < 0 ? 99 : priority(a)) - (priority(b) < 0 ? 99 : priority(b)))
       .map((document) => (
-        <Link
-          key={document.id}
-          to={`/trips/${document.trip_id}/documents/${document.id}`}
-          state={navigationState}
-          className="flex min-h-11 min-w-0 max-w-full overflow-hidden items-start gap-2 rounded-lg px-2 py-2 text-sm hover:bg-elevated focus-visible:ring-2 focus-visible:ring-brand"
-        >
-          <FileText aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-brand" />
-          <span className="min-w-0 flex-1">
-            <strong className="block whitespace-normal break-words [overflow-wrap:anywhere]">
-              {document.short_label || document.title}
-            </strong>
-            <DocumentVisibilityBadge className="mt-1" visibility={document.visibility} />
-          </span>
-        </Link>
+        <div key={document.id} className="relative">
+          <Link
+            to={`/trips/${document.trip_id}/documents/${document.id}`}
+            state={navigationState}
+            className="flex min-h-11 min-w-0 max-w-full overflow-hidden items-start gap-2 rounded-lg px-2 py-2 pr-10 text-sm hover:bg-elevated focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <DocumentTypeIcon type={document.category} size="sm" emphasis="strong" />
+            <span className="min-w-0 flex-1">
+              <strong className="block whitespace-normal break-words [overflow-wrap:anywhere]">
+                {document.short_label || document.title}
+              </strong>
+            </span>
+          </Link>
+          <DocumentVisibilityIcon
+            interactive
+            className="absolute right-1 top-1"
+            visibility={document.visibility}
+            documentTitle={document.short_label || document.title}
+          />
+        </div>
       ));
   return (
     <section

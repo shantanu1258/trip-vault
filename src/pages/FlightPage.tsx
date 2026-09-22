@@ -4,7 +4,6 @@ import { FormSection } from "../components/FormSection";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Clock3,
-  FileText,
   LocateFixed,
   Luggage,
   Pencil,
@@ -19,7 +18,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { TripBackLink } from "../components/TripBackLink";
-import { DocumentVisibilityBadge } from "../components/DocumentVisibilityBadge";
+import { DocumentVisibilityIcon } from "../components/DocumentVisibilityIcon";
+import { DocumentTypeIcon } from "../components/DocumentTypeIcon";
 import { ModalSheet } from "../components/ModalSheet";
 import { ErrorCard, LoadingCard } from "../components/TripUi";
 import { isoToLocalDateTime, localDateTimeToIso } from "../features/trips/validation";
@@ -397,7 +397,7 @@ export function FlightPage() {
                 <div className="mt-3 flex flex-wrap gap-2">
                   {hasNavigationLocation && (
                     <a
-                      className="hero-action hero-shortcut"
+                      className="hero-action hero-shortcut hero-shortcut--label"
                       href={
                         booking?.location?.map_url || googleMapsDirectionsUrl(booking!.location!)
                       }
@@ -407,7 +407,7 @@ export function FlightPage() {
                       title="Navigate to booking location"
                     >
                       <LocateFixed className="size-4" aria-hidden="true" />
-                      <span className="hidden md:inline">Navigate</span>
+                      <span>Navigate</span>
                     </a>
                   )}
                   {primary && (
@@ -422,7 +422,7 @@ export function FlightPage() {
                         primary.purpose === "boarding_pass" ? "Open boarding pass" : "Open ticket"
                       }
                     >
-                      <FileText aria-hidden="true" className="size-4" />
+                      <DocumentTypeIcon type={primary.category} size="sm" variant="monochrome" />
                       <span className="hidden md:inline">
                         {primary.purpose === "boarding_pass" ? "Open boarding pass" : "Open ticket"}
                       </span>
@@ -568,15 +568,21 @@ export function FlightPage() {
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {baggageTags.map((tag) => (
-                    <Link
-                      className="secondary-button"
-                      key={tag.id}
-                      to={`/trips/${tripId}/documents/${tag.id}`}
-                      state={nestedNavigationState}
-                    >
-                      {tag.short_label || tag.title}
-                      <DocumentVisibilityBadge visibility={tag.visibility} />
-                    </Link>
+                    <div key={tag.id} className="flex items-center gap-2">
+                      <Link
+                        className="secondary-button"
+                        to={`/trips/${tripId}/documents/${tag.id}`}
+                        state={nestedNavigationState}
+                      >
+                        <DocumentTypeIcon type={tag.category} size="sm" />
+                        {tag.short_label || tag.title}
+                      </Link>
+                      <DocumentVisibilityIcon
+                        interactive
+                        visibility={tag.visibility}
+                        documentTitle={tag.title}
+                      />
+                    </div>
                   ))}
                 </div>
               </section>

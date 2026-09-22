@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { useConfirmDialog } from "../../components/ConfirmDialogProvider";
 import { DocumentPreview } from "../../components/DocumentPreview";
 import { DocumentFileActions } from "../../components/DocumentFileActions";
-import { DocumentVisibilityBadge } from "../../components/DocumentVisibilityBadge";
+import { DocumentVisibilityIcon } from "../../components/DocumentVisibilityIcon";
 import { DocumentTypeIcon } from "../../components/DocumentTypeIcon";
 import { ModalSheet } from "../../components/ModalSheet";
 import { getErrorMessage } from "../trips/presentation";
@@ -76,7 +76,10 @@ export function PersonalDocuments() {
                 <span className="block break-words text-sm font-bold">{upload.personal_title}</span>
                 <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
                   {personalDocumentKinds.find((kind) => kind.value === upload.personal_kind)?.label}
-                  <DocumentVisibilityBadge visibility="private" />
+                  <DocumentVisibilityIcon
+                    visibility="private"
+                    documentTitle={upload.personal_title || "Personal document"}
+                  />
                 </span>
                 {upload.personal_label && (
                   <span className="mt-1 block break-words text-xs text-muted">
@@ -170,6 +173,15 @@ function PersonalDocumentPreview({
       title={upload.personal_title!}
       onClose={onClose}
     >
+      <div className="mt-3 flex items-center gap-2 text-xs text-muted">
+        <DocumentTypeIcon type={upload.personal_kind ?? "other"} size="sm" emphasis="strong" />
+        <span>Who can open this?</span>
+        <DocumentVisibilityIcon
+          interactive
+          visibility="private"
+          documentTitle={upload.personal_title || "Personal document"}
+        />
+      </div>
       {query.isPending && <p className="mt-4 text-sm">Opening document…</p>}
       {query.error && (
         <p role="alert" className="mt-4 text-sm text-danger">

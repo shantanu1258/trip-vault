@@ -15,10 +15,9 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { TripBackLink } from "../components/TripBackLink";
 import { ActionPanel } from "../components/ActionPanel";
-import {
-  DocumentVisibilityBadge,
-  documentVisibilityPresentation
-} from "../components/DocumentVisibilityBadge";
+import { documentVisibilityPresentation } from "../components/DocumentVisibilityBadge";
+import { DocumentVisibilityIcon } from "../components/DocumentVisibilityIcon";
+import { DocumentTypeIcon } from "../components/DocumentTypeIcon";
 import { DocumentPreview } from "../components/DocumentPreview";
 import { DocumentFileActions } from "../components/DocumentFileActions";
 import { FileDropzone } from "../components/FileDropzone";
@@ -293,10 +292,15 @@ export function DocumentPage() {
             <header className="page-enter mt-3 min-w-0 rounded-xl border border-line bg-surface p-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <DocumentTypeIcon type={document.category} size="sm" emphasis="strong" />
                   <p className="text-xs font-bold text-muted">
                     {documentPurposeLabel(document.purpose)}
                   </p>
-                  <DocumentVisibilityBadge visibility={document.visibility} />
+                  <DocumentVisibilityIcon
+                    interactive
+                    visibility={document.visibility}
+                    documentTitle={document.title}
+                  />
                 </div>
                 <h1 className="mt-2 min-w-0 whitespace-normal break-words font-display text-base font-bold leading-snug [overflow-wrap:anywhere] sm:text-xl">
                   {document.title}
@@ -430,7 +434,7 @@ export function DocumentPage() {
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-xs font-bold text-muted">Access</dt>
+                    <dt className="text-xs font-bold text-muted">Who can open this?</dt>
                     <dd className="mt-1 font-bold">
                       {documentVisibilityPresentation(document.visibility).description}
                     </dd>

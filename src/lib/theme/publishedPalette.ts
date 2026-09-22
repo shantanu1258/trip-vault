@@ -6,6 +6,7 @@ import {
   type ThemeTokens
 } from "../../features/admin/api";
 import { validateThemeTokens } from "../../features/admin/validation";
+import type { CSSProperties } from "react";
 
 export const PALETTE_KEY = "trip-vault:published-palette";
 export const PALETTE_UPDATED_EVENT = "trip-vault:palette-updated";
@@ -70,6 +71,20 @@ export function applyPublishedPalette(palette: PublishedPalette, mode: "light" |
       variable,
       hexToChannels(tokens[key as keyof ThemeTokens])
     );
+}
+
+/** Scoped preview variables; never changes the user's active app theme. */
+export function themePreviewStyle(tokens: ThemeTokens): CSSProperties {
+  return Object.fromEntries(
+    Object.entries(variableMap).map(([key, variable]) => [
+      variable,
+      hexToChannels(
+        /^#[0-9a-f]{6}$/i.test(tokens[key as keyof ThemeTokens])
+          ? tokens[key as keyof ThemeTokens]
+          : defaultLightTokens[key as keyof ThemeTokens]
+      )
+    ])
+  ) as CSSProperties;
 }
 
 export function cachePublishedPalette(palette: PublishedPalette) {

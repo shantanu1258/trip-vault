@@ -138,7 +138,12 @@ describe("VaultPage document list", () => {
       "data-emphasis",
       "strong"
     );
-    expect(screen.getByLabelText("Visible to all signed-in trip members")).toBeInTheDocument();
+    expect(row).toContainElement(
+      screen.getByRole("img", { name: "Visible to all signed-in trip members" })
+    );
+    expect(
+      screen.queryByRole("button", { name: `Who can open ${longTitle}?` })
+    ).not.toBeInTheDocument();
     const archived = screen.getByRole("button", { name: "Recently deleted" });
     expect(archived.textContent).toBe("");
     expect(archived).toHaveAttribute("aria-pressed", "false");

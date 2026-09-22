@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
@@ -114,8 +114,8 @@ describe("Trip Vault", () => {
       "/sign-in"
     );
     expect(
-      screen.getAllByRole("link", { name: /flight ticket|boarding pass/i }).length
-    ).toBeGreaterThan(0);
+      within(screen.getByRole("dialog")).getByRole("button", { name: "View document" })
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Timeline" })).toHaveAttribute(
@@ -123,5 +123,30 @@ describe("Trip Vault", () => {
       "true"
     );
     expect(screen.getByRole("button", { name: "Trip details" })).toBeInTheDocument();
+  });
+
+  it("keeps administrator entry consistent without offering public registration", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter
+        initialEntries={["/admin/sign-in"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <AppProviders>
+          <App />
+        </AppProviders>
+      </MemoryRouter>
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Administrator sign in" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/does not grant access to private trips or documents/)
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to Trip Vault" })).toHaveAttribute("href", "/");
+    expect(screen.queryByRole("button", { name: /create an account/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open administrator console" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show password" }));
+    expect(screen.getByLabelText("Password")).toHaveAttribute("type", "text");
   });
 });

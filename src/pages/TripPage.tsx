@@ -917,7 +917,7 @@ function EventContactRow({
             title={`Call ${label.toLowerCase()}`}
           >
             <Phone aria-hidden="true" className="size-4" />
-            <span className="hidden md:inline">Call</span>
+            <span>Call</span>
           </a>
           <a
             className="tap-target inline-flex items-center justify-center gap-2 rounded-lg px-3 text-xs font-bold text-brand hover:bg-brand-soft"
@@ -928,7 +928,7 @@ function EventContactRow({
             title={`WhatsApp ${label.toLowerCase()}`}
           >
             <WhatsAppIcon />
-            <span className="hidden md:inline">WhatsApp</span>
+            <span>WhatsApp</span>
           </a>
         </div>
       )}

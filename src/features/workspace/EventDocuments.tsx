@@ -3,57 +3,47 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronDown,
-  ChevronRight,
   FilePlus2,
-  FileText,
   Loader2,
   Paperclip,
   Trash2
 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import { DocumentVisibilityBadge } from "../../components/DocumentVisibilityBadge";
+import {
+  DocumentCardContent,
+  documentCardLinkClassName
+} from "../../components/DocumentCardContent";
+import { DocumentVisibilityIcon } from "../../components/DocumentVisibilityIcon";
+import { DocumentTypeIcon } from "../../components/DocumentTypeIcon";
 import { TripChildLink } from "../../components/TripChildLink";
 import { useConfirmDialog } from "../../components/ConfirmDialogProvider";
 import { ModalSheet } from "../../components/ModalSheet";
 import type { ItineraryItem } from "../trips/types";
 import {
   attachDocumentsToEvent,
+  detachDocumentFromBooking,
   listEventDocumentLinks,
   listVaultDocuments,
   reorderEventDocuments,
   unlinkDocumentFromEvent
 } from "./api";
-import { documentMatchesTraveler, documentPurposeLabel } from "./documentModel";
+import { documentMatchesTraveler, documentPurposeLabel, travelerGroup } from "./documentModel";
 import type { Traveler, VaultDocument } from "./types";
+import { getErrorMessage } from "../trips/presentation";
 
-function assignedTravelerIds(document: VaultDocument) {
-  return document.traveler_ids?.length
-    ? document.traveler_ids
-    : document.traveler_id
-      ? [document.traveler_id]
-      : [];
-}
-
-export function travelerGroup(document: VaultDocument, travelers: Traveler[]) {
-  const ids = [...assignedTravelerIds(document)].sort();
-  if (!ids.length)
-    return document.assignment_mode === "unassigned"
-      ? { key: "unassigned", label: "Unassigned", order: Number.MAX_SAFE_INTEGER }
-      : { key: "shared", label: "Everyone", order: -1 };
-  const names = ids.map(
-    (id) => travelers.find((traveler) => traveler.id === id)?.display_name ?? "Traveler"
-  );
-  const travelerOrder = Math.min(
-    ...ids.map((id) => {
-      const index = travelers.findIndex((traveler) => traveler.id === id);
-      return index === -1 ? Number.MAX_SAFE_INTEGER - 1 : index;
-    })
-  );
-  return {
-    key: `travelers:${ids.join(",")}`,
-    label: names.join(" + "),
-    order: travelerOrder
-  };
+function initialCollapsedGroups(storageKey: string, travelerId?: string | null) {
+  // Selecting a traveler always starts with their documents and Everyone expanded.
+  if (travelerId) return {};
+  try {
+    const saved: unknown = JSON.parse(sessionStorage.getItem(storageKey) ?? "{}");
+    return saved && typeof saved === "object" && !Array.isArray(saved)
+      ? (Object.fromEntries(
+          Object.entries(saved).filter(([, value]) => typeof value === "boolean")
+        ) as Record<string, boolean>)
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 export function EventDocumentShortcut({
@@ -94,11 +84,10 @@ export function EventDocumentShortcut({
       className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-brand-soft px-3 text-xs font-extrabold text-brand"
       to={`/trips/${item.trip_id}/documents/${primary.id}`}
       state={navigationState}
-      aria-label={`Open ${purpose}: ${primary.title}`}
+      aria-label={`View ${purpose}: ${primary.title}`}
     >
-      <FileText className="size-4" /> Open {purpose}
+      <DocumentTypeIcon type={primary.category} size="sm" emphasis="strong" /> View {purpose}
       {primary.short_label ? ` · ${primary.short_label}` : ""}
-      <DocumentVisibilityBadge className="bg-surface/80" visibility={primary.visibility} />
     </TripChildLink>
   );
 }
@@ -124,25 +113,25 @@ export function EventDocuments({
   const queryClient = useQueryClient();
   const [picking, setPicking] = useState(false);
   const groupStorageKey = `trip-vault:document-groups:${item.id}:${travelerId ?? "all"}`;
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved: unknown = JSON.parse(sessionStorage.getItem(groupStorageKey) ?? "{}");
-      return saved && typeof saved === "object" && !Array.isArray(saved)
-        ? Object.fromEntries(
-            Object.entries(saved).filter(([, value]) => typeof value === "boolean")
-          )
-        : {};
-    } catch {
-      return {};
-    }
-  });
+  const [groupState, setGroupState] = useState(() => ({
+    storageKey: groupStorageKey,
+    collapsed: initialCollapsedGroups(groupStorageKey, travelerId)
+  }));
+  if (groupState.storageKey !== groupStorageKey) {
+    setGroupState({
+      storageKey: groupStorageKey,
+      collapsed: initialCollapsedGroups(groupStorageKey, travelerId)
+    });
+  }
+  const collapsedGroups = groupState.collapsed;
   useEffect(() => {
+    if (groupState.storageKey !== groupStorageKey) return;
     try {
       sessionStorage.setItem(groupStorageKey, JSON.stringify(collapsedGroups));
     } catch {
       /* Optional UI memory. */
     }
-  }, [collapsedGroups, groupStorageKey]);
+  }, [collapsedGroups, groupStorageKey, groupState.storageKey]);
   const linksQuery = useQuery({
     queryKey: ["event-documents", item.id],
     queryFn: () => listEventDocumentLinks(item.id)
@@ -165,8 +154,18 @@ export function EventDocuments({
     }
   });
   const unlinkMutation = useMutation({
-    mutationFn: (documentId: string) => unlinkDocumentFromEvent(item.id, documentId),
-    onSuccess: refreshDocumentLinks
+    mutationFn: (document: VaultDocument) =>
+      item.booking_id && document.booking_id === item.booking_id
+        ? detachDocumentFromBooking(document)
+        : unlinkDocumentFromEvent(item.id, document.id),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["documents"] }),
+        queryClient.invalidateQueries({ queryKey: ["document"] }),
+        queryClient.invalidateQueries({ queryKey: ["event-documents"] }),
+        queryClient.invalidateQueries({ queryKey: ["trip-event-documents", item.trip_id] })
+      ]);
+    }
   });
   const reorderMutation = useMutation({
     mutationFn: async ({ documentId, adjacentId }: { documentId: string; adjacentId: string }) => {
@@ -230,7 +229,10 @@ export function EventDocuments({
     collapsedGroups[key] ??
     (compact && !travelerId && documentGroups.length > 1 && key !== "shared");
   const toggleGroup = (key: string) =>
-    setCollapsedGroups((current) => ({ ...current, [key]: !isCollapsed(key) }));
+    setGroupState((current) => ({
+      ...current,
+      collapsed: { ...current.collapsed, [key]: !isCollapsed(key) }
+    }));
 
   const attach = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -259,7 +261,7 @@ export function EventDocuments({
                 <button
                   type="button"
                   onClick={() => toggleGroup(group.key)}
-                  className="flex min-h-11 w-full items-center gap-2 text-left"
+                  className="flex min-h-10 w-full items-center gap-2 text-left"
                   aria-expanded={!isCollapsed(group.key)}
                   aria-label={`${isCollapsed(group.key) ? "Expand" : "Collapse"} documents for ${group.label}`}
                 >
@@ -275,9 +277,13 @@ export function EventDocuments({
                 </button>
               )}
               {(!group.label || !isCollapsed(group.key)) && (
-                <div className="grid gap-2">
+                <div className="grid gap-1.5">
                   {group.links.map((link, index) => {
                     const documentTitle = link.label || link.document.title;
+                    const hasControls = canEdit;
+                    const bookingLinked = Boolean(
+                      item.booking_id && link.document.booking_id === item.booking_id
+                    );
                     return (
                       <div
                         key={link.document_id}
@@ -288,38 +294,20 @@ export function EventDocuments({
                           id={`event-document-${item.id}-${link.document_id}`}
                           scrollAnchorId={`timeline-${item.id}`}
                           aria-label={documentTitle}
-                          className="tap-target group grid min-w-0 grid-cols-[.875rem_minmax(0,1fr)_1rem] items-start gap-x-2 px-3 py-2 text-xs font-bold transition hover:bg-brand-soft/40 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
+                          className={documentCardLinkClassName}
                           to={`/trips/${item.trip_id}/documents/${link.document_id}`}
                           state={navigationState}
                         >
-                          <FileText
-                            className="mt-0.5 size-3.5 shrink-0 text-brand"
-                            aria-hidden="true"
-                          />
-                          <span className="min-w-0">
-                            <span className="block break-words leading-5 [overflow-wrap:anywhere]">
-                              {documentTitle}
-                            </span>
-                            <span
-                              className={`mt-1 flex min-h-9 flex-wrap items-center gap-x-2 gap-y-1 ${canEdit ? (group.links.length > 1 ? "pr-24" : !link.inherited ? "pr-7" : "") : ""}`}
-                            >
-                              <span className="text-[.65rem] font-medium text-muted">
-                                {documentPurposeLabel(link.document.purpose)}
-                                {link.inherited ? " · booking document" : ""}
-                                {link.document.sync_state === "queued"
-                                  ? " · saved on device, cloud pending"
-                                  : ""}
-                              </span>
-                              <DocumentVisibilityBadge visibility={link.document.visibility} />
-                            </span>
-                          </span>
-                          <ChevronRight
-                            className="mt-0.5 size-4 text-muted transition-transform group-hover:translate-x-0.5"
-                            aria-hidden="true"
+                          <DocumentCardContent
+                            document={link.document}
+                            title={documentTitle}
+                            actions={
+                              !hasControls ? "none" : group.links.length > 1 ? "reorder" : "unlink"
+                            }
                           />
                         </TripChildLink>
-                        {canEdit && (
-                          <div className="absolute bottom-1 right-1 flex items-center">
+                        {hasControls && (
+                          <div className="absolute bottom-2 right-2 flex items-center">
                             {group.links.length > 1 &&
                               (["up", "down"] as const).map((direction) => {
                                 const adjacent = group.links[index + (direction === "up" ? -1 : 1)];
@@ -341,33 +329,35 @@ export function EventDocuments({
                                         adjacentId: adjacent.document_id
                                       })
                                     }
-                                    className="grid min-h-11 w-9 place-items-center rounded-lg text-muted hover:bg-brand-soft disabled:opacity-30"
+                                    className="grid size-8 place-items-center rounded-lg text-muted hover:bg-brand-soft focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand disabled:opacity-30"
                                   >
                                     <Icon className="size-3.5" />
                                   </button>
                                 );
                               })}
-                            {!link.inherited && (
-                              <button
-                                type="button"
-                                disabled={reorderMutation.isPending || unlinkMutation.isPending}
-                                onClick={async () => {
-                                  if (
-                                    await confirm({
-                                      title: "Unlink document?",
-                                      message: `Unlink ${link.document.title} from this event? The Vault document will remain.`,
-                                      confirmLabel: "Unlink",
-                                      tone: "danger"
-                                    })
-                                  )
-                                    unlinkMutation.mutate(link.document_id);
-                                }}
-                                className="grid min-h-11 w-9 place-items-center rounded-lg text-muted hover:bg-danger/5 hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
-                                aria-label={`Unlink ${documentTitle}`}
-                              >
-                                <Trash2 className="size-3.5" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              disabled={reorderMutation.isPending || unlinkMutation.isPending}
+                              onClick={async () => {
+                                if (
+                                  await confirm({
+                                    title: bookingLinked
+                                      ? "Unlink from booking?"
+                                      : "Unlink document?",
+                                    message: bookingLinked
+                                      ? `Detach ${link.document.title} from this booking and all its events? The file will remain in Vault with the same travelers and access settings.`
+                                      : `Unlink ${link.document.title} from this event? The Vault document will remain.`,
+                                    confirmLabel: "Unlink",
+                                    tone: "danger"
+                                  })
+                                )
+                                  unlinkMutation.mutate(link.document);
+                              }}
+                              className="grid size-8 place-items-center rounded-lg text-muted hover:bg-danger/5 hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
+                              aria-label={`Unlink ${documentTitle}`}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
                           </div>
                         )}
                       </div>
@@ -384,7 +374,7 @@ export function EventDocuments({
       )}
       {(reorderMutation.error || unlinkMutation.error) && (
         <p role="alert" className="mt-2 text-xs font-bold text-danger">
-          Could not update document order or links. Please refresh and retry.
+          {getErrorMessage(reorderMutation.error || unlinkMutation.error)}
         </p>
       )}
       {canEdit && (
@@ -435,7 +425,7 @@ export function EventDocuments({
                 );
                 const unavailable = attached || inherited;
                 return (
-                  <label
+                  <div
                     key={document.id}
                     className={
                       unavailable
@@ -443,30 +433,36 @@ export function EventDocuments({
                         : "flex items-center gap-3 rounded-2xl border border-line p-4"
                     }
                   >
-                    <input
-                      type="checkbox"
-                      name="documents"
-                      value={document.id}
-                      disabled={unavailable}
-                      className="size-4"
+                    <label className="flex min-w-0 flex-1 items-center gap-3">
+                      <DocumentTypeIcon type={document.category} size="sm" />
+                      <input
+                        type="checkbox"
+                        name="documents"
+                        value={document.id}
+                        disabled={unavailable}
+                        className="size-4"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center">
+                          <strong className="min-w-0 flex-1 break-words text-sm [overflow-wrap:anywhere]">
+                            {document.title}
+                          </strong>
+                        </span>
+                        <span className="mt-1 block text-xs capitalize text-muted">
+                          {document.purpose.replace("_", " ")}
+                          {attached
+                            ? " · already attached"
+                            : inherited
+                              ? " · already available through booking"
+                              : ""}
+                        </span>
+                      </span>
+                    </label>
+                    <DocumentVisibilityIcon
+                      visibility={document.visibility}
+                      documentTitle={document.title}
                     />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center">
-                        <strong className="min-w-0 flex-1 break-words text-sm [overflow-wrap:anywhere]">
-                          {document.title}
-                        </strong>
-                        <DocumentVisibilityBadge visibility={document.visibility} />
-                      </span>
-                      <span className="mt-1 block text-xs capitalize text-muted">
-                        {document.purpose.replace("_", " ")}
-                        {attached
-                          ? " · already attached"
-                          : inherited
-                            ? " · already available through booking"
-                            : ""}
-                      </span>
-                    </span>
-                  </label>
+                  </div>
                 );
               })}
               {documentsQuery.data?.filter(matchesFocus).length === 0 && (

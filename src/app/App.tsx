@@ -60,9 +60,9 @@ export function App() {
     >
       <Routes>
         <Route path="/" element={<RootRoute />} />
+        <Route path="/preview" element={<DemoTripPage />} />
         <Route element={<SignedOutOnlyRoute />}>
           <Route path="/welcome" element={<WelcomePage />} />
-          <Route path="/preview" element={<DemoTripPage />} />
           <Route path="/sign-in" element={<SignInPage />} />
         </Route>
         <Route path="/admin/sign-in" element={<SignInPage admin />} />

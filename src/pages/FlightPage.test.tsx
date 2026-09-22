@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -190,6 +190,8 @@ describe("flight edit time-zone controls", () => {
     ).toHaveAttribute("href", "https://maps.example/directions");
     const navigation = screen.getByRole("link", { name: "Navigate to booking location" });
     expect(navigation).toHaveAttribute("title", "Navigate to booking location");
+    expect(navigation).toHaveClass("hero-shortcut--label");
+    expect(navigation).toHaveTextContent("Navigate");
   });
 
   it("does not offer navigation without a saved flight booking location", async () => {
@@ -389,7 +391,15 @@ describe("flight edit time-zone controls", () => {
     const card = screen.getByRole("link", { name: new RegExp(longTitle) });
     const shortcut = screen.getByRole("link", { name: "Open boarding pass" });
     expect(shortcut).toHaveAttribute("title", "Open boarding pass");
+    expect(shortcut).not.toHaveClass("hero-shortcut--label");
+    expect(within(shortcut).getByText("Open boarding pass")).toHaveClass("hidden", "md:inline");
+    expect(shortcut).toHaveTextContent("Open boarding pass");
     expect(shortcut).toHaveAttribute("href", "/trips/trip-1/documents/primary");
+    expect(shortcut.querySelector('[data-document-type="flight"]')).toHaveClass("size-5");
+    expect(shortcut.querySelector('[data-document-type="flight"]')).toHaveAttribute(
+      "data-variant",
+      "monochrome"
+    );
     expect(card).toHaveAttribute("href", "/trips/trip-1/documents/long");
     expect(card).toHaveTextContent(longTitle);
   });

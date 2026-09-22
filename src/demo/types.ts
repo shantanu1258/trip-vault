@@ -1,6 +1,9 @@
+import type { DocumentCategory } from "../features/workspace/types";
+
 export type DemoPhase = "planning" | "predeparture" | "travelday" | "intrip" | "completed";
 
 export type DemoDocument = {
+  category: DocumentCategory;
   id: string;
   title: string;
   purpose: string;

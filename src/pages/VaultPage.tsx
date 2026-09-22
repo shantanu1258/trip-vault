@@ -3,7 +3,7 @@ import { ArchiveRestore, CloudUpload, FileSearch, LockKeyhole, Search } from "lu
 import { useMemo } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
-import { DocumentVisibilityBadge } from "../components/DocumentVisibilityBadge";
+import { DocumentVisibilityIcon } from "../components/DocumentVisibilityIcon";
 import { DocumentTypeIcon } from "../components/DocumentTypeIcon";
 import { EmptyState, ErrorCard, LoadingCard } from "../components/TripUi";
 import {
@@ -279,7 +279,10 @@ export function VaultPage() {
                             <p className="text-xs text-muted">
                               {documentPurposeLabel(document.purpose)} · {assignment}
                             </p>
-                            <DocumentVisibilityBadge visibility={document.visibility} />
+                            <DocumentVisibilityIcon
+                              visibility={document.visibility}
+                              documentTitle={document.title}
+                            />
                           </div>
                           {document.sync_state === "queued" && (
                             <p
@@ -308,13 +311,14 @@ export function VaultPage() {
                         </button>
                       </article>
                     ) : (
-                      <Link
-                        className="surface-card group grid min-w-0 max-w-full grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-2.5 overflow-hidden px-3 py-2.5 hover:border-brand/40"
-                        to={`/trips/${document.trip_id}/documents/${document.id}`}
-                        key={document.id}
-                      >
-                        {content}
-                      </Link>
+                      <div key={document.id} className="relative min-w-0">
+                        <Link
+                          className="surface-card group grid min-w-0 max-w-full grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-2.5 overflow-hidden px-3 py-2.5 hover:border-brand/40"
+                          to={`/trips/${document.trip_id}/documents/${document.id}`}
+                        >
+                          {content}
+                        </Link>
+                      </div>
                     );
                   })}
                 </div>

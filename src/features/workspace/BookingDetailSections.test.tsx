@@ -72,7 +72,11 @@ describe("reading-first booking sections", () => {
     expect(links[0]).toHaveTextContent("Admission");
     expect(links[1]).toHaveTextContent("Meal voucher");
     expect(links[0]).toHaveAttribute("href", "/trips/trip/documents/Admission");
-    expect(links[0]).toHaveTextContent("Only me");
+    expect(links[0]).not.toHaveTextContent("Only me");
+    const access = within(group).getByRole("button", { name: "Who can open Admission?" });
+    expect(links[0]).not.toContainElement(access);
+    await userEvent.click(access);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Visible only to you");
     const upload = screen.getByRole("button", { name: "Upload" });
     expect(group.compareDocumentPosition(upload) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(upload).toHaveClass("text-xs");

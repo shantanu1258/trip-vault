@@ -1,8 +1,9 @@
-import { ArrowRight, FileCheck2, Plane, ShieldCheck, UsersRound, WifiOff } from "lucide-react";
+import { ArrowRight, ShieldCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Brand } from "../components/Brand";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { InstallAppButton } from "../components/InstallAppButton";
+import { WelcomeBookingPreview } from "../components/WelcomeBookingPreview";
 
 const welcomeSteps = [
   { title: "Create a new trip", text: "Choose a destination and dates." },
@@ -54,58 +55,7 @@ export function WelcomePage() {
             </div>
           </div>
 
-          <div
-            className="relative mx-auto w-full max-w-lg"
-            aria-label="Trip Vault interface preview"
-          >
-            <div
-              className="absolute -left-10 top-20 size-40 rounded-full border-[28px] border-coral/15"
-              aria-hidden="true"
-            />
-            <div className="surface-card relative ml-auto max-w-md overflow-hidden p-5 sm:p-7">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="eyebrow">Current trip</p>
-                  <h2 className="mt-2 font-display text-3xl font-black tracking-[-0.04em]">
-                    Mediterranean Summer
-                  </h2>
-                  <p className="mt-1 text-sm text-muted">Rome · Florence · Venice</p>
-                </div>
-                <span className="rounded-full bg-brand-soft px-3 py-1.5 text-xs font-bold text-brand">
-                  Ready offline
-                </span>
-              </div>
-              <div className="mt-7 rounded-3xl bg-brand p-5 text-surface">
-                <div className="flex items-center justify-between text-xs font-bold uppercase tracking-[0.16em] opacity-70">
-                  <span>DEL</span>
-                  <Plane className="size-4" aria-hidden="true" />
-                  <span>FCO</span>
-                </div>
-                <div className="mt-5 flex items-end justify-between">
-                  <div>
-                    <p className="text-3xl font-black">06:40</p>
-                    <p className="mt-1 text-xs opacity-70">Gate 22B</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-coral">Boarding in 48 min</p>
-                    <p className="mt-1 text-xs opacity-70">Aster Air AV 218</p>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-line bg-elevated p-4">
-                  <FileCheck2 className="size-5 text-success" />
-                  <p className="mt-3 text-sm font-extrabold">Boarding pass</p>
-                  <p className="mt-1 text-xs text-muted">Available offline</p>
-                </div>
-                <div className="rounded-2xl border border-line bg-elevated p-4">
-                  <UsersRound className="size-5 text-coral" />
-                  <p className="mt-3 text-sm font-extrabold">5 travelers</p>
-                  <p className="mt-1 text-xs text-muted">1 helper</p>
-                </div>
-              </div>
-            </div>
-          </div>
+          <WelcomeBookingPreview />
         </section>
 
         <section className="border-t border-line bg-surface/50">

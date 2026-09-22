@@ -1,4 +1,4 @@
-import { Eye, LockKeyhole, UserRoundCheck, UsersRound, type LucideIcon } from "lucide-react";
+import { Globe, KeyRound, LockKeyhole, type LucideIcon } from "lucide-react";
 import type { DocumentVisibility } from "../features/workspace/types";
 
 type VisibilityPresentation = {
@@ -11,7 +11,7 @@ const visibilityPresentations: Record<DocumentVisibility, VisibilityPresentation
   trip: {
     label: "Trip members",
     description: "Visible to all signed-in trip members",
-    icon: Eye
+    icon: Globe
   },
   private: {
     label: "Only me",
@@ -21,12 +21,12 @@ const visibilityPresentations: Record<DocumentVisibility, VisibilityPresentation
   selected_members: {
     label: "Selected members",
     description: "Visible only to selected trip members",
-    icon: UsersRound
+    icon: KeyRound
   },
   traveler_and_managers: {
     label: "Traveler + managers",
     description: "Visible to the traveler and their managers",
-    icon: UserRoundCheck
+    icon: KeyRound
   }
 };
 

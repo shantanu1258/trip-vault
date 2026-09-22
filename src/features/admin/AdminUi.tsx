@@ -7,7 +7,6 @@ import { getErrorMessage } from "../trips/presentation";
 
 export type AdminNavigationItem = {
   label: string;
-  description: string;
   icon: LucideIcon;
   path: string;
 };
@@ -36,9 +35,6 @@ export function AdminShell({
       </header>
       <div className="mx-auto grid min-w-0 max-w-7xl lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-8 lg:px-8">
         <aside className="sticky top-0 z-40 min-w-0 border-b border-line bg-canvas/95 px-4 py-3 backdrop-blur lg:static lg:border-0 lg:bg-transparent lg:px-0 lg:py-8">
-          <p className="mb-2 text-[.65rem] font-black uppercase tracking-[.16em] text-muted lg:px-3">
-            Admin sections
-          </p>
           <nav
             aria-label="Administrator sections"
             className="flex min-w-0 snap-x gap-2 overflow-x-auto pb-1 lg:block lg:space-y-1 lg:overflow-visible lg:pb-0"
@@ -78,24 +74,21 @@ export function AdminShell({
 }
 
 export function AdminPageHeader({
-  eyebrow,
   title,
   text,
   action
 }: {
-  eyebrow: string;
   title: string;
-  text: string;
+  text?: string;
   action?: ReactNode;
 }) {
   return (
     <header className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
-        <p className="eyebrow">{eyebrow}</p>
-        <h1 className="mt-2 break-words font-display text-3xl font-black tracking-[-.04em] [overflow-wrap:anywhere] sm:text-4xl">
+        <h1 className="break-words font-display text-3xl font-black tracking-[-.04em] [overflow-wrap:anywhere] sm:text-4xl">
           {title}
         </h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">{text}</p>
+        {text && <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">{text}</p>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
     </header>
@@ -169,7 +162,7 @@ export function AdminFormIntro({
   onCancel
 }: {
   title: string;
-  description: string;
+  description?: string;
   onCancel?: () => void;
 }) {
   return (
@@ -178,7 +171,7 @@ export function AdminFormIntro({
         <h2 className="break-words font-display text-lg font-black [overflow-wrap:anywhere]">
           {title}
         </h2>
-        <p className="mt-1 text-xs leading-5 text-muted">{description}</p>
+        {description && <p className="mt-1 text-xs leading-5 text-muted">{description}</p>}
       </div>
       {onCancel && (
         <button type="button" className="secondary-button shrink-0 px-3" onClick={onCancel}>
@@ -202,18 +195,19 @@ export function AdminCatalogSearch({
 }) {
   return (
     <div className="mt-6 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <AdminField label={`Search ${label}`} className="w-full sm:max-w-md">
+      <label className="w-full sm:max-w-md">
+        <span className="sr-only">Search {label}</span>
         <span className="relative block">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <input
-            className="form-input pl-10"
+            className="form-input mt-0 pl-10"
             type="search"
             value={value}
             onChange={(event) => onChange(event.target.value)}
             placeholder={`Search ${label} by name or code`}
           />
         </span>
-      </AdminField>
+      </label>
       <p className="shrink-0 pb-3 text-xs font-bold text-muted">
         {count} {count === 1 ? label.replace(/s$/, "") : label}
       </p>

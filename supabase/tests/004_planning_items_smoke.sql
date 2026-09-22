@@ -1,4 +1,4 @@
--- Run after 202609210002_planning_items.sql. This verifies the reversible
+-- Run after the complete setup. This verifies the reversible
 -- Planning-item data boundary without creating any persistent records.
 
 begin;

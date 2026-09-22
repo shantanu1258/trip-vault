@@ -53,6 +53,13 @@ it.each(["/trips/trip-1?view=details", "/trips/trip-1/documents?category=hotel"]
       </MemoryRouter>
     );
     const link = screen.getByRole("link", { name: /Hotel confirmation/ });
+    expect(link).toContainElement(
+      screen.getByRole("img", { name: "Visible to all signed-in trip members" })
+    );
+    expect(
+      screen.queryByRole("button", { name: "Who can open Hotel confirmation?" })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(path)).toBeInTheDocument();
     vi.spyOn(window, "scrollY", "get").mockReturnValue(1200);
     vi.spyOn(link, "getBoundingClientRect").mockReturnValue({ top: 210 } as DOMRect);
     fireEvent.click(link);

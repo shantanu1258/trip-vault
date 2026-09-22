@@ -173,7 +173,7 @@ vi.mock("../features/workspace/EventDocuments", () => ({
       href={`/trips/${item.trip_id}/documents/primary-document`}
       data-traveler-id={travelerId ?? "everyone"}
     >
-      Open Ticket
+      View Ticket
     </a>
   )
 }));
@@ -1237,7 +1237,7 @@ describe("timeline event primary document", () => {
     );
 
     const cardTarget = await screen.findByRole("button", { name: "Open details for Museum visit" });
-    const shortcut = screen.getByRole("link", { name: "Open Ticket" });
+    const shortcut = screen.getByRole("link", { name: "View Ticket" });
     const card = cardTarget.closest("article") ?? cardTarget.parentElement;
     expect(cardTarget.contains(shortcut)).toBe(false);
     expect(card?.querySelector("button button, button a, a button, a a")).toBeNull();

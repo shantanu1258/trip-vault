@@ -154,9 +154,7 @@ describe("DocumentPage", () => {
     );
     const title = screen.getByRole("heading", { name: longTitle });
     expect(title).toBeVisible();
-    expect(screen.getByLabelText("Visible to all signed-in trip members")).toHaveTextContent(
-      "Trip members"
-    );
+    expect(screen.getByRole("button", { name: `Who can open ${longTitle}?` })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to trip" })).toHaveAttribute(
       "href",
       "/trips/trip-1?view=details"

@@ -59,21 +59,11 @@ The functions also use Supabase's injected `SUPABASE_URL` and
 The VAPID public key is bundled in `src/features/notifications/config.ts`; only the
 public key may be overridden using `VITE_VAPID_PUBLIC_KEY`.
 
-## 2. Apply and verify the migration
+## 2. Install and verify the database
 
-Back up the database and first test in an isolated Supabase project with all existing
-Trip Vault migrations applied. In SQL Editor, run:
+New projects use `supabase/TRIP_VAULT_COMPLETE_SETUP.sql` once. Push tables, RLS and RPCs are included; there is no additional push migration. Run `supabase/tests/002_push_smoke.sql` on an isolated project. It rolls back fixtures, sends no HTTP, and checks privileges, recipients, stale reminders and rate limiting.
 
-1. `supabase/migrations/202609200001_web_push.sql` (once).
-2. `supabase/tests/002_push_smoke.sql` on the isolated project. It rolls back fixtures,
-   performs no HTTP, and checks RLS, actor exclusion, membership revocation, opt-out,
-   deduplication, stale reminders, deletion, and test-send ownership/rate limiting.
-3. Apply only the new migration to the production project after those checks pass.
-
-For a fresh install, run the existing canonical setup/migrations first, then this
-optional push migration. Do not rerun the complete setup against an existing project.
-The migration is transactional and intentionally fails rather than replacing existing
-tables if accidentally applied twice.
+For an existing database missing push support, back up and review only `SECTION: WEB PUSH` in the installer through its `commit`, before `SECTION: COST DOCUMENT ASSOCIATION`. Do not rerun the installer or that section if already applied. Database support does not enable delivery by itself; continue with the deployment steps below.
 
 ## 3. Deploy the two functions
 

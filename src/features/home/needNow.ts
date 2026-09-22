@@ -9,6 +9,7 @@ export type NeedNowItem = {
   detail: string;
   target: string;
   priority: number;
+  documentCategory?: VaultDocument["category"];
 };
 
 export type RankedTripDocument = {
@@ -177,6 +178,7 @@ export function resolveNeedNow(input: {
       label: ranked.document.title,
       detail: `${documentPurposeLabel(ranked.document.purpose)} · ${audience} · ${ranked.contextTitle}`,
       target: `/trips/${input.tripId}/documents/${ranked.document.id}`,
+      documentCategory: ranked.document.category,
       priority: Number.isFinite(ranked.occursAt) ? ranked.occursAt : Number.MAX_SAFE_INTEGER - 10
     });
   }

@@ -179,6 +179,10 @@ describe("generic journey booking times", () => {
     const edit = await screen.findByRole("button", { name: label });
     const hero = screen.getByRole("heading", { name: booking.title }).closest("header")!;
     expect(edit.closest("header")).toBeNull();
+    const archive = screen.getByRole("button", { name: "Archive booking" });
+    expect(archive.closest("details")).toBeNull();
+    expect(screen.queryByText("Manage booking")).not.toBeInTheDocument();
+    expect(within(archive).getByText("Archive booking")).not.toHaveClass("hidden");
     expect(edit.compareDocumentPosition(hero) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(
       within(edit.parentElement!).getByRole("link", { name: "Back to trip" })
@@ -203,6 +207,8 @@ describe("generic journey booking times", () => {
     expect(action.closest("header")).not.toBeNull();
     expect(action).toHaveAttribute("href", "https://maps.example/directions");
     expect(action).toHaveAttribute("target", "_blank");
+    expect(action).toHaveClass("hero-shortcut--label");
+    expect(within(action).getByText("Navigate")).toHaveClass("inline");
   });
 
   it("supports coordinate-only locations in the summary", async () => {
@@ -566,6 +572,8 @@ describe("booking detail card interactions", () => {
       const action = screen.getByRole("link", { name });
       expect(action).toHaveAttribute("title", name);
       expect(action.querySelector("svg")).not.toBeNull();
+      expect(action).not.toHaveClass("hero-shortcut--label");
+      expect(action.querySelector("span")).toHaveClass("hidden", "md:inline");
     }
     expect(screen.getByRole("link", { name: "Navigate to Terminal Road, Delhi" })).toHaveAttribute(
       "href",

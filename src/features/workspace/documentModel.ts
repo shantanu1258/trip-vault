@@ -234,3 +234,33 @@ export function findDuplicateDocument(documents: VaultDocument[], checksum: stri
     (document) => document.current_version?.sha256.toLowerCase() === checksum.toLowerCase()
   );
 }
+
+function assignedTravelerIds(document: VaultDocument) {
+  return document.traveler_ids?.length
+    ? document.traveler_ids
+    : document.traveler_id
+      ? [document.traveler_id]
+      : [];
+}
+
+export function travelerGroup(document: VaultDocument, travelers: Traveler[]) {
+  const ids = [...assignedTravelerIds(document)].sort();
+  if (!ids.length)
+    return document.assignment_mode === "unassigned"
+      ? { key: "unassigned", label: "Unassigned", order: Number.MAX_SAFE_INTEGER }
+      : { key: "shared", label: "Everyone", order: -1 };
+  const names = ids.map(
+    (id) => travelers.find((traveler) => traveler.id === id)?.display_name ?? "Traveler"
+  );
+  const travelerOrder = Math.min(
+    ...ids.map((id) => {
+      const index = travelers.findIndex((traveler) => traveler.id === id);
+      return index === -1 ? Number.MAX_SAFE_INTEGER - 1 : index;
+    })
+  );
+  return {
+    key: `travelers:${ids.join(",")}`,
+    label: names.join(" + "),
+    order: travelerOrder
+  };
+}

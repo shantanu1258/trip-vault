@@ -1,4 +1,4 @@
--- Optional: run on an isolated test project after 202609200003_personal_documents.sql.
+-- Run on an isolated test project after the complete setup.
 -- All fixtures roll back. No file bytes or HTTP requests are created.
 begin;
 do $$

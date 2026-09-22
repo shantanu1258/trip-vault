@@ -193,6 +193,14 @@ textarea:focus-visible {
     color: rgb(var(--color-brand));
   }
 
+  .document-type-icon[data-variant="monochrome"],
+  .document-type-icon[data-variant="monochrome"] .document-type-icon__symbol {
+    color: inherit;
+  }
+  .document-type-icon[data-variant="monochrome"] .document-type-icon__paper {
+    fill: none;
+  }
+
   /* Attention is consistent across event types; the icon keeps its type color.
      An inset stroke adds emphasis without changing the card's dimensions. */
   .timeline-event-card[aria-current="step"] {
@@ -479,6 +487,9 @@ textarea:focus-visible {
 
   .hero-shortcut {
     @apply size-11 justify-center p-0 md:w-auto md:px-3;
+  }
+  .hero-shortcut--label {
+    @apply w-auto px-3;
   }
 }
 

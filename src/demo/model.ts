@@ -2,7 +2,7 @@ import type { Traveler, VaultDocument, Booking } from "../features/workspace/typ
 import type { TripCost } from "../features/trips/types";
 import { demoDocuments, demoEvents, demoTravelers } from "./data";
 
-const eventStartTimes: Record<string, { start: string; end?: string }> = {
+export const demoEventTimes: Record<string, { start: string; end?: string }> = {
   "flight-out": { start: "2026-06-18T04:40:00.000Z", end: "2026-06-18T10:10:00.000Z" },
   "hotel-rome": { start: "2026-06-18T13:00:00.000Z" },
   colosseum: { start: "2026-06-19T14:30:00.000Z", end: "2026-06-19T17:00:00.000Z" },
@@ -76,7 +76,7 @@ export const demoTravelersAsTravelers: Traveler[] = demoTravelers
 export const demoBookings: Booking[] = demoEvents
   .filter((event) => event.id !== "venice-walk")
   .map((event) => {
-    const timing = eventStartTimes[event.id];
+    const timing = demoEventTimes[event.id];
     return {
       id: event.id,
       trip_id: "demo-trip",
@@ -110,12 +110,7 @@ export const demoVaultDocuments: VaultDocument[] = demoDocuments.map((document) 
     assignment_mode: audience.assignment,
     traveler_ids: audience.travelerIds,
     title: document.title,
-    category:
-      linkedEvent?.type === "hotel"
-        ? "hotel"
-        : linkedEvent?.type === "activity"
-          ? "activity"
-          : "flight",
+    category: document.category,
     purpose: documentPurpose[document.id] ?? "other",
     short_label: document.purpose,
     visibility: audience.visibility,

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clipboard, Clock3, FileText, LocateFixed, Pencil, Phone, Trash2 } from "lucide-react";
+import { Clipboard, Clock3, LocateFixed, Pencil, Phone, Trash2 } from "lucide-react";
+import { DocumentTypeIcon } from "../components/DocumentTypeIcon";
 import { Fragment, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
@@ -38,7 +39,7 @@ import {
   bookingCountdown,
   bookingEventType
 } from "../features/workspace/bookingPresentation";
-import { EventSilhouette } from "../components/EventSilhouette";
+import { BookingHeroSurface } from "../components/BookingHeroSurface";
 
 export function BookingPage() {
   const confirm = useConfirmDialog();
@@ -148,6 +149,10 @@ export function BookingPage() {
   const bookingEndTimezone = lastLeg?.destination_timezone ?? bookingTimezone;
   const appearance = bookingAppearance[booking?.type ?? "other"];
   const BookingIcon = appearance.icon;
+  const compactHeroActions =
+    Number(documents.length > 0) + Number(hasNavigationLocation) + (phone ? 2 : 0) > 2;
+  const heroActionClass = `hero-action hero-shortcut${compactHeroActions ? "" : " hero-shortcut--label"}`;
+  const heroLabelClass = compactHeroActions ? "hidden md:inline" : "inline";
   const countdown =
     booking &&
     bookingItineraryItem?.has_explicit_start_time !== false &&
@@ -175,14 +180,7 @@ export function BookingPage() {
         {query.error && <ErrorCard error={query.error} />}
         {booking && (
           <section className="page-enter mt-3 min-w-0 space-y-3">
-            <header
-              className={`event-hero event-type-icon--${appearance.tone} overflow-hidden rounded-xl border border-line p-4 text-white shadow-focus`}
-            >
-              <EventSilhouette
-                key={booking.id}
-                type={bookingEventType(booking.type)}
-                placement="hero"
-              />
+            <BookingHeroSurface key={booking.id} type={bookingEventType(booking.type)}>
               <div className="mb-3 flex items-center justify-between gap-3">
                 <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-black uppercase tracking-[.14em]">
                   {booking.reservation_state?.replaceAll("_", " ") || appearance.label}
@@ -219,7 +217,11 @@ export function BookingPage() {
                       aria-label={documentActionLabel}
                       title={documentActionLabel}
                     >
-                      <FileText className="size-4" aria-hidden="true" />
+                      <DocumentTypeIcon
+                        type={primaryDocument.category}
+                        size="sm"
+                        variant="monochrome"
+                      />
                       <span className="hidden md:inline">{documentActionLabel}</span>
                     </Link>
                   )}
@@ -230,13 +232,21 @@ export function BookingPage() {
                       aria-label="View documents"
                       title="View documents"
                     >
-                      <FileText className="size-4" aria-hidden="true" />
+                      <DocumentTypeIcon
+                        type={
+                          documents.every((doc) => doc.category === documents[0].category)
+                            ? documents[0].category
+                            : "other"
+                        }
+                        size="sm"
+                        variant="monochrome"
+                      />
                       <span className="hidden md:inline">View documents</span>
                     </a>
                   )}
                   {hasNavigationLocation && (
                     <a
-                      className="hero-action hero-shortcut"
+                      className={heroActionClass}
                       href={booking.location?.map_url || googleMapsDirectionsUrl(booking.location!)}
                       target="_blank"
                       rel="noreferrer"
@@ -244,22 +254,22 @@ export function BookingPage() {
                       title="Navigate to booking location"
                     >
                       <LocateFixed className="size-4" aria-hidden="true" />
-                      <span className="hidden md:inline">Navigate</span>
+                      <span className={heroLabelClass}>Navigate</span>
                     </a>
                   )}
                   {phone && (
                     <>
                       <a
-                        className="hero-action hero-shortcut"
+                        className={heroActionClass}
                         href={phone.call}
                         aria-label="Call provider"
                         title="Call provider"
                       >
                         <Phone className="size-4" aria-hidden="true" />
-                        <span className="hidden md:inline">Call</span>
+                        <span className={heroLabelClass}>Call</span>
                       </a>
                       <a
-                        className="hero-action hero-shortcut"
+                        className={heroActionClass}
                         href={phone.whatsapp}
                         target="_blank"
                         rel="noreferrer"
@@ -267,13 +277,13 @@ export function BookingPage() {
                         title="WhatsApp provider"
                       >
                         <WhatsAppIcon />
-                        <span className="hidden md:inline">WhatsApp</span>
+                        <span className={heroLabelClass}>WhatsApp</span>
                       </a>
                     </>
                   )}
                 </div>
               )}
-            </header>
+            </BookingHeroSurface>
             {!journeyLegs.length && (booking.start_at || booking.end_at) && (
               <section
                 aria-label="Booking essentials"
@@ -619,9 +629,12 @@ export function BookingPage() {
               </BookingDisclosure>
             )}
             {editable && (
-              <BookingDisclosure title="Manage booking" hint="Archive this booking">
+              <div className="flex justify-end">
                 <button
                   type="button"
+                  aria-label="Archive booking"
+                  title="Archive booking"
+                  disabled={archive.isPending}
                   onClick={async () => {
                     if (
                       await confirm({
@@ -633,11 +646,12 @@ export function BookingPage() {
                     )
                       archive.mutate();
                   }}
-                  className="inline-flex min-h-11 items-center gap-2 px-3 text-sm font-bold text-danger"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line bg-surface px-3 text-sm font-bold text-danger hover:bg-elevated disabled:opacity-50"
                 >
-                  <Trash2 className="size-4" /> Archive
+                  <Trash2 aria-hidden="true" className="size-4" />
+                  <span>Archive booking</span>
                 </button>
-              </BookingDisclosure>
+              </div>
             )}
           </section>
         )}

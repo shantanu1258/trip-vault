@@ -164,6 +164,7 @@ export async function listConfigReleases(): Promise<ConfigRelease[]> {
   const { data, error } = await client()
     .from("config_releases")
     .select("id,version_number,status,based_on_release_id,change_note,created_at,published_at")
+    .or("status.neq.retired,version_number.not.is.null")
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as ConfigRelease[];
@@ -188,6 +189,62 @@ export async function rollbackRelease(id: string) {
   });
   if (error) throw error;
   return Number(data);
+}
+
+export async function discardConfigDraft(id: string) {
+  const { error } = await client().rpc("discard_config_draft", { requested_release_id: id });
+  if (error?.code === "PGRST202" || error?.code === "42883")
+    throw new Error(
+      "Draft deletion needs the ADMIN RELEASE MANAGEMENT section of TRIP_VAULT_COMPLETE_SETUP.sql. Apply only that section on an existing database."
+    );
+  if (error) throw error;
+}
+
+/** Raw release-owned data only: do not merge built-in catalogues or fallback palettes. */
+export async function getReleaseSnapshot(
+  releaseId: string
+): Promise<import("./releaseChanges").ReleaseSnapshot> {
+  const sections = [
+    ["Airlines", "airline_catalog_entries"],
+    ["Airports", "airport_catalog_entries"],
+    ["Booking vendors", "booking_vendor_catalog_entries"],
+    ["Defaults", "metadata_defaults"],
+    ["Appearance", "theme_palettes"]
+  ] as const;
+  const result = await Promise.all(
+    sections.map(async ([name, table]) => {
+      const rows: Record<string, unknown>[] = [];
+      for (let start = 0; ; start += 500) {
+        let query = client().from(table).select("*").eq("config_release_id", releaseId);
+        query =
+          table === "metadata_defaults"
+            ? query.order("namespace").order("key")
+            : query.order(table === "theme_palettes" ? "config_release_id" : "stable_key");
+        const { data, error } = await query.range(start, start + 499);
+        if (error) throw error;
+        rows.push(...(data ?? []));
+        if ((data?.length ?? 0) < 500) break;
+      }
+      return [
+        name,
+        name === "Appearance"
+          ? rows.flatMap((row) => [
+              {
+                stable_key: "light",
+                name: "Light palette",
+                ...(row.light_tokens as Record<string, unknown>)
+              },
+              {
+                stable_key: "dark",
+                name: "Dark palette",
+                ...(row.dark_tokens as Record<string, unknown>)
+              }
+            ])
+          : rows
+      ] as const;
+    })
+  );
+  return Object.fromEntries(result);
 }
 
 export async function listAirlines(releaseId: string): Promise<AirlineEntry[]> {

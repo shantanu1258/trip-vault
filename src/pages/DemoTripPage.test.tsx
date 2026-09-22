@@ -1,8 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../components/AppShell", () => ({
   AppShell: ({ children }: { children: ReactNode }) => <>{children}</>
@@ -12,11 +12,47 @@ vi.mock("../lib/local-db/database", () => ({
     settings: { get: vi.fn().mockResolvedValue(null), put: vi.fn().mockResolvedValue(undefined) }
   }
 }));
+vi.mock("../components/DocumentPreview", () => ({
+  DocumentPreview: ({ title }: { title: string }) => (
+    <div aria-label="In-app file preview">{title}</div>
+  )
+}));
 
 import { DemoTripPage } from "./DemoTripPage";
+import { demoVaultDocumentById } from "../demo/model";
 
 describe("current demo readiness", () => {
   beforeEach(() => sessionStorage.clear());
+  afterEach(() => vi.unstubAllGlobals());
+  it("uses shared document cards and previews bundled files in-app without a Vault request", async () => {
+    const fetchFile = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(["sample"], { type: "application/pdf" })
+    });
+    vi.stubGlobal("fetch", fetchFile);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <DemoTripPage />
+      </MemoryRouter>
+    );
+    await user.click(screen.getByRole("button", { name: "Open details for Fly to Rome" }));
+    const detail = screen.getByRole("dialog");
+    expect(detail.querySelector(".event-hero")).toBeInTheDocument();
+    expect(detail.querySelector("[data-document-metadata]")).toBeInTheDocument();
+    await user.click(within(detail).getByRole("button", { name: "View document" }));
+    expect(await screen.findByLabelText("In-app file preview")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Open with device viewer" })).toHaveAttribute(
+      "target",
+      "_blank"
+    );
+    expect(screen.getByRole("button", { name: "Share document" })).toBeInTheDocument();
+    expect(fetchFile).toHaveBeenCalledTimes(1);
+    expect(fetchFile.mock.calls[0][0]).toMatch(/^\/.*\.pdf$/);
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("dialog")).toHaveAccessibleName("Fly to Rome");
+    expect(demoVaultDocumentById.get("insurance")?.category).toBe("insurance");
+  });
   it("starts compact and keeps multiple event cards open", async () => {
     render(
       <MemoryRouter>
@@ -27,6 +63,7 @@ describe("current demo readiness", () => {
       "aria-expanded",
       "true"
     );
+    expect(screen.getByRole("heading", { name: /Wed, 24 Jun 2026/ })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Expand Train to Florence" }));
     expect(
       screen.getByRole("checkbox", { name: "Mark as done: Pack Leela's medicines" })

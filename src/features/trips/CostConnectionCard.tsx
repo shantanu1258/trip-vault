@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, FileText } from "lucide-react";
+import { ChevronRight } from "lucide-react";
+import { DocumentTypeIcon } from "../../components/DocumentTypeIcon";
 import { eventIconTone } from "../../components/EventTypeIcon";
 import { EventSilhouette } from "../../components/EventSilhouette";
 import { TripChildLink } from "../../components/TripChildLink";
@@ -110,7 +111,7 @@ export function CostDocumentCard({
       onClick={onOpen}
       className="flex min-h-16 items-center gap-3 rounded-xl border border-line bg-elevated p-3 text-sm font-bold"
     >
-      <FileText className="size-5 shrink-0 text-brand" aria-hidden="true" />
+      <DocumentTypeIcon type={query.data.category} emphasis="strong" />
       <span className="min-w-0 flex-1">{query.data.title}</span>
       <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
     </TripChildLink>

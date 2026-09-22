@@ -61,6 +61,7 @@ export function BookingCosts({
     <>
       <BookingDisclosure
         title="Costs"
+        compact
         hint={
           loading
             ? "Loading costs…"
@@ -71,9 +72,6 @@ export function BookingCosts({
                 : "No costs added"
         }
       >
-        <p className="mb-2 text-xs text-muted">
-          Costs for this booking and its linked events, across all travelers.
-        </p>
         {error ? (
           <p role="alert" className="text-sm text-danger">
             Could not load costs.{" "}
@@ -95,7 +93,7 @@ export function BookingCosts({
                   key={cost.id}
                   type="button"
                   onClick={() => setViewing(cost)}
-                  className="flex min-h-12 w-full items-center gap-3 py-3 text-left"
+                  className="flex min-h-11 w-full items-center gap-2 py-2 text-left"
                 >
                   <span className="min-w-0 flex-1">
                     <strong className="block break-words text-sm">{cost.title}</strong>
@@ -115,7 +113,7 @@ export function BookingCosts({
         {editable && (
           <button
             type="button"
-            className="secondary-button mt-2 text-xs"
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-xs font-bold text-brand hover:bg-elevated"
             onClick={() => setEditing("new")}
           >
             <Plus className="size-4" /> Add cost

@@ -1,5 +1,5 @@
 -- Run with the SQL Editor on an ISOLATED TEST PROJECT after the application
--- migrations and 202609200001_web_push.sql. Never enables Cron or sends HTTP.
+-- complete setup. Never enables Cron or sends HTTP.
 -- All fixture users, records, jobs, and claim changes roll back.
 begin;
 do $$

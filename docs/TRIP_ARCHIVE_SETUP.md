@@ -1,6 +1,6 @@
 # Trip archive
 
-Existing projects: run only `supabase/migrations/202609210001_archived_trip_items.sql` in the Supabase SQL Editor. It creates a permission-checked RPC and does not delete any data on installation. Do not rerun the complete setup for this change.
+Archive recovery and permission-checked permanent deletion are included in `supabase/TRIP_VAULT_COMPLETE_SETUP.sql`, including the later Planning/Moment integrity fixes. Standalone migrations are retired. For existing projects, back up and review only missing sections under the workflow in `supabase/README.md`; never rerun the full installer. Installing the functions does not delete any records.
 
 In Trip details, open **Archived trip items → Open archive**. Owners and editors can restore or explicitly confirm permanent deletion of tasks, notes, costs, events, and grouped bookings. Viewers can only read. Archive management requires a connection. Document recovery/deletion remains in Vault's Recently deleted collection.
 

@@ -10,6 +10,7 @@ import { readTripReturnContext, tripChildNavigationState } from "../trips/naviga
 
 const mocks = vi.hoisted(() => ({
   attachDocumentsToEvent: vi.fn(),
+  detachDocumentFromBooking: vi.fn(),
   listEventDocumentLinks: vi.fn(),
   listVaultDocuments: vi.fn(),
   reorderEventDocuments: vi.fn(),
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./api", () => ({
   attachDocumentsToEvent: mocks.attachDocumentsToEvent,
+  detachDocumentFromBooking: mocks.detachDocumentFromBooking,
   listEventDocumentLinks: mocks.listEventDocumentLinks,
   listVaultDocuments: mocks.listVaultDocuments,
   reorderEventDocuments: mocks.reorderEventDocuments,
@@ -121,7 +123,9 @@ function renderDocuments(
   travelers: Traveler[] = [],
   compact = false,
   travelerId?: string,
-  onUpload?: () => void
+  onUpload?: () => void,
+  eventItem = item,
+  canEdit = true
 ) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -130,8 +134,8 @@ function renderDocuments(
         <LocationProbe />
         <ConfirmDialogProvider>
           <EventDocuments
-            item={item}
-            canEdit
+            item={eventItem}
+            canEdit={canEdit}
             travelers={travelers}
             compact={compact}
             travelerId={travelerId}
@@ -152,7 +156,7 @@ describe("timeline primary document shortcut", () => {
   it("captures the timeline position at click time for both Back and browser Back", async () => {
     mocks.listEventDocumentLinks.mockResolvedValue([link(document({}), 0)]);
     renderShortcut();
-    const shortcut = await screen.findByRole("link", { name: "Open Ticket: Bus ticket" });
+    const shortcut = await screen.findByRole("link", { name: "View Ticket: Bus ticket" });
     const scroll = vi.spyOn(window, "scrollY", "get").mockReturnValue(1400);
     const bounds = vi
       .spyOn(shortcut, "getBoundingClientRect")
@@ -194,13 +198,13 @@ describe("timeline primary document shortcut", () => {
 
     renderShortcut("ravi");
 
-    const shortcut = await screen.findByRole("link", { name: "Open Visa: Ravi visa" });
+    const shortcut = await screen.findByRole("link", { name: "View Visa: Ravi visa" });
     expect(shortcut).toHaveAttribute("href", "/trips/trip-1/documents/ravi-visa");
-    expect(shortcut).toHaveTextContent("Open Visa · UAE");
-    expect(shortcut).toContainElement(
-      screen.getByLabelText("Visible to all signed-in trip members")
-    );
-    expect(shortcut).toHaveTextContent("Trip members");
+    expect(shortcut).toHaveTextContent("View Visa · UAE");
+    expect(
+      screen.queryByRole("button", { name: "Who can open Ravi visa?" })
+    ).not.toBeInTheDocument();
+    expect(shortcut).not.toHaveTextContent("Trip members");
     expect(screen.queryByRole("link", { name: /Asha boarding pass/ })).not.toBeInTheDocument();
   });
 
@@ -219,7 +223,7 @@ describe("timeline primary document shortcut", () => {
     renderShortcut("ravi");
 
     expect(
-      await screen.findByRole("link", { name: "Open Ticket: Shared operator ticket" })
+      await screen.findByRole("link", { name: "View Ticket: Shared operator ticket" })
     ).toHaveAttribute("href", "/trips/trip-1/documents/booking-ticket");
   });
 });
@@ -228,6 +232,7 @@ describe("event document cards", () => {
   beforeEach(() => {
     sessionStorage.clear();
     mocks.reorderEventDocuments.mockReset().mockResolvedValue(undefined);
+    mocks.detachDocumentFromBooking.mockReset().mockResolvedValue(undefined);
     mocks.listEventDocumentLinks.mockReset().mockResolvedValue([]);
     mocks.listVaultDocuments.mockReset().mockResolvedValue([]);
   });
@@ -272,6 +277,43 @@ describe("event document cards", () => {
     );
     expect(mocks.attachDocumentsToEvent).toHaveBeenCalledWith(item, ["first", "second"]);
     expect(mocks.reorderEventDocuments).toHaveBeenCalledWith(item.id, ["second", "first"]);
+  });
+
+  // All event types share this component; unlink depends on the association, not the type.
+  it("offers booking-wide unlink for inherited documents", async () => {
+    const inherited = document({ title: "Shared ticket" });
+    mocks.listVaultDocuments.mockResolvedValue([inherited]);
+    renderDocuments();
+    const remove = await screen.findByRole("button", { name: "Unlink Shared ticket" });
+    const card = screen.getByRole("link", { name: "Shared ticket" });
+    expect(card).not.toContainElement(remove);
+    const metadata = card.querySelector("[data-document-metadata]");
+    expect(metadata).toHaveTextContent("Ticket");
+    expect(metadata).toContainElement(
+      within(card).getByRole("img", { name: "Visible to all signed-in trip members" })
+    );
+    expect(remove.parentElement).toHaveClass("bottom-2", "right-2");
+    await userEvent.click(remove);
+    const dialog = screen.getByRole("dialog", { name: "Unlink from booking?" });
+    expect(dialog).toHaveTextContent("all its events");
+    expect(dialog).toHaveTextContent("remain in Vault");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Unlink" }));
+    expect(mocks.detachDocumentFromBooking).toHaveBeenCalledWith(inherited);
+  });
+
+  it("uses booking-wide detach for an explicit reordered booking document too, and hides mutations for viewers", async () => {
+    const linked = document({ title: "Reordered ticket" });
+    mocks.listEventDocumentLinks.mockResolvedValue([link(linked, 0)]);
+    const view = renderDocuments();
+    await userEvent.click(await screen.findByRole("button", { name: "Unlink Reordered ticket" }));
+    await userEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Unlink" })
+    );
+    expect(mocks.detachDocumentFromBooking).toHaveBeenCalledWith(linked);
+    view.unmount();
+    renderDocuments([], false, undefined, undefined, item, false);
+    await screen.findByRole("link", { name: "Reordered ticket" });
+    expect(screen.queryByRole("button", { name: /Unlink/ })).not.toBeInTheDocument();
   });
 
   it("puts existing documents before secondary upload and attach actions", async () => {
@@ -320,6 +362,10 @@ describe("event document cards", () => {
   });
 
   it("leaves the focused traveler's documents expanded in compact mode", async () => {
+    sessionStorage.setItem(
+      `trip-vault:document-groups:${item.id}:asha`,
+      JSON.stringify({ shared: true, "travelers:asha": true })
+    );
     mocks.listEventDocumentLinks.mockResolvedValue([
       link(document({ id: "shared", title: "Shared ticket" }), 0),
       link(
@@ -338,11 +384,77 @@ describe("event document cards", () => {
     expect(screen.getByRole("link", { name: "Shared ticket" })).toBeVisible();
   });
 
-  it("opens the whole document card including visibility, keeping unlink separate and confirmed", async () => {
+  it("expands Everyone and matching groups when switching travelers without carrying collapsed state across filters", async () => {
+    mocks.listEventDocumentLinks.mockResolvedValue([
+      link(document({ id: "shared", title: "Shared ticket" }), 0),
+      link(
+        document({
+          id: "asha",
+          title: "Asha ticket",
+          assignment_mode: "selected",
+          traveler_ids: ["asha"]
+        }),
+        1
+      ),
+      link(
+        document({
+          id: "ravi",
+          title: "Ravi ticket",
+          assignment_mode: "selected",
+          traveler_ids: ["ravi"]
+        }),
+        2
+      ),
+      link(
+        document({
+          id: "joint",
+          title: "Joint ticket",
+          assignment_mode: "selected",
+          traveler_ids: ["asha", "ravi"]
+        }),
+        3
+      )
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const content = (travelerId?: string) => (
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <ConfirmDialogProvider>
+            <EventDocuments
+              item={item}
+              canEdit
+              compact
+              travelerId={travelerId}
+              travelers={[traveler("asha", "Asha"), traveler("ravi", "Ravi")]}
+            />
+          </ConfirmDialogProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const view = render(content());
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Collapse documents for Everyone" })
+    );
+    view.rerender(content("asha"));
+    for (const name of ["Shared ticket", "Asha ticket", "Joint ticket"]) {
+      expect(await screen.findByRole("link", { name })).toBeVisible();
+    }
+    expect(screen.queryByRole("link", { name: "Ravi ticket" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Collapse documents for Everyone" }));
+    view.rerender(content("ravi"));
+    for (const name of ["Shared ticket", "Ravi ticket", "Joint ticket"]) {
+      expect(await screen.findByRole("link", { name })).toBeVisible();
+    }
+    expect(screen.queryByRole("link", { name: "Asha ticket" })).not.toBeInTheDocument();
+    view.rerender(content());
+    expect(screen.getByRole("button", { name: "Expand documents for Everyone" })).toBeVisible();
+  });
+
+  it("opens the document card while access explanations and unlink remain separate", async () => {
     const longTitle =
       "Universal Studios and Oceanarium family activity booking confirmation for everyone";
     mocks.listEventDocumentLinks.mockResolvedValue([
-      link(document({ id: "long-document", title: longTitle }), 0)
+      link(document({ id: "long-document", title: longTitle, booking_id: null }), 0)
     ]);
 
     renderDocuments();
@@ -351,11 +463,16 @@ describe("event document cards", () => {
     const documentLink = title.closest("a");
     expect(documentLink).toHaveAccessibleName(longTitle);
     expect(documentLink).toHaveAttribute("href", "/trips/trip-1/documents/long-document");
+    expect(documentLink?.querySelector('[data-document-type="transport"]')).toHaveClass("size-5");
 
-    const visibility = screen.getByLabelText("Visible to all signed-in trip members");
-    expect(documentLink).toContainElement(visibility);
+    expect(
+      screen.queryByRole("button", { name: `Who can open ${longTitle}?` })
+    ).not.toBeInTheDocument();
+    expect(documentLink).toContainElement(
+      screen.getByRole("img", { name: "Visible to all signed-in trip members" })
+    );
     expect(documentLink).toHaveTextContent("Ticket");
-    expect(documentLink).toHaveTextContent("Trip members");
+    expect(documentLink).not.toHaveTextContent("Trip members");
     expect(screen.getByRole("heading", { name: /Documents/ })).toBeVisible();
     expect(screen.getByLabelText("1 attached document")).toBeVisible();
     expect(screen.getByText("For Everyone")).toBeVisible();
@@ -369,7 +486,7 @@ describe("event document cards", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1?view=details");
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(mocks.unlinkDocumentFromEvent).not.toHaveBeenCalled();
-    await userEvent.click(visibility);
+    await userEvent.click(documentLink!);
     expect(screen.getByTestId("location")).toHaveTextContent(
       "/trips/trip-1/documents/long-document"
     );

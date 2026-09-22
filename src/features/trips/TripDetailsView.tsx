@@ -12,6 +12,7 @@ import { formatEventTime } from "./presentation";
 import { tripIntentNavigationState } from "./navigation";
 import { NoteCard, ReservationRow } from "./TripDetailsCards";
 import { TripDetailsSection } from "./TripDetailsSection";
+import { CollectionCounts } from "./CollectionCounts";
 import { TripArchive } from "./TripArchive";
 import { TripReadinessSection } from "./TripReadinessSummary";
 import { readinessSummary } from "../timeline/model";
@@ -67,46 +68,6 @@ type TripDetailsViewProps = {
   onEditNote: (note: TripNote) => void;
   onArchiveNote: (note: TripNote) => void;
 };
-
-function CollectionCounts({
-  values,
-  tripId,
-  collection = "reservations",
-  navigationState
-}: {
-  values: Array<{ key: string; label: string; count: number }>;
-  tripId?: string;
-  collection?: "reservations" | "documents";
-  navigationState?: unknown;
-}) {
-  const visible = values.filter((value) => value.count > 0);
-  if (!visible.length) return null;
-
-  return (
-    <div className="mb-3 flex flex-wrap gap-1.5" aria-label="Section summary">
-      {visible.map((value) =>
-        tripId ? (
-          <TripChildLink
-            tripId={tripId}
-            key={value.label}
-            to={`/trips/${tripId}/${collection}?category=${encodeURIComponent(value.key)}`}
-            state={navigationState}
-            className="inline-flex min-h-9 items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-[.7rem] font-bold text-muted hover:border-brand hover:text-ink"
-          >
-            {value.label} <strong className="text-ink">{value.count}</strong>
-          </TripChildLink>
-        ) : (
-          <span
-            key={value.label}
-            className="inline-flex min-h-9 items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-[.7rem] font-bold text-muted"
-          >
-            {value.label} <strong className="text-ink">{value.count}</strong>
-          </span>
-        )
-      )}
-    </div>
-  );
-}
 
 export function TripDetailsView(props: TripDetailsViewProps) {
   const {

@@ -9,6 +9,7 @@ import type { DemoDocument, DemoEvent, DemoPhase, DemoTask, DemoTraveler } from 
 export const demoDocuments: DemoDocument[] = [
   {
     id: "flight-ticket",
+    category: "flight",
     title: "Aster Air e-ticket",
     purpose: "Flight ticket",
     format: "PDF",
@@ -18,6 +19,7 @@ export const demoDocuments: DemoDocument[] = [
   },
   {
     id: "boarding-pass",
+    category: "flight",
     title: "Boarding pass - Sam",
     purpose: "Boarding pass",
     format: "PDF",
@@ -27,6 +29,7 @@ export const demoDocuments: DemoDocument[] = [
   },
   {
     id: "hotel-confirmation",
+    category: "hotel",
     title: "Casa Bellora confirmation",
     purpose: "Hotel confirmation",
     format: "PDF",
@@ -36,6 +39,7 @@ export const demoDocuments: DemoDocument[] = [
   },
   {
     id: "insurance",
+    category: "insurance",
     title: "Travel cover summary",
     purpose: "Insurance summary",
     format: "PDF",
@@ -45,6 +49,7 @@ export const demoDocuments: DemoDocument[] = [
   },
   {
     id: "museum-ticket",
+    category: "activity",
     title: "Colosseum entry ticket",
     purpose: "Activity ticket",
     format: "PDF",
@@ -54,6 +59,7 @@ export const demoDocuments: DemoDocument[] = [
   },
   {
     id: "entry-waiver",
+    category: "activity",
     title: "Evening tour waiver",
     purpose: "Activity waiver",
     format: "PDF",

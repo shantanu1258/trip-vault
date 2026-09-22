@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { DocumentTypeIcon } from "../components/DocumentTypeIcon";
 import {
   AlertTriangle,
   ArrowRight,
@@ -422,9 +423,13 @@ export function HomePage() {
                       to={item.target}
                       className="surface-card min-w-[16rem] max-w-[19rem] snap-start p-4 transition-transform duration-200 hover:-translate-y-0.5 motion-reduce:hover:translate-y-0"
                     >
-                      <span className="grid size-9 place-items-center rounded-xl bg-brand-soft text-brand">
-                        <FileCheck2 className="size-4" />
-                      </span>
+                      {item.documentCategory ? (
+                        <DocumentTypeIcon type={item.documentCategory} emphasis="strong" />
+                      ) : (
+                        <span className="grid size-9 place-items-center rounded-xl bg-brand-soft text-brand">
+                          <FileCheck2 className="size-4" />
+                        </span>
+                      )}
                       <p className="mt-4 whitespace-normal break-words text-sm font-black leading-5 [overflow-wrap:anywhere]">
                         {item.label}
                       </p>

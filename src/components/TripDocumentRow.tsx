@@ -3,7 +3,7 @@ import { TripChildLink } from "./TripChildLink";
 import { documentAudienceSummary } from "../features/home/needNow";
 import { documentPurposeLabel } from "../features/workspace/documentModel";
 import type { Traveler, VaultDocument } from "../features/workspace/types";
-import { DocumentVisibilityBadge } from "./DocumentVisibilityBadge";
+import { DocumentVisibilityIcon } from "./DocumentVisibilityIcon";
 import { DocumentTypeIcon } from "./DocumentTypeIcon";
 
 type TripDocumentRowProps = {
@@ -46,7 +46,7 @@ export function TripDocumentRow({
           {metadata.length > 0 && (
             <span className="text-xs text-muted">{metadata.join(" · ")}</span>
           )}
-          <DocumentVisibilityBadge visibility={document.visibility} />
+          <DocumentVisibilityIcon visibility={document.visibility} documentTitle={document.title} />
         </span>
       </span>
       <ChevronRight
@@ -56,23 +56,23 @@ export function TripDocumentRow({
     </>
   );
 
-  if (to) {
-    return (
-      <TripChildLink
-        id={`document-${document.id}`}
-        tripId={document.trip_id}
-        to={to}
-        state={state}
-        className={className}
-      >
-        {content}
-      </TripChildLink>
-    );
-  }
-
   return (
-    <button type="button" onClick={onClick} className={className}>
-      {content}
-    </button>
+    <div className="relative min-w-0">
+      {to ? (
+        <TripChildLink
+          id={`document-${document.id}`}
+          tripId={document.trip_id}
+          to={to}
+          state={state}
+          className={className}
+        >
+          {content}
+        </TripChildLink>
+      ) : (
+        <button type="button" onClick={onClick} className={className}>
+          {content}
+        </button>
+      )}
+    </div>
   );
 }

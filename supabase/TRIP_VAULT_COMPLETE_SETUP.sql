@@ -11,12 +11,11 @@
 -- active app_admins row through trusted SQL, select and run only the statements
 -- between the PHASE 2 BEGIN/END markers below. Do not rerun Phase 1: this is a
 -- one-time new-project installer, not an existing-database upgrade script.
--- Existing databases must continue to apply missing files under
--- supabase/migrations in filename order.
---
--- The migration files remain the authoritative incremental history. This file
--- is the canonical single deployment source for a fresh project and records
--- when each folded change entered that source.
+-- Existing databases: do not rerun this installer. Compare this changelog with
+-- the deployed version and apply only reviewed missing sections after backup.
+-- Historical migrations and down scripts are retired; Git retains their history.
+-- Push database support is included; delivery still requires Edge Functions,
+-- server secrets and optional Cron deployment (docs/PUSH_SETUP.md).
 --
 -- ROLLUP MAINTENANCE LOG
 --
@@ -29,6 +28,17 @@
 --              stop-specific trip costs.
 --
 -- CHANGELOG (newest first; dates use Asia/Kolkata repository timestamps)
+--
+-- 2026-09-22  ADMIN RELEASE MANAGEMENT: protected draft discard with retained
+--              audit records; serialize discard/publication against release writes.
+-- 2026-09-22  Single-file baseline: includes all retired migration history.
+--              Adds atomic booking-document detachment; folds personal Vault,
+--              expense-document links and Web Push tables/RPCs/policies.
+--              Includes activity booking/event clock sync, Planning, Moments,
+--              archive integrity and permanent deletion of archived items.
+--              Down scripts retired. Operational Cron is deliberately separate.
+-- 2026-09-21  Planning items, activity Moments and safe archive recovery/purge.
+-- 2026-09-20  Web Push, expense-document association and personal Vault metadata.
 --
 -- 2026-09-17  202609170002  unreleased  Add ordered whole-day cab stops,
 --                                      linked activities, and stop costs.
@@ -77,6 +87,9 @@
 
 do $setup_progress$
 begin
+  if to_regclass('public.trips') is not null then
+    raise exception 'Trip Vault is already installed. Do not rerun the full setup on an existing database; apply only reviewed missing sections after a backup.';
+  end if;
   raise notice 'Trip Vault setup starting: Phase 1 current schema, then admin-gated Phase 2 catalogues.';
 end
 $setup_progress$;
@@ -5090,6 +5103,305 @@ commit;
 
 notify pgrst, 'reload schema';
 
+-- SECTION: WEB PUSH
+-- Included in the complete setup. This does NOT enable Cron.
+begin;
+
+create table public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  endpoint text not null unique check (length(endpoint) < 2048),
+  p256dh text not null,
+  auth text not null,
+  event_changes boolean not null default true,
+  cost_changes boolean not null default true,
+  reminders boolean not null default true,
+  last_test_at timestamptz,
+  created_at timestamptz not null default now()
+);
+alter table public.push_subscriptions enable row level security;
+revoke all on public.push_subscriptions from anon, authenticated;
+grant select, delete on public.push_subscriptions to authenticated;
+grant update(event_changes, cost_changes, reminders) on public.push_subscriptions to authenticated;
+grant all on public.push_subscriptions to service_role;
+create policy push_device_owner on public.push_subscriptions for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+create table public.push_jobs (
+  id uuid primary key default gen_random_uuid(),
+  subscription_id uuid not null references public.push_subscriptions(id) on delete cascade,
+  trip_id uuid not null references public.trips(id) on delete cascade,
+  entity_id uuid not null,
+  kind text not null check (kind in ('event', 'booking', 'cost', 'reminder')),
+  occurrence text not null,
+  expected_start timestamptz,
+  status text not null default 'pending' check (status in ('pending','sending','sent','cancelled','failed')),
+  available_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  attempts integer not null default 0,
+  lease_token uuid,
+  leased_at timestamptz,
+  finished_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique(subscription_id, occurrence)
+);
+create index push_jobs_due on public.push_jobs(available_at) where status in ('pending','sending');
+alter table public.push_jobs enable row level security;
+revoke all on public.push_jobs from anon, authenticated;
+grant all on public.push_jobs to service_role;
+
+create function public.register_push_subscription(p_endpoint text, p_p256dh text, p_auth text)
+returns uuid language plpgsql security definer set search_path = public, pg_temp as $$
+declare result uuid;
+begin
+  if auth.uid() is null then raise exception 'Sign in first'; end if;
+  -- Limit abuse and reject arbitrary/private-network endpoints. The sender repeats this check.
+  if p_endpoint is null or length(p_endpoint) >= 2048 or
+    p_endpoint !~ '^https://(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|([a-z0-9-]+\.)*push\.apple\.com|([a-z0-9-]+\.)*notify\.windows\.com)/' or
+    p_p256dh is null or p_p256dh !~ '^[A-Za-z0-9_-]{87}=?$' or
+    p_auth is null or p_auth !~ '^[A-Za-z0-9_-]{22}={0,2}$' then
+    raise exception 'Invalid browser push subscription';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended(auth.uid()::text, 0));
+  if (select count(*) from public.push_subscriptions where user_id = auth.uid()) >= 10 then
+    raise exception 'Device limit reached. Disable notifications on an old device first.';
+  end if;
+  insert into public.push_subscriptions(user_id, endpoint, p256dh, auth)
+    values(auth.uid(), p_endpoint, p_p256dh, p_auth) returning id into result;
+  return result;
+end $$;
+revoke all on function public.register_push_subscription(text,text,text) from public, anon;
+grant execute on function public.register_push_subscription(text,text,text) to authenticated;
+
+-- No browser can insert jobs or choose another recipient. Source writes are governed
+-- by their existing RLS. All current event/cost rows are readable by active trip members.
+create function public.queue_trip_push_change() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare category text := case when tg_table_name = 'trip_costs' then 'cost'
+  when tg_table_name = 'bookings' then 'booking' else 'event' end;
+begin
+  if new.deleted_at is not null then return new; end if;
+  if tg_op = 'UPDATE' and
+    (to_jsonb(new) - array['version','updated_at','sort_key']) =
+    (to_jsonb(old) - array['version','updated_at','sort_key']) then return new; end if;
+  insert into public.push_jobs(subscription_id,trip_id,entity_id,kind,occurrence,expires_at)
+  select s.id, new.trip_id, new.id, category,
+    category || ':' || new.id || ':' || new.version || ':' || new.updated_at,
+    now() + interval '24 hours'
+  from public.push_subscriptions s
+  join public.trip_members m on m.user_id = s.user_id and m.trip_id = new.trip_id and m.status = 'active'
+  join public.trips t on t.id = new.trip_id and t.deleted_at is null and t.status <> 'archived'
+  where s.user_id is distinct from coalesce(auth.uid(), new.created_by)
+    and case when category = 'cost' then s.cost_changes else s.event_changes end
+  on conflict (subscription_id, occurrence) do nothing;
+  return new;
+end $$;
+revoke all on function public.queue_trip_push_change() from public, anon, authenticated;
+create trigger push_itinerary_change after insert or update on public.itinerary_items
+  for each row execute function public.queue_trip_push_change();
+create trigger push_cost_change after insert or update on public.trip_costs
+  for each row execute function public.queue_trip_push_change();
+-- Creation already queues the corresponding itinerary event; subsequent booking
+-- detail changes (reference, contact, rooms, etc.) open the booking directly.
+create trigger push_booking_change after update on public.bookings
+  for each row execute function public.queue_trip_push_change();
+
+create function public.push_job_is_allowed(p_job_id uuid) returns boolean
+language sql stable security definer set search_path = public, pg_temp as $$
+  select exists (
+    select 1 from public.push_jobs j
+    join public.push_subscriptions s on s.id = j.subscription_id
+    join public.trip_members m on m.user_id = s.user_id and m.trip_id = j.trip_id and m.status = 'active'
+    join public.trips t on t.id = j.trip_id and t.deleted_at is null and t.status <> 'archived'
+    where j.id = p_job_id and j.expires_at > now()
+      and case when j.kind = 'cost' then s.cost_changes when j.kind in ('event','booking') then s.event_changes else s.reminders end
+      and case when j.kind = 'cost' then exists (
+        select 1 from public.trip_costs c where c.id = j.entity_id and c.trip_id = j.trip_id and c.deleted_at is null
+      ) when j.kind = 'booking' then exists (
+        select 1 from public.bookings b where b.id = j.entity_id and b.trip_id = j.trip_id and b.deleted_at is null
+      ) else exists (
+        select 1 from public.itinerary_items i where i.id = j.entity_id and i.trip_id = j.trip_id and i.deleted_at is null
+          and (j.kind <> 'reminder' or (
+            i.starts_at = j.expected_start and i.starts_at > now() and not i.is_all_day
+            and i.event_status not in ('done','cancelled')
+            and (i.timing_mode = 'exact' or (i.timing_mode = 'relative' and i.has_explicit_start_time))
+          ))
+      ) end
+  );
+$$;
+revoke all on function public.push_job_is_allowed(uuid) from public, anon, authenticated;
+grant execute on function public.push_job_is_allowed(uuid) to service_role;
+
+create function public.claim_push_jobs() returns setof public.push_jobs
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  -- Reminders are derived from the latest synced schedule, not stale client timers.
+  -- No all-day/date-only/inferred-time reminders. One notification per start occurrence/device.
+  insert into public.push_jobs(subscription_id,trip_id,entity_id,kind,occurrence,expected_start,expires_at)
+  select s.id, i.trip_id, i.id, 'reminder', 'reminder:' || i.id || ':' || i.starts_at, i.starts_at, i.starts_at
+  from public.itinerary_items i
+  join public.trips t on t.id = i.trip_id and t.deleted_at is null and t.status <> 'archived'
+  join public.trip_members m on m.trip_id = i.trip_id and m.status = 'active'
+  join public.push_subscriptions s on s.user_id = m.user_id and s.reminders
+  where i.deleted_at is null and not i.is_all_day and i.event_status not in ('done','cancelled')
+    and (i.timing_mode = 'exact' or (i.timing_mode = 'relative' and i.has_explicit_start_time))
+    and i.starts_at > now() and i.starts_at <= now() + interval '1 hour'
+  on conflict (subscription_id, occurrence) do nothing;
+
+  update public.push_jobs set status = 'cancelled', finished_at = now()
+    where status in ('pending','sending') and not public.push_job_is_allowed(id);
+  update public.push_jobs set status = 'failed', finished_at = now()
+    where status = 'sending' and attempts >= 5 and leased_at < now() - interval '5 minutes';
+  -- Keep a bounded delivery history; old expired reminders cannot be regenerated.
+  delete from public.push_jobs where expires_at < now() - interval '30 days';
+  return query
+  with candidates as (
+    select id from public.push_jobs where attempts < 5 and available_at <= now()
+      and (status = 'pending' or (status = 'sending' and leased_at < now() - interval '5 minutes'))
+    order by available_at for update skip locked limit 20
+  )
+  update public.push_jobs j set status = 'sending', attempts = attempts + 1,
+    leased_at = now(), lease_token = gen_random_uuid()
+  from candidates c where j.id = c.id returning j.*;
+end $$;
+revoke all on function public.claim_push_jobs() from public, anon, authenticated;
+grant execute on function public.claim_push_jobs() to service_role;
+
+create function public.finish_push_job(p_id uuid, p_lease uuid, p_result text) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if p_result not in ('sent','retry','failed','cancelled') then raise exception 'Invalid result'; end if;
+  update public.push_jobs set
+    status = case when p_result = 'retry' and attempts < 5 then 'pending'
+      when p_result = 'retry' then 'failed' else p_result end,
+    available_at = now() + make_interval(secs => least(900, (30 * power(2, attempts))::integer)),
+    finished_at = case when p_result = 'retry' and attempts < 5 then null else now() end
+  where id = p_id and lease_token = p_lease and status = 'sending';
+end $$;
+revoke all on function public.finish_push_job(uuid,uuid,text) from public, anon, authenticated;
+grant execute on function public.finish_push_job(uuid,uuid,text) to service_role;
+
+-- Rate-limit test sends atomically. This function is only called after server JWT verification.
+create function public.prepare_test_push(p_user uuid, p_subscription uuid)
+returns setof public.push_subscriptions language sql security definer set search_path = public, pg_temp as $$
+  update public.push_subscriptions set last_test_at = now()
+  where id = p_subscription and user_id = p_user
+    and (last_test_at is null or last_test_at < now() - interval '1 minute') returning *;
+$$;
+revoke all on function public.prepare_test_push(uuid,uuid) from public, anon, authenticated;
+grant execute on function public.prepare_test_push(uuid,uuid) to service_role;
+
+commit;
+
+-- SECTION: COST DOCUMENT ASSOCIATION
+-- An expense may point to an event/booking OR a document, never both.
+begin;
+
+alter table public.trip_costs
+  add column if not exists document_id uuid references public.documents(id) on delete set null;
+
+alter table public.trip_costs add constraint trip_cost_single_association check (
+  document_id is null or
+  (booking_id is null and itinerary_item_id is null and cab_stop_id is null)
+);
+create index trip_costs_document_id_idx on public.trip_costs(document_id)
+  where document_id is not null;
+
+create function public.enforce_cost_association_trip()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'UPDATE' and new.trip_id is not distinct from old.trip_id
+    and new.document_id is not distinct from old.document_id
+    and new.booking_id is not distinct from old.booking_id
+    and new.itinerary_item_id is not distinct from old.itinerary_item_id then
+    return new;
+  end if;
+  if new.document_id is not null and not exists (
+    select 1 from public.documents d
+    where d.id = new.document_id and d.trip_id = new.trip_id and d.deleted_at is null
+      and (auth.uid() is null or public.can_read_document(d.id))
+  ) then
+    raise exception 'Choose an available document from this trip';
+  end if;
+  if new.booking_id is not null and not exists (
+    select 1 from public.bookings b
+    where b.id = new.booking_id and b.trip_id = new.trip_id and b.deleted_at is null
+  ) then
+    raise exception 'Choose an available booking from this trip';
+  end if;
+  if new.itinerary_item_id is not null and not exists (
+    select 1 from public.itinerary_items i
+    where i.id = new.itinerary_item_id and i.trip_id = new.trip_id and i.deleted_at is null
+      and (new.booking_id is null or i.booking_id = new.booking_id)
+  ) then
+    raise exception 'Choose an available event from this trip and its matching booking';
+  end if;
+  return new;
+end;
+$$;
+create trigger cost_association_trip before insert or update of trip_id, document_id, booking_id, itinerary_item_id
+  on public.trip_costs for each row execute function public.enforce_cost_association_trip();
+
+commit;
+
+-- SECTION: PERSONAL DOCUMENTS
+-- Personal Vault files stay in the existing owner-only account storage bucket.
+-- No trip membership grants access, and personal files cannot be associated
+-- accidentally by the trip-association RPC.
+begin;
+
+alter table public.account_document_uploads
+  drop constraint if exists personal_document_metadata_check;
+alter table public.account_document_uploads
+  add column if not exists personal_title text,
+  add column if not exists personal_kind text,
+  add column if not exists personal_label text;
+
+alter table public.account_document_uploads
+  add constraint personal_document_metadata_check check (
+    (personal_title is null and personal_kind is null and personal_label is null)
+    or (
+      personal_title is not null and length(btrim(personal_title)) between 1 and 200
+      and personal_kind is not null
+      and personal_kind in ('passport', 'aadhaar', 'identity', 'insurance', 'other')
+      and (personal_label is null or length(personal_label) <= 200)
+      and associated_document_id is null
+    )
+  );
+
+comment on column public.account_document_uploads.personal_title is
+  'Non-null for a permanent personal Vault document, not an unfinished trip upload. Owner-only RLS and private Storage still apply.';
+
+-- A fabricated trip document version must never grant access to a personal file.
+-- The definer function can inspect the owner-only upload row without exposing
+-- its metadata to trip members; can_read_document still authorizes the caller.
+create or replace function public.can_read_shared_account_file(requested_path text)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select auth.uid() is not null and exists (
+    select 1 from public.document_versions version
+    join public.account_document_uploads upload on upload.id = version.source_upload_id
+    where version.storage_path = requested_path
+      and version.storage_bucket = 'account-documents'
+      and upload.storage_path = requested_path
+      and upload.personal_title is null
+      and public.can_read_document(version.document_id)
+  );
+$$;
+revoke all on function public.can_read_shared_account_file(text) from public, anon;
+grant execute on function public.can_read_shared_account_file(text) to authenticated;
+
+drop policy if exists account_documents_read on storage.objects;
+create policy account_documents_read on storage.objects for select to authenticated using (
+  bucket_id = 'account-documents'
+  and (
+    (storage.foldername(name))[1] = auth.uid()::text
+    or public.can_read_shared_account_file(name)
+  )
+);
+
+commit;
+
+
 -- Explicit, permission-checked deletion of already archived trip items only.
 -- Does not delete any existing data when this migration is applied.
 begin;
@@ -5911,7 +6223,96 @@ revoke all on function public.sync_activity_booking_event_timing() from public, 
 commit;
 notify pgrst, 'reload schema';
 
+-- SECTION: BOOKING DOCUMENT DETACHMENT
+-- Detach a file from a booking and that booking's events, without archiving it.
+-- One transaction avoids the inherited file reappearing after an event-only unlink.
+create or replace function public.detach_booking_document(
+  requested_document_id uuid,
+  requested_booking_id uuid
+) returns uuid[]
+language plpgsql security definer set search_path = public as $$
+declare
+  target public.documents%rowtype;
+  event_ids uuid[];
+begin
+  select * into target from public.documents
+    where id = requested_document_id and deleted_at is null for update;
+  if not found or auth.uid() is null
+    or not public.can_read_document(requested_document_id)
+    or not public.can_manage_document(requested_document_id)
+    or not public.can_edit_trip(target.trip_id) then
+    raise exception 'You cannot detach this document' using errcode = '42501';
+  end if;
+  if requested_booking_id is null or target.booking_id is distinct from requested_booking_id then
+    raise exception 'The document association changed. Refresh before trying again.';
+  end if;
+
+  select coalesce(array_agg(id), '{}'::uuid[]) into event_ids
+    from public.itinerary_items
+    where booking_id = requested_booking_id and trip_id = target.trip_id;
+
+  update public.itinerary_item_documents set deleted_at = now()
+    where document_id = requested_document_id
+      and itinerary_item_id = any(event_ids) and deleted_at is null;
+  update public.documents
+    set booking_id = null, flight_leg_id = null, journey_leg_id = null
+    where id = requested_document_id;
+  return event_ids;
+end;
+$$;
+
+revoke all on function public.detach_booking_document(uuid, uuid) from public, anon;
+grant execute on function public.detach_booking_document(uuid, uuid) to authenticated;
+
+
+-- SECTION: ADMIN RELEASE MANAGEMENT
+-- Existing projects: apply ONLY this BEGIN/COMMIT block, not the full installer.
+begin;
+create or replace function public.discard_config_draft(requested_release_id uuid)
+returns void language plpgsql security definer set search_path = public, pg_catalog as $$
+declare target public.config_releases;
+begin
+  if not public.is_app_admin() then raise exception 'Administrator access required' using errcode='42501'; end if;
+  lock table public.config_releases in share row exclusive mode;
+  select * into target from public.config_releases where id=requested_release_id for update;
+  if not found or target.status <> 'draft' or target.version_number is not null then
+    raise exception 'Only an unpublished draft can be deleted' using errcode='55000';
+  end if;
+  -- A never-published retired row is a discarded draft, hidden from active releases.
+  -- Keep its records and assets so its audit history and references remain intact.
+  update public.config_releases set status='retired' where id=requested_release_id;
+  insert into public.config_audit_events(config_release_id,actor_id,action,safe_summary)
+  values(requested_release_id,auth.uid(),'retired',jsonb_build_object('discarded_draft',true,'change_note',target.change_note));
+end;
+$$;
+
+create or replace function public.publish_config_release(requested_release_id uuid)
+returns integer language plpgsql security definer set search_path = public, pg_catalog as $$
+declare next_version integer;
+begin
+  if not public.is_app_admin() then raise exception 'Administrator access required' using errcode='42501'; end if;
+  -- Includes draft deletion and older release-writing RPCs in the same lock boundary.
+  lock table public.config_releases in share row exclusive mode;
+  if not exists (select 1 from public.config_releases where id=requested_release_id and status='draft' and version_number is null) then raise exception 'Publish requires a draft'; end if;
+  if not exists (select 1 from public.theme_palettes where config_release_id = requested_release_id and public.valid_theme_tokens(light_tokens) and public.valid_theme_tokens(dark_tokens)) then raise exception 'Publish requires a valid light and dark palette'; end if;
+  if exists (select 1 from public.airline_catalog_entries where config_release_id = requested_release_id and (not public.valid_action_template(check_in_url_template) or not public.valid_action_template(manage_booking_url_template) or not public.valid_action_template(status_url_template) or not public.valid_action_template(tracker_url_template))) then raise exception 'Publish contains invalid airline actions'; end if;
+  if exists (select 1 from public.airport_catalog_entries where config_release_id = requested_release_id and not public.valid_iana_timezone(timezone)) then raise exception 'Publish contains invalid airport timezones'; end if;
+  select coalesce(max(version_number), 0) + 1 into next_version from public.config_releases;
+  update public.config_releases set status='retired' where status='published';
+  update public.config_releases set status='published',version_number=next_version,published_by=auth.uid(),published_at=now() where id=requested_release_id;
+  insert into public.config_audit_events(config_release_id,actor_id,action,safe_summary)
+  values(requested_release_id,auth.uid(),'published',jsonb_build_object('version',next_version));
+  return next_version;
+end;
+$$;
+revoke all on function public.discard_config_draft(uuid), public.publish_config_release(uuid) from public, anon;
+grant execute on function public.discard_config_draft(uuid), public.publish_config_release(uuid) to authenticated;
+notify pgrst, 'reload schema';
+commit;
+-- END SECTION: ADMIN RELEASE MANAGEMENT
+
 -- PHASE 1 END: CURRENT SCHEMA
+
 
 do $setup_progress$
 begin

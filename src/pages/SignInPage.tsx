@@ -105,9 +105,16 @@ export function SignInPage({ admin = false }: { admin?: boolean }) {
 
   return (
     <div className="min-h-dvh bg-canvas text-ink">
-      <header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8">
+      <header className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-5 py-5 sm:px-8">
         <Brand />
-        <ThemeToggle />
+        <div className="flex shrink-0 items-center gap-2">
+          {admin && (
+            <span className="hidden rounded-full bg-brand-soft px-3 py-2 text-xs font-bold text-brand sm:inline">
+              Administrator
+            </span>
+          )}
+          <ThemeToggle />
+        </div>
       </header>
       <main className="mx-auto grid max-w-5xl items-center gap-10 px-5 pb-16 pt-6 sm:px-8 md:min-h-[75dvh] md:grid-cols-2">
         <section>
@@ -115,12 +122,12 @@ export function SignInPage({ admin = false }: { admin?: boolean }) {
             to="/"
             className="inline-flex items-center gap-2 rounded-lg text-sm font-bold text-muted hover:text-ink"
           >
-            <ArrowLeft className="size-4" /> Back
+            <ArrowLeft className="size-4" /> {admin ? "Back to Trip Vault" : "Back"}
           </Link>
           <div className="mt-10 grid size-14 place-items-center rounded-2xl bg-brand text-surface">
             <LockKeyhole className="size-6" />
           </div>
-          <p className="eyebrow mt-6">{admin ? "Restricted entry" : "Private travel space"}</p>
+          {!admin && <p className="eyebrow mt-6">Private travel space</p>}
           <h1 className="mt-3 font-display text-4xl font-black tracking-[-0.045em] sm:text-5xl">
             {admin
               ? "Administrator sign in"
@@ -130,7 +137,7 @@ export function SignInPage({ admin = false }: { admin?: boolean }) {
           </h1>
           <p className="mt-4 max-w-md leading-7 text-muted">
             {admin
-              ? "Configuration access is separate from trip access. Administrator status never reveals private traveler data."
+              ? "Manage travel catalogues, appearance, and published configuration. Your administrator role does not grant access to private trips or documents."
               : "Sign in to synchronize your trips. Your prepared local copy remains available when the network disappears."}
           </p>
           {!admin && (
@@ -190,7 +197,11 @@ export function SignInPage({ admin = false }: { admin?: boolean }) {
                   required
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  placeholder="Enter the email you will use for Trip Vault"
+                  placeholder={
+                    admin
+                      ? "Administrator email address"
+                      : "Enter the email you will use for Trip Vault"
+                  }
                   className="h-[3.25rem] w-full rounded-2xl border border-line bg-elevated py-3 pl-12 pr-4 text-ink placeholder:text-muted/60"
                 />
               </div>

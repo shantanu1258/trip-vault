@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -73,11 +73,20 @@ vi.mock("../features/admin/api", async () => {
       light: actual.defaultLightTokens,
       dark: actual.defaultDarkTokens
     }),
-    getAdminAudit: vi.fn().mockResolvedValue([])
+    getAdminAudit: vi.fn().mockResolvedValue([]),
+    discardConfigDraft: vi.fn().mockResolvedValue(undefined),
+    getReleaseSnapshot: vi.fn().mockResolvedValue({})
   };
 });
 
 import { AdminPage } from "./AdminPage";
+import { ConfirmDialogProvider } from "../components/ConfirmDialogProvider";
+import {
+  discardConfigDraft,
+  getReleaseSnapshot,
+  listConfigReleases,
+  type ConfigRelease
+} from "../features/admin/api";
 
 function renderAdmin(node: ReactNode) {
   const client = new QueryClient({
@@ -85,22 +94,89 @@ function renderAdmin(node: ReactNode) {
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>{node}</MemoryRouter>
+      <MemoryRouter>
+        <ConfirmDialogProvider>{node}</ConfirmDialogProvider>
+      </MemoryRouter>
     </QueryClientProvider>
   );
 }
 
 describe("administrator console", () => {
   beforeEach(() => vi.clearAllMocks());
+  it("shows draft deletion only for drafts and confirms before discarding", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listConfigReleases).mockResolvedValueOnce([
+      {
+        id: "draft-1",
+        version_number: null,
+        status: "draft",
+        created_at: "2026-09-22",
+        change_note: "Test draft"
+      },
+      {
+        id: "live",
+        version_number: 2,
+        status: "published",
+        created_at: "2026-09-21",
+        change_note: "Live"
+      }
+    ] as ConfigRelease[]);
+    renderAdmin(<AdminPage section="releases" />);
+    const button = await screen.findByRole("button", { name: "Delete draft" });
+    expect(screen.getAllByRole("button", { name: "Delete draft" })).toHaveLength(1);
+    await user.click(button);
+    expect(discardConfigDraft).not.toHaveBeenCalled();
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    expect(discardConfigDraft).not.toHaveBeenCalled();
+    await user.click(button);
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete draft" })
+    );
+    await waitFor(() => expect(discardConfigDraft).toHaveBeenCalledWith("draft-1"));
+  });
+  it("loads exact release changes on demand with expandable before and after values", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getReleaseSnapshot).mockResolvedValueOnce({
+      Airlines: [{ stable_key: "air", name: "Example Air", is_enabled: true }]
+    });
+    renderAdmin(<AdminPage section="releases" />);
+    await screen.findByRole("heading", { name: "Releases" });
+    expect(getReleaseSnapshot).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "View changes" }));
+    expect(await screen.findByText("1 added · 0 edited · 0 removed")).toBeVisible();
+    await user.click(screen.getByText("Example Air"));
+    expect(screen.getByText("After: Yes")).toBeVisible();
+    expect(getReleaseSnapshot).toHaveBeenCalledWith("draft-1");
+  });
+  it("shows stored defaults as read-only rather than offering unused runtime settings", async () => {
+    renderAdmin(<AdminPage section="defaults" />);
+    expect(
+      await screen.findByText(/Stored values are not currently used by the app/)
+    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Save default" })).not.toBeInTheDocument();
+  });
+  it("previews real document and booking surfaces without changing the active palette", async () => {
+    const activePalette = document.documentElement.style.cssText;
+    renderAdmin(<AdminPage section="appearance" />);
+    const preview = await screen.findByLabelText("light app preview");
+    expect(preview.querySelector(".event-hero")).toBeInTheDocument();
+    expect(preview.querySelector("[data-document-metadata]")).toBeInTheDocument();
+    await userEvent.clear(screen.getByRole("textbox", { name: "Light brand hex" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Light brand hex" }), "#125555");
+    expect(preview.style.getPropertyValue("--color-brand")).toBe("18 85 85");
+    expect(document.documentElement.style.cssText).toBe(activePalette);
+  });
 
-  it("explains the release workflow and exposes section navigation", async () => {
+  it("keeps overview navigation concise with secondary explanations collapsed", async () => {
     renderAdmin(<AdminPage />);
 
     expect(await screen.findByRole("heading", { name: "Admin overview" })).toBeInTheDocument();
     const navigation = screen.getByRole("navigation", { name: "Administrator sections" });
     expect(navigation).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "What you can manage" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "How changes go live" })).toBeInTheDocument();
+    const help = screen.getByText("About admin").closest("details");
+    expect(help).not.toHaveAttribute("open");
+    expect(screen.queryByText("Application configuration")).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: /Airlines/ })).toHaveLength(2);
     expect(screen.getAllByRole("link", { name: /Releases/ })).toHaveLength(2);
   });
@@ -110,7 +186,9 @@ describe("administrator console", () => {
     renderAdmin(<AdminPage section="airlines" />);
 
     expect(await screen.findByRole("heading", { name: "Airline catalog" })).toBeInTheDocument();
-    expect(screen.getByText("Editing the open draft")).toBeInTheDocument();
+    expect(screen.getByText("Draft · Changes go live when published")).toBeInTheDocument();
+    expect(screen.queryByText("Release draft")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Review every airline available/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Airline name/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Add airline" }));
     expect(screen.getByLabelText(/Airline name/)).toBeInTheDocument();

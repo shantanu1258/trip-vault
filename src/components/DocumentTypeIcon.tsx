@@ -13,7 +13,9 @@ import {
 } from "lucide-react";
 import type { AccountDocumentUpload, DocumentCategory } from "../features/workspace/types";
 
-type DocumentIconType = DocumentCategory | NonNullable<AccountDocumentUpload["personal_kind"]>;
+export type DocumentIconType =
+  | DocumentCategory
+  | NonNullable<AccountDocumentUpload["personal_kind"]>;
 const definitions: Record<DocumentIconType, LucideIcon> = {
   flight: Plane,
   hotel: BedDouble,
@@ -46,10 +48,14 @@ const tones: Record<DocumentIconType, string> = {
 /** Type identifies the content; access and personal/trip scope remain separate. */
 export function DocumentTypeIcon({
   type,
-  emphasis = "subtle"
+  emphasis = "subtle",
+  size = "md",
+  variant = "colored"
 }: {
   type: DocumentIconType;
   emphasis?: "subtle" | "strong";
+  size?: "sm" | "md";
+  variant?: "colored" | "monochrome";
 }) {
   const Icon = definitions[type] ?? definitions.other;
   return (
@@ -57,10 +63,11 @@ export function DocumentTypeIcon({
       aria-hidden="true"
       data-document-type={type}
       data-emphasis={emphasis}
-      className="document-type-icon grid size-7 shrink-0 place-items-center"
+      data-variant={variant}
+      className={`document-type-icon grid shrink-0 place-items-center ${size === "sm" ? "size-5" : "size-7"}`}
     >
       <svg
-        className="document-type-icon__file h-7 w-6"
+        className={`document-type-icon__file ${size === "sm" ? "h-5 w-5" : "h-7 w-6"}`}
         viewBox="0 0 32 36"
         fill="none"
         stroke="currentColor"

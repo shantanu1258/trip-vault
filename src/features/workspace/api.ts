@@ -3828,7 +3828,8 @@ export async function listEventDocumentLinks(
               .where("profileId")
               .equals(profileId)
               .filter(
-                (operation) => operation.operation === "create" && operation.entityType === key
+                (operation) =>
+                  ["create", "upsert"].includes(operation.operation) && operation.entityType === key
               )
               .toArray()
           ).map((operation) => operation.entityId)
@@ -3864,7 +3865,7 @@ export async function attachDocumentsToEvent(itineraryItem: ItineraryItem, docum
       }))
       .filter((link) => link.document);
     for (const link of created)
-      await queueCreate({
+      await queueUpsert({
         entityType: `event-documents:${itineraryItem.id}`,
         table: "itinerary_item_documents",
         row: link,
@@ -3872,7 +3873,8 @@ export async function attachDocumentsToEvent(itineraryItem: ItineraryItem, docum
           itinerary_item_id: link.itinerary_item_id,
           document_id: link.document_id,
           sort_order: link.sort_order,
-          created_by: actor
+          created_by: actor,
+          deleted_at: null
         },
         dependsOn: pendingUploads
           .filter((operation) => operation.entityId === link.document_id)
@@ -3883,16 +3885,75 @@ export async function attachDocumentsToEvent(itineraryItem: ItineraryItem, docum
   }
   const { error } = await client()
     .from("itinerary_item_documents")
-    .insert(
+    .upsert(
       newIds.map((documentId, index) => ({
         itinerary_item_id: itineraryItem.id,
         document_id: documentId,
         sort_order: existing.length + index,
-        created_by: actor
-      }))
+        created_by: actor,
+        deleted_at: null
+      })),
+      { onConflict: "itinerary_item_id,document_id" }
     );
   if (error) throw error;
   return listEventDocumentLinks(itineraryItem.id);
+}
+
+export async function detachDocumentFromBooking(document: VaultDocument) {
+  if (!navigator.onLine)
+    throw new Error("Connect to detach this document from its booking and events.");
+  if (!document.booking_id) throw new Error("Refresh this document before detaching it.");
+  const profileId = await localProfileId();
+  if (profileId) {
+    const pending = await database.outbox.where("profileId").equals(profileId).toArray();
+    if (
+      pending.some(
+        (operation) =>
+          operation.entityId === document.id ||
+          (operation.entityType.startsWith("event-documents:") &&
+            operation.entityId.endsWith(`:${document.id}`))
+      )
+    )
+      throw new Error("Sync this document's pending changes before detaching it from its booking.");
+  }
+  const { data, error } = await client().rpc("detach_booking_document", {
+    requested_document_id: document.id,
+    requested_booking_id: document.booking_id
+  });
+  if (error) {
+    if (error.code === "PGRST202")
+      throw new Error(
+        "Document detaching needs the BOOKING DOCUMENT DETACHMENT section of TRIP_VAULT_COMPLETE_SETUP.sql. Apply only that section on an existing database."
+      );
+    throw error;
+  }
+  const eventIds = new Set((data ?? []) as string[]);
+  const patch = { booking_id: null, flight_leg_id: null, journey_leg_id: null };
+  if (profileId) {
+    await database.transaction("rw", database.entities, async () => {
+      const entries = await database.entities.where("profileId").equals(profileId).toArray();
+      for (const entry of entries) {
+        const row = entry.data as Record<string, unknown>;
+        const isDocument =
+          (entry.entityType === "documents" || entry.entityType.startsWith("documents:")) &&
+          entry.id === document.id;
+        const isLink =
+          (entry.entityType.startsWith("event-documents:") ||
+            entry.entityType.startsWith("trip-event-documents:")) &&
+          row.document_id === document.id;
+        if (isLink && eventIds.has(String(row.itinerary_item_id))) {
+          await database.entities.delete([profileId, entry.entityType, entry.id]);
+        } else if (isDocument || (isLink && row.document)) {
+          await database.entities.put({
+            ...entry,
+            data: isDocument
+              ? { ...row, ...patch }
+              : { ...row, document: { ...(row.document as object), ...patch } }
+          });
+        }
+      }
+    });
+  }
 }
 
 export async function unlinkDocumentFromEvent(itineraryItemId: string, documentId: string) {

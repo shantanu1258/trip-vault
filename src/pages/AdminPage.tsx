@@ -24,6 +24,7 @@ import { TimeZoneAutocomplete } from "../components/TimeZoneAutocomplete";
 import { ProgressiveList } from "../components/ProgressiveList";
 import {
   createConfigDraft,
+  discardConfigDraft,
   defaultDarkTokens,
   defaultLightTokens,
   deleteAirline,
@@ -41,7 +42,6 @@ import {
   rollbackRelease,
   saveAirline,
   saveAirport,
-  saveDefault,
   saveThemePalette,
   deleteVendor,
   reviewCatalogSuggestion,
@@ -77,6 +77,8 @@ import { getErrorMessage } from "../features/trips/presentation";
 import { isValidTimeZone } from "../features/trips/validation";
 import { isSupabaseConfigured, supabase } from "../lib/supabase/client";
 import starterJourneyOperators from "../features/metadata/starter-journey-operators.json";
+import { AppearancePreview } from "../features/admin/AppearancePreview";
+import { ReleaseChangesPanel } from "../features/admin/ReleaseChangesPanel";
 
 export type AdminSection =
   | "overview"
@@ -93,63 +95,54 @@ const navigation: Array<AdminNavigationItem & { section: AdminSection }> = [
   {
     section: "overview",
     label: "Overview",
-    description: "Start a draft and understand what is live.",
     icon: ShieldCheck,
     path: "/admin"
   },
   {
     section: "airlines",
     label: "Airlines",
-    description: "Names, codes, links, and public artwork.",
     icon: Plane,
     path: "/admin/airlines"
   },
   {
     section: "airports",
     label: "Airports",
-    description: "Airport codes, cities, coordinates, and time zones.",
     icon: Database,
     path: "/admin/airports"
   },
   {
     section: "vendors",
     label: "Booking vendors",
-    description: "Websites and agents used to make bookings.",
     icon: Store,
     path: "/admin/vendors"
   },
   {
     section: "operators",
     label: "Journey operators",
-    description: "Train, bus, ferry, and cab providers shown in journey forms.",
     icon: BusFront,
     path: "/admin/operators"
   },
   {
     section: "suggestions",
     label: "Suggestions",
-    description: "Review new public metadata entered through Other.",
     icon: Inbox,
     path: "/admin/suggestions"
   },
   {
     section: "defaults",
     label: "Defaults",
-    description: "Safe JSON defaults used by supported app features.",
     icon: Save,
     path: "/admin/defaults"
   },
   {
     section: "appearance",
     label: "Appearance",
-    description: "Light and dark semantic color palettes.",
     icon: Palette,
     path: "/admin/appearance"
   },
   {
     section: "releases",
     label: "Releases",
-    description: "Publish a draft or inspect audited history.",
     icon: History,
     path: "/admin/releases"
   }
@@ -251,19 +244,19 @@ function AdminContent({ section, online }: { section: AdminSection; online: bool
     );
   const content =
     section === "airlines" ? (
-      <Airlines online={online} release={editableRelease} />
+      <Airlines key={editableRelease.id} online={online} release={editableRelease} />
     ) : section === "airports" ? (
-      <Airports online={online} release={editableRelease} />
+      <Airports key={editableRelease.id} online={online} release={editableRelease} />
     ) : section === "vendors" ? (
-      <Vendors online={online} release={editableRelease} />
+      <Vendors key={editableRelease.id} online={online} release={editableRelease} />
     ) : section === "defaults" ? (
-      <Defaults online={online} release={editableRelease} />
+      <Defaults key={editableRelease.id} release={editableRelease} />
     ) : (
-      <Appearance online={online} release={editableRelease} />
+      <Appearance key={editableRelease.id} online={online} release={editableRelease} />
     );
   return (
     <>
-      <ReleaseContext release={editableRelease} />
+      {section !== "defaults" && <ReleaseContext release={editableRelease} />}
       {content}
     </>
   );
@@ -292,21 +285,14 @@ function ReleaseContext({ release }: { release: ConfigRelease }) {
   const editable = release.status === "draft";
   return (
     <div
-      className={`mb-5 flex flex-col gap-3 rounded-2xl border p-4 text-sm sm:flex-row sm:items-center sm:justify-between ${editable ? "border-success/30 bg-success/10" : "border-warning/30 bg-warning/10"}`}
+      className={`mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs ${editable ? "border-success/30 bg-success/10" : "border-warning/30 bg-warning/10"}`}
     >
-      <div>
-        <strong className={editable ? "text-success" : "text-warning"}>
-          {editable ? "Editing the open draft" : "Viewing the published release"}
-        </strong>
-        <p className="mt-1 text-xs leading-5 text-muted">
-          {editable
-            ? "Saved changes remain private until the full release is published."
-            : "Create a draft from Overview before changing this configuration."}
-        </p>
-      </div>
+      <p className={editable ? "text-success" : "text-warning"}>
+        {editable ? "Draft · Changes go live when published" : "Published · Read-only"}
+      </p>
       {!editable && (
         <Link to="/admin" className="secondary-button shrink-0 justify-center">
-          Go to overview
+          Create a draft
         </Link>
       )}
     </div>
@@ -332,11 +318,7 @@ function Overview({
   });
   return (
     <>
-      <AdminPageHeader
-        eyebrow="Application configuration"
-        title="Admin overview"
-        text="Configuration authority is separate from trip access. Every change is online-only and release-based."
-      />
+      <AdminPageHeader title="Admin overview" />
       <section className="mt-7 grid gap-4 sm:grid-cols-3">
         <Stat label="Published" value={published ? `v${published.version_number}` : "None"} />
         <Stat label="Open draft" value={draft ? "Ready to edit" : "None"} />
@@ -346,18 +328,9 @@ function Overview({
         <h2 className="font-display text-xl font-black">
           {draft ? "Continue the draft" : "Start a configuration draft"}
         </h2>
-        <p className="mt-2 text-sm text-muted">
-          {draft
-            ? "Edit catalogs, defaults, and both themes; then publish them atomically."
-            : "A draft begins from the currently published release when one exists."}
-        </p>
         {!draft && (
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-            <AdminField
-              className="flex-1"
-              label="Draft summary"
-              hint="A short description helps identify this release later."
-            >
+            <AdminField className="flex-1" label="Draft summary">
               <input
                 className="form-input"
                 value={note}
@@ -383,11 +356,8 @@ function Overview({
       </section>
       <section className="mt-7">
         <h2 className="font-display text-xl font-black">What you can manage</h2>
-        <p className="mt-2 text-sm text-muted">
-          Catalog and appearance changes stay in the draft until you publish the complete release.
-        </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {navigation.slice(1).map(({ path, label, description, icon: Icon }) => (
+          {navigation.slice(1).map(({ path, label, section, icon: Icon }) => (
             <Link
               key={path}
               to={path}
@@ -398,34 +368,31 @@ function Overview({
               </span>
               <span className="min-w-0 flex-1">
                 <strong className="block break-words">{label}</strong>
-                <span className="mt-1 block text-xs leading-5 text-muted">{description}</span>
+                {(section === "operators" || section === "defaults") && (
+                  <span className="mt-1 block text-xs text-muted">Read-only</span>
+                )}
               </span>
             </Link>
           ))}
         </div>
       </section>
-      <section className="surface-card mt-7 p-5 sm:p-6">
-        <h2 className="font-display text-xl font-black">How changes go live</h2>
-        <ol className="mt-4 grid gap-3 sm:grid-cols-3">
-          {[
-            ["1", "Create one draft", "A draft safely copies the current published configuration."],
-            [
-              "2",
-              "Review every section",
-              "Catalogs, defaults, and themes are saved into that draft."
-            ],
-            ["3", "Publish once", "The complete configuration becomes live as one audited release."]
-          ].map(([step, title, detail]) => (
-            <li key={step} className="rounded-2xl bg-elevated p-4">
-              <span className="grid size-8 place-items-center rounded-full bg-brand text-sm font-black text-surface">
-                {step}
-              </span>
-              <strong className="mt-3 block">{title}</strong>
-              <span className="mt-1 block text-xs leading-5 text-muted">{detail}</span>
-            </li>
-          ))}
-        </ol>
-      </section>
+      <Link
+        to="/preview"
+        className="mt-4 inline-flex min-h-11 items-center text-sm font-bold text-brand"
+      >
+        View the current demo
+      </Link>
+      <details className="mt-3 border-t border-line pt-3 text-sm text-muted">
+        <summary className="min-h-11 cursor-pointer py-3 font-bold">About admin</summary>
+        <p className="mt-2">
+          Create a draft, edit, then publish. Changes require an internet connection and are
+          recorded in release history.
+        </p>
+        <p className="mt-2">
+          Admin access does not reveal private trips or documents. App icons, event colours,
+          database setup and push secrets are managed in code or deployment.
+        </p>
+      </details>
     </>
   );
 }
@@ -586,9 +553,7 @@ function Airlines({ online, release }: { online: boolean; release: ConfigRelease
   return (
     <>
       <AdminPageHeader
-        eyebrow={`Release ${release.status}`}
         title="Airline catalog"
-        text="Review every airline available in trip forms. Release entries can be edited directly; built-in entries can be copied into the draft and customized."
         action={
           release.status === "draft" ? (
             <button
@@ -626,8 +591,8 @@ function Airlines({ online, release }: { online: boolean; release: ConfigRelease
             }
             description={
               editing?.catalog_source === "built_in"
-                ? "Saving creates a release-owned copy; the built-in fallback remains unchanged."
-                : "Required fields are marked with an asterisk. Links and artwork are optional."
+                ? "Saves a draft copy; the built-in entry stays unchanged."
+                : undefined
             }
             onCancel={() => {
               setEditing(null);
@@ -830,17 +795,18 @@ function Airlines({ online, release }: { online: boolean; release: ConfigRelease
                 </h2>
                 <CatalogSourceBadge source={item.catalog_source} />
               </div>
-              <p className="break-all text-xs text-muted">
-                {item.stable_key} · {item.is_enabled ? "available" : "disabled"}
-              </p>
+              {!item.is_enabled && <p className="text-xs text-muted">Disabled</p>}
             </div>
             <button
               disabled={!online || release.status !== "draft"}
               onClick={() => editAirline(item)}
-              className="tap-target grid size-10 place-items-center text-muted hover:text-brand"
+              className="tap-target inline-flex min-w-10 items-center justify-center gap-1.5 px-2 text-xs font-bold text-muted hover:text-brand"
               aria-label={`${item.catalog_source === "release" ? "Edit" : "Customize"} ${item.name}`}
             >
               <Pencil className="size-4" />
+              <span className="hidden sm:inline">
+                {item.catalog_source === "release" ? "Edit" : "Customize"}
+              </span>
             </button>
             {item.catalog_source === "release" && (
               <button
@@ -857,10 +823,11 @@ function Airlines({ online, release }: { online: boolean; release: ConfigRelease
                   )
                     remove.mutate(item.id);
                 }}
-                className="tap-target grid size-10 place-items-center text-muted hover:text-danger"
+                className="tap-target inline-flex min-w-10 items-center justify-center gap-1.5 px-2 text-xs font-bold text-muted hover:text-danger"
                 aria-label={`Delete ${item.name}`}
               >
                 <Trash2 className="size-4" />
+                <span className="hidden sm:inline">Delete</span>
               </button>
             )}
           </article>
@@ -993,9 +960,7 @@ function Airports({ online, release }: { online: boolean; release: ConfigRelease
   return (
     <>
       <AdminPageHeader
-        eyebrow={`Release ${release.status}`}
         title="Airport catalog"
-        text="Review every airport available in trip forms. Release entries can be edited directly; built-in entries can be copied into the draft and customized."
         action={
           release.status === "draft" ? (
             <button
@@ -1033,8 +998,8 @@ function Airports({ online, release }: { online: boolean; release: ConfigRelease
             }
             description={
               editing?.catalog_source === "built_in"
-                ? "Saving creates a release-owned copy; the built-in fallback remains unchanged."
-                : "Codes and time zone drive simpler journey forms and correct international timing."
+                ? "Saves a draft copy; the built-in entry stays unchanged."
+                : undefined
             }
             onCancel={() => {
               setEditing(null);
@@ -1200,10 +1165,13 @@ function Airports({ online, release }: { online: boolean; release: ConfigRelease
             <button
               disabled={!online || release.status !== "draft"}
               onClick={() => editAirport(item)}
-              className="tap-target grid size-10 place-items-center text-muted hover:text-brand"
+              className="tap-target inline-flex min-w-10 items-center justify-center gap-1.5 px-2 text-xs font-bold text-muted hover:text-brand"
               aria-label={`${item.catalog_source === "release" ? "Edit" : "Customize"} ${item.name}`}
             >
               <Pencil className="size-4" />
+              <span className="hidden sm:inline">
+                {item.catalog_source === "release" ? "Edit" : "Customize"}
+              </span>
             </button>
             {item.catalog_source === "release" && (
               <button
@@ -1220,10 +1188,11 @@ function Airports({ online, release }: { online: boolean; release: ConfigRelease
                   )
                     remove.mutate(item.id);
                 }}
-                className="tap-target grid size-10 place-items-center text-muted hover:text-danger"
+                className="tap-target inline-flex min-w-10 items-center justify-center gap-1.5 px-2 text-xs font-bold text-muted hover:text-danger"
                 aria-label={`Delete ${item.name}`}
               >
                 <Trash2 className="size-4" />
+                <span className="hidden sm:inline">Delete</span>
               </button>
             )}
           </article>
@@ -1349,9 +1318,7 @@ function Vendors({ online, release }: { online: boolean; release: ConfigRelease 
   return (
     <>
       <AdminPageHeader
-        eyebrow={`Release ${release.status}`}
         title="Booking-vendor catalog"
-        text="Review every booking website or agent available in trip forms. Release entries can be edited directly; built-in entries can be copied into the draft and customized."
         action={
           release.status === "draft" ? (
             <button
@@ -1389,8 +1356,8 @@ function Vendors({ online, release }: { online: boolean; release: ConfigRelease 
             }
             description={
               editing?.catalog_source === "built_in"
-                ? "Saving creates a release-owned copy; the built-in fallback remains unchanged."
-                : "A booking vendor is the website or agent used to buy a reservation, not the operator providing the journey."
+                ? "Saves a draft copy; the built-in entry stays unchanged."
+                : "The seller or booking website, not the service provider."
             }
             onCancel={() => {
               setEditing(null);
@@ -1523,10 +1490,13 @@ function Vendors({ online, release }: { online: boolean; release: ConfigRelease 
             <button
               disabled={!online || release.status !== "draft"}
               onClick={() => editVendor(vendor)}
-              className="tap-target grid size-9 place-items-center"
+              className="tap-target inline-flex min-w-10 items-center justify-center gap-1.5 px-2 text-xs font-bold text-muted hover:text-brand"
               aria-label={`${vendor.catalog_source === "release" ? "Edit" : "Customize"} ${vendor.name}`}
             >
               <Pencil className="size-4" />
+              <span className="hidden sm:inline">
+                {vendor.catalog_source === "release" ? "Edit" : "Customize"}
+              </span>
             </button>
             {vendor.catalog_source === "release" && (
               <button
@@ -1543,10 +1513,11 @@ function Vendors({ online, release }: { online: boolean; release: ConfigRelease 
                   )
                     remove.mutate(vendor.id);
                 }}
-                className="tap-target grid size-9 place-items-center text-danger"
+                className="tap-target inline-flex min-w-10 items-center justify-center gap-1.5 px-2 text-xs font-bold text-muted hover:text-danger"
                 aria-label={`Delete ${vendor.name}`}
               >
                 <Trash2 className="size-4" />
+                <span className="hidden sm:inline">Delete</span>
               </button>
             )}
           </article>
@@ -1581,9 +1552,8 @@ function JourneyOperators() {
   return (
     <>
       <AdminPageHeader
-        eyebrow="Built-in catalog"
         title="Journey operator catalog"
-        text="These are the train, bus, ferry, and cab providers currently offered by the trip forms. They remain read-only here until journey operators become release-managed metadata."
+        text="Read-only · Built-in train, bus, ferry and cab providers."
       />
       <div className="surface-card mt-6 grid min-w-0 gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_12rem] sm:p-5">
         <AdminField label="Search journey operators">
@@ -1662,9 +1632,8 @@ function Suggestions({ online }: { online: boolean }) {
   return (
     <>
       <AdminPageHeader
-        eyebrow="Privacy-safe review"
         title="Catalog suggestions"
-        text="Only the entered public provider, airline, airport, or vendor metadata appears here—never trip names, dates, PNRs, travelers, or documents."
+        text="Public metadata only; private trip details are excluded."
       />
       <AdminQueryState
         loading={query.isLoading}
@@ -1734,95 +1703,33 @@ function Suggestions({ online }: { online: boolean }) {
   );
 }
 
-function Defaults({ online, release }: { online: boolean; release: ConfigRelease }) {
-  const client = useQueryClient();
+function Defaults({ release }: { release: ConfigRelease }) {
   const query = useQuery({
     queryKey: ["admin-defaults", release.id],
     queryFn: () => listDefaults(release.id)
   });
-  const [message, setMessage] = useState("");
-  const save = useMutation({
-    mutationFn: saveDefault,
-    onSuccess: () => client.invalidateQueries({ queryKey: ["admin-defaults", release.id] })
-  });
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setMessage("");
-    const form = new FormData(event.currentTarget);
-    try {
-      save.mutate({
-        config_release_id: release.id,
-        namespace: String(form.get("namespace")),
-        key: String(form.get("key")),
-        value: JSON.parse(String(form.get("value")))
-      });
-    } catch {
-      setMessage("Value must be valid JSON.");
-    }
-  };
   return (
     <>
       <AdminPageHeader
-        eyebrow={`Release ${release.status}`}
         title="Travel defaults"
-        text="Only code-defined namespaces and JSON values are accepted; no executable configuration or secrets."
+        text="Read-only · Stored values are not currently used by the app."
       />
-      {release.status === "draft" && (
-        <form onSubmit={submit} className="surface-card mt-6 space-y-4 p-5">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <AdminField label="Feature area" required>
-              <select className="form-input" name="namespace" required>
-                <option>booking</option>
-                <option>document</option>
-                <option>readiness</option>
-                <option>alerts</option>
-                <option>external_links</option>
-              </select>
-            </AdminField>
-            <AdminField label="Default key" required hint="Must be a key supported by the app.">
-              <input
-                className="form-input"
-                name="key"
-                placeholder="reminder.days_before"
-                required
-              />
-            </AdminField>
-          </div>
-          <AdminField
-            label="JSON value"
-            required
-            hint="Enter valid JSON; strings need double quotes."
-          >
-            <textarea
-              className="form-input min-h-28 font-mono"
-              name="value"
-              defaultValue="{}"
-              required
-            />
-          </AdminField>
-          {message && <p className="text-sm font-bold text-danger">{message}</p>}
-          {save.error && <AdminError error={save.error} />}
-          <button disabled={!online || save.isPending} className="primary-button w-full sm:w-auto">
-            Save default
-          </button>
-        </form>
-      )}
       <AdminQueryState
         loading={query.isLoading}
         error={query.error}
         empty={!query.isLoading && !query.error && query.data?.length === 0}
-        emptyMessage="No travel defaults have been added to this release."
+        emptyMessage="No stored defaults in this release."
       />
-      <div className="mt-5 space-y-2">
+      <div className="mt-4 space-y-2">
         {query.data?.map((item) => (
-          <div className="surface-card p-4" key={`${item.namespace}.${item.key}`}>
-            <p className="font-mono text-sm font-bold">
+          <details className="surface-card p-3" key={item.namespace + "." + item.key}>
+            <summary className="cursor-pointer break-words text-sm font-bold">
               {item.namespace}.{item.key}
-            </p>
-            <pre className="mt-2 overflow-auto text-xs text-muted">
+            </summary>
+            <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words text-xs text-muted">
               {JSON.stringify(item.value, null, 2)}
             </pre>
-          </div>
+          </details>
         ))}
       </div>
     </>
@@ -1858,9 +1765,8 @@ function Appearance({ online, release }: { online: boolean; release: ConfigRelea
   return (
     <>
       <AdminPageHeader
-        eyebrow={`Release ${release.status}`}
         title="Light & dark appearance"
-        text="Only allowlisted semantic colors are saved. Contrast is checked before the draft can be published."
+        text="Contrast is checked before publishing."
       />
       <AdminQueryState
         loading={query.isLoading}
@@ -1873,13 +1779,17 @@ function Appearance({ online, release }: { online: boolean; release: ConfigRelea
           title="Light"
           tokens={light}
           onChange={setLight}
-          disabled={release.status !== "draft"}
+          disabled={
+            !online || release.status !== "draft" || query.isLoading || Boolean(query.error)
+          }
         />
         <TokenEditor
           title="Dark"
           tokens={dark}
           onChange={setDark}
-          disabled={release.status !== "draft"}
+          disabled={
+            !online || release.status !== "draft" || query.isLoading || Boolean(query.error)
+          }
         />
       </div>
       {message && (
@@ -1890,8 +1800,15 @@ function Appearance({ online, release }: { online: boolean; release: ConfigRelea
           {message}
         </p>
       )}
+      {save.error && <AdminError error={save.error} />}
       <button
-        disabled={!online || release.status !== "draft" || save.isPending}
+        disabled={
+          !online ||
+          release.status !== "draft" ||
+          save.isPending ||
+          query.isLoading ||
+          Boolean(query.error)
+        }
         onClick={submit}
         className="primary-button mt-5"
       >
@@ -1921,6 +1838,7 @@ function TokenEditor({
             <span className="mt-2 grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-2">
               <input
                 type="color"
+                aria-label={`${title} ${key === "coral" ? "current event accent" : key} colour`}
                 disabled={disabled}
                 value={value}
                 onChange={(event) => onChange({ ...tokens, [key]: event.target.value })}
@@ -1939,21 +1857,7 @@ function TokenEditor({
           </label>
         ))}
       </div>
-      <div
-        className="mt-5 rounded-2xl border p-4"
-        style={{ background: tokens.surface, borderColor: tokens.line, color: tokens.ink }}
-      >
-        <p className="font-bold">Preview card</p>
-        <p className="mt-1 text-sm" style={{ color: tokens.muted }}>
-          Important information remains readable.
-        </p>
-        <span
-          className="mt-3 inline-block rounded-lg px-3 py-2 text-xs font-bold"
-          style={{ background: tokens.brand, color: tokens.surface }}
-        >
-          Primary action preview
-        </span>
-      </div>
+      <AppearancePreview tokens={tokens} mode={title === "Dark" ? "dark" : "light"} />
     </section>
   );
 }
@@ -1962,6 +1866,14 @@ function Releases({ online, releases }: { online: boolean; releases: ConfigRelea
   const client = useQueryClient();
   const confirm = useConfirmDialog();
   const audit = useQuery({ queryKey: ["admin-audit"], queryFn: getAdminAudit });
+  const discard = useMutation({
+    mutationFn: discardConfigDraft,
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["config-releases"] });
+      client.invalidateQueries({ queryKey: ["admin-audit"] });
+      client.invalidateQueries({ queryKey: ["admin-release-changes"] });
+    }
+  });
   const publish = useMutation({
     mutationFn: publishRelease,
     onSuccess: () => {
@@ -1978,11 +1890,7 @@ function Releases({ online, releases }: { online: boolean; releases: ConfigRelea
   });
   return (
     <>
-      <AdminPageHeader
-        eyebrow="Immutable history"
-        title="Releases"
-        text="Publish a complete draft atomically or roll a prior version forward as a new audited release."
-      />
+      <AdminPageHeader title="Releases" />
       {releases.length === 0 && (
         <p className="surface-card mt-6 border-dashed p-6 text-sm text-muted">
           No releases exist yet. Return to Overview and create the first configuration draft.
@@ -1990,71 +1898,98 @@ function Releases({ online, releases }: { online: boolean; releases: ConfigRelea
       )}
       <div className="mt-6 space-y-3">
         {releases.map((release) => (
-          <article
-            key={release.id}
-            className="surface-card flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center"
-          >
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs font-black capitalize ${release.status === "published" ? "bg-success/10 text-success" : "bg-brand-soft text-brand"}`}
-                >
-                  {release.status}
-                </span>
-                <strong>
-                  {release.version_number
-                    ? `Version ${release.version_number}`
-                    : "Unpublished draft"}
-                </strong>
+          <article key={release.id} className="surface-card p-4 sm:p-5">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs font-black capitalize ${release.status === "published" ? "bg-success/10 text-success" : "bg-brand-soft text-brand"}`}
+                  >
+                    {release.status}
+                  </span>
+                  <strong>
+                    {release.version_number
+                      ? `Version ${release.version_number}`
+                      : "Unpublished draft"}
+                  </strong>
+                </div>
+                <p className="mt-2 break-words text-sm text-muted [overflow-wrap:anywhere]">
+                  {release.change_note || "No change note"} ·{" "}
+                  {new Date(release.created_at).toLocaleString()}
+                </p>
               </div>
-              <p className="mt-2 break-words text-sm text-muted [overflow-wrap:anywhere]">
-                {release.change_note || "No change note"} ·{" "}
-                {new Date(release.created_at).toLocaleString()}
-              </p>
+              {release.status === "draft" ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={
+                      !online || discard.isPending || publish.isPending || rollback.isPending
+                    }
+                    className="secondary-button justify-center text-danger"
+                    onClick={async () => {
+                      if (
+                        await confirm({
+                          title: "Delete this draft?",
+                          message:
+                            "Discard this unpublished draft and its changes. The live configuration is unaffected. Its audit record is retained, but it cannot be restored from this screen.",
+                          confirmLabel: "Delete draft",
+                          tone: "danger"
+                        })
+                      )
+                        discard.mutate(release.id);
+                    }}
+                  >
+                    <Trash2 className="size-4" /> Delete draft
+                  </button>
+                  <button
+                    disabled={
+                      !online || publish.isPending || discard.isPending || rollback.isPending
+                    }
+                    onClick={async () => {
+                      if (
+                        await confirm({
+                          title: "Publish this configuration?",
+                          message:
+                            "Airlines, airports, booking vendors, and both themes in this draft will become live together. Stored defaults are retained unchanged.",
+                          confirmLabel: "Publish release"
+                        })
+                      )
+                        publish.mutate(release.id);
+                    }}
+                    className="primary-button"
+                  >
+                    Publish
+                  </button>
+                </div>
+              ) : release.version_number && release.status !== "published" ? (
+                <button
+                  disabled={!online || rollback.isPending || discard.isPending || publish.isPending}
+                  onClick={async () => {
+                    if (
+                      await confirm({
+                        title: `Roll forward version ${release.version_number}?`,
+                        message:
+                          "This creates a new audited release from the selected historical version; it does not erase history.",
+                        confirmLabel: "Create rollback release"
+                      })
+                    )
+                      rollback.mutate(release.id);
+                  }}
+                  className="secondary-button w-full justify-center sm:w-auto"
+                >
+                  <RotateCcw className="size-4" /> Roll back to this
+                </button>
+              ) : (
+                <CheckCircle2 className="size-6 text-success" />
+              )}
             </div>
-            {release.status === "draft" ? (
-              <button
-                disabled={!online || publish.isPending}
-                onClick={async () => {
-                  if (
-                    await confirm({
-                      title: "Publish this configuration?",
-                      message:
-                        "Airlines, airports, booking vendors, defaults, and both themes in this draft will become live together.",
-                      confirmLabel: "Publish release"
-                    })
-                  )
-                    publish.mutate(release.id);
-                }}
-                className="primary-button w-full sm:w-auto"
-              >
-                Publish
-              </button>
-            ) : release.version_number && release.status !== "published" ? (
-              <button
-                disabled={!online || rollback.isPending}
-                onClick={async () => {
-                  if (
-                    await confirm({
-                      title: `Roll forward version ${release.version_number}?`,
-                      message:
-                        "This creates a new audited release from the selected historical version; it does not erase history.",
-                      confirmLabel: "Create rollback release"
-                    })
-                  )
-                    rollback.mutate(release.id);
-                }}
-                className="secondary-button w-full justify-center sm:w-auto"
-              >
-                <RotateCcw className="size-4" /> Roll back to this
-              </button>
-            ) : (
-              <CheckCircle2 className="size-6 text-success" />
-            )}
+            <ReleaseChangesPanel release={release} releases={releases} />
           </article>
         ))}
       </div>
-      {(publish.error || rollback.error) && <AdminError error={publish.error || rollback.error} />}
+      {(publish.error || rollback.error || discard.error) && (
+        <AdminError error={publish.error || rollback.error || discard.error} />
+      )}
       <section className="mt-8">
         <h2 className="font-display text-xl font-black">Audit history</h2>
         <AdminQueryState
@@ -2066,7 +2001,11 @@ function Releases({ online, releases }: { online: boolean; releases: ConfigRelea
         <div className="mt-3 space-y-2">
           {audit.data?.map((event) => (
             <div className="rounded-2xl border border-line bg-surface p-4" key={event.id}>
-              <p className="text-sm font-bold capitalize">{event.action.replace("_", " ")}</p>
+              <p className="text-sm font-bold capitalize">
+                {event.safe_summary?.discarded_draft
+                  ? "Draft deleted"
+                  : event.action.replaceAll("_", " ")}
+              </p>
               <p className="mt-1 text-xs text-muted">
                 {new Date(String(event.created_at)).toLocaleString()}
               </p>
