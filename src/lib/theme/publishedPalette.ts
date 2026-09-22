@@ -10,6 +10,14 @@ import type { CSSProperties } from "react";
 
 export const PALETTE_KEY = "trip-vault:published-palette";
 export const PALETTE_UPDATED_EVENT = "trip-vault:palette-updated";
+const previousDefaultLightTokens: ThemeTokens = {
+  ...defaultLightTokens,
+  line: "#cbd6de"
+};
+const previousDefaultDarkTokens: ThemeTokens = {
+  ...defaultDarkTokens,
+  line: "#3d515e"
+};
 const variableMap: Record<keyof ThemeTokens, string> = {
   canvas: "--color-canvas",
   surface: "--color-surface",
@@ -43,9 +51,17 @@ export function readCachedPalette(): PublishedPalette {
     if (validPalette(parsed))
       return {
         ...parsed,
-        // Upgrade only the exact original stock palette. Any admin customization wins.
-        light: isStockPalette(parsed.light, legacyLightTokens) ? defaultLightTokens : parsed.light,
-        dark: isStockPalette(parsed.dark, legacyDarkTokens) ? defaultDarkTokens : parsed.dark
+        // Upgrade only known exact stock palettes. Any admin customization wins.
+        light:
+          isStockPalette(parsed.light, legacyLightTokens) ||
+          isStockPalette(parsed.light, previousDefaultLightTokens)
+            ? defaultLightTokens
+            : parsed.light,
+        dark:
+          isStockPalette(parsed.dark, legacyDarkTokens) ||
+          isStockPalette(parsed.dark, previousDefaultDarkTokens)
+            ? defaultDarkTokens
+            : parsed.dark
       };
   } catch {
     /* use bundled fallback */

@@ -51,6 +51,28 @@ describe("device theme", () => {
     );
     expect(readCachedPalette().light).toEqual(custom);
   });
+  it("upgrades previous stock borders without overriding customized palettes", () => {
+    const previousLight = { ...defaultLightTokens, line: "#cbd6de" };
+    const previousDark = { ...defaultDarkTokens, line: "#3d515e" };
+    localStorage.setItem(
+      "trip-vault:published-palette",
+      JSON.stringify({ version: 4, light: previousLight, dark: previousDark })
+    );
+    expect(readCachedPalette()).toEqual({
+      version: 4,
+      light: defaultLightTokens,
+      dark: defaultDarkTokens
+    });
+
+    const customized = { ...previousLight, brand: "#225566" };
+    const customizedDark = { ...previousDark, brand: "#aabbcc" };
+    localStorage.setItem(
+      "trip-vault:published-palette",
+      JSON.stringify({ version: 5, light: customized, dark: customizedDark })
+    );
+    expect(readCachedPalette().light).toEqual(customized);
+    expect(readCachedPalette().dark).toEqual(customizedDark);
+  });
   it.each([defaultLightTokens, defaultDarkTokens])(
     "keeps default text, buttons, current badges and status colors readable",
     (tokens) => {
