@@ -166,7 +166,7 @@ describe("home trip expenses", () => {
 
     await userEvent.click(openExpenses);
 
-    const summary = screen.getByRole("dialog", { name: "Trip expenses" });
+    const summary = screen.getByRole("dialog", { name: "Expenses" });
     expect(
       within(summary).getByRole("button", { name: "View details for Museum tickets" })
     ).toHaveTextContent("2 travelers");
@@ -187,7 +187,7 @@ describe("home trip expenses", () => {
 
     await userEvent.click(within(details).getByRole("button", { name: "Back" }));
     expect(screen.queryByRole("dialog", { name: "Museum tickets" })).not.toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "Trip expenses" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Expenses" })).toBeInTheDocument();
   });
 
   it("shows Everyone documents and the signed-in traveler's documents without leaking another traveler", async () => {

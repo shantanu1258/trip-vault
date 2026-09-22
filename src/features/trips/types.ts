@@ -79,6 +79,8 @@ export const costCategories = [
   "transport",
   "activity",
   "food",
+  "snacks",
+  "gift",
   "visa",
   "insurance",
   "other"
@@ -193,10 +195,10 @@ export type UpdateItineraryInput = CreateItineraryInput & { id: string; version?
 
 export type CreateCostInput = {
   tripId: string;
-  bookingId?: string;
-  itineraryItemId?: string;
-  cabStopId?: string;
-  activityMomentId?: string;
+  bookingId?: string | null;
+  itineraryItemId?: string | null;
+  cabStopId?: string | null;
+  activityMomentId?: string | null;
   documentId?: string | null;
   title: string;
   category: CostCategory;

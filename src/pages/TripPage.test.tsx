@@ -55,10 +55,10 @@ vi.mock("../components/ModalSheet", () => ({
   }: {
     children: React.ReactNode;
     title: string;
-    onClose: () => void;
+    onClose: (savedItineraryItemId?: string) => void;
   }) => (
     <section aria-label={title}>
-      <button type="button" onClick={onClose}>
+      <button type="button" onClick={() => onClose()}>
         Back
       </button>
       {children}
@@ -78,7 +78,7 @@ vi.mock("../features/timeline/AddEventForm", () => ({
     onAddDocument
   }: {
     initialType?: string | null;
-    onClose: () => void;
+    onClose: (savedItineraryItemId?: string) => void;
     onTypeChange?: (type: "flight" | null) => void;
     onAddDocument?: (
       saved: {
@@ -95,8 +95,11 @@ vi.mock("../features/timeline/AddEventForm", () => ({
       <button type="button" onClick={() => onTypeChange?.("flight")}>
         Choose flight type for test
       </button>
-      <button type="button" onClick={onClose}>
+      <button type="button" onClick={() => onClose()}>
         Close add event route
+      </button>
+      <button type="button" onClick={() => onClose("saved-event")}>
+        Finish added event
       </button>
       <button
         type="button"
@@ -1115,6 +1118,7 @@ describe("trip expense summary", () => {
         <MemoryRouter initialEntries={["/trips/trip-1"]}>
           <Routes>
             <Route path="/trips/:tripId" element={<TripPage />} />
+            <Route path="/trips/:tripId/expenses" element={<LocationProbe />} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>
@@ -1122,20 +1126,22 @@ describe("trip expense summary", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Open trip expenses" }));
 
-    const summary = screen.getByRole("region", { name: "Trip expenses" });
+    const summary = screen.getByRole("region", { name: "Expenses" });
     await userEvent.click(
       within(summary).getByRole("button", { name: "View details for Museum tickets" })
     );
     const details = screen.getByRole("region", { name: "Museum tickets" });
-    expect(screen.queryByRole("region", { name: "Trip expenses" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Expenses" })).not.toBeInTheDocument();
 
     await userEvent.click(within(details).getByRole("button", { name: "Back" }));
 
     expect(screen.queryByRole("region", { name: "Museum tickets" })).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Trip expenses" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Expenses" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Open full expenses" }));
+    expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1/expenses");
   });
 
-  it("opens the same summary from the itemized expenses card", async () => {
+  it("opens the dedicated expenses page from the itemized expenses card", async () => {
     mocks.getTrip.mockResolvedValue(ownerTrip);
     mocks.listCosts.mockResolvedValue([expense]);
     mocks.listTravelers.mockResolvedValue(expenseTravelers);
@@ -1154,6 +1160,7 @@ describe("trip expense summary", () => {
         <MemoryRouter initialEntries={["/trips/trip-1?view=details"]}>
           <Routes>
             <Route path="/trips/:tripId" element={<TripPage />} />
+            <Route path="/trips/:tripId/expenses" element={<LocationProbe />} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>
@@ -1165,13 +1172,44 @@ describe("trip expense summary", () => {
     ).not.toBeInTheDocument();
     await userEvent.click(openExpenses);
 
-    const summary = screen.getByRole("region", { name: "Trip expenses" });
-    const splitting = within(summary).getByRole("checkbox", { name: /^Enable expense splitting/ });
-    expect(splitting).toBeInTheDocument();
-    await userEvent.click(splitting);
-    await waitFor(() =>
-      expect(mocks.updateTripExpenseSplitting).toHaveBeenCalledWith(ownerTrip, true)
+    expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1/expenses");
+  });
+
+  it("uses the dedicated page instead of the sheet once a trip has 20 expenses", async () => {
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listCosts.mockResolvedValue(
+      Array.from({ length: 20 }, (_, index) => ({
+        ...expense,
+        id: `cost-${index + 1}`,
+        title: `Expense ${index + 1}`
+      }))
     );
+    mocks.listTravelers.mockResolvedValue(expenseTravelers);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1"]}>
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+            <Route path="/trips/:tripId/expenses" element={<LocationProbe />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open trip expenses" }));
+
+    expect(screen.queryByRole("region", { name: "Expenses" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1/expenses");
   });
 });
 
@@ -1340,6 +1378,40 @@ describe("route-backed add event", () => {
     await userEvent.click(screen.getByRole("button", { name: "Close add event route" }));
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1"));
     expect(screen.queryByRole("region", { name: "Add event test form" })).not.toBeInTheDocument();
+  });
+
+  it("returns to the timeline and focuses the event that was just added", async () => {
+    const savedEvent = { ...activity, id: "saved-event", title: "Saved lunch" };
+    mocks.getTrip.mockResolvedValue(ownerTrip);
+    mocks.listItinerary.mockResolvedValue([savedEvent]);
+    mocks.listTravelers.mockResolvedValue(expenseTravelers);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00.000Z",
+        display_name: "Shantanu"
+      }
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/trips/trip-1?view=details&add=event"]}>
+          <LocationProbe />
+          <Routes>
+            <Route path="/trips/:tripId" element={<TripPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Finish added event" }));
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/trips/trip-1"));
+    expect(await screen.findByRole("button", { name: "Collapse Saved lunch" })).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
   });
 });
 

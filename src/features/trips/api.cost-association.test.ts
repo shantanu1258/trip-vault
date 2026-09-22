@@ -107,3 +107,45 @@ it("persists a new document link and can explicitly clear it on an existing cost
   expect(update).toHaveBeenCalledWith(expect.objectContaining({ document_id: null }));
   expect(eq).toHaveBeenCalledWith("version", 3);
 });
+
+it("can replace or clear every existing event-level association", async () => {
+  Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+  mocks.readEntityList.mockResolvedValue([
+    {
+      ...cost,
+      document_id: null,
+      booking_id: "cab-booking-1",
+      itinerary_item_id: "cab-1",
+      cab_stop_id: "stop-1",
+      activity_moment_id: null
+    }
+  ]);
+
+  await updateTripCost({
+    tripId: cost.trip_id,
+    id: cost.id,
+    version: cost.version,
+    title: cost.title,
+    category: cost.category,
+    amountMinor: cost.amount_minor,
+    currencyCode: cost.currency_code,
+    paymentStatus: cost.payment_status,
+    bookingId: null,
+    itineraryItemId: "activity-1",
+    cabStopId: null,
+    activityMomentId: "moment-1",
+    documentId: null
+  });
+
+  expect(mocks.queueUpdate).toHaveBeenCalledWith(
+    expect.objectContaining({
+      patch: expect.objectContaining({
+        booking_id: null,
+        itinerary_item_id: "activity-1",
+        cab_stop_id: null,
+        activity_moment_id: "moment-1",
+        document_id: null
+      })
+    })
+  );
+});

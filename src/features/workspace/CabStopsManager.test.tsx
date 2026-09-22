@@ -80,7 +80,6 @@ function renderManager() {
       <CabStopsManager
         tripId="trip-1"
         leg={leg}
-        itinerary={[]}
         costs={[]}
         currencyCode="INR"
         eventTimezone="Asia/Kolkata"
@@ -109,7 +108,12 @@ describe("CabStopsManager", () => {
     await screen.findByText(/No intermediate stops yet/i);
     await user.click(screen.getByRole("button", { name: "Add stop" }));
     expect(screen.queryByLabelText(/Time zone/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Link to a timeline event/)).not.toBeInTheDocument();
     await user.type(screen.getByLabelText(/Stop name/), "Museum");
+    expect(screen.getByLabelText("Place")).not.toBeVisible();
+    const moreDetails = screen.getByText("More details");
+    expect(moreDetails.closest("details")).toHaveClass("!p-0");
+    await user.click(moreDetails);
     await user.type(screen.getByLabelText("Place"), "National Museum");
     await user.click(screen.getByRole("button", { name: "Add stop" }));
     await waitFor(() =>
@@ -161,6 +165,7 @@ describe("CabStopsManager", () => {
     const user = renderManager();
     await user.click(await screen.findByRole("button", { name: "Edit Lunch" }));
     await user.type(screen.getByRole("textbox", { name: "Extra cost (optional)" }), "500");
+    await user.click(screen.getByText("More details"));
     await user.selectOptions(screen.getByLabelText("Payment"), "paid");
     await user.click(screen.getByRole("button", { name: "Save stop" }));
     await waitFor(() =>

@@ -11,7 +11,7 @@ export function ModalSheet({
   children
 }: {
   title: string;
-  eyebrow: string;
+  eyebrow?: string;
   onClose: () => void;
   manageHistory?: boolean;
   placement?: "center" | "end";
@@ -45,10 +45,15 @@ export function ModalSheet({
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-xs text-muted" title={eyebrow}>
-              {eyebrow}
-            </p>
-            <h2 id={titleId} className="mt-1 font-display text-xl font-black sm:text-2xl">
+            {eyebrow && (
+              <p className="truncate text-xs text-muted" title={eyebrow}>
+                {eyebrow}
+              </p>
+            )}
+            <h2
+              id={titleId}
+              className={`${eyebrow ? "mt-1" : ""} font-display text-xl font-black sm:text-2xl`}
+            >
               {title}
             </h2>
           </div>

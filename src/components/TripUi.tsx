@@ -158,16 +158,23 @@ export function TripCard({ trip, emphasized = false }: { trip: Trip; emphasized?
 
 export function CostTotals({
   costs,
-  emptyText = "No costs added yet"
+  emptyText = "No costs added yet",
+  label = "Trip Cost",
+  secondaryCosts,
+  secondaryLabel
 }: {
   costs: TripCost[];
   emptyText?: string;
+  label?: string;
+  secondaryCosts?: TripCost[];
+  secondaryLabel?: string;
 }) {
   const totals = Object.entries(groupCostTotals(costs));
+  const secondaryTotals = secondaryCosts ? Object.entries(groupCostTotals(secondaryCosts)) : [];
   return (
     <div className="rounded-xl bg-elevated p-3">
       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted">
-        <WalletCards className="size-4" /> Total trip cost
+        <WalletCards className="size-4 shrink-0" /> <span className="truncate">{label}</span>
       </div>
       {totals.length ? (
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
@@ -182,6 +189,24 @@ export function CostTotals({
       )}
       {costs.some((cost) => cost.payment_status === "refunded") && (
         <p className="mt-1 text-xs text-muted">Refunded items are excluded.</p>
+      )}
+      {secondaryCosts && secondaryLabel && (
+        <div className="mt-3 border-t border-line pt-2">
+          <p className="truncate text-[.65rem] font-bold uppercase tracking-[0.1em] text-muted">
+            {secondaryLabel}
+          </p>
+          {secondaryTotals.length ? (
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+              {secondaryTotals.map(([currency, amount]) => (
+                <strong key={currency} className="font-display text-sm">
+                  {formatMoney(amount, currency)}
+                </strong>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1 text-xs text-muted">No matching costs</p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -202,12 +227,12 @@ export function CompactCostTotal({
     : emptyText;
   return (
     <span
-      className={`inline-flex min-w-0 items-center gap-2 text-sm ${inverse ? "text-surface/80" : "text-muted"}`}
+      className={`inline-flex min-w-0 items-center gap-1 text-[.6rem] min-[360px]:text-[.66rem] min-[411px]:gap-2 min-[411px]:text-xs sm:text-sm ${inverse ? "text-surface/80" : "text-muted"}`}
     >
-      <WalletCards className="size-4 shrink-0" />
-      <span className="font-bold">Total trip cost</span>
+      <WalletCards className="size-3 shrink-0 min-[411px]:size-4" />
+      <span className="shrink-0 font-bold">Trip Cost</span>
       <strong
-        className={`truncate font-display text-base ${inverse ? "text-surface" : "text-ink"}`}
+        className={`truncate font-display text-xs min-[360px]:text-[.82rem] min-[411px]:text-base ${inverse ? "text-surface" : "text-ink"}`}
       >
         {value}
       </strong>

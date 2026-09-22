@@ -42,6 +42,9 @@ const TripPage = lazy(() => import("../pages/TripPage").then((m) => ({ default: 
 const TripDocumentsPage = lazy(() =>
   import("../pages/TripDocumentsPage").then((m) => ({ default: m.TripDocumentsPage }))
 );
+const TripExpensesPage = lazy(() =>
+  import("../pages/TripExpensesPage").then((m) => ({ default: m.TripExpensesPage }))
+);
 const TripReservationsPage = lazy(() =>
   import("../pages/TripReservationsPage").then((m) => ({ default: m.TripReservationsPage }))
 );
@@ -83,6 +86,7 @@ export function App() {
           <Route path="/trips/:tripId/planning/:planningEventId" element={<PlanningPage />} />
           <Route path="/trips/:tripId/reservations" element={<TripReservationsPage />} />
           <Route path="/trips/:tripId/documents" element={<TripDocumentsPage />} />
+          <Route path="/trips/:tripId/expenses" element={<TripExpensesPage />} />
           <Route path="/trips/:tripId/bookings/:bookingId" element={<BookingPage />} />
           <Route path="/trips/:tripId/flights/:flightLegId" element={<FlightPage />} />
           <Route path="/trips/:tripId/readiness" element={<ReadinessPage />} />

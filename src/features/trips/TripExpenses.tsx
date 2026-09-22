@@ -8,6 +8,12 @@ import { splitExpenseEqually, type TravelerBalance } from "./expenses";
 import { formatMoney } from "./presentation";
 import type { ItineraryItem, TripCost } from "./types";
 
+export const EXPENSE_SHEET_THRESHOLD = 20;
+
+export function shouldUseExpenseSheet(costCount: number) {
+  return costCount < EXPENSE_SHEET_THRESHOLD;
+}
+
 export function CostDetailsSheet({
   cost,
   travelers,
@@ -170,23 +176,36 @@ export function CostDetailsSheet({
 
 export function TripExpensesContent({
   costs,
+  itemizedCosts = costs,
+  filteredCosts,
+  filteredLabel,
   balances,
   travelers,
   onViewCost,
-  expenseSplittingControl
+  expenseSplittingControl,
+  emptyText = "No expenses have been added yet."
 }: {
   costs: TripCost[];
+  itemizedCosts?: TripCost[];
+  filteredCosts?: TripCost[];
+  filteredLabel?: string;
   balances: TravelerBalance[];
   travelers: Traveler[];
   onViewCost: (cost: TripCost) => void;
   expenseSplittingControl?: ReactNode;
+  emptyText?: string;
 }) {
   const [showBalances, setShowBalances] = useState(false);
   const balancesId = useId();
 
   return (
     <>
-      <CostTotals costs={costs} />
+      <CostTotals
+        costs={costs}
+        label="Total"
+        secondaryCosts={filteredCosts}
+        secondaryLabel={filteredLabel}
+      />
       <div className="mt-3 overflow-hidden rounded-2xl border border-line bg-surface">
         <label className="flex min-h-12 cursor-pointer items-center justify-between gap-3 p-3 text-sm">
           <span>
@@ -239,63 +258,58 @@ export function TripExpensesContent({
           )}
         </div>
       )}
-      <div className="mt-5">
-        <p className="eyebrow">Itemized expenses</p>
-        <div className="mt-3 space-y-2">
-          {costs.map((cost) => {
-            const paidBy = travelers.find(
-              (traveler) => traveler.id === cost.paid_by_traveler_id
-            )?.display_name;
-            const participantCount = cost.participants?.length ?? 0;
-            return (
-              <button
-                type="button"
-                onClick={() => onViewCost(cost)}
-                className="group grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-xl bg-elevated p-3 text-left text-sm transition hover:-translate-y-0.5 hover:shadow-soft focus-visible:ring-2 focus-visible:ring-brand motion-reduce:hover:translate-y-0"
-                key={cost.id}
-                aria-label={`View details for ${cost.title}`}
-              >
-                <span className="min-w-0">
-                  <span className="block truncate font-bold">{cost.title}</span>
-                  <span className="mt-0.5 block truncate text-xs capitalize text-muted">
-                    {paidBy ? `Paid by ${paidBy} · ` : ""}
-                    {cost.category.replaceAll("_", " ")} ·{" "}
-                    {cost.payment_status.replaceAll("_", " ")}
-                    {participantCount
-                      ? ` · ${participantCount} traveler${participantCount === 1 ? "" : "s"}`
-                      : ""}
-                  </span>
+      <div className="mt-3 space-y-2">
+        {itemizedCosts.map((cost) => {
+          const paidBy = travelers.find(
+            (traveler) => traveler.id === cost.paid_by_traveler_id
+          )?.display_name;
+          const participantCount = cost.participants?.length ?? 0;
+          return (
+            <button
+              type="button"
+              onClick={() => onViewCost(cost)}
+              className="group grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-xl bg-elevated p-3 text-left text-sm transition hover:-translate-y-0.5 hover:shadow-soft focus-visible:ring-2 focus-visible:ring-brand motion-reduce:hover:translate-y-0"
+              key={cost.id}
+              aria-label={`View details for ${cost.title}`}
+            >
+              <span className="min-w-0">
+                <span className="block truncate font-bold">{cost.title}</span>
+                <span className="mt-0.5 block truncate text-xs capitalize text-muted">
+                  {paidBy ? `Paid by ${paidBy} · ` : ""}
+                  {cost.category.replaceAll("_", " ")} · {cost.payment_status.replaceAll("_", " ")}
+                  {participantCount
+                    ? ` · ${participantCount} traveler${participantCount === 1 ? "" : "s"}`
+                    : ""}
                 </span>
-                <span className="flex items-center gap-2">
-                  <strong className="whitespace-nowrap">
-                    {cost.amount_minor === 0
-                      ? "Free"
-                      : formatMoney(cost.amount_minor, cost.currency_code)}
-                  </strong>
-                  <ChevronRight className="size-4 shrink-0 text-muted transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" />
-                </span>
-              </button>
-            );
-          })}
-          {costs.length === 0 && (
-            <p className="rounded-xl bg-elevated p-4 text-sm text-muted">
-              No expenses have been added yet.
-            </p>
-          )}
-        </div>
+              </span>
+              <span className="flex items-center gap-2">
+                <strong className="whitespace-nowrap">
+                  {cost.amount_minor === 0
+                    ? "Free"
+                    : formatMoney(cost.amount_minor, cost.currency_code)}
+                </strong>
+                <ChevronRight className="size-4 shrink-0 text-muted transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" />
+              </span>
+            </button>
+          );
+        })}
+        {itemizedCosts.length === 0 && (
+          <p className="rounded-xl bg-elevated p-4 text-sm text-muted">{emptyText}</p>
+        )}
       </div>
     </>
   );
 }
 
 export function TripExpensesSheet({
-  title = "Trip expenses",
+  title = "Expenses",
   costs,
   balances,
   travelers,
   onClose,
   onViewCost,
-  expenseSplittingControl
+  expenseSplittingControl,
+  onOpenFullPage
 }: {
   title?: string;
   costs: TripCost[];
@@ -304,10 +318,16 @@ export function TripExpensesSheet({
   onClose: () => void;
   onViewCost: (cost: TripCost) => void;
   expenseSplittingControl?: ReactNode;
+  onOpenFullPage?: () => void;
 }) {
   return (
-    <ModalSheet eyebrow="Money" title={title} onClose={onClose}>
+    <ModalSheet title={title} onClose={onClose}>
       <div className="mt-3">
+        {onOpenFullPage && (
+          <button type="button" className="secondary-button mb-3 w-full" onClick={onOpenFullPage}>
+            Open full expenses <ChevronRight className="size-4" aria-hidden="true" />
+          </button>
+        )}
         <TripExpensesContent
           costs={costs}
           balances={balances}

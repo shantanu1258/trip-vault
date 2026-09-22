@@ -8,14 +8,13 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  CirclePlus,
   Download,
   LocateFixed,
   Loader2,
   MapPin,
   NotebookPen,
   Pencil,
-  Plus,
-  ReceiptIndianRupee,
   Search,
   TicketCheck,
   Trash2,
@@ -92,6 +91,7 @@ import {
   getErrorMessage
 } from "../features/trips/presentation";
 import { AddCostForm, AddItineraryForm, TripSettingsForm } from "../features/trips/TripForms";
+import { QuickAddCostForm } from "../features/trips/QuickAddCostForm";
 import {
   isJourneyEventType,
   timelineEventTypes,
@@ -117,7 +117,11 @@ import {
   tripRouteModalNavigationState,
   type TripView
 } from "../features/trips/navigation";
-import { CostDetailsSheet, TripExpensesSheet } from "../features/trips/TripExpenses";
+import {
+  CostDetailsSheet,
+  shouldUseExpenseSheet,
+  TripExpensesSheet
+} from "../features/trips/TripExpenses";
 import { TripDetailsView } from "../features/trips/TripDetailsView";
 import { ReadinessProgress } from "../features/trips/TripReadinessSummary";
 import { TripTimeline, type TimelineHandle } from "../features/timeline/TripTimeline";
@@ -1282,7 +1286,6 @@ export function EventDetailsSheet({
               key={leg.id}
               tripId={tripId}
               leg={leg}
-              itinerary={itinerary}
               costs={costs}
               currencyCode={tripCurrency ?? "USD"}
               eventTimezone={leg.origin_timezone}
@@ -1617,6 +1620,7 @@ export function TripPage() {
   const [editingRequirement, setEditingRequirement] = useState<Requirement | null>(null);
   const [viewingRequirement, setViewingRequirement] = useState<Requirement | null>(null);
   const [showingExpenses, setShowingExpenses] = useState(false);
+  const [quickCostOpen, setQuickCostOpen] = useState(false);
   const [viewingCost, setViewingCost] = useState<TripCost | null>(null);
   const [notificationMessage, setNotificationMessage] = useState("");
   const handledPushCost = useRef<string | null>(null);
@@ -2198,6 +2202,26 @@ export function TripPage() {
       state: tripEntryNavigationState(location.state, tripId, view)
     });
   };
+  const closeEventForm = (savedItineraryItemId?: string) => {
+    if (!savedItineraryItemId) {
+      closeForm();
+      return;
+    }
+    requestedTimelineItem.current = savedItineraryItemId;
+    positioned.current = false;
+    setOpenForm(null);
+    setDocumentToAttach(null);
+    const next = new URLSearchParams(searchParams);
+    next.delete("add");
+    next.delete("eventType");
+    next.delete("event");
+    next.delete("view");
+    next.delete("section");
+    setSearchParams(next, {
+      replace: true,
+      state: tripEntryNavigationState(location.state, tripId, "timeline")
+    });
+  };
   const openPeople = (trigger: HTMLButtonElement) => {
     peopleTriggerRef.current = trigger;
     setOpenForm("people");
@@ -2229,7 +2253,14 @@ export function TripPage() {
       });
     } else changeView("timeline");
   };
-  const openExpenses = () => setShowingExpenses(true);
+  const openExpensesPage = () => {
+    saveScroll(tripId, view);
+    navigate(`/trips/${tripId}/expenses`, { state: childNavigationState });
+  };
+  const openExpenses = () => {
+    if (shouldUseExpenseSheet(visibleCosts.length)) setShowingExpenses(true);
+    else openExpensesPage();
+  };
   const closeCostDetails = () => {
     const returnEventId = costReturnEventId;
     const returnToExpenses = costReturnsToExpenses;
@@ -2420,19 +2451,30 @@ export function TripPage() {
                   {role ?? "member"}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={openExpenses}
-                className="mt-4 inline-flex max-w-full items-center gap-2 rounded-xl bg-surface/10 px-3 py-2 text-left transition hover:bg-surface/15 focus-visible:ring-2 focus-visible:ring-surface motion-reduce:transition-none"
-                aria-label="Open trip expenses"
-              >
-                <CompactCostTotal
-                  costs={visibleCosts}
-                  emptyText="Add your first trip cost"
-                  inverse
-                />
-                <ChevronRight className="size-4 shrink-0 text-surface/60" />
-              </button>
+              <div className="mt-4 flex min-w-0 items-stretch gap-2">
+                <button
+                  type="button"
+                  onClick={openExpenses}
+                  className="inline-flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-surface/10 px-2 py-2 text-left transition hover:bg-surface/15 focus-visible:ring-2 focus-visible:ring-surface min-[411px]:gap-2 min-[411px]:px-3 motion-reduce:transition-none"
+                  aria-label="Open trip expenses"
+                >
+                  <span className="min-w-0 flex-1">
+                    <CompactCostTotal costs={visibleCosts} emptyText="No costs yet" inverse />
+                  </span>
+                  <ChevronRight className="size-3.5 shrink-0 text-surface/60 min-[411px]:size-4" />
+                </button>
+                {editable && (
+                  <button
+                    type="button"
+                    onClick={() => setQuickCostOpen(true)}
+                    className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1 rounded-xl bg-surface/10 px-2 text-[.66rem] font-extrabold text-surface transition hover:bg-surface/15 focus-visible:ring-2 focus-visible:ring-surface min-[411px]:gap-1.5 min-[411px]:px-3 min-[411px]:text-xs motion-reduce:transition-none"
+                    aria-label="Add cost"
+                  >
+                    <CirclePlus className="size-3.5 min-[411px]:size-4" />
+                    <span className="hidden min-[340px]:inline">Add cost</span>
+                  </button>
+                )}
+              </div>
             </header>
             <TripViewTabs view={view} onChange={changeView} />
             {view === "timeline" && (
@@ -2738,7 +2780,7 @@ export function TripPage() {
                 navigationState={childNavigationState}
                 online={navigator.onLine}
                 onAddEvent={openAddEvent}
-                onOpenExpenses={openExpenses}
+                onOpenExpenses={openExpensesPage}
                 onAddCost={() => {
                   setCostTargetItem(null);
                   setOpenForm("cost");
@@ -2820,9 +2862,7 @@ export function TripPage() {
       </div>
       {trip && showingExpenses && (
         <TripExpensesSheet
-          title={
-            focusedTraveler ? `${focusedTraveler.display_name}'s trip expenses` : "Trip expenses"
-          }
+          title={focusedTraveler ? `${focusedTraveler.display_name}'s expenses` : "Expenses"}
           costs={visibleCosts}
           balances={balances}
           travelers={travelers}
@@ -2836,25 +2876,31 @@ export function TripPage() {
             setCostReturnsToExpenses(true);
             setViewingCost(cost);
           }}
+          onOpenFullPage={() => {
+            setShowingExpenses(false);
+            openExpensesPage();
+          }}
           expenseSplittingControl={
             editable ? (
               <>
                 <label className="flex min-h-12 cursor-pointer items-center justify-between gap-3 p-3 text-sm">
-                  <span>
-                    <strong className="block">Enable expense splitting</strong>
-                    <span className="mt-1 block text-xs leading-5 text-muted">
-                      Off: split equally with everyone.
-                    </span>
-                  </span>
-                  <input
-                    type="checkbox"
-                    className="size-5 shrink-0 accent-brand"
-                    checked={Boolean(trip.expense_splitting_enabled)}
-                    disabled={updateExpenseSplitting.isPending}
-                    onChange={(event) =>
-                      updateExpenseSplitting.mutate({ trip, enabled: event.target.checked })
-                    }
-                  />
+                  <strong>Enable expense splitting</strong>
+                  {updateExpenseSplitting.isPending ? (
+                    <Loader2
+                      role="status"
+                      aria-label="Saving expense splitting setting"
+                      className="size-5 shrink-0 animate-spin text-brand"
+                    />
+                  ) : (
+                    <input
+                      type="checkbox"
+                      className="size-5 shrink-0 accent-brand"
+                      checked={Boolean(trip.expense_splitting_enabled)}
+                      onChange={(event) =>
+                        updateExpenseSplitting.mutate({ trip, enabled: event.target.checked })
+                      }
+                    />
+                  )}
                 </label>
                 {updateExpenseSplitting.error && (
                   <p
@@ -3009,7 +3055,7 @@ export function TripPage() {
           documentToAttach={documentToAttach ?? undefined}
           initialType={routedEventType}
           routeBacked
-          onClose={closeForm}
+          onClose={closeEventForm}
           onTypeChange={changeAddEventType}
           onAddDocument={async (saved, handoff) => {
             const assignmentPreset: DocumentAssignmentPreset = {
@@ -3109,6 +3155,14 @@ export function TripPage() {
           itineraryItemId={costTargetItem?.id}
           sourceTitle={costTargetItem?.title}
           onClose={closeForm}
+        />
+      )}
+      {trip && quickCostOpen && editable && (
+        <QuickAddCostForm
+          trip={trip}
+          travelers={travelers}
+          onClose={() => setQuickCostOpen(false)}
+          onSaved={() => setNotificationMessage("Cost added to Trip expenses.")}
         />
       )}
       {trip && openForm === "document" && (

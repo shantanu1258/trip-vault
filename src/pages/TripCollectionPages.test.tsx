@@ -1,19 +1,22 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import type { Trip } from "../features/trips/types";
+import type { Trip, TripCost } from "../features/trips/types";
 import type { Booking, Traveler, VaultDocument } from "../features/workspace/types";
 
 const mocks = vi.hoisted(() => ({
   getTrip: vi.fn(),
+  updateTripExpenseSplitting: vi.fn(),
+  listCosts: vi.fn().mockResolvedValue([]),
   listBookings: vi.fn().mockResolvedValue([]),
   listFlightLegsForTrip: vi.fn().mockResolvedValue([]),
   listJourneyLegsForTrip: vi.fn().mockResolvedValue([]),
   listTripBookingTravelers: vi.fn().mockResolvedValue([]),
   listItinerary: vi.fn().mockResolvedValue([]),
   listTravelers: vi.fn().mockResolvedValue([]),
+  listMembers: vi.fn().mockResolvedValue([]),
   listVaultDocuments: vi.fn().mockResolvedValue([]),
   listTripEventDocumentReferences: vi.fn().mockResolvedValue([])
 }));
@@ -24,8 +27,17 @@ vi.mock("../components/AppShell", () => ({
 vi.mock("../features/trips/api", async () => {
   const actual =
     await vi.importActual<typeof import("../features/trips/api")>("../features/trips/api");
-  return { ...actual, getTrip: mocks.getTrip, listItinerary: mocks.listItinerary };
+  return {
+    ...actual,
+    getTrip: mocks.getTrip,
+    listCosts: mocks.listCosts,
+    listItinerary: mocks.listItinerary,
+    updateTripExpenseSplitting: mocks.updateTripExpenseSplitting
+  };
 });
+vi.mock("../features/sync/localSync", () => ({
+  localProfileId: vi.fn().mockResolvedValue("owner-user")
+}));
 vi.mock("../features/workspace/api", async () => {
   const actual = await vi.importActual<typeof import("../features/workspace/api")>(
     "../features/workspace/api"
@@ -37,6 +49,7 @@ vi.mock("../features/workspace/api", async () => {
     listJourneyLegsForTrip: mocks.listJourneyLegsForTrip,
     listTripBookingTravelers: mocks.listTripBookingTravelers,
     listTravelers: mocks.listTravelers,
+    listMembers: mocks.listMembers,
     listVaultDocuments: mocks.listVaultDocuments
   };
 });
@@ -46,6 +59,7 @@ vi.mock("../features/workspace/tripRelationships", () => ({
 }));
 
 import { TripDocumentsPage } from "./TripDocumentsPage";
+import { TripExpensesPage } from "./TripExpensesPage";
 import { TripReservationsPage } from "./TripReservationsPage";
 
 const trip: Trip = {
@@ -122,6 +136,7 @@ function renderRoute(element: React.ReactNode, path: string) {
         <Routes>
           <Route path="/trips/:tripId/reservations" element={element} />
           <Route path="/trips/:tripId/documents" element={element} />
+          <Route path="/trips/:tripId/expenses" element={element} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -219,5 +234,106 @@ describe("large trip collection pages", () => {
     );
     expect(screen.getByText("Bus ticket")).toBeVisible();
     expect(screen.queryByText("Hotel confirmation")).not.toBeInTheDocument();
+  });
+
+  it("shows expenses on a dedicated page and filters the itemized list", async () => {
+    let finishSplittingUpdate!: (updated: Trip) => void;
+    mocks.updateTripExpenseSplitting.mockImplementationOnce(
+      () =>
+        new Promise<Trip>((resolve) => {
+          finishSplittingUpdate = resolve;
+        })
+    );
+    const costs: TripCost[] = [
+      {
+        id: "cost-food",
+        trip_id: trip.id,
+        booking_id: null,
+        itinerary_item_id: null,
+        title: "Museum lunch",
+        category: "food",
+        amount_minor: 250000,
+        currency_code: "INR",
+        payment_status: "paid",
+        paid_by_traveler_id: "traveler-1",
+        participants: [{ traveler_id: "traveler-1", share_amount_minor: 250000 }],
+        notes: null,
+        created_at: "2026-09-20T00:00:00Z"
+      },
+      {
+        id: "cost-hotel",
+        trip_id: trip.id,
+        booking_id: null,
+        itinerary_item_id: null,
+        title: "Harbour hotel",
+        category: "hotel",
+        amount_minor: 900000,
+        currency_code: "INR",
+        payment_status: "planned",
+        paid_by_traveler_id: null,
+        participants: [{ traveler_id: "traveler-2", share_amount_minor: null }],
+        notes: null,
+        created_at: "2026-09-19T00:00:00Z"
+      }
+    ];
+    mocks.getTrip.mockResolvedValue(trip);
+    mocks.listCosts.mockResolvedValue(costs);
+    mocks.listItinerary.mockResolvedValue([]);
+    mocks.listBookings.mockResolvedValue([]);
+    mocks.listTravelers.mockResolvedValue(travelers);
+    mocks.listMembers.mockResolvedValue([
+      {
+        user_id: "owner-user",
+        role: "owner",
+        participation_type: "traveler",
+        joined_at: "2026-09-01T00:00:00Z",
+        display_name: "Shantanu"
+      }
+    ]);
+
+    renderRoute(<TripExpensesPage />, "/trips/trip-1/expenses");
+
+    expect(await screen.findByRole("heading", { name: "Expenses" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "View details for Museum lunch" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "View details for Harbour hotel" })).toBeVisible();
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Enable expense splitting" }));
+    expect(screen.getByRole("status", { name: "Saving expense splitting setting" })).toBeVisible();
+    await act(async () => {
+      finishSplittingUpdate({ ...trip, expense_splitting_enabled: true });
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("status", { name: "Saving expense splitting setting" })
+      ).not.toBeInTheDocument()
+    );
+
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Filter expenses by category" }),
+      "food"
+    );
+    const foodTotal = screen.getByText("Food total").closest(".rounded-xl");
+    expect(within(foodTotal as HTMLElement).getByText("₹2,500.00")).toBeVisible();
+    expect(within(foodTotal as HTMLElement).getByText("₹2,500.00")).toHaveClass("text-sm");
+    expect(within(foodTotal as HTMLElement).getByText("₹11,500.00")).toBeVisible();
+    expect(screen.getByRole("button", { name: "View details for Museum lunch" })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "View details for Harbour hotel" })
+    ).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Filter expenses by category" }),
+      "all"
+    );
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Filter expenses by traveler" }),
+      "traveler-2"
+    );
+    const shubhamTotal = screen.getByText("Shubham total").closest(".rounded-xl");
+    expect(within(shubhamTotal as HTMLElement).getByText("₹9,000.00")).toBeVisible();
+    expect(screen.getByRole("button", { name: "View details for Harbour hotel" })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "View details for Museum lunch" })
+    ).not.toBeInTheDocument();
   });
 });

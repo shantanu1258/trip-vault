@@ -10,6 +10,11 @@ const mocks = vi.hoisted(() => ({
   listItinerary: vi.fn(),
   listItineraryParticipantIds: vi.fn(),
   listVaultDocuments: vi.fn(),
+  listJourneyLegsForBooking: vi.fn(),
+  listCabStopsForTrip: vi.fn(),
+  listActivityMoments: vi.fn(),
+  addActivityMoment: vi.fn(),
+  addCabStop: vi.fn(),
   updateItineraryItem: vi.fn(),
   addTripCost: vi.fn(),
   updateTripCost: vi.fn(),
@@ -37,8 +42,15 @@ vi.mock("../timeline/TimingFields", () => ({
   })
 }));
 vi.mock("../workspace/api", () => ({
+  addCabStop: mocks.addCabStop,
   listItineraryParticipantIds: mocks.listItineraryParticipantIds,
-  listVaultDocuments: mocks.listVaultDocuments
+  listVaultDocuments: mocks.listVaultDocuments,
+  listJourneyLegsForBooking: mocks.listJourneyLegsForBooking,
+  listCabStopsForTrip: mocks.listCabStopsForTrip
+}));
+vi.mock("../activity-moments/api", () => ({
+  addActivityMoment: mocks.addActivityMoment,
+  listActivityMoments: mocks.listActivityMoments
 }));
 vi.mock("../workspace/WorkspaceForms", () => ({
   UploadDocumentForm: ({
@@ -244,6 +256,21 @@ describe("AddCostForm optional expense splitting", () => {
     mocks.listVaultDocuments.mockResolvedValue([
       { id: "receipt-1", trip_id: trip.id, title: "Dinner receipt" }
     ]);
+    mocks.listJourneyLegsForBooking.mockResolvedValue([]);
+    mocks.listCabStopsForTrip.mockResolvedValue([]);
+    mocks.listActivityMoments.mockResolvedValue([]);
+    mocks.addActivityMoment.mockResolvedValue({
+      id: "moment-new",
+      itinerary_item_id: "activity-1",
+      moment_order: 100,
+      title: "New Moment",
+      location: null,
+      starts_at: null,
+      ends_at: null,
+      timezone: trip.primary_timezone,
+      notes: null,
+      source_planning_item_id: null
+    });
   });
 
   function renderCost(cost?: import("./types").TripCost) {
@@ -277,10 +304,47 @@ describe("AddCostForm optional expense splitting", () => {
         expect.objectContaining({ itineraryItemId: item.id, participantTravelerIds: ["asha"] })
       )
     );
-    expect(mocks.addTripCost.mock.calls[0][0].documentId).toBeUndefined();
+    expect(mocks.addTripCost.mock.calls[0][0].documentId).toBeNull();
     const status = screen.getByLabelText("Payment status");
     expect(status.closest(".grid")).toBe(screen.getByLabelText("Paid by").closest(".grid"));
     expect(status.closest(".grid")).toHaveClass("grid-cols-2");
+  });
+
+  it("keeps expense connections expanded and creates a new Moment from the cost name", async () => {
+    const user = userEvent.setup();
+    const activityItem = {
+      ...item,
+      id: "activity-1",
+      title: "Evening walk",
+      event_type: "activity" as const,
+      applies_to_all_travelers: true
+    };
+    mocks.listItinerary.mockResolvedValue([activityItem]);
+    renderCost();
+
+    expect(screen.getByLabelText("Connect cost to")).toBeVisible();
+    await user.type(screen.getByLabelText(/What was it for/), "Ice cream");
+    await user.type(screen.getByLabelText("Amount"), "300");
+    await user.selectOptions(screen.getByLabelText("Connect cost to"), "event");
+    await screen.findByRole("option", { name: "Evening walk" });
+    await user.selectOptions(screen.getByLabelText("Event"), activityItem.id);
+    await user.selectOptions(screen.getByLabelText("Moment (optional)"), "Add as a new Moment");
+    await user.click(screen.getByRole("button", { name: "Save cost" }));
+
+    await waitFor(() =>
+      expect(mocks.addActivityMoment).toHaveBeenCalledWith({
+        tripId: trip.id,
+        itineraryItemId: activityItem.id,
+        title: "Ice cream",
+        timezone: activityItem.timezone
+      })
+    );
+    expect(mocks.addTripCost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        itineraryItemId: activityItem.id,
+        activityMomentId: "moment-new"
+      })
+    );
   });
 
   it("allows an unlinked existing expense to choose a document instead of an event", async () => {
@@ -311,9 +375,117 @@ describe("AddCostForm optional expense splitting", () => {
         expect.objectContaining({
           id: "cost-1",
           documentId: "receipt-1",
-          itineraryItemId: undefined,
-          bookingId: undefined,
+          itineraryItemId: null,
+          bookingId: null,
           participantTravelerIds: ["ravi"]
+        })
+      )
+    );
+  });
+
+  it("moves an existing Moment cost to a selected cab stop", async () => {
+    const user = userEvent.setup();
+    const activityItem = {
+      ...item,
+      id: "activity-1",
+      title: "Market walk",
+      event_type: "activity" as const,
+      applies_to_all_travelers: true
+    };
+    const cabItem = {
+      ...item,
+      id: "cab-1",
+      booking_id: "cab-booking-1",
+      title: "Cab for the day",
+      event_type: "cab" as const,
+      applies_to_all_travelers: true
+    };
+    mocks.listItinerary.mockResolvedValue([activityItem, cabItem]);
+    mocks.listActivityMoments.mockResolvedValue([
+      {
+        id: "moment-1",
+        itinerary_item_id: activityItem.id,
+        moment_order: 100,
+        title: "Tea stop",
+        location: null,
+        starts_at: null,
+        ends_at: null,
+        timezone: activityItem.timezone,
+        notes: null,
+        source_planning_item_id: null
+      }
+    ]);
+    mocks.listJourneyLegsForBooking.mockResolvedValue([
+      {
+        id: "cab-leg-1",
+        booking_id: cabItem.booking_id,
+        segment_order: 1,
+        mode: "cab",
+        operator_name: null,
+        service_number: null,
+        origin_code: null,
+        origin_name: "Hotel",
+        origin_country_code: null,
+        origin_timezone: trip.primary_timezone,
+        destination_code: null,
+        destination_name: "Market",
+        destination_country_code: null,
+        destination_timezone: trip.primary_timezone,
+        scheduled_departure_at: item.starts_at,
+        scheduled_arrival_at: null,
+        boarding_at: null,
+        boarding_lead_minutes: null,
+        departure_platform: null,
+        arrival_platform: null,
+        coach_or_cabin: null,
+        seat: null,
+        status_note: null
+      }
+    ]);
+    mocks.listCabStopsForTrip.mockResolvedValue([
+      {
+        id: "stop-1",
+        journey_leg_id: "cab-leg-1",
+        stop_order: 100,
+        title: "Spice market",
+        location: null,
+        arrives_at: null,
+        departs_at: null,
+        timezone: trip.primary_timezone,
+        notes: null,
+        linked_itinerary_item_id: null
+      }
+    ]);
+    mocks.updateTripCost.mockResolvedValue({ id: "cost-1" });
+    renderCost({
+      id: "cost-1",
+      trip_id: trip.id,
+      title: "Tea",
+      category: "food",
+      amount_minor: 30000,
+      currency_code: "INR",
+      payment_status: "paid",
+      itinerary_item_id: activityItem.id,
+      activity_moment_id: "moment-1",
+      notes: null,
+      created_at: "",
+      participants: [{ traveler_id: "asha", share_amount_minor: null }]
+    });
+
+    await waitFor(() => expect(screen.getByLabelText("Event")).toHaveValue(activityItem.id));
+    await user.selectOptions(screen.getByLabelText("Event"), cabItem.id);
+    await screen.findByRole("option", { name: "Spice market" });
+    await user.selectOptions(screen.getByLabelText("Cab stop (optional)"), "stop-1");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(mocks.updateTripCost).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bookingId: cabItem.booking_id,
+          itineraryItemId: cabItem.id,
+          cabStopId: "stop-1",
+          activityMomentId: null,
+          documentId: null
         })
       )
     );
@@ -337,7 +509,7 @@ describe("AddCostForm optional expense splitting", () => {
       expect(mocks.addTripCost).toHaveBeenCalledWith(
         expect.objectContaining({
           documentId: "receipt-1",
-          itineraryItemId: undefined,
+          itineraryItemId: null,
           title: "Receipt expense",
           amountMinor: 5000
         })
@@ -381,6 +553,9 @@ describe("AddCostForm optional expense splitting", () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     mocks.updateTripCost.mockResolvedValue({ id: "cost-1" });
+    mocks.listItinerary.mockResolvedValue([
+      { ...item, id: "booking-event", booking_id: "booking-1", applies_to_all_travelers: true }
+    ]);
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
     render(
       <MemoryRouter>
@@ -410,6 +585,7 @@ describe("AddCostForm optional expense splitting", () => {
     );
     expect(screen.getByRole("checkbox", { name: "Asha" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Ravi" })).not.toBeChecked();
+    await waitFor(() => expect(screen.getByLabelText("Event")).toHaveValue("booking-event"));
     await user.click(screen.getByRole("checkbox", { name: "Asha" }));
     await user.click(screen.getByRole("button", { name: "Save changes" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Choose at least one traveler");

@@ -1376,19 +1376,33 @@ export async function updateTripCost(input: UpdateCostInput): Promise<TripCost> 
     (cost) => cost.id === input.id
   );
   if (!existing) throw new Error("Refresh the cost list before editing this item.");
+  const bookingId =
+    input.bookingId === undefined ? (existing.booking_id ?? null) : input.bookingId || null;
+  const itineraryItemId =
+    input.itineraryItemId === undefined
+      ? (existing.itinerary_item_id ?? null)
+      : input.itineraryItemId || null;
+  const cabStopId =
+    input.cabStopId === undefined ? (existing.cab_stop_id ?? null) : input.cabStopId || null;
+  const activityMomentId =
+    input.activityMomentId === undefined
+      ? (existing.activity_moment_id ?? null)
+      : input.activityMomentId || null;
+  const documentId =
+    input.documentId === undefined ? (existing.document_id ?? null) : input.documentId || null;
   assertCostAssociation({
-    bookingId: input.bookingId || existing.booking_id || undefined,
-    itineraryItemId: input.itineraryItemId || existing.itinerary_item_id || undefined,
-    cabStopId: input.cabStopId || existing.cab_stop_id || undefined,
-    activityMomentId: input.activityMomentId || existing.activity_moment_id || undefined,
-    documentId: input.documentId === undefined ? existing.document_id : input.documentId
+    bookingId,
+    itineraryItemId,
+    cabStopId,
+    activityMomentId,
+    documentId
   });
   const patch = {
-    booking_id: input.bookingId || existing.booking_id || null,
-    itinerary_item_id: input.itineraryItemId || existing.itinerary_item_id || null,
-    cab_stop_id: input.cabStopId || existing.cab_stop_id || null,
-    activity_moment_id: input.activityMomentId || existing.activity_moment_id || null,
-    ...(input.documentId !== undefined ? { document_id: input.documentId || null } : {}),
+    booking_id: bookingId,
+    itinerary_item_id: itineraryItemId,
+    cab_stop_id: cabStopId,
+    activity_moment_id: activityMomentId,
+    document_id: documentId,
     title: input.title,
     category: input.category,
     amount_minor: input.amountMinor,
@@ -1397,8 +1411,29 @@ export async function updateTripCost(input: UpdateCostInput): Promise<TripCost> 
     paid_by_traveler_id: input.paidByTravelerId || null,
     notes: input.notes || null
   };
-  const documentDependencies = await costDocumentDependencies(input.documentId);
+  const documentDependencies = await costDocumentDependencies(documentId);
   if (!navigator.onLine) {
+    const { database } = await import("../../lib/local-db/database");
+    const associationDependencies = (
+      await Promise.all(
+        [
+          ...(cabStopId ? [{ id: cabStopId, table: "cab_stops" }] : []),
+          ...(activityMomentId ? [{ id: activityMomentId, table: "activity_moments" }] : [])
+        ].map(async (association) => {
+          const operations = await database.outbox
+            .where("entityId")
+            .equals(association.id)
+            .toArray();
+          return operations
+            .filter(
+              (operation) =>
+                operation.operation === "create" &&
+                (operation.payload as { table?: string } | undefined)?.table === association.table
+            )
+            .map((operation) => operation.operationId);
+        })
+      )
+    ).flat();
     const participants = [...new Set(input.participantTravelerIds ?? [])].map((traveler_id) => ({
       traveler_id,
       share_amount_minor: null
@@ -1415,7 +1450,7 @@ export async function updateTripCost(input: UpdateCostInput): Promise<TripCost> 
       table: "trip_costs",
       row: updated,
       patch,
-      dependsOn: documentDependencies,
+      dependsOn: [...documentDependencies, ...associationDependencies],
       baseVersion: existing.version
     });
     const removals = await Promise.all(

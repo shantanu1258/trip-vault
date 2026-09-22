@@ -25,6 +25,7 @@ import {
 } from "./api";
 import { getErrorMessage } from "./presentation";
 import {
+  costCategories,
   isJourneyEventType,
   timelineEventTypes,
   type CreateCostInput,
@@ -48,6 +49,7 @@ import { UploadDocumentForm } from "../workspace/WorkspaceForms";
 import { listItinerary } from "./api";
 import { useFormDraft } from "../../lib/forms/useFormDraft";
 import { furthestEventTimezone, readEventTiming, TimingFields } from "../timeline/TimingFields";
+import { CostEventConnectionFields, useCostEventConnection } from "./CostEventConnectionFields";
 
 export function AddItineraryForm({
   trip,
@@ -403,35 +405,33 @@ export function AddCostForm({
 }) {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
-  const lockedAssociation = Boolean(
-    bookingId ||
-    itineraryItemId ||
-    cost?.booking_id ||
-    cost?.itinerary_item_id ||
-    cost?.cab_stop_id ||
-    cost?.activity_moment_id
+  const lockedAssociation = Boolean(!cost && (bookingId || itineraryItemId));
+  const [association, setAssociation] = useState(
+    cost?.document_id
+      ? "document"
+      : cost?.booking_id || cost?.itinerary_item_id || cost?.cab_stop_id || cost?.activity_moment_id
+        ? "event"
+        : "none"
   );
-  const [association, setAssociation] = useState(cost?.document_id ? "document" : "none");
-  const [selectedEventId, setSelectedEventId] = useState("");
   const [documentId, setDocumentId] = useState(cost?.document_id ?? "");
   const [uploading, setUploading] = useState(false);
-  const eventsQuery = useQuery({
-    queryKey: ["itinerary", trip.id],
-    queryFn: () => listItinerary(trip.id),
-    enabled: !lockedAssociation && association === "event"
+  const eventConnection = useCostEventConnection({
+    tripId: trip.id,
+    enabled: !lockedAssociation && association === "event",
+    initialItineraryItemId: cost?.itinerary_item_id,
+    initialBookingId: cost?.booking_id,
+    initialCabStopId: cost?.cab_stop_id,
+    initialActivityMomentId: cost?.activity_moment_id
   });
   const documentsQuery = useQuery({
     queryKey: ["documents", trip.id],
     queryFn: () => listVaultDocuments(trip.id),
     enabled: !lockedAssociation && association === "document"
   });
-  const selectedEvent =
-    association === "event"
-      ? eventsQuery.data?.find((item) => item.id === selectedEventId && !item.deleted_at)
-      : undefined;
+  const selectedEvent = association === "event" ? eventConnection.selectedEvent : undefined;
   const eventParticipants = useQuery({
-    queryKey: ["itinerary-participant-ids", selectedEventId, trip.id],
-    queryFn: () => listItineraryParticipantIds(selectedEventId, trip.id),
+    queryKey: ["itinerary-participant-ids", eventConnection.selectedEventId, trip.id],
+    queryFn: () => listItineraryParticipantIds(eventConnection.selectedEventId, trip.id),
     enabled: !cost && Boolean(selectedEvent && !selectedEvent.applies_to_all_travelers)
   });
   const needsEventParticipants = !cost && selectedEvent && !selectedEvent.applies_to_all_travelers;
@@ -446,13 +446,27 @@ export function AddCostForm({
     trip.expense_splitting_enabled || cost?.participants?.length || selectedEvent
   );
   const mutation = useMutation({
-    mutationFn: (input: CreateCostInput) =>
-      cost ? updateTripCost({ ...input, id: cost.id, version: cost.version }) : addTripCost(input),
+    mutationFn: async (input: CreateCostInput) => {
+      const resolvedInput =
+        !lockedAssociation && association === "event"
+          ? { ...input, ...(await eventConnection.resolveConnection(input.title)) }
+          : input;
+      return cost
+        ? updateTripCost({ ...resolvedInput, id: cost.id, version: cost.version })
+        : addTripCost(resolvedInput);
+    },
     onSuccess: async () => {
       draft.clearDraft();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["costs", trip.id] }),
-        queryClient.invalidateQueries({ queryKey: ["home-costs", trip.id] })
+        queryClient.invalidateQueries({ queryKey: ["home-costs", trip.id] }),
+        ...(eventConnection.selectedEvent?.event_type === "activity"
+          ? [
+              queryClient.invalidateQueries({
+                queryKey: ["activity-moments", eventConnection.selectedEvent.id]
+              })
+            ]
+          : [])
       ]);
       onClose();
     }
@@ -484,13 +498,34 @@ export function AddCostForm({
       setMessage("Choose at least one traveler to share this cost.");
       return;
     }
+    const connection = lockedAssociation
+      ? {
+          bookingId: bookingId ?? null,
+          itineraryItemId: itineraryItemId ?? null,
+          cabStopId: null,
+          activityMomentId: null,
+          documentId: null
+        }
+      : association === "event"
+        ? { ...eventConnection.connection, documentId: null }
+        : association === "document"
+          ? {
+              bookingId: null,
+              itineraryItemId: null,
+              cabStopId: null,
+              activityMomentId: null,
+              documentId: documentId || null
+            }
+          : {
+              bookingId: null,
+              itineraryItemId: null,
+              cabStopId: null,
+              activityMomentId: null,
+              documentId: null
+            };
     mutation.mutate({
       tripId: trip.id,
-      bookingId: bookingId ?? cost?.booking_id ?? selectedEvent?.booking_id ?? undefined,
-      itineraryItemId: itineraryItemId ?? cost?.itinerary_item_id ?? selectedEvent?.id,
-      ...(!lockedAssociation && (association === "document" || cost?.document_id)
-        ? { documentId: association === "document" ? documentId : null }
-        : {}),
+      ...connection,
       title: parsed.data.title,
       category: parsed.data.category,
       amountMinor: amountStringToMinor(parsed.data.amount, parsed.data.currencyCode),
@@ -537,17 +572,10 @@ export function AddCostForm({
                   name="category"
                   defaultValue={cost?.category ?? "other"}
                 >
-                  {[
-                    "flight",
-                    "hotel",
-                    "transport",
-                    "activity",
-                    "food",
-                    "visa",
-                    "insurance",
-                    "other"
-                  ].map((item) => (
-                    <option key={item}>{item}</option>
+                  {costCategories.map((item) => (
+                    <option key={item} value={item}>
+                      {item.replaceAll("_", " ")}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -629,27 +657,10 @@ export function AddCostForm({
                 </label>
                 {association === "event" && (
                   <>
-                    <label className="form-label">
-                      Event
-                      <select
-                        className="form-input"
-                        value={selectedEventId}
-                        onChange={(event) => setSelectedEventId(event.target.value)}
-                      >
-                        <option value="">Select an event</option>
-                        {(eventsQuery.data ?? [])
-                          .filter((item) => !item.deleted_at)
-                          .map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.title}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
-                    {eventsQuery.isLoading && <p className="text-xs text-muted">Loading events…</p>}
-                    {(eventsQuery.isError || eventParticipants.isError) && (
+                    <CostEventConnectionFields value={eventConnection} />
+                    {eventParticipants.isError && (
                       <p role="alert" className="text-sm text-danger">
-                        Could not load the event or its travelers. Please reopen this form to retry.
+                        Could not load the event travelers. Please reopen this form to retry.
                       </p>
                     )}
                     {!cost && selectedEvent && (

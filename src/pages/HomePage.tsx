@@ -16,7 +16,7 @@ import {
   X
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { EventTypeIcon } from "../components/EventTypeIcon";
 import {
@@ -35,7 +35,11 @@ import {
   sortTripsByRelevance,
   tripPhase
 } from "../features/trips/presentation";
-import { CostDetailsSheet, TripExpensesSheet } from "../features/trips/TripExpenses";
+import {
+  CostDetailsSheet,
+  shouldUseExpenseSheet,
+  TripExpensesSheet
+} from "../features/trips/TripExpenses";
 import type { TripCost } from "../features/trips/types";
 import { listIncomingTripOffers, respondToTripOffer } from "../features/workspace/api";
 import { documentsForTravelerAccounts, resolveNeedNow } from "../features/home/needNow";
@@ -132,6 +136,7 @@ export function EmptyHomeDashboard() {
 }
 
 export function HomePage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [savedFocus, setSavedFocus] = useState<string | null>(null);
   const [showingExpenses, setShowingExpenses] = useState(false);
@@ -443,7 +448,11 @@ export function HomePage() {
               <section className="surface-card page-enter group relative p-5 transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft motion-reduce:hover:translate-y-0">
                 <button
                   type="button"
-                  onClick={() => setShowingExpenses(true)}
+                  onClick={() => {
+                    if (shouldUseExpenseSheet((costsQuery.data ?? []).length))
+                      setShowingExpenses(true);
+                    else navigate(`/trips/${focusedTrip.id}/expenses`);
+                  }}
                   className="absolute inset-0 z-10 rounded-[inherit] text-left outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   aria-label="Open trip expenses"
                 />
@@ -528,6 +537,10 @@ export function HomePage() {
           onViewCost={(cost) => {
             setShowingExpenses(false);
             setViewingCost(cost);
+          }}
+          onOpenFullPage={() => {
+            setShowingExpenses(false);
+            navigate(`/trips/${focusedTrip.id}/expenses`);
           }}
         />
       )}

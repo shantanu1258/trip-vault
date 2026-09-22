@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDown,
   ArrowUp,
+  ChevronDown,
   ExternalLink,
   Loader2,
   MapPin,
@@ -13,7 +14,7 @@ import {
 import { useState, type FormEvent } from "react";
 import { useConfirmDialog } from "../../components/ConfirmDialogProvider";
 import { formatEventTime, formatMoney, getErrorMessage } from "../trips/presentation";
-import type { ItineraryItem, TripCost } from "../trips/types";
+import type { TripCost } from "../trips/types";
 import {
   amountStringToMinor,
   isValidTimeZone,
@@ -38,7 +39,6 @@ type Draft = {
   arrivesLocal: string;
   departsLocal: string;
   notes: string;
-  linkedItineraryItemId: string;
   costAmount: string;
   paymentStatus: "planned" | "paid";
 };
@@ -51,7 +51,6 @@ function emptyDraft(): Draft {
     arrivesLocal: "",
     departsLocal: "",
     notes: "",
-    linkedItineraryItemId: "",
     costAmount: "",
     paymentStatus: "planned"
   };
@@ -66,7 +65,6 @@ function draftFor(stop: CabStop, eventTimezone: string): Draft {
     arrivesLocal: isoToLocalDateTime(stop.arrives_at, eventTimezone),
     departsLocal: isoToLocalDateTime(stop.departs_at, eventTimezone),
     notes: stop.notes ?? "",
-    linkedItineraryItemId: stop.linked_itinerary_item_id ?? "",
     costAmount: "",
     paymentStatus: "planned"
   };
@@ -88,7 +86,6 @@ function secureUrl(value: string) {
 export function CabStopsManager({
   tripId,
   leg,
-  itinerary,
   costs,
   currencyCode,
   eventTimezone,
@@ -97,7 +94,6 @@ export function CabStopsManager({
 }: {
   tripId: string;
   leg: JourneyLeg;
-  itinerary: ItineraryItem[];
   costs: TripCost[];
   currencyCode: string;
   eventTimezone: string;
@@ -142,8 +138,7 @@ export function CabStopsManager({
         arrivesAt,
         departsAt,
         timezone: eventTimezone,
-        notes: next.notes,
-        linkedItineraryItemId: next.linkedItineraryItemId || undefined
+        notes: next.notes
       };
       const stop = next.id
         ? await updateCabStop({
@@ -161,7 +156,6 @@ export function CabStopsManager({
         costWarning = await saveOptionalCostForCreatedEvent({
           tripId,
           bookingId: leg.booking_id,
-          itineraryItemId: next.linkedItineraryItemId || undefined,
           cabStopId: stop.id,
           title: `${next.title.trim()} cost`,
           category: "transport",
@@ -197,6 +191,7 @@ export function CabStopsManager({
     if (draft) save.mutate(draft);
   };
   const error = save.error ?? move.error ?? archive.error ?? stopsQuery.error;
+  const draftCosts = draft?.id ? costs.filter((cost) => cost.cab_stop_id === draft.id) : [];
 
   return (
     <section
@@ -208,8 +203,7 @@ export function CabStopsManager({
           <p className="text-sm font-extrabold">Journey stops</p>
           {draft && (
             <p className="mt-1 text-xs leading-5 text-muted">
-              Keep the whole-day cab together. Link only the stops that also need their own timeline
-              event.
+              Keep the whole-day cab together and add its intermediate stops here.
             </p>
           )}
         </div>
@@ -231,7 +225,6 @@ export function CabStopsManager({
       ) : stops.length ? (
         <ol className="mt-3 space-y-2">
           {stops.map((stop, index) => {
-            const linked = itinerary.find((item) => item.id === stop.linked_itinerary_item_id);
             const stopCosts = costs.filter((cost) => cost.cab_stop_id === stop.id);
             const editing = draft?.id === stop.id;
             return (
@@ -262,9 +255,6 @@ export function CabStopsManager({
                           ? `Leave ${formatEventTime(stop.departs_at, eventTimezone)}`
                           : ""}
                       </p>
-                    )}
-                    {linked && (
-                      <p className="mt-1 text-xs font-bold text-brand">Timeline · {linked.title}</p>
                     )}
                     {stopCosts.length > 0 && (
                       <p className="mt-1 text-xs font-bold text-brand">
@@ -329,7 +319,7 @@ export function CabStopsManager({
                               if (
                                 await confirm({
                                   title: "Remove cab stop?",
-                                  message: `Remove ${stop.title} from this cab journey? Linked timeline events and recorded costs remain.`,
+                                  message: `Remove ${stop.title} from this cab journey? Recorded costs remain in Trip expenses.`,
                                   confirmLabel: "Remove",
                                   tone: "danger"
                                 })
@@ -357,7 +347,7 @@ export function CabStopsManager({
 
       {draft && (
         <form
-          className="mt-4 space-y-4 rounded-2xl border border-brand/40 bg-brand-soft/20 p-4 shadow-soft"
+          className="mt-4 space-y-3 rounded-2xl border border-brand/40 bg-brand-soft/20 p-4 shadow-soft"
           aria-label={draft.id ? "Edit cab stop" : "Add cab stop"}
           onSubmit={submit}
         >
@@ -388,86 +378,51 @@ export function CabStopsManager({
                 placeholder="Lunch, attraction, hotel…"
               />
             </label>
-            <label className="form-label">
-              Place
-              <input
-                className="form-input"
-                value={draft.location}
-                onChange={(event) => setDraft({ ...draft, location: event.target.value })}
-                placeholder="Address or pickup point"
-              />
-            </label>
-            <label className="form-label">
-              Arrive (optional)
-              <input
-                className="form-input"
-                type="datetime-local"
-                value={draft.arrivesLocal}
-                onChange={(event) => setDraft({ ...draft, arrivesLocal: event.target.value })}
-              />
-            </label>
-            <label className="form-label">
-              Leave (optional)
-              <input
-                className="form-input"
-                type="datetime-local"
-                value={draft.departsLocal}
-                onChange={(event) => setDraft({ ...draft, departsLocal: event.target.value })}
-              />
-            </label>
-            <label className="form-label sm:col-span-2">
-              Link to a timeline event (optional)
-              <select
-                className="form-input"
-                value={draft.linkedItineraryItemId}
-                onChange={(event) =>
-                  setDraft({ ...draft, linkedItineraryItemId: event.target.value })
-                }
-              >
-                <option value="">Keep only inside this cab journey</option>
-                {itinerary
-                  .filter((item) => item.booking_id !== leg.booking_id)
-                  .map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.title}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label className="form-label sm:col-span-2">
-              Google Maps link (optional)
-              <input
-                className="form-input"
-                type="url"
-                value={draft.mapUrl}
-                onChange={(event) => setDraft({ ...draft, mapUrl: event.target.value })}
-                placeholder="https://maps.google.com/…"
-              />
-            </label>
-            <label className="form-label sm:col-span-2">
-              Notes (optional)
-              <textarea
-                className="form-input min-h-20"
-                value={draft.notes}
-                onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
-              />
-            </label>
-            {!draft.id || !costs.some((cost) => cost.cab_stop_id === draft.id) ? (
-              <>
-                <label className="form-label">
-                  Extra cost (optional)
-                  <div className="form-input flex items-center gap-2">
-                    <span className="text-xs font-bold text-muted">{currencyCode}</span>
-                    <input
-                      className="min-w-0 flex-1 bg-transparent outline-none"
-                      inputMode="decimal"
-                      aria-label="Extra cost (optional)"
-                      value={draft.costAmount}
-                      onChange={(event) => setDraft({ ...draft, costAmount: event.target.value })}
-                      placeholder="0.00"
-                    />
-                  </div>
-                </label>
+            {draftCosts.length ? (
+              <div className="rounded-xl bg-surface/70 px-3 py-2">
+                <p className="text-xs font-bold text-muted">Cost</p>
+                <p className="mt-1 font-display text-lg font-black text-brand">
+                  {draftCosts
+                    .map((cost) => formatMoney(cost.amount_minor, cost.currency_code))
+                    .join(" + ")}
+                </p>
+                <p className="mt-1 text-[.7rem] leading-4 text-muted">
+                  Edit this from Trip expenses.
+                </p>
+              </div>
+            ) : (
+              <label className="form-label">
+                Extra cost (optional)
+                <div className="form-input flex items-center gap-2">
+                  <span className="text-xs font-bold text-muted">{currencyCode}</span>
+                  <input
+                    className="min-w-0 flex-1 bg-transparent outline-none"
+                    inputMode="decimal"
+                    aria-label="Extra cost (optional)"
+                    value={draft.costAmount}
+                    onChange={(event) => setDraft({ ...draft, costAmount: event.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+              </label>
+            )}
+          </div>
+          <details className="group !p-0 rounded-lg border border-line/70 bg-surface/60">
+            <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-3 px-3 py-1.5 text-xs font-bold text-brand marker:hidden">
+              More details
+              <ChevronDown className="size-3.5 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
+            </summary>
+            <div className="grid gap-3 border-t border-line p-3 sm:grid-cols-2">
+              <label className="form-label">
+                Place
+                <input
+                  className="form-input"
+                  value={draft.location}
+                  onChange={(event) => setDraft({ ...draft, location: event.target.value })}
+                  placeholder="Address or pickup point"
+                />
+              </label>
+              {!draftCosts.length && (
                 <label className="form-label">
                   Payment
                   <select
@@ -484,13 +439,45 @@ export function CabStopsManager({
                     <option value="paid">Paid</option>
                   </select>
                 </label>
-              </>
-            ) : (
-              <p className="sm:col-span-2 text-xs text-muted">
-                This stop already has a cost. Edit it from Trip expenses.
-              </p>
-            )}
-          </div>
+              )}
+              <label className="form-label">
+                Arrive (optional)
+                <input
+                  className="form-input"
+                  type="datetime-local"
+                  value={draft.arrivesLocal}
+                  onChange={(event) => setDraft({ ...draft, arrivesLocal: event.target.value })}
+                />
+              </label>
+              <label className="form-label">
+                Leave (optional)
+                <input
+                  className="form-input"
+                  type="datetime-local"
+                  value={draft.departsLocal}
+                  onChange={(event) => setDraft({ ...draft, departsLocal: event.target.value })}
+                />
+              </label>
+              <label className="form-label sm:col-span-2">
+                Google Maps link (optional)
+                <input
+                  className="form-input"
+                  type="url"
+                  value={draft.mapUrl}
+                  onChange={(event) => setDraft({ ...draft, mapUrl: event.target.value })}
+                  placeholder="https://maps.google.com/…"
+                />
+              </label>
+              <label className="form-label sm:col-span-2">
+                Notes (optional)
+                <textarea
+                  className="form-input min-h-20"
+                  value={draft.notes}
+                  onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
+                />
+              </label>
+            </div>
+          </details>
           {save.error && (
             <p role="alert" className="rounded-xl bg-danger/10 p-3 text-xs font-bold text-danger">
               {getErrorMessage(save.error)}

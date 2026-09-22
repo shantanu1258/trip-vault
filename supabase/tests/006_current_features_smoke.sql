@@ -20,6 +20,9 @@ begin
     or not exists(select 1 from pg_trigger where tgname='activity_booking_event_timing' and tgrelid='public.bookings'::regclass) then
     raise exception 'Missing two-way activity booking timing triggers';
   end if;
+  if (select count(*) from pg_enum where enumtypid='public.cost_category'::regtype and enumlabel in ('snacks','gift')) <> 2 then
+    raise exception 'Missing quick-cost categories';
+  end if;
   begin
     perform set_config('request.jwt.claim.sub', '', true);
     perform public.detach_booking_document(gen_random_uuid(),gen_random_uuid());

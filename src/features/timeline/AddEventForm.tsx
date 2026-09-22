@@ -397,7 +397,6 @@ function cabStopsFromForm(form: FormData, keys: string[], defaultTimezone: strin
       departsAt,
       timezone,
       notes: text(form, `${prefix}.notes`) || undefined,
-      linkedItineraryItemId: text(form, `${prefix}.linkedItineraryItemId`) || undefined,
       costAmount,
       paymentStatus: (text(form, `${prefix}.paymentStatus`) || "planned") as "planned" | "paid"
     };
@@ -421,7 +420,7 @@ export function AddEventForm({
   documentToAttach?: { id: string; title: string };
   initialType?: TimelineEventType | null;
   routeBacked?: boolean;
-  onClose: () => void;
+  onClose: (savedItineraryItemId?: string) => void;
   onTypeChange?: (type: TimelineEventType | null) => void;
   onAddDocument?: (event: SavedEvent, handoff?: DocumentHandoff) => void | Promise<void>;
 }) {
@@ -894,14 +893,12 @@ export function AddEventForm({
               arrivesAt: stop.arrivesAt,
               departsAt: stop.departsAt,
               timezone: stop.timezone,
-              notes: stop.notes,
-              linkedItineraryItemId: stop.linkedItineraryItemId
+              notes: stop.notes
             });
             if (stop.costAmount) {
               const warning = await saveOptionalCostForCreatedEvent({
                 tripId: trip.id,
                 bookingId: created.booking.id,
-                itineraryItemId: stop.linkedItineraryItemId,
                 cabStopId: savedStop.id,
                 title: `${stop.title} cost`,
                 category: "transport",
@@ -1180,12 +1177,13 @@ export function AddEventForm({
     setOfficialDocumentKind(defaultDocumentKindFor(next));
     setDocumentSaveState({ status: "idle" });
   };
-  if (saved)
+  if (saved) {
+    const closeSavedEvent = () => onClose(saved.itineraryItemId);
     return (
       <ModalSheet
         eyebrow={trip.title}
         title="Added to timeline"
-        onClose={onClose}
+        onClose={closeSavedEvent}
         manageHistory={!routeBacked}
       >
         <div className="mt-6 rounded-3xl border border-success/30 bg-success/10 p-6 text-center">
@@ -1266,7 +1264,7 @@ export function AddEventForm({
               type="button"
               className="secondary-button w-full"
               disabled={documentSaveState.status === "saving"}
-              onClick={onClose}
+              onClick={closeSavedEvent}
             >
               Done
             </button>
@@ -1274,6 +1272,7 @@ export function AddEventForm({
         </div>
       </ModalSheet>
     );
+  }
   const isJourney = isJourneyEventType(type ?? undefined);
   const groundMode =
     type && ["train", "bus", "ferry"].includes(type) ? (type as Exclude<JourneyMode, "cab">) : null;
@@ -1495,7 +1494,6 @@ export function AddEventForm({
               />
               <CabStopsFields
                 stopKeys={cabStopKeys}
-                itinerary={itineraryQuery.data ?? []}
                 currencyCode={trip.base_currency}
                 onAdd={() => {
                   guard.markDirty();

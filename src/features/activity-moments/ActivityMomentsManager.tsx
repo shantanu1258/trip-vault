@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDown,
   ArrowUp,
+  ChevronDown,
   ExternalLink,
   Loader2,
   MapPin,
@@ -198,6 +199,7 @@ export function ActivityMomentsManager({
   };
   const error = momentsQuery.error ?? save.error ?? move.error ?? archive.error;
   const busy = save.isPending || move.isPending || archive.isPending;
+  const draftCosts = draft?.id ? costs.filter((cost) => cost.activity_moment_id === draft.id) : [];
 
   return (
     <section
@@ -346,7 +348,7 @@ export function ActivityMomentsManager({
       {draft && (
         <form
           aria-label={draft.id ? "Edit activity Moment" : "Add activity Moment"}
-          className="mt-4 space-y-4 rounded-2xl border border-brand/40 bg-brand-soft/20 p-4 shadow-soft"
+          className="mt-4 space-y-3 rounded-2xl border border-brand/40 bg-brand-soft/20 p-4 shadow-soft"
           onSubmit={submit}
         >
           <div className="flex items-center justify-between gap-3">
@@ -376,67 +378,51 @@ export function ActivityMomentsManager({
                 placeholder="Gallery, lunch, sunset…"
               />
             </label>
-            <label className="form-label">
-              Place
-              <input
-                className="form-input"
-                value={draft.location}
-                onChange={(event) => setDraft({ ...draft, location: event.target.value })}
-                placeholder="Name or address"
-              />
-            </label>
-            <label className="form-label">
-              Starts (optional)
-              <input
-                className="form-input"
-                type="datetime-local"
-                value={draft.startsLocal}
-                onChange={(event) => setDraft({ ...draft, startsLocal: event.target.value })}
-              />
-            </label>
-            <label className="form-label">
-              Ends (optional)
-              <input
-                className="form-input"
-                type="datetime-local"
-                value={draft.endsLocal}
-                onChange={(event) => setDraft({ ...draft, endsLocal: event.target.value })}
-              />
-            </label>
-            <label className="form-label sm:col-span-2">
-              Map link (optional)
-              <input
-                className="form-input"
-                type="url"
-                value={draft.mapUrl}
-                onChange={(event) => setDraft({ ...draft, mapUrl: event.target.value })}
-                placeholder="https://maps.google.com/…"
-              />
-            </label>
-            <label className="form-label sm:col-span-2">
-              Notes (optional)
-              <textarea
-                className="form-input min-h-20"
-                value={draft.notes}
-                onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
-              />
-            </label>
-            {!draft.id || !costs.some((cost) => cost.activity_moment_id === draft.id) ? (
-              <>
-                <label className="form-label">
-                  Cost (optional)
-                  <div className="form-input flex items-center gap-2">
-                    <span className="text-xs font-bold text-muted">{currencyCode}</span>
-                    <input
-                      className="min-w-0 flex-1 bg-transparent outline-none"
-                      inputMode="decimal"
-                      aria-label="Moment cost (optional)"
-                      value={draft.costAmount}
-                      onChange={(event) => setDraft({ ...draft, costAmount: event.target.value })}
-                      placeholder="0.00"
-                    />
-                  </div>
-                </label>
+            {draftCosts.length ? (
+              <div className="rounded-xl bg-surface/70 px-3 py-2">
+                <p className="text-xs font-bold text-muted">Cost</p>
+                <p className="mt-1 font-display text-lg font-black text-brand">
+                  {draftCosts
+                    .map((cost) => formatMoney(cost.amount_minor, cost.currency_code))
+                    .join(" + ")}
+                </p>
+                <p className="mt-1 text-[.7rem] leading-4 text-muted">
+                  Edit this from Trip expenses.
+                </p>
+              </div>
+            ) : (
+              <label className="form-label">
+                Cost (optional)
+                <div className="form-input flex items-center gap-2">
+                  <span className="text-xs font-bold text-muted">{currencyCode}</span>
+                  <input
+                    className="min-w-0 flex-1 bg-transparent outline-none"
+                    inputMode="decimal"
+                    aria-label="Moment cost (optional)"
+                    value={draft.costAmount}
+                    onChange={(event) => setDraft({ ...draft, costAmount: event.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+              </label>
+            )}
+          </div>
+          <details className="group !p-0 rounded-lg border border-line/70 bg-surface/60">
+            <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-3 px-3 py-1.5 text-xs font-bold text-brand marker:hidden">
+              More details
+              <ChevronDown className="size-3.5 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
+            </summary>
+            <div className="grid gap-3 border-t border-line p-3 sm:grid-cols-2">
+              <label className="form-label">
+                Place
+                <input
+                  className="form-input"
+                  value={draft.location}
+                  onChange={(event) => setDraft({ ...draft, location: event.target.value })}
+                  placeholder="Name or address"
+                />
+              </label>
+              {!draftCosts.length && (
                 <label className="form-label">
                   Payment
                   <select
@@ -453,13 +439,45 @@ export function ActivityMomentsManager({
                     <option value="paid">Paid</option>
                   </select>
                 </label>
-              </>
-            ) : (
-              <p className="sm:col-span-2 text-xs text-muted">
-                This Moment already has a cost. Edit it from Trip expenses.
-              </p>
-            )}
-          </div>
+              )}
+              <label className="form-label">
+                Starts (optional)
+                <input
+                  className="form-input"
+                  type="datetime-local"
+                  value={draft.startsLocal}
+                  onChange={(event) => setDraft({ ...draft, startsLocal: event.target.value })}
+                />
+              </label>
+              <label className="form-label">
+                Ends (optional)
+                <input
+                  className="form-input"
+                  type="datetime-local"
+                  value={draft.endsLocal}
+                  onChange={(event) => setDraft({ ...draft, endsLocal: event.target.value })}
+                />
+              </label>
+              <label className="form-label sm:col-span-2">
+                Map link (optional)
+                <input
+                  className="form-input"
+                  type="url"
+                  value={draft.mapUrl}
+                  onChange={(event) => setDraft({ ...draft, mapUrl: event.target.value })}
+                  placeholder="https://maps.google.com/…"
+                />
+              </label>
+              <label className="form-label sm:col-span-2">
+                Notes (optional)
+                <textarea
+                  className="form-input min-h-20"
+                  value={draft.notes}
+                  onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
+                />
+              </label>
+            </div>
+          </details>
           {save.error && (
             <p role="alert" className="rounded-xl bg-danger/10 p-3 text-xs font-bold text-danger">
               {getErrorMessage(save.error)}

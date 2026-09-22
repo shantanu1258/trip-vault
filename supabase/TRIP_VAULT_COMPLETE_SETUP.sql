@@ -29,6 +29,8 @@
 --
 -- CHANGELOG (newest first; dates use Asia/Kolkata repository timestamps)
 --
+-- 2026-09-22  QUICK COSTS: add Snacks and Gift expense categories.
+--              Existing projects use migrations/202609220005_quick_cost_categories.sql.
 -- 2026-09-22  ADMIN RELEASE MANAGEMENT: protected draft discard with retained
 --              audit records; serialize discard/publication against release writes.
 --              Existing projects use migrations/202609220004_admin_release_management.sql.
@@ -124,7 +126,7 @@ do $$ begin create type public.flight_status as enum ('scheduled', 'check_in_ope
 do $$ begin create type public.requirement_type as enum ('visa', 'passport', 'insurance', 'check_in', 'payment', 'packing', 'custom'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.requirement_status as enum ('to_check', 'not_required', 'required', 'in_progress', 'complete', 'expired'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.alert_severity as enum ('urgent', 'today', 'upcoming', 'information'); exception when duplicate_object then null; end $$;
-do $$ begin create type public.cost_category as enum ('flight', 'hotel', 'transport', 'activity', 'food', 'visa', 'insurance', 'other'); exception when duplicate_object then null; end $$;
+do $$ begin create type public.cost_category as enum ('flight', 'hotel', 'transport', 'activity', 'food', 'snacks', 'gift', 'visa', 'insurance', 'other'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.payment_status as enum ('planned', 'paid', 'refunded'); exception when duplicate_object then null; end $$;
 
 create table if not exists public.profiles (

@@ -35,7 +35,7 @@ describe("compact trip cost", () => {
         ]}
       />
     );
-    expect(screen.getByText("Total trip cost")).toBeInTheDocument();
+    expect(screen.getByText("Trip Cost")).toBeInTheDocument();
     expect(screen.getByText("₹1,275.00")).toBeInTheDocument();
   });
 

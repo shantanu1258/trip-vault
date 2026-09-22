@@ -403,7 +403,6 @@ export function BookingPage() {
                           <CabStopsManager
                             tripId={tripId}
                             leg={leg}
-                            itinerary={itineraryQuery.data ?? []}
                             costs={costsQuery.data ?? []}
                             currencyCode={tripQuery.data.base_currency}
                             eventTimezone={leg.origin_timezone}

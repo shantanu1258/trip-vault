@@ -138,8 +138,12 @@ describe("ActivityMomentsManager", () => {
     await screen.findByText(/No Moments yet/i);
     await user.click(screen.getByRole("button", { name: "Add Moment" }));
     await user.type(screen.getByLabelText(/Moment name/), "Spice market");
-    await user.type(screen.getByLabelText("Place"), "Khari Baoli");
     await user.type(screen.getByRole("textbox", { name: "Moment cost (optional)" }), "850");
+    expect(screen.getByLabelText("Place")).not.toBeVisible();
+    const moreDetails = screen.getByText("More details");
+    expect(moreDetails.closest("details")).toHaveClass("!p-0");
+    await user.click(moreDetails);
+    await user.type(screen.getByLabelText("Place"), "Khari Baoli");
     await user.selectOptions(screen.getByLabelText("Payment"), "paid");
     await user.click(screen.getByRole("button", { name: "Add Moment" }));
 

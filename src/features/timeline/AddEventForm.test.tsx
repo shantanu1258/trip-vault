@@ -297,7 +297,7 @@ describe("event form architecture", () => {
   });
 
   it("links a previously uploaded document after its new event is saved", async () => {
-    const { user, onAddDocument } = renderForm([], trip, {
+    const { user, onAddDocument, onClose } = renderForm([], trip, {
       id: "document-1",
       title: "Museum admission · Everyone"
     });
@@ -322,6 +322,8 @@ describe("event form architecture", () => {
       )
     );
     expect(await screen.findByText("Document linked to this event.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    expect(onClose).toHaveBeenCalledWith("item-1");
   });
 
   it("keeps hotel times optional, validates checkout, and saves both milestone time flags", async () => {

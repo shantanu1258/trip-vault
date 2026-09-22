@@ -21,6 +21,8 @@ Historical migrations and down scripts were retired on 2026-09-22 after consolid
 
 For **Delete draft** in Admin, run [202609220004_admin_release_management.sql](migrations/202609220004_admin_release_management.sql) in full in the Supabase SQL Editor. It requires the existing admin/config-release schema, is safe to reapply, and does not delete any drafts when installed. No manual extraction from the complete installer is needed. It installs permission-checked discard and serializes publication with release writes. Deleted drafts are retired with no version number and hidden from Releases; their rows/assets and audit trail are retained. Published and previously published releases cannot be discarded. The UI change comparison uses existing read APIs and needs no database update.
 
+For the **Snacks** and **Gift** quick-cost categories, run [202609220005_quick_cost_categories.sql](migrations/202609220005_quick_cost_categories.sql) in full. It only extends the existing cost-category enum and is safe to reapply.
+
 ## Verification
 
 On an isolated test project, run the SQL tests after both setup phases:
@@ -30,7 +32,7 @@ On an isolated test project, run the SQL tests after both setup phases:
 - `tests/003_personal_documents_smoke.sql`: owner-only access and personal/trip boundaries.
 - `tests/004_planning_items_smoke.sql`: Planning, Moments and archive associations.
 - `tests/005_activity_moments_smoke.sql`: Moment schema and RLS.
-- `tests/006_current_features_smoke.sql`: current feature columns, RPC access and activity timing triggers.
+- `tests/006_current_features_smoke.sql`: current feature columns, RPC access, activity timing triggers and quick-cost categories.
 - `tests/007_admin_releases_smoke.sql`: admin-only draft discard, retained audit data, published/history protection and publication after discard.
 
 These tests roll back their fixtures; they are not rollback/deployment scripts. Local verification executes the complete installer and these tests in PGlite with minimal Supabase Auth/Storage schema stand-ins. Hosted Auth, Storage APIs and delivery still require deployment acceptance checks.
