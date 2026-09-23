@@ -30,23 +30,23 @@ function worker() {
 }
 
 describe("notification service worker", () => {
-  it("displays generic lock-screen text and opens the exact same-origin destination on tap", async () => {
+  it("displays specific change text and opens the exact same-origin destination on tap", async () => {
     const { dispatch, showNotification, openWindow } = worker();
     await dispatch("push", {
       data: {
         json: () => ({
           kind: "cost",
-          title: "Secret amount",
-          body: "Sensitive text",
+          title: "Expense updated: Airport taxi",
+          body: "Bali trip · Amount: INR 800.00 → INR 950.00",
           url: "https://trip.test/trips/trip-1?cost=cost-1",
           tag: "cost-1"
         })
       }
     });
     expect(showNotification).toHaveBeenCalledWith(
-      "Trip Vault",
+      "Expense updated: Airport taxi",
       expect.objectContaining({
-        body: "A trip expense was added or updated. Open Trip Vault to review it.",
+        body: "Bali trip · Amount: INR 800.00 → INR 950.00",
         data: { url: "/trips/trip-1?cost=cost-1" },
         tag: "cost-1"
       })
@@ -57,6 +57,23 @@ describe("notification service worker", () => {
     });
     expect(close).toHaveBeenCalledOnce();
     expect(openWindow).toHaveBeenCalledWith("https://trip.test/trips/trip-1?cost=cost-1");
+  });
+  it("keeps generic copy for older jobs and bounds malformed text", async () => {
+    const { dispatch, showNotification } = worker();
+    await dispatch("push", { data: { json: () => ({ kind: "event" }) } });
+    expect(showNotification).toHaveBeenLastCalledWith(
+      "Trip Vault",
+      expect.objectContaining({
+        body: "A trip event was added or updated. Open Trip Vault to review it."
+      })
+    );
+    await dispatch("push", {
+      data: { json: () => ({ title: "x".repeat(500), body: "\u202e" + "y".repeat(700) }) }
+    });
+    expect(showNotification).toHaveBeenLastCalledWith(
+      "x".repeat(200),
+      expect.objectContaining({ body: "y".repeat(360) })
+    );
   });
   it("falls back safely for malformed payloads and external links", async () => {
     const { dispatch, showNotification, openWindow } = worker();

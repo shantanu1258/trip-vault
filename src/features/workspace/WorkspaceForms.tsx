@@ -1731,8 +1731,7 @@ export function UploadDocumentForm({
         )}
         {initialFile && initialFileContext === "shared" && (
           <p className="rounded-xl bg-brand-soft p-3 text-sm">
-            Review the document details before saving. Visibility starts as Only me; change it
-            explicitly if you want to share with this trip.
+            Review the document details and who can open it before saving.
           </p>
         )}
         <FileDropzone
@@ -1775,8 +1774,8 @@ export function UploadDocumentForm({
           <legend className="px-1 text-sm font-bold">Who is it for?</legend>
           {assignmentPreset && (
             <p className="mb-3 text-xs leading-5 text-muted">
-              Started from this event's travelers. Change it here when this file belongs to only one
-              person, such as a visa, boarding pass, or individual ticket.
+              Review who this file belongs to. You can choose one or more travelers for a visa,
+              boarding pass, or individual ticket.
             </p>
           )}
           <div className="mt-2 grid gap-2 sm:grid-cols-3">

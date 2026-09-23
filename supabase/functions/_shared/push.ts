@@ -33,7 +33,7 @@ export async function secretMatches(actual: string | null) {
 export type Device = { id: string; endpoint: string; p256dh: string; auth: string };
 export async function sendPush(
   device: Device,
-  payload: { kind: string; url: string; tag: string },
+  payload: { kind: string; url: string; tag: string; title?: string; body?: string },
   ttl: number
 ) {
   if (!allowedPushEndpoint(device.endpoint)) return "failed" as const;

@@ -119,7 +119,10 @@ export function VaultPage() {
               Document Vault
             </h1>
           </div>
-          <Link to="/vault/add" className="primary-button shrink-0 px-3 py-2 text-xs">
+          <Link
+            to={personal ? "/vault/add?section=personal" : "/vault/add"}
+            className="primary-button shrink-0 px-3 py-2 text-xs"
+          >
             Add document
           </Link>
         </header>

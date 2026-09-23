@@ -38,9 +38,35 @@ import {
   createTrip,
   deleteTripPermanently,
   getTrip,
+  listReminders,
   linkBookingToItineraryItem
 } from "./api";
 import type { ItineraryItem, Trip } from "./types";
+import { networkWithCache } from "../sync/localSync";
+
+it("keeps completed reminder history separate from the active-alert query", async () => {
+  Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
+  const query = {
+    select: vi.fn().mockReturnThis(),
+    order: vi.fn().mockReturnThis(),
+    is: vi.fn().mockReturnThis(),
+    then: (resolve: (result: unknown) => unknown) =>
+      Promise.resolve(resolve({ data: [], error: null }))
+  };
+  mocks.from.mockReturnValue(query);
+  vi.mocked(networkWithCache).mockImplementationOnce((_key, load) => load());
+  await listReminders();
+  expect(query.is).toHaveBeenCalledWith("completed_at", null);
+  expect(networkWithCache).toHaveBeenLastCalledWith("reminders", expect.any(Function));
+  query.is.mockClear();
+  vi.mocked(networkWithCache).mockImplementationOnce((_key, load) => load());
+  await listReminders(true);
+  expect(query.is).not.toHaveBeenCalled();
+  expect(networkWithCache).toHaveBeenLastCalledWith(
+    "reminders:including-completed",
+    expect.any(Function)
+  );
+});
 
 describe("trip creation", () => {
   beforeEach(() => {

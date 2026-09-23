@@ -23,6 +23,10 @@ For **Delete draft** in Admin, run [202609220004_admin_release_management.sql](m
 
 For the **Snacks** and **Gift** quick-cost categories, run [202609220005_quick_cost_categories.sql](migrations/202609220005_quick_cost_categories.sql) in full. It only extends the existing cost-category enum and is safe to reapply.
 
+For **specific change notifications**, existing Web Push installations run [202609230001_push_change_details.sql](migrations/202609230001_push_change_details.sql). Then redeploy `push-dispatch` and the frontend worker, as described in [PUSH_SETUP.md](../docs/PUSH_SETUP.md). It captures new notification snapshots; existing queued jobs are not backfilled with guessed actions. No database rows are deleted and applying the migration sends no push.
+
+For **five-day flight/bus reminders**, apply [202609230002_journey_early_reminders.sql](migrations/202609230002_journey_early_reminders.sql) after the change-details migration, then redeploy `push-dispatch` and the frontend. It replaces the claim/authorization functions, preserves one-hour reminder keys and adds a distinct early-reminder stage. It is safe to reapply and does not enable Cron or send notifications during installation.
+
 ## Verification
 
 On an isolated test project, run the SQL tests after both setup phases:

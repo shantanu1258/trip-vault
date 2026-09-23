@@ -123,7 +123,7 @@ export const tripQueries = {
   reminders: () =>
     queryOptions({
       queryKey: ["reminders"] as const,
-      queryFn: listReminders,
+      queryFn: () => listReminders(),
       ...sharedQueryPolicy
     }),
   alertStates: () =>

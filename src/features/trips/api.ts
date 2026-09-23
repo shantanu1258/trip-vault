@@ -1554,16 +1554,26 @@ export async function restoreTripCost(costId: string) {
   if (error) throw error;
 }
 
-export async function listReminders(): Promise<Reminder[]> {
-  return networkWithCache("reminders", async () => {
-    const { data, error } = await client()
-      .from("reminders")
-      .select("id,trip_id,title,due_at,severity,completed_at")
-      .is("completed_at", null)
-      .order("due_at", { ascending: true });
-    if (error) throw error;
-    return (data ?? []) as Reminder[];
-  });
+export async function listReminders(includeCompleted = false): Promise<Reminder[]> {
+  const rows = await networkWithCache(
+    includeCompleted ? "reminders:including-completed" : "reminders",
+    async () => {
+      let query = client()
+        .from("reminders")
+        .select("id,trip_id,title,due_at,severity,completed_at")
+        .order("due_at", { ascending: true });
+      if (!includeCompleted) query = query.is("completed_at", null);
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data ?? []) as Reminder[];
+    }
+  );
+  if (includeCompleted && !navigator.onLine) {
+    // Include reminders created locally since the last history fetch.
+    const local = await readEntityList<Reminder>("reminders");
+    return [...new Map([...rows, ...local].map((row) => [row.id, row])).values()];
+  }
+  return rows;
 }
 
 export async function listDocuments(): Promise<TripDocument[]> {

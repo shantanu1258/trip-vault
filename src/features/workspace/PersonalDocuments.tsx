@@ -137,7 +137,7 @@ export function PersonalDocuments() {
           {search
             ? "No personal documents match this search."
             : "No personal documents yet. Add a passport, Aadhaar, or another file without choosing a trip."}{" "}
-          <Link className="font-bold text-brand" to="/vault/add">
+          <Link className="font-bold text-brand" to="/vault/add?section=personal">
             Add document
           </Link>
         </p>

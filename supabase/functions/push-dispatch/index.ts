@@ -1,5 +1,6 @@
 import { adminClient, appOrigin, secretMatches, sendPush } from "../_shared/push.ts";
 import { notificationPath } from "../_shared/push-policy.ts";
+import { pushChangeContent } from "../_shared/push-content.ts";
 
 Deno.serve(async (request) => {
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
@@ -26,6 +27,7 @@ Deno.serve(async (request) => {
               entity_id: string;
               occurrence: string;
               expires_at: string;
+              change_details?: unknown;
             }) => {
               let result = "retry";
               try {
@@ -48,6 +50,7 @@ Deno.serve(async (request) => {
                       device,
                       {
                         kind: job.kind,
+                        ...pushChangeContent(job.kind, job.change_details),
                         url:
                           origin + notificationPath(job.kind, job.trip_id, job.entity_id, job.id),
                         tag: job.occurrence

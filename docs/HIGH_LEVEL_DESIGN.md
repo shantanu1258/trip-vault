@@ -4,14 +4,16 @@ description: "Implemented system architecture, responsibilities, major flows, ri
 scope: [service-wide]
 agents: [coder, reviewer, planner]
 tags: [architecture, pwa, offline, collaboration, supabase, cloudflare]
-last_verified: 2026-09-22
+last_verified: 2026-09-23
 ---
 
 # Trip Vault High-Level Design
 
+> **September 23 update:** The latest pulled UI adds a dedicated filtered Expenses page, compact quick-cost entry and shared event/Moment/Cab-stop connections. Notification changes now capture created/updated/restored actions and named-record summaries. These changes are locally verified; the new notification migration, sender deployment and phone acceptance remain pending.
+
 > **September 20 release update:** Phone push delivery is owner-confirmed after correcting the VAPID contact subject; automatic Cron delivery and destination acceptance remain pending. The temporary test-send button and permanent test-trip deletion UI are retired. Protected backend diagnostics and legacy purge/storage-cleanup infrastructure remain; normal users retain notification preferences and recoverable trip lifecycle actions.
 
-> **Current contract:** This document, the [LLD](LOW_LEVEL_DESIGN.md), and [feature catalog](FEATURES.md) describe the implementation verified locally on September 22. They do not imply that the latest SQL sections or client build have been deployed. The [changelog](../CHANGELOG.md) records implementation history; earlier review notes are historical, not overriding specifications.
+> **Current contract:** This document, the [LLD](LOW_LEVEL_DESIGN.md), and [feature catalog](FEATURES.md) describe the implementation verified locally on September 23. They do not imply that the latest SQL sections or client build have been deployed. The [changelog](../CHANGELOG.md) records implementation history; earlier review notes are historical, not overriding specifications.
 
 Trip Vault is a personal-use installable web application that keeps travel bookings, itineraries, notes, and documents together for the owner and invited travel companions. It is not intended to become a commercial product. This document records the implemented system boundaries and the few deliberately deferred capabilities.
 
@@ -22,6 +24,16 @@ Trip Vault is a personal-use installable web application that keeps travel booki
 **Default decision state:** Accepted unless explicitly marked as deferred or revisit
 
 ## Release Reality
+
+### Expenses and connected costs
+
+Home and trip-header expense totals open `/trips/:tripId/expenses`. The page combines search, category and traveler filters with per-currency filtered totals, read-first cost details, role-gated editing and optional balances. Its filters live in the URL and inherit traveler focus when no URL selection exists.
+
+Quick Add Cost collects a title, positive amount and category, defaults to the trip currency and Paid, and assigns all active travelers. An optional connection links the cost to an event, an activity Moment or a Cab stop; the same connection UI is reused by the full cost form. The new Snacks and Gift categories require `202609220005_quick_cost_categories.sql` on existing databases. Moment/stop creation and cost persistence are separate operations; a created child is retained for retry if the later cost save fails.
+
+Light/dark border contrast is stronger. Known exact stock cached palettes upgrade to the new defaults; administrator-customized palettes remain unchanged.
+
+### Deployment state
 
 | Area                      | Current state                                                                                                                                                                                                                                        |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -541,14 +553,16 @@ These are design assumptions, not enforced limits. Metrics from actual use shoul
 
 ### September 19 follow-up decisions
 
-| ID      | Topic                        | Decision                                                                                                                                          | Status                                  |
-| ------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| HLD-069 | Explicit return destinations | Capture nested page/modal origin and card offset; Back restores origin, while new navigation intents override stale restoration                   | Accepted                                |
-| HLD-070 | Decorative event motion      | Keep compact headers informational; animate bottom-right silhouettes only in expanded/detail surfaces, with reduced-motion support                | Accepted                                |
-| HLD-071 | Trip presentation            | Use dark-mode light-teal hero/dark text and currency-specific Indian grouping for INR                                                             | Accepted                                |
-| HLD-072 | Optional Web Push            | Per-device consent, server-authorized change/reminder jobs, generic lock-screen messages, and exact record links supplement offline in-app alerts | Implemented locally; deployment pending |
+| ID      | Topic                        | Decision                                                                                                                                                          | Status                                  |
+| ------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| HLD-069 | Explicit return destinations | Capture nested page/modal origin and card offset; Back restores origin, while new navigation intents override stale restoration                                   | Accepted                                |
+| HLD-070 | Decorative event motion      | Keep compact headers informational; animate bottom-right silhouettes only in expanded/detail surfaces, with reduced-motion support                                | Accepted                                |
+| HLD-071 | Trip presentation            | Use dark-mode light-teal hero/dark text and currency-specific Indian grouping for INR                                                                             | Accepted                                |
+| HLD-072 | Optional Web Push            | Per-device consent, server-authorized change/reminder jobs, named change summaries (lock-screen visible), and exact record links supplement offline in-app alerts | Implemented locally; deployment pending |
 
-Web Push is implemented locally: owner-scoped subscriptions and a protected job queue feed a secret-authenticated Supabase Edge dispatcher; a JWT-authenticated function supports device tests. An optional one-minute Cron invokes the dispatcher; neither migration nor frontend deployment enables Cron automatically. Reminders cover the hour before explicitly timed events, not tasks/visa/manual alerts. Send-time checks revalidate membership, source records, preferences, and reminder timing. The generated PWA worker retains its offline/update lifecycle and imports push handlers. The feature flag defaults off. See [PUSH_SETUP.md](PUSH_SETUP.md) for migration, runtime, device, and deployment release gates. Offline receipt, free-project pausing, and browser/OS restrictions prevent alarm-like guarantees.
+Web Push is implemented locally: owner-scoped subscriptions and a protected job queue feed a secret-authenticated Supabase Edge dispatcher; a JWT-authenticated function supports device tests. An optional one-minute Cron invokes the dispatcher; neither migration nor frontend deployment enables Cron automatically. Reminders cover the hour before explicitly timed events plus a five-day heads-up for flights/buses, not tasks/visa/manual alerts. The early stage has a bounded 24-hour catch-up window and names the departure with its local date/time. Send-time checks revalidate membership, source records, preferences, and reminder timing. The generated PWA worker retains its offline/update lifecycle and imports push handlers. The feature flag defaults off. See [PUSH_SETUP.md](PUSH_SETUP.md) for migration, runtime, device, and deployment release gates. Offline receipt, free-project pausing, and browser/OS restrictions prevent alarm-like guarantees.
+
+Travel-day shortcuts preserve the detailed editing flows: Vault uploads default to the latest-starting current trip, using the span from its earliest event, dated preparation task or trip-linked reminder through its last scheduled entry/end, not the trip's travel dates. Completed entries preserve the original beginning; unrelated reminders do not affect it. The form offers an optional event association followed by document type and traveller fields. Flights suggest Boarding pass; traveller assignment defaults to Everyone and remains independent of access permissions. Personal entry points stay personal. Flight event sheets expose a small seat-only editor for eligible travelers, using existing offline passenger storage without clearing other passenger fields.
 
 ## 14. Risks Requiring Explicit Discussion
 

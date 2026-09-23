@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookingSummarySurface } from "../components/BookingSummarySurface";
+import { QuickFlightSeats } from "../features/workspace/QuickFlightSeats";
 import {
   ArrowDown,
   ArrowLeft,
@@ -1293,6 +1294,24 @@ export function EventDetailsSheet({
                 item.applies_to_all_travelers ? travelers.map((row) => row.id) : travelerIds
               }
               editable={editable}
+            />
+          ))}
+      {editable &&
+        item.event_type === "flight" &&
+        booking?.type === "flight" &&
+        flights
+          .filter((leg) => leg.booking_id === booking.id)
+          .sort((a, b) => a.segment_order - b.segment_order)
+          .map((flight) => (
+            <QuickFlightSeats
+              key={flight.id}
+              tripId={tripId}
+              flight={flight}
+              travelers={travelers.filter(
+                (traveler) =>
+                  (item.applies_to_all_travelers || travelerIds.includes(traveler.id)) &&
+                  (!focusedTravelerId || traveler.id === focusedTravelerId)
+              )}
             />
           ))}
       {item.event_type === "activity" && (

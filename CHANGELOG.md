@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Journey reminders and travel-day shortcuts
+
+- Added a one-off five-day heads-up for timed flights and buses alongside the existing one-hour reminder. Messages include the journey name and departure-local date/time; existing device reminder preferences, membership checks, cancellation/reschedule checks and duplicate prevention remain in force. A 24-hour catch-up window avoids stale early reminders.
+- Vault uploads default to the latest-starting current trip, beginning with its earliest event, dated preparation task or trip-linked reminder (including completed entries), even before travel dates. The span ends at the latest scheduled entry/end; unrelated reminders do not count. Explicit Personal uploads stay private. The selected trip exposes an optional event picker followed by document type and traveller, defaulting to Everyone. Flight events suggest Boarding pass; choices carry into review with retry-safe event attachment.
+- Flight event sheets offer a compact Seats editor for participating travelers, respecting traveler focus and edit permissions. Existing ticket numbers/boarding groups and the detailed flight editor are preserved; seat saves use the existing offline queue.
+- Existing databases apply `202609230002_journey_early_reminders.sql` after `202609230001_push_change_details.sql`, then redeploy `push-dispatch` and the frontend. Fresh setup includes both. No live deployment or phone delivery check is implied by the local implementation.
+
+## Unreleased — Specific notifications and design reconciliation
+
+- Event, booking and expense change notifications identify the record and distinguish creation, editing and restoration. Updates summarize changed fields, including currency-correct amount changes, payment/status changes and time-zone-aware schedules. Immutable job snapshots preserve what happened even if the record changes again before delivery.
+- Notes, booking references, contacts and arbitrary booking JSON stay out of notification payloads. Names, amounts and times may appear on lock screens; Profile now explains this. Existing generic jobs and reminders retain compatible fallback copy.
+- Existing Web Push databases require `202609230001_push_change_details.sql`, followed by redeployment of `push-dispatch` and the frontend/service worker. Fresh setup includes it. Hosted changes and device delivery are not performed by this code update.
+- Reconciled HLD/LLD with the pulled dedicated Expenses page, URL filters, quick-cost entry, shared event/Moment/Cab-stop connections, Snacks/Gift migration and stronger stock-palette borders.
+
 ## Unreleased — Unified setup, current demo, and admin UI
 
 - Admin Releases now exposes confirmed draft deletion (audit-retained discard) and on-demand field-level changes for catalogues, defaults and both palettes. Drafts compare against the currently published version; historical releases compare against the prior published version, including rollback releases. Existing databases use `supabase/migrations/202609220004_admin_release_management.sql` for draft deletion; the complete installer is for fresh setups.

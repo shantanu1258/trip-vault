@@ -25,9 +25,20 @@ self.addEventListener("push", (event) => {
     reminder: "A timed event starts within the next hour. Open your timeline for details.",
     test: "Notifications are working on this device."
   };
+  const cleanText = (value, limit) =>
+    typeof value === "string"
+      ? value
+          .replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, limit)
+      : "";
   event.waitUntil(
-    self.registration.showNotification("Trip Vault", {
-      body: bodies[payload?.kind] || "You have a trip update. Open Trip Vault for details.",
+    self.registration.showNotification(cleanText(payload?.title, 200) || "Trip Vault", {
+      body:
+        cleanText(payload?.body, 360) ||
+        bodies[payload?.kind] ||
+        "You have a trip update. Open Trip Vault for details.",
       icon: "/icons/wallet-v2-192.png",
       tag: typeof payload?.tag === "string" ? payload.tag.slice(0, 180) : "trip-vault-update",
       data: { url: destination },

@@ -417,6 +417,14 @@ textarea:focus-visible {
     @apply min-w-0 rounded-3xl border border-line bg-surface shadow-soft;
   }
 
+  .expense-list-item {
+    @apply border border-transparent bg-elevated;
+  }
+
+  :root:not([data-theme="dark"]) .expense-list-item {
+    @apply border-line shadow-sm;
+  }
+
   .eyebrow {
     @apply text-[0.68rem] font-bold uppercase tracking-[0.18em] text-muted;
   }

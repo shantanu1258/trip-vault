@@ -45,8 +45,9 @@ export function PushSettings() {
         Notifications
       </h2>
       <p className="mt-3 text-sm text-muted">
-        Optional updates with private details kept off the lock screen. Delivery needs internet and
-        may be delayed.
+        Updates include item names and change details, such as amounts and times, which may appear
+        on your lock screen. Private notes and booking references are excluded. Delivery needs
+        internet and may be delayed.
       </p>
       {!pushEnabled ? (
         <p className="mt-3 text-sm text-muted">
@@ -65,7 +66,10 @@ export function PushSettings() {
                 [
                   ["event_changes", "Event additions and changes"],
                   ["cost_changes", "Expense additions and changes"],
-                  ["reminders", "Remind me one hour before timed events"]
+                  [
+                    "reminders",
+                    "Remind me one hour before timed events, and five days before flights and buses"
+                  ]
                 ] as const
               ).map(([key, label]) => (
                 <label key={key} className="flex items-center gap-3 text-sm">

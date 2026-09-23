@@ -268,7 +268,7 @@ export function TripExpensesContent({
             <button
               type="button"
               onClick={() => onViewCost(cost)}
-              className="group grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-xl bg-elevated p-3 text-left text-sm transition hover:-translate-y-0.5 hover:shadow-soft focus-visible:ring-2 focus-visible:ring-brand motion-reduce:hover:translate-y-0"
+              className="expense-list-item group grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-xl p-3 text-left text-sm transition hover:-translate-y-0.5 hover:shadow-soft focus-visible:ring-2 focus-visible:ring-brand motion-reduce:hover:translate-y-0"
               key={cost.id}
               aria-label={`View details for ${cost.title}`}
             >

@@ -11,6 +11,18 @@ enable any job; in-app alerts remain independent.
 
 ## Remaining steps for this deployment
 
+### September 23: specific change notifications and early journey reminders
+
+Existing projects with Web Push installed must apply `supabase/migrations/202609230001_push_change_details.sql`, then redeploy `push-dispatch` and deploy/reload the frontend (including its service worker). The complete setup already includes the change for fresh projects. This migration is safe to reapply and does not send notifications or enable Cron. No change to secrets or the `push-test` deployment is required.
+
+For the five-day flight/bus heads-up, also apply `supabase/migrations/202609230002_journey_early_reminders.sql` after that migration, before redeploying the sender. The existing Reminders preference controls both stages. Each timed departure gets at most one early reminder per device, queued when it is five days away, with a 24-hour catch-up/expiry window; journeys already less than four days away do not get late early-reminders. One-hour reminders keep their existing occurrence keys. Rescheduling, cancelled/done/skipped events, removed membership and opt-out invalidate pending reminders. Messages use the journey name and exact departure-local date/time rather than claiming an exact countdown after delivery delays. These are best-effort push notifications, not alarms.
+
+On an isolated test trip with opted-in devices, test a timed flight and bus five days away, then invoke the existing dispatcher/Cron. Verify named heads-ups, no repeat on the next run, opt-out, and reschedule/cancellation suppression. Preserve a separate one-hour test. SQL smoke fixtures cover these windows without waiting five days or sending real pushes; real-phone verification is still pending.
+
+New change jobs capture the action (created, updated, restored), item/trip names, changed fields and a small allowlisted before/after snapshot at write time. Messages identify the record and show up to three changes, with a remaining-change count. Amounts respect currency precision; explicit event/booking times use the record's time zone. Untimed ordering timestamps are not presented as appointments. Notes, references, contact data and arbitrary booking details are not copied into the push snapshot; only their field-change labels may appear. Names, amounts and times can appear on the lock screen; Profile explains this. Pre-migration jobs retain generic copy rather than guessing a past action. Newly queued reminders have journey/event names and departure-local times.
+
+Local checks cover the fresh baseline, incremental migration/retry, SQL authorization and immutable snapshots, sender payloads, worker copy/deep links and currency/time formatting. After deployment, use two consenting test members: create and update a named event/expense, change an amount/time/status, and verify the recipient's notification wording and tap target. Verify the author gets no change push and opting out still suppresses delivery. Real-phone acceptance has not been performed for this change.
+
 1. Ensure Cloudflare has `VITE_PUSH_ENABLED=true` as a **build** variable and that the
    notification-enabled commit finishes deploying. Update/reload the app, then use
    Profile → Notifications → Enable. On iOS use the installed Home Screen app.
@@ -31,7 +43,7 @@ The full repeatable setup follows; do not rerun the completed one-time migration
 ## What this version does
 
 - Per-device opt-in and category switches in Profile; up to ten subscriptions/account.
-- Generic lock-screen text: no traveler names, references, titles, or amounts.
+- Specific change text includes item/trip names and safe field summaries; amounts and times may appear on the lock screen. Notes, references and contact details stay excluded. Older queued jobs and reminders retain generic text.
 - Other active trip members receive timeline event additions/changes, booking-detail
   updates, and expense additions/changes. The person making the edit is excluded.
 - Devices opting into reminders get one occurrence within the hour before a timed

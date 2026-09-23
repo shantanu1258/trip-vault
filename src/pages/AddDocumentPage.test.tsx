@@ -7,24 +7,40 @@ const mocks = vi.hoisted(() => ({
   stage: vi.fn(),
   receive: vi.fn(),
   discard: vi.fn(),
-  form: vi.fn()
+  form: vi.fn(),
+  trips: vi.fn(),
+  itinerary: vi.fn(),
+  reminders: vi.fn(),
+  requirements: vi.fn(),
+  attach: vi.fn()
 }));
 vi.mock("../components/AppShell", () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => children
 }));
 vi.mock("../features/trips/api", () => ({
-  listTrips: async () => [{ id: "trip-1", title: "Holiday" }]
+  listTrips: mocks.trips,
+  listItinerary: mocks.itinerary,
+  listReminders: mocks.reminders
 }));
 vi.mock("../features/sync/localSync", () => ({ localProfileId: async () => "owner" }));
 vi.mock("../features/workspace/api", () => ({
   stageAccountDocument: mocks.stage,
   listMembers: async () => [{ user_id: "owner", role: "owner" }],
-  listTravelers: async () => []
+  listTravelers: async () => [{ id: "traveler-1", display_name: "Sam" }],
+  listRequirements: mocks.requirements,
+  listFlightLegsForTrip: async () => [{ id: "flight-1", booking_id: "booking-1" }],
+  listJourneyLegsForTrip: async () => [],
+  attachDocumentsToEvent: mocks.attach
 }));
 vi.mock("../features/workspace/WorkspaceForms", () => ({
-  UploadDocumentForm: (props: unknown) => {
+  UploadDocumentForm: (props: { onUploaded: (id: string) => void }) => {
     mocks.form(props);
-    return <div>Trip document review</div>;
+    return (
+      <div>
+        Trip document review
+        <button onClick={() => props.onUploaded("saved-document")}>Finish upload</button>
+      </div>
+    );
   }
 }));
 vi.mock("../lib/pwa/incomingShare", () => ({
@@ -50,6 +66,136 @@ function setup(path = "/vault/add") {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.stage.mockResolvedValue({ stored_at: "now" });
+  mocks.trips.mockResolvedValue([{ id: "trip-1", title: "Holiday" }]);
+  mocks.itinerary.mockResolvedValue([]);
+  mocks.reminders.mockResolvedValue([]);
+  mocks.requirements.mockResolvedValue([]);
+  mocks.attach.mockResolvedValue([]);
+});
+
+function underwayEvent() {
+  return {
+    id: "event-1",
+    trip_id: "trip-1",
+    booking_id: "booking-1",
+    title: "Flight to Bali",
+    event_type: "flight",
+    timing_mode: "exact",
+    starts_at: new Date(Date.now() - 3600000).toISOString(),
+    ends_at: new Date(Date.now() + 3600000).toISOString()
+  };
+}
+
+it("defaults to a trip before travel begins when its first reminder has already occurred", async () => {
+  mocks.itinerary.mockResolvedValue([
+    {
+      ...underwayEvent(),
+      starts_at: new Date(Date.now() + 86400000).toISOString(),
+      ends_at: new Date(Date.now() + 172800000).toISOString()
+    }
+  ]);
+  mocks.reminders.mockResolvedValue([
+    {
+      id: "reminder-1",
+      trip_id: "trip-1",
+      due_at: new Date(Date.now() - 3600000).toISOString(),
+      completed_at: new Date().toISOString()
+    }
+  ]);
+  setup();
+  await waitFor(() => expect(screen.getByLabelText("Trip")).toHaveValue("trip-1"));
+  expect(screen.getByLabelText("Save to")).toHaveValue("trip");
+  expect(mocks.reminders).toHaveBeenCalledWith(true);
+  expect(screen.getByLabelText("Traveller")).toHaveValue("");
+});
+
+it("defaults to the underway trip, offers its events and retries a failed attachment without uploading twice", async () => {
+  const event = underwayEvent();
+  mocks.itinerary.mockResolvedValue([event]);
+  mocks.attach.mockRejectedValueOnce(new Error("Connection lost")).mockResolvedValue([]);
+  setup();
+  await waitFor(() => expect(screen.getByLabelText("Trip")).toHaveValue("trip-1"));
+  expect(screen.getByLabelText("Save to")).toHaveValue("trip");
+  await waitFor(() => expect(screen.getByLabelText("Event (optional)")).toBeEnabled());
+  await userEvent.selectOptions(screen.getByLabelText("Event (optional)"), "event-1");
+  expect(screen.getByLabelText("Document type")).toHaveValue("boarding_pass");
+  expect(screen.getByLabelText("Traveller")).toHaveValue("");
+  await userEvent.upload(
+    screen.getByLabelText("PDF or image under 5 MB"),
+    new File(["pdf"], "pass.pdf", { type: "application/pdf" })
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Review trip document" }));
+  expect(mocks.form).toHaveBeenCalledWith(
+    expect.objectContaining({
+      bookingId: "booking-1",
+      flightLegId: "flight-1",
+      initialKind: "boarding_pass",
+      assignmentPreset: { mode: "shared", travelerIds: [] },
+      contextTitle: "Flight to Bali"
+    })
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Finish upload" }));
+  await screen.findByText("Connection lost");
+  await userEvent.click(screen.getByRole("button", { name: "Retry event link" }));
+  await screen.findByText("Saved in Vault");
+  expect(mocks.attach).toHaveBeenNthCalledWith(2, event, ["saved-document"]);
+});
+
+it("defaults to the latest-starting active trip and clears event, type and traveler when changing trip", async () => {
+  mocks.trips.mockResolvedValue([
+    { id: "trip-1", title: "Holiday" },
+    { id: "trip-2", title: "Weekend" }
+  ]);
+  mocks.itinerary.mockImplementation(async (tripId) => [
+    {
+      ...underwayEvent(),
+      id: `event-${tripId}`,
+      trip_id: tripId,
+      starts_at: new Date(Date.now() - (tripId === "trip-1" ? 7200000 : 3600000)).toISOString()
+    }
+  ]);
+  setup();
+  await waitFor(() => expect(screen.getByLabelText("Trip")).toHaveValue("trip-2"));
+  await waitFor(() => expect(screen.getByLabelText("Event (optional)")).toBeEnabled());
+  await userEvent.selectOptions(screen.getByLabelText("Event (optional)"), "event-trip-2");
+  await userEvent.selectOptions(screen.getByLabelText("Document type"), "visa");
+  await userEvent.selectOptions(screen.getByLabelText("Traveller"), "traveler-1");
+  await userEvent.selectOptions(screen.getByLabelText("Trip"), "trip-1");
+  expect(screen.getByLabelText("Event (optional)")).toHaveValue("");
+  expect(screen.getByLabelText("Document type")).toHaveValue("other");
+  expect(screen.getByLabelText("Traveller")).toHaveValue("");
+});
+
+it("carries the chosen type and traveler into review without changing visibility", async () => {
+  mocks.itinerary.mockResolvedValue([underwayEvent()]);
+  setup();
+  await waitFor(() => expect(screen.getByLabelText("Event (optional)")).toBeEnabled());
+  await userEvent.selectOptions(screen.getByLabelText("Event (optional)"), "event-1");
+  await userEvent.selectOptions(screen.getByLabelText("Document type"), "visa");
+  await userEvent.selectOptions(screen.getByLabelText("Traveller"), "traveler-1");
+  await userEvent.upload(
+    screen.getByLabelText("PDF or image under 5 MB"),
+    new File(["pdf"], "visa.pdf", { type: "application/pdf" })
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Review trip document" })).toBeEnabled()
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Review trip document" }));
+  expect(mocks.form).toHaveBeenCalledWith(
+    expect.objectContaining({
+      initialKind: "visa",
+      assignmentPreset: { mode: "selected", travelerIds: ["traveler-1"] },
+      initialVisibility: "trip"
+    })
+  );
+});
+
+it("keeps an explicit personal destination private even during a trip", async () => {
+  mocks.itinerary.mockResolvedValue([underwayEvent()]);
+  setup("/vault/add?section=personal");
+  await waitFor(() => expect(mocks.itinerary).toHaveBeenCalled());
+  expect(screen.getByLabelText("Save to")).toHaveValue("personal");
+  expect(screen.queryByLabelText("Trip")).not.toBeInTheDocument();
 });
 
 it("saves a personal identity file without a trip, only after explicit confirmation", async () => {
