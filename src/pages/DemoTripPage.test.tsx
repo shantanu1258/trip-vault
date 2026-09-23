@@ -24,6 +24,31 @@ import { demoVaultDocumentById } from "../demo/model";
 describe("current demo readiness", () => {
   beforeEach(() => sessionStorage.clear());
   afterEach(() => vi.unstubAllGlobals());
+  it("uses the live seat editor with resettable demo-only state", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <DemoTripPage />
+      </MemoryRouter>
+    );
+    const openSeats = async () => {
+      await user.click(screen.getByRole("button", { name: "Open details for Fly to Rome" }));
+      await user.click(screen.getByRole("button", { name: "Seats · DEL → FCO" }));
+    };
+    await openSeats();
+    const seat = screen.getByRole("textbox", { name: "Seat for Sam Shah" });
+    expect(seat).toHaveAttribute("placeholder", "e.g. 12A");
+    await user.type(seat, "14c");
+    await user.click(screen.getByRole("button", { name: "Save seat for Sam Shah" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Demo seat saved");
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    await openSeats();
+    expect(screen.getByRole("textbox", { name: "Seat for Sam Shah" })).toHaveValue("14C");
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    await user.click(screen.getByRole("button", { name: "Reset demo" }));
+    await openSeats();
+    expect(screen.getByRole("textbox", { name: "Seat for Sam Shah" })).toHaveValue("");
+  });
   it("uses shared document cards and previews bundled files in-app without a Vault request", async () => {
     const fetchFile = vi.fn().mockResolvedValue({
       ok: true,

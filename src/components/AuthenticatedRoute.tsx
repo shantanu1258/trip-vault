@@ -2,6 +2,7 @@ import { Loader2 } from "lucide-react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useDeviceAuthentication } from "../lib/auth/useDeviceAuthentication";
 import { StoragePermissionPrompt } from "./StoragePermissionPrompt";
+import { signInContinuation } from "../lib/auth/continuation";
 
 export function AuthenticatedRoute() {
   const authenticated = useDeviceAuthentication();
@@ -19,9 +20,7 @@ export function AuthenticatedRoute() {
   }
 
   if (!authenticated)
-    return (
-      <Navigate to="/sign-in" replace state={{ from: `${location.pathname}${location.search}` }} />
-    );
+    return <Navigate to={signInContinuation(`${location.pathname}${location.search}`)} replace />;
   return (
     <>
       <StoragePermissionPrompt />

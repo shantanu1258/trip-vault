@@ -670,6 +670,13 @@ textarea:focus-visible {
   pointer-events: none;
 }
 
+.form-input.seat-input::placeholder {
+  color: rgb(var(--color-muted) / 0.8);
+  font-weight: 400;
+  text-transform: none;
+  opacity: 1;
+}
+
 #trip-search > .lucide-search {
   color: rgb(var(--color-muted));
 }

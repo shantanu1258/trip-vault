@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarPlus,
   Check,
-  Clipboard,
   FileUp,
   Loader2,
   NotebookPen,
@@ -18,7 +17,7 @@ import { Link } from "react-router-dom";
 import { z } from "zod";
 import { ModalSheet } from "../../components/ModalSheet";
 import { FileDropzone } from "../../components/FileDropzone";
-import { LocalQrCode } from "../../components/LocalQrCode";
+import { InvitationCodePanel } from "../../components/InvitationCodePanel";
 import { getErrorMessage } from "../trips/presentation";
 import type { Trip } from "../trips/types";
 import {
@@ -1035,37 +1034,16 @@ export function ShareTripForm({
         </div>
       )}
       {code ? (
-        <div className="mt-7 text-center">
-          <LocalQrCode value={joinUrl} />
-          <p className="mt-5 text-sm text-muted">
-            The recipient signs in, scans this QR, and confirms the prefilled one-time code. It
-            expires after 14 days and cannot be reused.
-          </p>
-          <button
-            onClick={() => copy(code)}
-            type="button"
-            className="mt-5 inline-flex items-center gap-3 rounded-2xl bg-brand px-5 py-4 font-mono text-xl font-black tracking-[0.12em] text-surface"
-          >
-            {code} {copied ? <Check className="size-5" /> : <Clipboard className="size-5" />}
-          </button>
-          <button
-            type="button"
-            className="secondary-button mx-auto mt-3"
-            onClick={() => copy(joinUrl)}
-          >
-            <Clipboard className="size-4" /> Copy private link
-          </button>
-          <button
-            type="button"
-            className="secondary-button mx-auto mt-3"
-            onClick={() => {
-              setCode("");
-              setCopied(false);
-            }}
-          >
-            Create another code
-          </button>
-        </div>
+        <InvitationCodePanel
+          code={code}
+          joinUrl={joinUrl}
+          copied={copied}
+          onCopy={copy}
+          onCreateAnother={() => {
+            setCode("");
+            setCopied(false);
+          }}
+        />
       ) : method === "known" ? (
         <form onSubmit={submitKnown} className="mt-5 space-y-4">
           <TargetType />

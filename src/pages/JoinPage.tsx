@@ -1,18 +1,25 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, KeyRound, Loader2, ShieldCheck } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { RequiredMark } from "../components/RequiredMark";
 import { normalizeJoinCode, redeemInvitation } from "../features/workspace/api";
+import { clearPendingInvitation, pendingInvitationCode } from "../lib/auth/pendingInvitation";
 
 export function JoinPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
-  const [code, setCode] = useState(() => searchParams.get("code") ?? "");
+  const [code, setCode] = useState(() => searchParams.get("code") ?? pendingInvitationCode() ?? "");
+  // The remembered invite has now been presented. Do not trap later navigation,
+  // repeat failures, or carry it into a different account on this shared browser.
+  useEffect(() => {
+    clearPendingInvitation();
+  }, []);
   const mutation = useMutation({
     mutationFn: redeemInvitation,
+    retry: false,
     onSuccess: async (tripId) => {
       await queryClient.invalidateQueries({ queryKey: ["trips"] });
       navigate(`/trips/${tripId}`, { replace: true });
@@ -59,6 +66,7 @@ export function JoinPage() {
                 autoCapitalize="characters"
                 autoComplete="one-time-code"
                 required
+                disabled={mutation.isPending}
               />
             </label>
             <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-muted">

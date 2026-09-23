@@ -45,6 +45,7 @@ import { database } from "../lib/local-db/database";
 import { DocumentTypeIcon } from "../components/DocumentTypeIcon";
 import { BookingHeroSurface } from "../components/BookingHeroSurface";
 import { BookingSummarySurface } from "../components/BookingSummarySurface";
+import { FlightSeatsEditor } from "../components/FlightSeatsEditor";
 import { DocumentCardContent, documentCardLinkClassName } from "../components/DocumentCardContent";
 import { DemoDocumentPreview } from "../demo/DemoDocumentPreview";
 import { demoVaultDocumentById } from "../demo/model";
@@ -99,6 +100,8 @@ function EventDetails({
   focusedTravelerId,
   onViewDocument,
   onViewCost,
+  seats,
+  onSaveSeat,
   onClose
 }: {
   event: DemoEvent;
@@ -106,8 +109,12 @@ function EventDetails({
   focusedTravelerId: string | null;
   onViewDocument: (id: string) => void;
   onViewCost: (cost: TripCost) => void;
+  seats: Record<string, string>;
+  onSaveSeat: (travelerId: string, seat: string) => void;
   onClose: () => void;
 }) {
+  const [seatsOpen, setSeatsOpen] = useState(false);
+  const [seatMessage, setSeatMessage] = useState("");
   const documents = event.documentIds
     .filter((id) => visibleDocumentIds.has(id))
     .flatMap((id) => {
@@ -193,6 +200,22 @@ function EventDetails({
           </p>
         </div>
       )}
+      {event.type === "flight" && (
+        <FlightSeatsEditor
+          route="DEL → FCO"
+          travelers={demoTravelersAsTravelers.filter((traveler) =>
+            travelers.some((person) => person.id === traveler.id)
+          )}
+          seats={Object.entries(seats).map(([traveler_id, seat]) => ({ traveler_id, seat }))}
+          open={seatsOpen}
+          onOpenChange={setSeatsOpen}
+          message={seatMessage}
+          onSave={(travelerId, seat) => {
+            onSaveSeat(travelerId, seat);
+            setSeatMessage("Demo seat saved for this preview. No real booking was changed.");
+          }}
+        />
+      )}
       <div className="mt-4 border-t border-line pt-3">
         <h3 className="text-sm font-bold">
           Documents <span className="ml-1 text-muted">{documents.length}</span>
@@ -237,12 +260,12 @@ function EventDetails({
               .map((cost) => formatMoney(cost.amount_minor, cost.currency_code))
               .join(" · ")}
           >
-            <div className="divide-y divide-line">
+            <div className="space-y-2">
               {costs.map((cost) => (
                 <button
                   key={cost.id}
                   type="button"
-                  className="flex min-h-11 w-full items-center gap-2 py-2 text-left text-sm"
+                  className="expense-list-item flex min-h-11 w-full items-center gap-2 rounded-xl p-3 text-left text-sm"
                   onClick={() => onViewCost(cost)}
                 >
                   <span className="min-w-0 flex-1">
@@ -393,6 +416,7 @@ export function DemoTripPage() {
   const [view, setView] = useState<DemoView>("timeline");
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<DemoEvent | null>(null);
+  const [demoSeats, setDemoSeats] = useState<Record<string, Record<string, string>>>({});
   const [selectedCost, setSelectedCost] = useState<TripCost | null>(null);
   const [sheet, setSheet] = useState<DemoSheet>(null);
   const [selectedTask, setSelectedTask] = useState<DemoTask | null>(null);
@@ -520,6 +544,7 @@ export function DemoTripPage() {
       .catch(() => undefined);
   };
   const resetDemo = () => {
+    setDemoSeats({});
     choosePhase("travelday");
     setView("timeline");
     setFocusedTravelerId(null);
@@ -1095,6 +1120,13 @@ export function DemoTripPage() {
           onViewCost={setSelectedCost}
           visibleDocumentIds={visibleDocumentIds}
           focusedTravelerId={focusedTravelerId}
+          seats={demoSeats[selectedEvent.id] ?? {}}
+          onSaveSeat={(travelerId, seat) =>
+            setDemoSeats((current) => ({
+              ...current,
+              [selectedEvent.id]: { ...current[selectedEvent.id], [travelerId]: seat }
+            }))
+          }
           onClose={() => setSelectedEvent(null)}
         />
       )}

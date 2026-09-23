@@ -15,6 +15,8 @@ import { Brand } from "../components/Brand";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { RequiredMark } from "../components/RequiredMark";
 import { rememberDeviceProfile } from "../lib/auth/deviceSession";
+import { authReturnPath } from "../lib/auth/continuation";
+import { pendingInvitationPath } from "../lib/auth/pendingInvitation";
 import { isSupabaseConfigured, supabase } from "../lib/supabase/client";
 
 export function SignInPage({ admin = false }: { admin?: boolean }) {
@@ -30,10 +32,10 @@ export function SignInPage({ admin = false }: { admin?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const requestedPath =
-    typeof location.state === "object" && location.state && "from" in location.state
-      ? String(location.state.from)
-      : "/";
+  const requestedPath = admin
+    ? "/admin"
+    : (pendingInvitationPath() ?? authReturnPath(location.search, location.state));
+  const joiningTrip = requestedPath.startsWith("/join?");
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -66,7 +68,9 @@ export function SignInPage({ admin = false }: { admin?: boolean }) {
         if (authError) throw authError;
         if (!data.session)
           setMessage(
-            "Account created. Your Supabase project currently requires an email confirmation before sign-in."
+            joiningTrip
+              ? "Check your email to confirm your account, then sign in here. Your invitation is remembered in this browser."
+              : "Check your email to confirm your account, then sign in."
           );
         else {
           rememberDeviceProfile(data.session.user.id);
@@ -160,6 +164,11 @@ export function SignInPage({ admin = false }: { admin?: boolean }) {
             </div>
           )}
           <form onSubmit={submit} className="space-y-5">
+            {!admin && joiningTrip && (
+              <p className="text-sm text-muted">
+                Your trip invitation is ready. Sign in or create an account, then confirm joining.
+              </p>
+            )}
             {mode === "sign-up" && (
               <div>
                 <label htmlFor="display-name" className="text-sm font-extrabold">

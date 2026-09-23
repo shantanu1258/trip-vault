@@ -29,6 +29,7 @@ it("edits a seat in place, preserves other passenger details, and refreshes all 
   await userEvent.click(screen.getByRole("button", { name: "Seats · DEL → SIN" }));
   const input = await screen.findByRole("textbox", { name: "Seat for Sam" });
   expect(input).toHaveValue("12A");
+  expect(input).toHaveAttribute("placeholder", "e.g. 12A");
   await userEvent.clear(input);
   await userEvent.type(input, "14c");
   await userEvent.click(screen.getByRole("button", { name: "Save seat for Sam" }));

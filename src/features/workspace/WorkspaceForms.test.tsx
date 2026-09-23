@@ -477,6 +477,32 @@ describe("Upload document flow", () => {
     );
   });
 
+  it("shows aligned code actions and copies the same invitation into its private link", async () => {
+    const user = userEvent.setup();
+    const code = "ABCD-EFGH-JKMN-PQRS";
+    mocks.createInvitation.mockResolvedValueOnce(code);
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={new QueryClient()}>
+          <ShareTripForm trip={trip} travelers={travelers} onClose={vi.fn()} />
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+    await user.selectOptions(screen.getByLabelText("Who is this code for?"), "ravi");
+    await user.click(screen.getByRole("button", { name: "Generate one-time code" }));
+    await screen.findByRole("button", { name: "Copy invitation code" });
+    const copyLink = screen.getByRole("button", { name: "Copy private link" });
+    const another = screen.getByRole("button", { name: "Create another code" });
+    expect(copyLink.parentElement).toBe(another.parentElement);
+    expect(copyLink.parentElement).toHaveClass("grid", "gap-2", "sm:grid-cols-2");
+    await user.click(copyLink);
+    expect(await navigator.clipboard.readText()).toBe(
+      `${window.location.origin}/join?code=${code}`
+    );
+    await user.click(another);
+    expect(screen.getByRole("button", { name: "Generate one-time code" })).toBeVisible();
+  });
+
   it("offers a later trip to a known account without creating a new code", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { mutations: { retry: false }, queries: { retry: false } }

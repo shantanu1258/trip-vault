@@ -29,6 +29,8 @@ For **five-day flight/bus reminders**, apply [202609230002_journey_early_reminde
 
 ## Verification
 
+Invitation signup needs no SQL, callback, email-template or Auth-setting change. Keep the current confirmation-disabled configuration and follow [INVITATION_SIGNUP_SETUP.md](../docs/INVITATION_SIGNUP_SETUP.md).
+
 On an isolated test project, run the SQL tests after both setup phases:
 
 - `tests/001_schema_smoke.sql`: schema, catalogues, RLS, grants and core trigger invariants.

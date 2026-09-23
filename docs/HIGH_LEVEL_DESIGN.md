@@ -337,11 +337,13 @@ Trip-planning readiness is audience-aware independently of offline-pack readines
 
 1. The owner creates or selects a traveler, or chooses **Non-traveling collaborator**.
 2. The owner chooses Editor or Viewer and generates a cryptographically random code.
-3. The recipient creates an account or signs in; no trip identity is revealed before authentication.
-4. The recipient enters the code while online.
+3. The recipient opens the private link/QR, then creates an account or signs in. The pending invitation is remembered in that browser through navigation and later login, for at most 14 days; no trip identity is revealed. Signup immediately establishes a session with the current confirmation-disabled configuration; no email/OTP changes are included.
+4. After authentication the normal Join trip screen shows the code already filled in. Both new and existing accounts confirm joining while online; manual code entry remains available.
 5. The backend validates expiry, revocation, attempted reuse, and the intended target.
 6. One transaction creates membership, links the account to the traveler when applicable, and consumes the code.
 7. The recipient may then prepare their authorized trip data and documents for offline use.
+
+No special email redirect or template is needed for invitation continuation. See [invitation signup acceptance](INVITATION_SIGNUP_SETUP.md). A different browser/device must reopen the original invitation. Authentication is never bypassed; invalid, used or expired invitations retain a generic error and allow a replacement code without automatic retry loops.
 
 ### 8.6 Operate without a connection
 
@@ -388,6 +390,8 @@ Administrator configuration is an online-only workflow. The Admin console never 
 **Delete draft** requires confirmation and administrator authorization. It discards only an unpublished draft, hides it from active release lists, and retains its rows/assets and audit history. Live and previously published versions cannot be deleted this way. Publication and discard use a shared database lock boundary so a discarded draft cannot become live through a competing publish. Existing databases must apply `supabase/migrations/202609220004_admin_release_management.sql` before draft deletion works.
 
 ### 8.9 Review the safe demo
+
+Flight seat shortcuts now share `FlightSeatsEditor` with the live flight sheets. Demo seat edits are session-local React state, retained while navigating within the preview and cleared by Reset demo. The same seat-placeholder styling and expense-row treatment apply in both surfaces.
 
 The public `/preview` route uses synthetic fixtures and bundled sample files, including when opened from Admin. Booking heroes, document cards, collection filters, booking summaries, costs and PDF rendering reuse production components rather than parallel mock layouts. Read-only document viewing uses the in-app viewer, with separate external Open, download and device-share actions. No demo content is written into a real trip or Vault; authenticated application-shell services remain separate from the demo data source. Local demo clock, traveler focus and reset do not alter the device clock or live data.
 

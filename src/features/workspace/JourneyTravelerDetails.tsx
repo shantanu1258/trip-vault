@@ -235,10 +235,10 @@ function JourneyTravelerLegDetails({
                     <label className="form-label text-xs">
                       {labels.seat}
                       <input
-                        className="form-input"
+                        className="form-input seat-input"
                         name="seatOrBerth"
                         defaultValue={row?.seat_or_berth ?? ""}
-                        placeholder={`Enter ${labels.seat.toLowerCase()} from the ticket`}
+                        placeholder="e.g. 12A"
                       />
                     </label>
                   )}

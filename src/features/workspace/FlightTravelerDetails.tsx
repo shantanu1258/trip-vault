@@ -83,10 +83,10 @@ export function FlightTravelerDetails({
                   <label className="form-label text-xs">
                     Seat
                     <input
-                      className="form-input"
+                      className="form-input seat-input"
                       name="seat"
                       defaultValue={row?.seat ?? ""}
-                      placeholder="Enter the seat printed on the boarding pass"
+                      placeholder="e.g. 12A"
                     />
                   </label>
                   <label className="form-label text-xs">

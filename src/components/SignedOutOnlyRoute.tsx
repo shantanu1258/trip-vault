@@ -1,9 +1,12 @@
 import { Loader2 } from "lucide-react";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useDeviceAuthentication } from "../lib/auth/useDeviceAuthentication";
+import { authReturnPath } from "../lib/auth/continuation";
+import { pendingInvitationPath } from "../lib/auth/pendingInvitation";
 
 export function SignedOutOnlyRoute() {
   const authenticated = useDeviceAuthentication();
+  const location = useLocation();
 
   if (authenticated === null) {
     return (
@@ -16,5 +19,12 @@ export function SignedOutOnlyRoute() {
     );
   }
 
-  return authenticated ? <Navigate to="/" replace /> : <Outlet />;
+  return authenticated ? (
+    <Navigate
+      to={pendingInvitationPath() ?? authReturnPath(location.search, location.state)}
+      replace
+    />
+  ) : (
+    <Outlet />
+  );
 }

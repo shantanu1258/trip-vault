@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — Invitation signup and shared seat UI
+
+- Signed-out invitation links are remembered in this browser for up to 14 days across navigation, signup, refresh and later login. After authentication, the normal Join trip screen has the code prefilled; confirmation uses the existing protected RPC. The pending browser record is cleared when presented, preventing repeated redirects or unexpected joins on a shared device. Admin remains separate.
+- Signup stays immediate with the current email-confirmation-disabled configuration. No OTP screen, email template, custom sender or authentication setting is changed. A future email-verification rollout is separate from trip invitation continuation.
+- Invitation code actions use equal grid columns on larger screens and full-width stacked buttons on phones. Seat fields use a lighter, normal-weight `e.g. 12A` placeholder in both themes.
+- Real flight sheets and demo flight sheets share `FlightSeatsEditor`. Demo edits remain in memory, survive closing/reopening details and reset with Reset demo; no live passenger data is changed. Demo booking costs use the shared expense-row styling.
+- No database migration or special invitation callback configuration. Deploy the frontend and follow the signup/invitation checks in `docs/INVITATION_SIGNUP_SETUP.md`. Hosted Auth settings are unchanged.
+
 ## Unreleased — Journey reminders and travel-day shortcuts
 
 - Added a one-off five-day heads-up for timed flights and buses alongside the existing one-hour reminder. Messages include the journey name and departure-local date/time; existing device reminder preferences, membership checks, cancellation/reschedule checks and duplicate prevention remain in force. A 24-hour catch-up window avoids stale early reminders.
