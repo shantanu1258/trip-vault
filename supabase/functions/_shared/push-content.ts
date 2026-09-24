@@ -97,14 +97,18 @@ export function pushChangeContent(
 ): { title: string; body: string } | null {
   const data = record(details);
   const action = data.action;
-  if (kind === "reminder" && ["five_days", "one_hour"].includes(String(data.reminder_stage))) {
+  if (kind === "reminder" && ["five_days", "forty_eight_hours", "one_hour"].includes(String(data.reminder_stage))) {
     const name = text(data.item_title);
     if (!name) return null;
-    const label = data.event_type === "flight" ? "Flight" : data.event_type === "bus" ? "Bus" : "Event";
+    const journeyLabels: Record<string, string> = {
+      flight: "Flight", train: "Train", bus: "Bus", ferry: "Ferry", cab: "Cab"
+    };
+    const label = journeyLabels[String(data.event_type)] ?? "Event";
+    const early = data.reminder_stage !== "one_hour";
     const timing = time(record(data.after), "starts_at");
     return {
-      title: `${label} ${data.reminder_stage === "five_days" ? "coming up" : "starting soon"}: ${name}`.slice(0, 200),
-      body: [text(data.trip_title, 80), timing, data.reminder_stage === "five_days" ? "Review your journey and documents." : "View event details."].filter(Boolean).join(" · ").slice(0, 360)
+      title: `${label} ${early ? "coming up" : "starting soon"}: ${name}`.slice(0, 200),
+      body: [text(data.trip_title, 80), timing, early ? "Review your journey and documents." : "View event details."].filter(Boolean).join(" · ").slice(0, 360)
     };
   }
   const label =

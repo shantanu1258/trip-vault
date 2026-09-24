@@ -29,6 +29,10 @@
 --
 -- CHANGELOG (newest first; dates use Asia/Kolkata repository timestamps)
 --
+-- 2026-09-25  Add 48-hour travel reminders, preserving existing reminder stages.
+--              Existing projects use migrations/202609250002_journey_48_hour_reminders.sql.
+-- 2026-09-25  Arrival card document category and purpose.
+--              Existing projects use migrations/202609250001_arrival_card_documents.sql.
 -- 2026-09-23  Five-day timed flight/bus reminders, independent of one-hour reminders.
 --              Existing projects use migrations/202609230002_journey_early_reminders.sql.
 -- 2026-09-23  Push change snapshots distinguish created/updated/restored records
@@ -123,8 +127,8 @@ do $$ begin create type public.traveler_status as enum ('active', 'removed'); ex
 do $$ begin create type public.invitation_target_type as enum ('traveler', 'collaborator'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.app_admin_status as enum ('active', 'disabled'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.booking_type as enum ('flight', 'hotel', 'transport', 'activity', 'restaurant', 'other'); exception when duplicate_object then null; end $$;
-do $$ begin create type public.document_category as enum ('flight', 'hotel', 'visa', 'passport', 'insurance', 'ticket', 'transport', 'receipt', 'other'); exception when duplicate_object then null; end $$;
-do $$ begin create type public.document_purpose as enum ('confirmation', 'ticket', 'boarding_pass', 'baggage_tag', 'visa', 'passport', 'insurance', 'other'); exception when duplicate_object then null; end $$;
+do $$ begin create type public.document_category as enum ('flight', 'hotel', 'visa', 'arrival_card', 'passport', 'insurance', 'ticket', 'transport', 'receipt', 'other'); exception when duplicate_object then null; end $$;
+do $$ begin create type public.document_purpose as enum ('confirmation', 'ticket', 'boarding_pass', 'baggage_tag', 'visa', 'arrival_card', 'passport', 'insurance', 'other'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.document_visibility as enum ('private', 'traveler_and_managers', 'trip', 'selected_members'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.flight_status as enum ('scheduled', 'check_in_open', 'boarding', 'delayed', 'departed', 'landed', 'cancelled'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.requirement_type as enum ('visa', 'passport', 'insurance', 'check_in', 'payment', 'packing', 'custom'); exception when duplicate_object then null; end $$;
@@ -6376,8 +6380,9 @@ commit;
 -- END SECTION: PUSH CHANGE DETAILS
 
 -- SECTION: JOURNEY EARLY REMINDERS
--- Five-day flight/bus heads-ups; requires 202609230001_push_change_details.sql.
--- Existing reminder preferences control both the one-hour and five-day reminders.
+-- Add 48-hour heads-ups for flights, trains, buses, ferries and cabs.
+-- Requires 202609230002_journey_early_reminders.sql. Safe to reapply.
+-- Keeps existing five-day flight/bus and one-hour reminders and preference.
 begin;
 
 create or replace function public.push_job_is_allowed(p_job_id uuid) returns boolean
@@ -6403,6 +6408,11 @@ language sql stable security definer set search_path = public, pg_temp as $$
               or (i.event_type in ('flight','bus') and i.event_type::text = j.change_details->>'event_type'
                 and i.starts_at > now() + interval '4 days'
                 and i.starts_at <= now() + interval '5 days'))
+            and (coalesce(j.change_details->>'reminder_stage','one_hour') <> 'forty_eight_hours'
+              or (i.event_type in ('flight','train','bus','ferry','cab')
+                and i.event_type::text = j.change_details->>'event_type'
+                and i.starts_at > now() + interval '24 hours'
+                and i.starts_at <= now() + interval '48 hours'))
           ))
       ) end
   );
@@ -6414,13 +6424,16 @@ create or replace function public.claim_push_jobs() returns setof public.push_jo
 language plpgsql security definer set search_path = public, pg_temp as $$
 begin
   -- Keep the existing one-hour occurrence key, so previously sent reminders never repeat.
-  -- A separate five-day key gives each departure its own early heads-up per device.
-  -- Catch up for at most 24 hours; do not send a wave of late five-day reminders.
+  -- Separate stage keys deduplicate each heads-up per departure and device.
+  -- Both early stages expire after 24 hours; never deliver stale catch-ups.
   insert into public.push_jobs(subscription_id,trip_id,entity_id,kind,occurrence,expected_start,expires_at,change_details)
   select s.id, i.trip_id, i.id, 'reminder',
-    case when stage.name = 'one_hour' then 'reminder:' else 'reminder:five-days:' end || i.id || ':' || i.starts_at,
+    case stage.name when 'one_hour' then 'reminder:'
+      when 'five_days' then 'reminder:five-days:' else 'reminder:48-hours:' end || i.id || ':' || i.starts_at,
     i.starts_at,
-    case when stage.name = 'one_hour' then i.starts_at else i.starts_at - interval '4 days' end,
+    case stage.name when 'one_hour' then i.starts_at
+      when 'five_days' then i.starts_at - interval '4 days'
+      else i.starts_at - interval '24 hours' end,
     jsonb_build_object('reminder_stage', stage.name, 'item_title', left(i.title,160),
       'trip_title', left(t.title,160), 'event_type', i.event_type,
       'after', jsonb_build_object('starts_at', i.starts_at, 'timezone', i.timezone,
@@ -6429,12 +6442,14 @@ begin
   join public.trips t on t.id = i.trip_id and t.deleted_at is null and t.status <> 'archived'
   join public.trip_members m on m.trip_id = i.trip_id and m.status = 'active'
   join public.push_subscriptions s on s.user_id = m.user_id and s.reminders
-  cross join (values ('one_hour'), ('five_days')) stage(name)
+  cross join (values ('one_hour'), ('five_days'), ('forty_eight_hours')) stage(name)
   where i.deleted_at is null and not i.is_all_day and i.event_status not in ('done','cancelled','skipped')
     and (i.timing_mode = 'exact' or (i.timing_mode = 'relative' and i.has_explicit_start_time))
     and ((stage.name = 'one_hour' and i.starts_at > now() and i.starts_at <= now() + interval '1 hour')
       or (stage.name = 'five_days' and i.event_type in ('flight','bus')
-        and i.starts_at > now() + interval '4 days' and i.starts_at <= now() + interval '5 days'))
+        and i.starts_at > now() + interval '4 days' and i.starts_at <= now() + interval '5 days')
+      or (stage.name = 'forty_eight_hours' and i.event_type in ('flight','train','bus','ferry','cab')
+        and i.starts_at > now() + interval '24 hours' and i.starts_at <= now() + interval '48 hours'))
   on conflict (subscription_id, occurrence) do nothing;
 
   update public.push_jobs set status = 'cancelled', finished_at = now()

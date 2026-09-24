@@ -27,6 +27,10 @@ For **specific change notifications**, existing Web Push installations run [2026
 
 For **five-day flight/bus reminders**, apply [202609230002_journey_early_reminders.sql](migrations/202609230002_journey_early_reminders.sql) after the change-details migration, then redeploy `push-dispatch` and the frontend. It replaces the claim/authorization functions, preserves one-hour reminder keys and adds a distinct early-reminder stage. It is safe to reapply and does not enable Cron or send notifications during installation.
 
+For **Arrival card documents**, apply [202609250001_arrival_card_documents.sql](migrations/202609250001_arrival_card_documents.sql) before using the new document type. It only extends the document category and purpose enums, is safe to reapply, and leaves existing documents and permissions unchanged. New projects already include it in the complete installer.
+
+For **48-hour travel reminders**, apply [202609250002_journey_48_hour_reminders.sql](migrations/202609250002_journey_48_hour_reminders.sql) after the five-day reminder migration, then redeploy `push-dispatch` and the frontend. It adds flights, trains, buses, ferries and cabs to a separate 48-hour stage while preserving existing reminder keys and preferences. It is safe to reapply and does not send notifications or enable Cron itself.
+
 ## Verification
 
 Invitation signup needs no SQL, callback, email-template or Auth-setting change. Keep the current confirmation-disabled configuration and follow [INVITATION_SIGNUP_SETUP.md](../docs/INVITATION_SIGNUP_SETUP.md).
@@ -40,6 +44,7 @@ On an isolated test project, run the SQL tests after both setup phases:
 - `tests/005_activity_moments_smoke.sql`: Moment schema and RLS.
 - `tests/006_current_features_smoke.sql`: current feature columns, RPC access, activity timing triggers and quick-cost categories.
 - `tests/007_admin_releases_smoke.sql`: admin-only draft discard, retained audit data, published/history protection and publication after discard.
+- `tests/008_48_hour_reminders_smoke.sql`: travel reminder boundaries, deduplication, catch-up, rescheduling, status and preference checks.
 
 These tests roll back their fixtures; they are not rollback/deployment scripts. Local verification executes the complete installer and these tests in PGlite with minimal Supabase Auth/Storage schema stand-ins. Hosted Auth, Storage APIs and delivery still require deployment acceptance checks.
 

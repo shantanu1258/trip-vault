@@ -166,29 +166,32 @@ it("defaults to the latest-starting active trip and clears event, type and trave
   expect(screen.getByLabelText("Traveller")).toHaveValue("");
 });
 
-it("carries the chosen type and traveler into review without changing visibility", async () => {
-  mocks.itinerary.mockResolvedValue([underwayEvent()]);
-  setup();
-  await waitFor(() => expect(screen.getByLabelText("Event (optional)")).toBeEnabled());
-  await userEvent.selectOptions(screen.getByLabelText("Event (optional)"), "event-1");
-  await userEvent.selectOptions(screen.getByLabelText("Document type"), "visa");
-  await userEvent.selectOptions(screen.getByLabelText("Traveller"), "traveler-1");
-  await userEvent.upload(
-    screen.getByLabelText("PDF or image under 5 MB"),
-    new File(["pdf"], "visa.pdf", { type: "application/pdf" })
-  );
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Review trip document" })).toBeEnabled()
-  );
-  await userEvent.click(screen.getByRole("button", { name: "Review trip document" }));
-  expect(mocks.form).toHaveBeenCalledWith(
-    expect.objectContaining({
-      initialKind: "visa",
-      assignmentPreset: { mode: "selected", travelerIds: ["traveler-1"] },
-      initialVisibility: "trip"
-    })
-  );
-});
+it.each(["visa", "arrival_card"])(
+  "carries %s and traveler into review without changing visibility",
+  async (kind) => {
+    mocks.itinerary.mockResolvedValue([underwayEvent()]);
+    setup();
+    await waitFor(() => expect(screen.getByLabelText("Event (optional)")).toBeEnabled());
+    await userEvent.selectOptions(screen.getByLabelText("Event (optional)"), "event-1");
+    await userEvent.selectOptions(screen.getByLabelText("Document type"), kind);
+    await userEvent.selectOptions(screen.getByLabelText("Traveller"), "traveler-1");
+    await userEvent.upload(
+      screen.getByLabelText("PDF or image under 5 MB"),
+      new File(["pdf"], "visa.pdf", { type: "application/pdf" })
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Review trip document" })).toBeEnabled()
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Review trip document" }));
+    expect(mocks.form).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialKind: kind,
+        assignmentPreset: { mode: "selected", travelerIds: ["traveler-1"] },
+        initialVisibility: "trip"
+      })
+    );
+  }
+);
 
 it("keeps an explicit personal destination private even during a trip", async () => {
   mocks.itinerary.mockResolvedValue([underwayEvent()]);

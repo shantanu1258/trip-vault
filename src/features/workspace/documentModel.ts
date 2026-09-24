@@ -11,6 +11,7 @@ export type DocumentKind =
   | "boarding_pass"
   | "baggage_tag"
   | "visa"
+  | "arrival_card"
   | "passport"
   | "hotel_confirmation"
   | "journey_ticket"
@@ -62,6 +63,14 @@ export const documentKinds: readonly DocumentKindOption[] = [
     hint: "Personal entry permission",
     category: "visa",
     purpose: "visa",
+    defaultAssignment: "selected"
+  },
+  {
+    value: "arrival_card",
+    label: "Arrival card",
+    hint: "Arrival declaration or submission confirmation",
+    category: "arrival_card",
+    purpose: "arrival_card",
     defaultAssignment: "selected"
   },
   {
@@ -185,6 +194,7 @@ const purposeLabels: Record<DocumentPurpose, string> = {
   boarding_pass: "Boarding pass",
   baggage_tag: "Baggage tag",
   visa: "Visa",
+  arrival_card: "Arrival card",
   passport: "Passport",
   insurance: "Travel insurance",
   hotel_confirmation: "Stay confirmation",

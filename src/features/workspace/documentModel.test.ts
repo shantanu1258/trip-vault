@@ -9,6 +9,7 @@ import {
   suggestedDocumentTitle
 } from "./documentModel";
 import type { Traveler, VaultDocument } from "./types";
+import { documentCategoryCounts } from "./documentFilters";
 
 function vaultDocument(overrides: Partial<VaultDocument> = {}): VaultDocument {
   return {
@@ -76,6 +77,23 @@ describe("document model", () => {
         "traveler-1"
       )
     ).toBe(true);
+  });
+
+  it("round-trips arrival cards as their own type and Vault filter", () => {
+    const document = vaultDocument({ category: "arrival_card", purpose: "arrival_card" });
+    expect(documentKind("arrival_card")).toMatchObject({
+      category: "arrival_card",
+      purpose: "arrival_card",
+      defaultAssignment: "selected"
+    });
+    expect(documentKindFor(document)).toBe("arrival_card");
+    expect(documentPurposeLabel(document.purpose)).toBe("Arrival card");
+    expect(documentCategoryCounts([document])).toEqual([
+      { key: "arrival_card", label: "Arrival cards", count: 1 }
+    ]);
+    expect(suggestedDocumentTitle("arrival_card", "selected", ["traveler-1"], travelers)).toBe(
+      "Arrival card · Asha"
+    );
   });
 
   it("labels multi-traveler assignment and detects exact duplicates", () => {

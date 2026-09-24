@@ -11,6 +11,12 @@ enable any job; in-app alerts remain independent.
 
 ## Remaining steps for this deployment
 
+### September 25: 48-hour travel reminders
+
+After the September 23 migrations below, apply `supabase/migrations/202609250002_journey_48_hour_reminders.sql`, redeploy `push-dispatch`, and deploy/reload the frontend and service worker. No new secrets or Cron job are needed. The existing Reminders preference now also covers flights, trains, buses, ferries and cabs 48 hours before their explicitly timed departure. Five-day flight/bus and one-hour event reminders remain unchanged.
+
+The new stage queues when departure is at most 48 hours away, with catch-up only while more than 24 hours remain. Its separate occurrence key prevents repeats per device/departure without suppressing other stages. Rescheduling, type changes, cancellation, all-day/inferred timing, removed membership and opt-out invalidate stale reminders at send time. Notification text uses the journey name and local departure date/time rather than a countdown. This remains best-effort delivery, not an alarm. `tests/008_48_hour_reminders_smoke.sql` checks the timing boundaries, all five journey types and suppression without sending pushes. Real-phone verification after deployment remains required.
+
 ### September 23: specific change notifications and early journey reminders
 
 Existing projects with Web Push installed must apply `supabase/migrations/202609230001_push_change_details.sql`, then redeploy `push-dispatch` and deploy/reload the frontend (including its service worker). The complete setup already includes the change for fresh projects. This migration is safe to reapply and does not send notifications or enable Cron. No change to secrets or the `push-test` deployment is required.

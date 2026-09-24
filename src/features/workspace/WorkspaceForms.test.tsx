@@ -541,7 +541,10 @@ describe("Upload document flow", () => {
     expect(mocks.createInvitation).not.toHaveBeenCalled();
   });
 
-  it("derives the Vault name from purpose and traveler while preserving the original file", async () => {
+  it.each([
+    ["boarding_pass", "Boarding pass", "flight"],
+    ["arrival_card", "Arrival card", "arrival_card"]
+  ])("saves %s with its type, traveler and original file", async (kind, label, category) => {
     const queryClient = new QueryClient({
       defaultOptions: { mutations: { retry: false }, queries: { retry: false } }
     });
@@ -562,8 +565,8 @@ describe("Upload document flow", () => {
       </MemoryRouter>
     );
 
-    await user.selectOptions(screen.getByLabelText("Document type"), "boarding_pass");
-    expect(screen.getByText("Boarding pass · Ravi · Flight to Dubai")).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Document type"), kind);
+    expect(screen.getByText(`${label} · Ravi · Flight to Dubai`)).toBeInTheDocument();
     const file = new window.File(["%PDF-test"], "scan-from-phone.pdf", { type: "application/pdf" });
     const fileInput = screen.getByLabelText<HTMLInputElement>("File");
     await user.upload(fileInput, file);
@@ -574,8 +577,9 @@ describe("Upload document flow", () => {
     await waitFor(() =>
       expect(mocks.uploadDocument).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: "Boarding pass · Ravi · Flight to Dubai",
-          purpose: "boarding_pass",
+          title: `${label} · Ravi · Flight to Dubai`,
+          category,
+          purpose: kind,
           assignmentMode: "selected",
           travelerIds: ["ravi"],
           flightLegId: "flight-1",

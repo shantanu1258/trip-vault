@@ -4,6 +4,7 @@ const labels: Record<string, string> = {
   flight: "Flights",
   hotel: "Stays",
   visa: "Visas",
+  arrival_card: "Arrival cards",
   passport: "Passports",
   insurance: "Insurance",
   activity: "Activities",

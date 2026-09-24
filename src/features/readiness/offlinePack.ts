@@ -125,7 +125,9 @@ export async function prepareTripOffline(
     const allDocuments = await listVaultDocuments(tripId);
     const documents = essentialsOnly
       ? allDocuments.filter((document) =>
-          ["boarding_pass", "ticket", "visa", "passport", "insurance"].includes(document.purpose)
+          ["boarding_pass", "ticket", "visa", "arrival_card", "passport", "insurance"].includes(
+            document.purpose
+          )
         )
       : allDocuments;
     expectedVersionIds = documents.flatMap((document) =>

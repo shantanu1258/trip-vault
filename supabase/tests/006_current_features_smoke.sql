@@ -2,6 +2,10 @@
 begin;
 do $$
 begin
+  if not exists(select 1 from pg_enum where enumtypid='public.document_category'::regtype and enumlabel='arrival_card')
+    or not exists(select 1 from pg_enum where enumtypid='public.document_purpose'::regtype and enumlabel='arrival_card') then
+    raise exception 'Missing Arrival card document category or purpose';
+  end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='account_document_uploads' and column_name='personal_title')
     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='trip_costs' and column_name='document_id')
     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='trip_costs' and column_name='activity_moment_id') then

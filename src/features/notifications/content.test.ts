@@ -3,6 +3,22 @@ import { pushChangeContent } from "../../../supabase/functions/_shared/push-cont
 
 const base = { action: "updated", item_title: "Airport taxi", trip_title: "Bali trip" };
 describe("specific push change content", () => {
+  it.each(["flight", "train", "bus", "ferry", "cab"])(
+    "names the %s in a 48-hour reminder",
+    (eventType) => {
+      const content = pushChangeContent("reminder", {
+        reminder_stage: "forty_eight_hours",
+        item_title: "Airport transfer",
+        trip_title: "Holiday",
+        event_type: eventType,
+        after: { starts_at: "2026-09-28T04:00:00Z", timezone: "Asia/Kolkata", timing_mode: "exact" }
+      });
+      expect(content).toEqual({
+        title: `${eventType[0].toUpperCase()}${eventType.slice(1)} coming up: Airport transfer`,
+        body: "Holiday · 28 Sept 2026, 09:30 (Asia/Kolkata) · Review your journey and documents."
+      });
+    }
+  );
   it("names upcoming journeys and uses departure-local time for early and one-hour reminders", () => {
     const details = {
       reminder_stage: "five_days",

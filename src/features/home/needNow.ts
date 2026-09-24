@@ -25,14 +25,15 @@ const purposePriority: Record<VaultDocument["purpose"], number> = {
   ticket: 1,
   visa: 2,
   passport: 3,
-  hotel_confirmation: 4,
-  confirmation: 5,
-  activity_ticket: 6,
-  meal_voucher: 7,
-  insurance: 8,
-  baggage_tag: 9,
-  receipt: 10,
-  other: 11
+  arrival_card: 4,
+  hotel_confirmation: 5,
+  confirmation: 6,
+  activity_ticket: 7,
+  meal_voucher: 8,
+  insurance: 9,
+  baggage_tag: 10,
+  receipt: 11,
+  other: 12
 };
 
 function instant(value?: string | null) {

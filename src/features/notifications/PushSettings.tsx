@@ -68,7 +68,7 @@ export function PushSettings() {
                   ["cost_changes", "Expense additions and changes"],
                   [
                     "reminders",
-                    "Remind me one hour before timed events, and five days before flights and buses"
+                    "Remind me one hour before timed events, 48 hours before travel, and five days before flights and buses"
                   ]
                 ] as const
               ).map(([key, label]) => (

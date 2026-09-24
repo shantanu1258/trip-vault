@@ -25,7 +25,7 @@ it("retains opt-in, preferences and revocation without exposing the test-send co
   expect(screen.getByRole("checkbox", { name: "Event additions and changes" })).toBeChecked();
   expect(
     screen.getByRole("checkbox", {
-      name: "Remind me one hour before timed events, and five days before flights and buses"
+      name: "Remind me one hour before timed events, 48 hours before travel, and five days before flights and buses"
     })
   ).toBeChecked();
   expect(screen.queryByRole("button", { name: "Send test notification" })).not.toBeInTheDocument();
