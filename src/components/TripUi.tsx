@@ -124,7 +124,7 @@ export function TripCard({ trip, emphasized = false }: { trip: Trip; emphasized?
   return (
     <Link
       to={`/trips/${trip.id}`}
-      className={`group block min-w-0 max-w-full overflow-hidden rounded-3xl border bg-surface p-5 shadow-soft transition-transform duration-200 ease-settle hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 ${emphasized ? "border-coral shadow-focus motion-safe:scale-[1.01]" : "border-line"}`}
+      className={`group block min-w-0 max-w-full overflow-hidden rounded-3xl border bg-surface p-5 shadow-soft transition-transform duration-200 ease-settle hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 ${emphasized ? "border-coral shadow-focus" : "border-line"}`}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">

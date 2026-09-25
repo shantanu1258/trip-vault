@@ -233,10 +233,48 @@ export function VaultPage() {
     <AppShell compactTop>
       <div className="mx-auto min-w-0 max-w-5xl">
         <header className="page-enter flex items-center justify-between gap-2 py-1">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="font-display text-xl font-bold leading-tight sm:text-2xl">
               Document Vault
             </h1>
+            {!personal && (showArchived || (query.data && query.data.length > 0)) && (
+              <div className="relative mt-0.5 inline-block min-w-0 max-w-full align-top">
+                <Map
+                  className="pointer-events-none absolute left-0 top-1/2 size-3.5 -translate-y-1/2 text-brand"
+                  aria-hidden="true"
+                />
+                <select
+                  aria-label="Filter Vault documents by trip"
+                  title={
+                    tripsQuery.data?.find((trip) => trip.id === selectedTripId)?.title ??
+                    "All trips"
+                  }
+                  className="block min-h-8 w-auto min-w-0 max-w-full cursor-pointer [field-sizing:content] appearance-none truncate rounded-md bg-transparent pl-5 pr-6 text-sm font-semibold text-brand hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                  value={selectedTripId}
+                  onChange={(event) =>
+                    updateFilters({ trip: event.target.value, traveler: null, event: null })
+                  }
+                >
+                  <option value="all">All trips</option>
+                  {[
+                    ...new Set([
+                      ...availableTrips.map((trip) => trip.id),
+                      ...source.map((document) => document.trip_id),
+                      ...(selectedTripId !== "all" ? [selectedTripId] : [])
+                    ])
+                  ].map((id) => (
+                    <option key={id} value={id}>
+                      {tripsQuery.data?.find((trip) => trip.id === id)?.title ??
+                        `Trip ${id.slice(0, 8)}`}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  className="pointer-events-none absolute right-0 top-1/2 size-4 -translate-y-1/2 text-brand"
+                  aria-hidden="true"
+                />
+              </div>
+            )}
           </div>
           <Link
             to={
@@ -313,44 +351,7 @@ export function VaultPage() {
             )}
             {(showArchived || (query.data && query.data.length > 0)) && (
               <>
-                <div className="relative mt-1 min-w-0">
-                  <Map
-                    className="pointer-events-none absolute left-0 top-1/2 size-4 -translate-y-1/2 text-muted"
-                    aria-hidden="true"
-                  />
-                  <select
-                    aria-label="Filter Vault documents by trip"
-                    title={
-                      tripsQuery.data?.find((trip) => trip.id === selectedTripId)?.title ??
-                      "All trips"
-                    }
-                    className="min-h-11 w-full min-w-0 appearance-none truncate rounded-lg border-0 bg-transparent pl-7 pr-7 text-sm font-bold text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
-                    value={selectedTripId}
-                    onChange={(event) =>
-                      updateFilters({ trip: event.target.value, traveler: null, event: null })
-                    }
-                  >
-                    <option value="all">All trips</option>
-                    {[
-                      ...new Set([
-                        ...availableTrips.map((trip) => trip.id),
-                        ...source.map((document) => document.trip_id),
-                        ...(selectedTripId !== "all" ? [selectedTripId] : [])
-                      ])
-                    ].map((id) => (
-                      <option key={id} value={id}>
-                        {tripsQuery.data?.find((trip) => trip.id === id)?.title ??
-                          `Trip ${id.slice(0, 8)}`}
-                      </option>
-                    ))}
-                  </select>
-
-                  <ChevronDown
-                    className="pointer-events-none absolute right-1 top-1/2 size-4 -translate-y-1/2 text-muted"
-                    aria-hidden="true"
-                  />
-                </div>
-                <div className="flex items-stretch gap-2">
+                <div className="mt-3 flex items-stretch gap-2">
                   <label className="relative min-w-0 flex-1">
                     <span className="sr-only">Search documents</span>
                     <Search
@@ -476,7 +477,7 @@ export function VaultPage() {
                   </div>
                 )}
                 <div
-                  className="mt-2 flex min-w-0 gap-2 overflow-x-auto rounded-2xl border border-line bg-surface p-2"
+                  className="-mx-1 mt-2 flex min-w-0 gap-1.5 overflow-x-auto px-1 py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   role="group"
                   aria-label="Document types"
                 >
@@ -489,7 +490,7 @@ export function VaultPage() {
                       type="button"
                       aria-pressed={category === item.key}
                       onClick={() => updateFilters({ category: item.key })}
-                      className={`inline-flex min-h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-bold focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand ${category === item.key ? "bg-brand text-surface" : "bg-elevated text-brand hover:bg-brand-soft"}`}
+                      className={`inline-flex min-h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand ${category === item.key ? "bg-brand text-surface" : "bg-elevated text-brand hover:bg-brand-soft"}`}
                     >
                       {item.label} · {item.count}
                     </button>

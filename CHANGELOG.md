@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Compact Vault header and current-trip card
+
+- Vault's trip selector moves under the Document Vault heading as a compact subtitle with a map icon and chevron, removing its separate row above search. Document-type chips drop their bordered container and visible scrollbar. Filters, URL parameters and Add document are unchanged.
+- The emphasized current-trip card on Trips no longer scales up, so its coral border is not clipped by the page's horizontal overflow guard.
+
 ## Unreleased — Invitation signup and shared seat UI
 
 - Signed-out invitation links are remembered in this browser for up to 14 days across navigation, signup, refresh and later login. After authentication, the normal Join trip screen has the code prefilled; confirmation uses the existing protected RPC. The pending browser record is cleared when presented, preventing repeated redirects or unexpected joins on a shared device. Admin remains separate.
