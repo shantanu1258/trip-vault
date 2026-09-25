@@ -133,7 +133,15 @@ export function AddDocumentPage() {
     )
     .map((entry) => entry.trip);
   useEffect(() => {
-    if (defaultsChecked || checkingDefaults) return;
+    if (defaultsChecked) return;
+    const requestedTrip = availableTrips.find((trip) => trip.id === params.get("trip"));
+    if (!userChoseDestination.current && requestedTrip) {
+      setDestination("trip");
+      setTripId(requestedTrip.id);
+      setDefaultsChecked(true);
+      return;
+    }
+    if (checkingDefaults) return;
     if (
       !userChoseDestination.current &&
       !trips.error &&
@@ -151,7 +159,9 @@ export function AddDocumentPage() {
     trips.error,
     itineraries,
     requirements,
-    reminders.error
+    reminders.error,
+    params,
+    availableTrips
   ]);
   const eventsQuery = itineraries[availableTrips.findIndex((trip) => trip.id === tripId)];
   const events = (eventsQuery?.data ?? [])

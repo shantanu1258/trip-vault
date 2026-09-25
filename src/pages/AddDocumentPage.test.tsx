@@ -73,6 +73,12 @@ beforeEach(() => {
   mocks.attach.mockResolvedValue([]);
 });
 
+it("keeps the Vault's explicit trip when starting an upload", async () => {
+  setup("/vault/add?trip=trip-1");
+  await waitFor(() => expect(screen.getByLabelText("Save to")).toHaveValue("trip"));
+  expect(screen.getByLabelText(/Trip/)).toHaveValue("trip-1");
+});
+
 function underwayEvent() {
   return {
     id: "event-1",

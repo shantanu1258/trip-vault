@@ -154,7 +154,11 @@ export function AppShell({
             {nav.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
-                to={to}
+                to={
+                  to === "/vault" && activeTripId
+                    ? `/vault?trip=${encodeURIComponent(activeTripId)}`
+                    : to
+                }
                 className={({ isActive }) =>
                   `flex min-h-12 items-center gap-3 rounded-2xl px-4 text-sm font-bold transition-colors ${
                     (demo ? to === "/trips" : isActive)
@@ -186,7 +190,11 @@ export function AppShell({
           {nav.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
-              to={to}
+              to={
+                to === "/vault" && activeTripId
+                  ? `/vault?trip=${encodeURIComponent(activeTripId)}`
+                  : to
+              }
               className={({ isActive }) =>
                 `tap-target flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-[0.65rem] font-bold leading-none ${
                   (demo ? to === "/trips" : isActive) ? "text-brand" : "text-muted"

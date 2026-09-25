@@ -1,6 +1,16 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArchiveRestore, CloudUpload, FileSearch, LockKeyhole, Search } from "lucide-react";
-import { useMemo } from "react";
+import {
+  ArchiveRestore,
+  ChevronDown,
+  CloudUpload,
+  FileSearch,
+  LockKeyhole,
+  Map,
+  Search,
+  SlidersHorizontal,
+  X
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { DocumentVisibilityIcon } from "../components/DocumentVisibilityIcon";
@@ -18,6 +28,8 @@ import {
 } from "../features/workspace/documentFilters";
 import { tripQueries } from "../features/queries/tripQueries";
 import { PersonalDocuments } from "../features/workspace/PersonalDocuments";
+import { listReminders } from "../features/trips/api";
+import { tripActivitySpan } from "../features/workspace/activeTrip";
 
 export function VaultPage() {
   const [params, setParams] = useSearchParams();
@@ -27,11 +39,14 @@ export function VaultPage() {
   const search = params.get("search") ?? "";
   const category = params.get("category") ?? "all";
   const travelerKey = params.get("traveler") ?? "all";
+  const selectedTripId = params.get("trip") ?? "all";
+  const eventId = params.get("event") ?? "all";
   const showArchived = params.get("archived") === "true";
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const updateFilters = (values: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
     for (const [key, value] of Object.entries(values)) {
-      if (value && value !== "all") next.set(key, value);
+      if (value && (value !== "all" || key === "trip")) next.set(key, value);
       else next.delete(key);
     }
     setParams(next, { replace: true, state: location.state });
@@ -52,8 +67,105 @@ export function VaultPage() {
     }
   });
   const source = showArchived ? (archivedQuery.data ?? []) : (query.data ?? []);
-  const tripIds = [...new Set(source.map((document) => document.trip_id))].sort();
-  const tripsQuery = useQuery({ ...tripQueries.trips(), enabled: !personal && tripIds.length > 0 });
+  const tripsQuery = useQuery({ ...tripQueries.trips(), enabled: !personal });
+  const availableTrips = (tripsQuery.data ?? []).filter(
+    (trip) => !trip.deleted_at && trip.status !== "archived"
+  );
+  const checkingActiveTrip = !personal && !params.has("trip") && travelerKey === "all";
+  const itineraryQueries = useQueries({
+    queries: availableTrips.map((trip) => ({
+      ...tripQueries.itinerary(trip.id),
+      enabled: checkingActiveTrip
+    }))
+  });
+  const requirementQueries = useQueries({
+    queries: availableTrips.map((trip) => ({
+      ...tripQueries.requirements(trip.id),
+      enabled: checkingActiveTrip
+    }))
+  });
+  const reminders = useQuery({
+    queryKey: ["reminders", "including-completed"],
+    queryFn: () => listReminders(true),
+    enabled: checkingActiveTrip
+  });
+  useEffect(() => {
+    if (personal || params.has("trip") || !tripsQuery.isSuccess) return;
+    // Old bookmarked traveler filters already identify their trip.
+    if (travelerKey !== "all") {
+      updateFilters({ trip: travelerKey.split(":")[0] });
+      return;
+    }
+    if (
+      reminders.isPending ||
+      [...itineraryQueries, ...requirementQueries].some((query) => query.isPending)
+    )
+      return;
+    if (
+      reminders.isError ||
+      [...itineraryQueries, ...requirementQueries].some((query) => query.isError)
+    )
+      return;
+    const now = Date.now();
+    const active = availableTrips
+      .map((trip, index) => ({
+        trip,
+        span: tripActivitySpan({
+          tripId: trip.id,
+          events: itineraryQueries[index].data ?? [],
+          requirements: requirementQueries[index].data ?? [],
+          reminders: reminders.data ?? [],
+          timezone: trip.primary_timezone
+        })
+      }))
+      .filter((entry) => entry.span && now >= entry.span.start && now <= entry.span.end)
+      .sort(
+        (a, b) =>
+          b.span!.start - a.span!.start ||
+          (b.trip.created_at ?? "").localeCompare(a.trip.created_at ?? "") ||
+          a.trip.id.localeCompare(b.trip.id)
+      );
+    updateFilters({ trip: active[0]?.trip.id ?? "all" });
+  });
+  const tripSource = source.filter(
+    (document) => selectedTripId === "all" || document.trip_id === selectedTripId
+  );
+  const eventsQuery = useQuery({
+    ...tripQueries.itinerary(selectedTripId),
+    enabled: !personal && selectedTripId !== "all"
+  });
+  const events = (eventsQuery.data ?? [])
+    .filter((event) => !event.deleted_at)
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  const referencesQuery = useQuery({
+    ...tripQueries.eventDocumentReferences(
+      selectedTripId,
+      events.map((event) => event.id)
+    ),
+    enabled: !personal && selectedTripId !== "all" && eventsQuery.isSuccess
+  });
+  const selectedEvent = events.find((event) => event.id === eventId);
+  const eventDocumentIds = new Set(
+    (referencesQuery.data ?? [])
+      .filter((link) => link.itinerary_item_id === eventId)
+      .map((link) => link.document_id)
+  );
+  // Match the event detail page: explicit attachments plus its booking's documents.
+  const eventSource = tripSource.filter(
+    (document) =>
+      eventId === "all" ||
+      (selectedEvent &&
+        (eventDocumentIds.has(document.id) ||
+          (selectedEvent.booking_id && document.booking_id === selectedEvent.booking_id)))
+  );
+  const tripIds = [
+    ...new Set([
+      ...availableTrips.map((trip) => trip.id),
+      ...source.map((document) => document.trip_id)
+    ])
+  ]
+    .filter((id) => selectedTripId === "all" || id === selectedTripId)
+    .sort();
   const travelersQueries = useQueries({
     queries: tripIds.map((tripId) => ({
       ...tripQueries.travelers(tripId),
@@ -78,7 +190,7 @@ export function VaultPage() {
   const selectedTraveler = travelerGroups
     .flatMap((group) => group.travelers)
     .find((traveler) => `${traveler.trip_id}:${traveler.id}` === travelerKey);
-  const travelerDocuments = source.filter(
+  const travelerDocuments = eventSource.filter(
     (document) =>
       travelerKey === "all" ||
       (selectedTraveler &&
@@ -109,25 +221,38 @@ export function VaultPage() {
     activeCategory && !categories.some((item) => item.key === category)
       ? [...categories, { ...activeCategory, count: 0 }]
       : categories;
+  const activeFilters = [
+    ...(eventId !== "all"
+      ? [{ key: "event", label: selectedEvent?.title ?? "Selected event" }]
+      : []),
+    ...(travelerKey !== "all"
+      ? [{ key: "traveler", label: selectedTraveler?.display_name ?? "Selected traveller" }]
+      : [])
+  ];
   return (
-    <AppShell>
+    <AppShell compactTop>
       <div className="mx-auto min-w-0 max-w-5xl">
-        <header className="page-enter flex items-center justify-between gap-2">
+        <header className="page-enter flex items-center justify-between gap-2 py-1">
           <div className="min-w-0">
-            <p className="eyebrow">Secure files</p>
-            <h1 className="mt-1 font-display text-xl font-black tracking-[-0.045em] min-[360px]:text-2xl sm:text-4xl">
+            <h1 className="font-display text-xl font-bold leading-tight sm:text-2xl">
               Document Vault
             </h1>
           </div>
           <Link
-            to={personal ? "/vault/add?section=personal" : "/vault/add"}
+            to={
+              personal
+                ? "/vault/add?section=personal"
+                : selectedTripId !== "all"
+                  ? `/vault/add?trip=${encodeURIComponent(selectedTripId)}`
+                  : "/vault/add"
+            }
             className="primary-button shrink-0 px-3 py-2 text-xs"
           >
             Add document
           </Link>
         </header>
         <div
-          className="mt-4 flex items-center gap-2 border-b border-line"
+          className="mt-2 flex items-center gap-2 border-b border-line"
           aria-label="Document sections"
         >
           <button
@@ -188,10 +313,50 @@ export function VaultPage() {
             )}
             {(showArchived || (query.data && query.data.length > 0)) && (
               <>
-                <div className="mt-2 grid grid-cols-2 items-stretch gap-2">
-                  <label className="relative min-w-0">
+                <div className="relative mt-1 min-w-0">
+                  <Map
+                    className="pointer-events-none absolute left-0 top-1/2 size-4 -translate-y-1/2 text-muted"
+                    aria-hidden="true"
+                  />
+                  <select
+                    aria-label="Filter Vault documents by trip"
+                    title={
+                      tripsQuery.data?.find((trip) => trip.id === selectedTripId)?.title ??
+                      "All trips"
+                    }
+                    className="min-h-11 w-full min-w-0 appearance-none truncate rounded-lg border-0 bg-transparent pl-7 pr-7 text-sm font-bold text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+                    value={selectedTripId}
+                    onChange={(event) =>
+                      updateFilters({ trip: event.target.value, traveler: null, event: null })
+                    }
+                  >
+                    <option value="all">All trips</option>
+                    {[
+                      ...new Set([
+                        ...availableTrips.map((trip) => trip.id),
+                        ...source.map((document) => document.trip_id),
+                        ...(selectedTripId !== "all" ? [selectedTripId] : [])
+                      ])
+                    ].map((id) => (
+                      <option key={id} value={id}>
+                        {tripsQuery.data?.find((trip) => trip.id === id)?.title ??
+                          `Trip ${id.slice(0, 8)}`}
+                      </option>
+                    ))}
+                  </select>
+
+                  <ChevronDown
+                    className="pointer-events-none absolute right-1 top-1/2 size-4 -translate-y-1/2 text-muted"
+                    aria-hidden="true"
+                  />
+                </div>
+                <div className="flex items-stretch gap-2">
+                  <label className="relative min-w-0 flex-1">
                     <span className="sr-only">Search documents</span>
-                    <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                    <Search
+                      className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted"
+                      aria-hidden="true"
+                    />
                     <input
                       className="form-input mt-0 min-w-0 pl-10"
                       value={search}
@@ -199,29 +364,117 @@ export function VaultPage() {
                       placeholder="Search files"
                     />
                   </label>
-                  <select
-                    aria-label="Filter Vault documents by traveler"
-                    className="form-input mt-0 min-w-0 truncate"
-                    value={travelerKey}
-                    onChange={(event) => updateFilters({ traveler: event.target.value })}
+                  <button
+                    type="button"
+                    aria-label="Filters"
+                    aria-expanded={filtersOpen}
+                    aria-controls="vault-filters"
+                    onClick={() => setFiltersOpen(!filtersOpen)}
+                    className={`inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-bold ${filtersOpen || activeFilters.length ? "border-brand/40 text-brand" : "border-line text-muted hover:text-ink"}`}
                   >
-                    <option value="all">All travelers</option>
-                    {travelerKey !== "all" && !selectedTraveler && (
-                      <option value={travelerKey}>Traveler unavailable</option>
+                    <SlidersHorizontal className="size-4" aria-hidden="true" /> Filters
+                    {activeFilters.length > 0 && (
+                      <span aria-hidden="true" className="text-xs">
+                        {activeFilters.length}
+                      </span>
                     )}
-                    {travelerGroups
-                      .filter((group) => group.travelers.length > 0)
-                      .map((group) => (
-                        <optgroup key={group.tripId} label={group.title}>
-                          {group.travelers.map((traveler) => (
-                            <option key={traveler.id} value={`${group.tripId}:${traveler.id}`}>
-                              {traveler.display_name} · {group.title}
+                  </button>
+                </div>
+                <div id="vault-filters" hidden={!filtersOpen}>
+                  <div className="mt-2 grid grid-cols-2 gap-3 rounded-xl border border-line bg-surface p-3">
+                    <label className="min-w-0 text-xs font-semibold text-muted">
+                      Event
+                      <span className="relative mt-1 block">
+                        <select
+                          aria-label="Filter Vault documents by event"
+                          title={selectedEvent?.title ?? "All events"}
+                          className="form-input mt-0 min-w-0 appearance-none truncate pr-10 disabled:opacity-50"
+                          value={eventId}
+                          disabled={selectedTripId === "all" || eventsQuery.isPending}
+                          onChange={(event) => updateFilters({ event: event.target.value })}
+                        >
+                          <option value="all">
+                            {selectedTripId === "all" ? "Choose a trip first" : "All events"}
+                          </option>
+                          {eventId !== "all" && !selectedEvent && (
+                            <option value={eventId}>Event unavailable</option>
+                          )}
+                          {events.map((event) => (
+                            <option key={event.id} value={event.id}>
+                              {event.title}
                             </option>
                           ))}
-                        </optgroup>
-                      ))}
-                  </select>
+                        </select>
+                        <ChevronDown
+                          aria-hidden="true"
+                          className={`pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted ${selectedTripId === "all" || eventsQuery.isPending ? "opacity-50" : ""}`}
+                        />
+                      </span>
+                    </label>
+                    <label className="min-w-0 text-xs font-semibold text-muted">
+                      Traveller
+                      <span className="relative mt-1 block">
+                        <select
+                          aria-label="Filter Vault documents by traveler"
+                          className="form-input mt-0 min-w-0 appearance-none truncate pr-10"
+                          value={travelerKey}
+                          onChange={(event) => updateFilters({ traveler: event.target.value })}
+                        >
+                          <option value="all">All travelers</option>
+                          {travelerKey !== "all" && !selectedTraveler && (
+                            <option value={travelerKey}>Traveler unavailable</option>
+                          )}
+                          {travelerGroups
+                            .filter((group) => group.travelers.length > 0)
+                            .map((group) => (
+                              <optgroup key={group.tripId} label={group.title}>
+                                {group.travelers.map((traveler) => (
+                                  <option
+                                    key={traveler.id}
+                                    value={`${group.tripId}:${traveler.id}`}
+                                  >
+                                    {traveler.display_name}
+                                    {selectedTripId === "all" ? ` · ${group.title}` : ""}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                        </select>
+                        <ChevronDown
+                          aria-hidden="true"
+                          className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted"
+                        />
+                      </span>
+                    </label>
+                  </div>
                 </div>
+                {!filtersOpen && activeFilters.length > 0 && (
+                  <div
+                    className="mt-2 flex flex-wrap items-center gap-1"
+                    aria-label="Applied filters"
+                  >
+                    {activeFilters.map((filter) => (
+                      <button
+                        key={filter.key}
+                        type="button"
+                        title={filter.label}
+                        aria-label={`Remove ${filter.label} filter`}
+                        onClick={() => updateFilters({ [filter.key]: null })}
+                        className="inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-lg px-2 text-xs text-muted hover:bg-elevated hover:text-ink"
+                      >
+                        <span className="truncate">{filter.label}</span>
+                        <X className="size-3 shrink-0" aria-hidden="true" />
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className="min-h-9 px-2 text-xs font-bold text-brand"
+                      onClick={() => updateFilters({ event: null, traveler: null })}
+                    >
+                      Clear filters
+                    </button>
+                  </div>
+                )}
                 <div
                   className="mt-2 flex min-w-0 gap-2 overflow-x-auto rounded-2xl border border-line bg-surface p-2"
                   role="group"
@@ -242,6 +495,17 @@ export function VaultPage() {
                     </button>
                   ))}
                 </div>
+                {selectedTripId !== "all" && (eventsQuery.isError || referencesQuery.isError) && (
+                  <p role="status" className="mt-2 text-xs text-muted">
+                    Some event links could not be loaded. Choose All events to see all available
+                    trip documents.
+                  </p>
+                )}
+                {eventId !== "all" && referencesQuery.isFetching && (
+                  <p role="status" className="mt-2 text-xs text-muted">
+                    Loading event documents…
+                  </p>
+                )}
                 {travelersQueries.some((query) => query.isLoading) && (
                   <p className="mt-2 text-xs text-muted">Loading travelers…</p>
                 )}

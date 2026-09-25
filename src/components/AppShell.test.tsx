@@ -42,6 +42,12 @@ function renderShell(path: string) {
 }
 
 describe("trip header search", () => {
+  it("keeps the current trip when opening Vault from either navigation", () => {
+    renderShell("/trips/trip-1/bookings/booking-1");
+    for (const link of screen.getAllByRole("link", { name: "Vault" })) {
+      expect(link).toHaveAttribute("href", "/vault?trip=trip-1");
+    }
+  });
   it("opens active notifications in a modal without leaving the current trip", async () => {
     renderShell("/trips/trip-1?view=details");
     await userEvent.click(screen.getByRole("button", { name: "Alerts" }));
